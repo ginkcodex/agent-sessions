@@ -1,0 +1,893 @@
+package codediagnostics
+
+import (
+	"context"
+	"os"
+	"slices"
+	"strings"
+	"sync"
+	"sync/atomic"
+)
+
+type managedRun struct {
+	id     string
+	cancel context.CancelFunc
+}
+type attachment struct {
+	root     AuthorizedRoot
+	snapshot Snapshot
+	adapters map[string]CheckerAdapter
+	tools    []ToolInput
+	runs     map[string]*managedRun
+	events   [][]Event
+	gap      bool
+
+	// Live document lifecycles are owned by this attachment generation: revoke,
+	// detach and invalidation drop them. Closed identities are a bounded FIFO.
+	docs        map[string]*documentState
+	closedDocs  map[string]bool
+	closedOrder []string
+
+	// External files navigation answers pointed to; see grantExternal.
+	grants     map[string]bool
+	grantOrder []string
+
+	inProcess map[string]bool // provider IDs published by PublishInProcess
+	analyzers []string        // reviewed in-process IDs offered in the proposal
+
+	preparations []PreparationPlan
+	preparing    context.CancelFunc
+	prepareRun   string
+}
+
+// Manager owns one authenticated connection and its Supervisor and Trust. Close
+// (also the disconnect hook) invalidates ownership before joining process cleanup.
+// Events are pulled, never delivered through callbacks under the owner lock.
+type Manager struct {
+	mu          sync.Mutex
+	connection  string
+	trust       *Trust
+	supervisor  *Supervisor
+	limits      ManagerLimits
+	attachments map[string]*attachment
+	pending     int
+	projects    map[Project]bool // bounded connection-lifetime identity ledger
+	closed      bool
+	workers     sync.WaitGroup
+	ownedWork   atomic.Int64     // running owned workers (runs + document releases); test-visible
+	provider    DocumentProvider // nil: live document operations are unsupported
+}
+
+func NewManager(connection string, trust *Trust, supervisor *Supervisor, limits ManagerLimits) (*Manager, error) {
+	if !bounded(connection, 256) || trust == nil || supervisor == nil || supervisor.trust != trust {
+		return nil, failure("invalidArgument", "A connection and shared trust/supervisor owner are required")
+	}
+	return &Manager{connection: connection, trust: trust, supervisor: supervisor, limits: limits.defaults(), attachments: map[string]*attachment{}, projects: map[Project]bool{}}, nil
+}
+
+// Attach accepts only a previously catalog-authorized root and backend-owned
+// registrations. There is no probing, process execution or client command input.
+func (m *Manager) Attach(root AuthorizedRoot, version int, registrations []Registration) (Snapshot, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if version != 1 {
+		return Snapshot{}, failure("unsupported", "Unsupported diagnostics contract")
+	}
+	if m.closed {
+		return Snapshot{}, failure("disconnected", "Diagnostics owner is closed")
+	}
+	if len(m.attachments) >= m.limits.Attachments {
+		return Snapshot{}, failure("busy", "Attachment budget is full")
+	}
+	if err := root.Revalidate(); err != nil {
+		return Snapshot{}, err
+	}
+	if !m.projects[root.Project()] && len(m.projects) >= 64 {
+		return Snapshot{}, failure("limitExceeded", "Connection project identity budget is full; reconnect required")
+	}
+	// Count attempted discovery too: Trust can retain failed lookup identities.
+	m.projects[root.Project()] = true
+	for _, a := range m.attachments {
+		if a.root.Project() == root.Project() {
+			return Snapshot{}, failure("busy", "Project already attached")
+		}
+	}
+	if len(registrations) > 32 {
+		return Snapshot{}, failure("limitExceeded", "Provider budget exceeded")
+	}
+	a, err := m.prepare(root, registrations)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	m.attachments[a.snapshot.Context.AttachmentID] = a
+	return copySnapshot(a.snapshot), nil
+}
+
+// CompleteDiscovery installs backend-only metadata on an attachment that has not
+// yet offered an approval proposal. Detached or revoked epochs cannot be revived.
+func (m *Manager) CompleteDiscovery(c Context, registrations []Registration) error {
+	return m.CompleteDiscoveryWithPublication(c, registrations, nil)
+}
+
+// CompleteDiscoveryWithPublication installs live discovery atomically with its
+// manager metadata. publish must not call back into Manager or execute tools.
+func (m *Manager) CompleteDiscoveryWithPublication(c Context, registrations []Registration, publish func(AuthorizedRoot, []Registration) error) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return err
+	}
+	if a.snapshot.Proposal != nil || a.snapshot.Approval.State != "required" {
+		return failure("staleContext", "Discovery epoch is no longer current")
+	}
+	next, err := m.prepare(a.root, registrations)
+	if err != nil {
+		return err
+	}
+	if publish != nil {
+		if err := publish(a.root, registrations); err != nil {
+			return err
+		}
+	}
+	next.snapshot.Context = a.snapshot.Context
+	next.snapshot.Sequence = a.snapshot.Sequence
+	a.adapters, a.tools, a.inProcess, a.analyzers = next.adapters, next.tools, next.inProcess, next.analyzers
+	a.preparations = next.preparations
+	a.snapshot = next.snapshot
+	m.commit(a)
+	return nil
+}
+
+func (m *Manager) prepare(root AuthorizedRoot, registrations []Registration) (*attachment, error) {
+	return m.prepareMetadata(root, registrations, true)
+}
+
+func (m *Manager) prepareMetadata(root AuthorizedRoot, registrations []Registration, lookup bool) (*attachment, error) {
+	if len(registrations) > 32 {
+		return nil, failure("limitExceeded", "Provider budget exceeded")
+	}
+	a := &attachment{root: root, adapters: map[string]CheckerAdapter{}, runs: map[string]*managedRun{}, inProcess: map[string]bool{}}
+	a.snapshot = Snapshot{ContractVersion: 1, Context: Context{m.connection, opaqueID(), opaqueID()}, Approval: Approval{State: "required"}, Providers: []ProviderState{}, ResultSets: []ResultSet{}}
+	seen := map[string]bool{}
+	for _, r := range registrations {
+		if !bounded(r.ProviderID, 256) || seen[r.ProviderID] || !availability(r.Availability) {
+			return nil, failure("invalidArgument", "Invalid provider registration")
+		}
+		seen[r.ProviderID] = true
+		state := ProviderState{ProviderID: r.ProviderID, Availability: r.Availability, Notice: shorten(r.Notice, 2048), Phase: "idle", Freshness: "uncertain", Coverage: Coverage{Kind: "savedProject", Roots: []string{}, Partial: true, ExternalChanges: "unwatched"}}
+		switch {
+		case r.Live != nil:
+			if err := validateLive(r); err != nil {
+				return nil, err
+			}
+			state = r.Live.State
+			// Never nil: the wire contract is an array, and clients read its length.
+			state.Coverage.Roots = append([]string{}, state.Coverage.Roots...)
+			if r.Availability == "available" {
+				for _, cfg := range liveServers(r.Live) {
+					if _, err := commandDirectory(root, cfg.Directory); err != nil {
+						return nil, err
+					}
+				}
+				a.tools = append(a.tools, liveTools(r.Live)...)
+			}
+		case r.InProcess:
+			if r.Adapter != nil || r.Live != nil {
+				return nil, failure("invalidArgument", "Invalid provider registration")
+			}
+			a.inProcess[r.ProviderID] = true
+			state.Notice = "Watches saved project files after project approval."
+			if _, reviewed := inProcessPolicies[r.ProviderID]; !reviewed {
+				state.Availability = "unsupported"
+				state.Notice = "This built-in analyzer has not been reviewed."
+			}
+		case r.Adapter != nil:
+			a.adapters[r.ProviderID] = r.Adapter
+			a.tools = append(a.tools, r.Adapter.Tools()...)
+		case r.Availability == "available":
+			return nil, failure("invalidArgument", "Available provider needs an adapter")
+		}
+		a.snapshot.Providers = append(a.snapshot.Providers, state)
+	}
+	a.preparations, _ = collectPreparations(registrations)
+	for i := range a.preparations {
+		if err := validatePreparation(root, &a.preparations[i]); err != nil {
+			return nil, err
+		}
+	}
+	_, setupTools := collectPreparations(registrations)
+	a.tools = append(a.tools, setupTools...)
+	slices.SortFunc(a.snapshot.Providers, func(a, b ProviderState) int { return strings.Compare(a.ProviderID, b.ProviderID) })
+	if len(a.tools) > 0 {
+		fp, err := Fingerprint(root, a.tools)
+		if err != nil {
+			return nil, err
+		}
+		a.snapshot.Proposal = &Proposal{Fingerprint: fp, Tools: []ProposalTool{}}
+		for _, t := range a.tools {
+			paths := slices.Clone(t.ConfigPaths)
+			if paths == nil {
+				paths = []string{}
+			}
+			a.snapshot.Proposal.Tools = append(a.snapshot.Proposal.Tools, ProposalTool{ProviderID: t.ProviderID, Executable: t.Executable, ConfigPaths: paths, BuildContext: t.BuildContext})
+		}
+	}
+	a.analyzers = a.offeredAnalyzers()
+	analyzers := a.analyzers
+	if len(a.tools) == 0 && len(analyzers) > 0 {
+		// No executable checker is available, yet reviewed in-process analyzers
+		// are. They get their own explicit, analyzer-only approval proposal: its
+		// identity binds host/project/analyzer policy and can never authorize an
+		// executable (Preflight still requires a tool fingerprint).
+		fp, err := InProcessFingerprint(root, analyzers)
+		if err != nil {
+			return nil, err
+		}
+		a.snapshot.Proposal = &Proposal{Fingerprint: fp, Tools: []ProposalTool{}}
+	}
+	if a.snapshot.Proposal != nil {
+		for _, plan := range a.preparations {
+			for _, step := range plan.Steps {
+				a.snapshot.Proposal.Preparation = append(a.snapshot.Proposal.Preparation, ProposalStep{Name: step.Name, Command: strings.Join(append([]string{step.Command.Executable}, step.Command.Args...), " ")})
+			}
+			a.snapshot.Proposal.Outputs = append(a.snapshot.Proposal.Outputs, plan.Outputs...)
+		}
+		for _, id := range analyzers {
+			a.snapshot.Proposal.Analyzers = append(a.snapshot.Proposal.Analyzers, ProposalAnalyzer{id, inProcessDescriptions[id]})
+		}
+	} else {
+		// Nothing reviewed to approve: in-process analysis stays off.
+		for i := range a.snapshot.Providers {
+			if p := &a.snapshot.Providers[i]; a.inProcess[p.ProviderID] {
+				p.Availability = "unsupported"
+				p.Notice = "Saved-file watching needs a project approval proposal; none is available."
+			}
+		}
+	}
+	if lookup && a.snapshot.Proposal != nil {
+		lookupKind := m.trust.Lookup
+		if len(a.tools) == 0 {
+			lookupKind = m.trust.LookupInProcess
+		}
+		approval, err := lookupKind(root, a.snapshot.Proposal.Fingerprint)
+		if err != nil {
+			return nil, err
+		}
+		a.snapshot.Approval = approval
+		if approval.State == "approved" && len(a.preparations) > 0 {
+			a.snapshot.Preparation = &PreparationState{State: "running", Total: preparationStepCount(a.preparations)}
+		}
+	}
+	m.syncAvailability(a)
+	// Leave enough per-part room for metadata plus a maximal escaped finding.
+	if encodedSize(a.snapshot) > min(128<<10, m.limits.EventBytes/4) || encodedSize(a.snapshot) > m.limits.SnapshotBytes {
+		return nil, failure("limitExceeded", "Provider metadata exceeds delivery budget")
+	}
+	return a, nil
+}
+
+var inProcessDescriptions = map[string]string{
+	GoSyntaxProviderID: "Built-in Go syntax check: parses saved .go files inside the project in the app and watches them for changes. Runs no program.",
+}
+
+// offeredAnalyzers returns the sorted in-process provider IDs offered for
+// approval at discovery (registered available and with a reviewed policy).
+func (a *attachment) offeredAnalyzers() []string {
+	var out []string
+	for _, p := range a.snapshot.Providers {
+		if _, ok := inProcessPolicies[p.ProviderID]; ok && a.inProcess[p.ProviderID] && p.Availability == "available" {
+			out = append(out, p.ProviderID)
+		}
+	}
+	return out
+}
+
+func availability(s string) bool {
+	return slices.Contains([]string{"available", "approvalRequired", "unsupported", "missingTool", "disabled"}, s)
+}
+
+func (m *Manager) syncAvailability(a *attachment) {
+	for i := range a.snapshot.Providers {
+		p := &a.snapshot.Providers[i]
+		if p.Availability == "available" || p.Availability == "approvalRequired" {
+			p.Availability = "approvalRequired"
+			if a.snapshot.Approval.State == "approved" && a.snapshot.Preparation == nil {
+				p.Availability = "available"
+			}
+		}
+	}
+}
+
+func (m *Manager) lookup(c Context) (*attachment, error) {
+	if m.closed {
+		return nil, failure("disconnected", "Diagnostics owner is closed")
+	}
+	a := m.attachments[c.AttachmentID]
+	if a == nil || a.snapshot.Context != c {
+		return nil, failure("staleContext", "Diagnostics attachment is no longer current")
+	}
+	return a, nil
+}
+
+func (m *Manager) GetSnapshot(c Context) (Snapshot, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return copySnapshot(a.snapshot), nil
+}
+
+func (m *Manager) Approve(c Context, fingerprint, mode string) (Snapshot, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if a.snapshot.Proposal == nil || a.snapshot.Proposal.Fingerprint != fingerprint {
+		return Snapshot{}, failure("approvalChanged", "Approval proposal is no longer current")
+	}
+	var approval Approval
+	if len(a.tools) > 0 {
+		approval, err = m.trust.Approve(a.root, a.tools, fingerprint, mode)
+	} else {
+		// Analyzer-only proposal: recomputed and compared under the trust lock;
+		// it grants no executable.
+		approval, err = m.trust.ApproveInProcess(a.root, a.analyzers, fingerprint, mode)
+	}
+	if err != nil {
+		return Snapshot{}, err
+	}
+	// Reapproval kills leases; invalidate manager runs too, before a completion can commit.
+	m.cancelAll(a)
+	a.snapshot.Approval = approval
+	a.snapshot.Preparation = nil
+	if len(a.preparations) > 0 {
+		a.snapshot.Preparation = &PreparationState{State: "running", Total: preparationStepCount(a.preparations)}
+	}
+	m.syncAvailability(a)
+	m.commit(a)
+	return copySnapshot(a.snapshot), nil
+}
+
+func (a *attachment) preparationRunning() bool {
+	return a.snapshot.Preparation != nil && a.snapshot.Preparation.State == "running"
+}
+
+// StartPreparation owns setup and rediscovery. discover is metadata-only. publish
+// installs validated live metadata under the manager lock and must not call back
+// into Manager. A failed or canceled setup never activates tools.
+func (m *Manager) StartPreparation(c Context, discover func(AuthorizedRoot) ([]Registration, error), publish func(AuthorizedRoot, []Registration) error) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return err
+	}
+	if a.snapshot.Approval.State != "approved" || len(a.preparations) == 0 || a.snapshot.Preparation == nil || a.snapshot.Preparation.State != "running" || a.preparing != nil || discover == nil {
+		return failure("invalidArgument", "Preparation is not pending")
+	}
+	fail := func(err error) error {
+		a.snapshot.Preparation = &PreparationState{State: "failed", Message: "Tool setup could not start. Reattach to review the current tools and directories."}
+		m.syncAvailability(a)
+		m.commit(a)
+		return err
+	}
+	lease, err := m.trust.Preflight(a.root, a.tools)
+	if err != nil {
+		return fail(err)
+	}
+	for _, plan := range a.preparations {
+		for _, step := range plan.Steps {
+			dir, err := runDirectory(a.root, step.Command)
+			if err != nil {
+				return fail(err)
+			}
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				return fail(failure("toolFailed", "Tool preparation directory cannot be created"))
+			}
+			if _, err := runDirectory(a.root, step.Command); err != nil {
+				return fail(err)
+			}
+		}
+	}
+	ctx, cancel := context.WithCancel(lease.Context)
+	runID := opaqueID()
+	a.preparing, a.prepareRun = cancel, runID
+	plans, tools := append([]PreparationPlan(nil), a.preparations...), cloneTools(a.tools)
+	m.workers.Add(1)
+	m.ownedWork.Add(1)
+	go m.prepareApproved(ctx, a, c, plans, tools, discover, publish, lease, runID)
+	return nil
+}
+
+func (m *Manager) prepareApproved(ctx context.Context, a *attachment, c Context, plans []PreparationPlan, tools []ToolInput, discover func(AuthorizedRoot) ([]Registration, error), publish func(AuthorizedRoot, []Registration) error, lease *Lease, runID string) {
+	defer m.workers.Done()
+	defer m.ownedWork.Add(-1)
+	state := PreparationState{State: "running", Total: preparationStepCount(plans)}
+	index := 0
+	for _, plan := range plans {
+		if plan.Validate != nil && plan.Validate() != nil {
+			state.State, state.Message = "failed", "Rust workspace, configuration or installed toolchain changed; review again"
+			m.finishPreparation(a, c, state, nil, publish, lease, runID, ctx)
+			return
+		}
+		for _, step := range plan.Steps {
+			index++
+			state.Index, state.Step = index, step.Name
+			m.publishPreparation(a, c, state, runID)
+			run, err := m.supervisor.Submit(ctx, a.root, tools, step.Command, opaqueID(), false)
+			var outcome Outcome
+			if err == nil {
+				outcome = run.Result()
+			}
+			if err != nil || outcome.Kind != OutcomeAccepted {
+				state.State, state.Message = "failed", shorten(step.Name+" failed. Check the selected toolchain and network, then reattach to review setup again.", 2048)
+				if slices.Contains(step.Command.Args, "fetch") {
+					state.Message = "Locked Cargo fetch failed. Check network access and whether Cargo.lock needs a separately reviewed update, then reattach. No unlocked retry was attempted."
+				}
+				if ctx.Err() != nil || outcome.Kind == OutcomeCanceled {
+					state.State, state.Message = "canceled", "Setup canceled"
+				}
+				m.finishPreparation(a, c, state, nil, publish, lease, runID, ctx)
+				return
+			}
+		}
+	}
+	if ctx.Err() != nil {
+		state.State, state.Message = "canceled", "Setup canceled"
+		m.finishPreparation(a, c, state, nil, publish, lease, runID, ctx)
+		return
+	}
+	next, err := discover(a.root)
+	if err != nil {
+		state.State, state.Message = "failed", "Rediscovery failed after preparation"
+		m.finishPreparation(a, c, state, nil, publish, lease, runID, ctx)
+		return
+	}
+	m.finishPreparation(a, c, PreparationState{}, next, publish, lease, runID, ctx)
+}
+
+func preparationCarried(plans []PreparationPlan, next []Registration) error {
+	for _, plan := range plans {
+		if plan.Prepared == nil || plan.Prepared(next) != nil {
+			return failure("approvalChanged", "Preparation changed more than its approved outputs; review again")
+		}
+	}
+	return nil
+}
+
+func (m *Manager) publishPreparation(a *attachment, c Context, state PreparationState, runID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	current, err := m.lookup(c)
+	if err != nil || current != a || a.prepareRun != runID || a.snapshot.Preparation == nil {
+		return
+	}
+	a.snapshot.Preparation = &state
+	m.commit(a)
+}
+
+func (m *Manager) finishPreparation(a *attachment, c Context, state PreparationState, next []Registration, publish func(AuthorizedRoot, []Registration) error, lease *Lease, runID string, ctx context.Context) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	current, err := m.lookup(c)
+	if err != nil || current != a || a.prepareRun != runID || a.snapshot.Preparation == nil {
+		return
+	}
+	if ctx.Err() != nil {
+		state.State, state.Message, next = "canceled", "Setup canceled; reattach to review again", nil
+	}
+	if a.preparing != nil {
+		a.preparing()
+	}
+	a.preparing, a.prepareRun = nil, ""
+	if next == nil {
+		a.snapshot.Preparation = &state
+		m.commit(a)
+		return
+	}
+	prepared := append([]PreparationPlan(nil), a.preparations...)
+	replacement, err := m.prepareMetadata(a.root, next, false)
+	if err != nil || !preparationCovered(a.tools, replacement.tools, prepared) {
+		a.snapshot.Preparation = &PreparationState{State: "failed", Message: "Preparation changed more than its approved outputs; review again"}
+		m.commit(a)
+		return
+	}
+	if err := preparationCarried(prepared, next); err != nil {
+		a.snapshot.Preparation = &PreparationState{State: "failed", Message: "Preparation outputs could not be verified; reattach to review again"}
+		m.commit(a)
+		return
+	}
+	if err := lease.Validate(a.root, a.tools); err != nil {
+		a.snapshot.Preparation = &PreparationState{State: "failed", Message: "Execution inputs changed during setup; reattach to review again"}
+		m.commit(a)
+		return
+	}
+	if publish != nil {
+		if err := publish(a.root, next); err != nil {
+			a.snapshot.Preparation = &PreparationState{State: "failed", Message: "Prepared live tools could not be registered; reattach to review again"}
+			m.commit(a)
+			return
+		}
+	}
+	expected := ""
+	if replacement.snapshot.Proposal != nil {
+		expected = replacement.snapshot.Proposal.Fingerprint
+	}
+	approval, err := m.trust.Rebind(a.root, lease, a.tools, replacement.tools, expected)
+	if err != nil {
+		a.snapshot.Preparation = &PreparationState{State: "failed", Message: "Approval could not carry over; review again"}
+		m.commit(a)
+		return
+	}
+	replacement.snapshot.Context = a.snapshot.Context
+	replacement.snapshot.Sequence = a.snapshot.Sequence
+	replacement.snapshot.Approval = approval
+	if replacement.snapshot.Proposal != nil {
+		replacement.snapshot.Proposal.Fingerprint = approval.Fingerprint
+	}
+	a.adapters, a.tools, a.inProcess, a.analyzers = replacement.adapters, replacement.tools, replacement.inProcess, replacement.analyzers
+	a.preparations = replacement.preparations
+	a.snapshot = replacement.snapshot
+	a.snapshot.Preparation = nil
+	m.syncAvailability(a)
+	m.commit(a)
+}
+
+func preparationCovered(oldTools, newTools []ToolInput, plans []PreparationPlan) bool {
+	covered := func(id string) bool {
+		for _, plan := range plans {
+			for _, prefix := range plan.Covers {
+				if id == prefix || strings.HasPrefix(id, prefix+"-") {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	oldByID := map[string]ToolInput{}
+	for _, tool := range oldTools {
+		if !covered(tool.ProviderID) {
+			oldByID[tool.ProviderID] = tool
+		}
+	}
+	for _, tool := range newTools {
+		if covered(tool.ProviderID) {
+			continue
+		}
+		old, ok := oldByID[tool.ProviderID]
+		if !ok || old.Executable != tool.Executable || old.Policy != tool.Policy || !slices.Equal(old.ConfigPaths, tool.ConfigPaths) {
+			return false
+		}
+		delete(oldByID, tool.ProviderID)
+	}
+	return len(oldByID) == 0
+}
+
+func (m *Manager) cancelAll(a *attachment) {
+	if a.preparing != nil {
+		a.preparing()
+	}
+	a.preparing, a.prepareRun = nil, ""
+	for id, r := range a.runs {
+		delete(a.runs, id)
+		r.cancel()
+		m.stale(a, id, "canceled")
+	}
+}
+
+func (m *Manager) Revoke(c Context) (Snapshot, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	a.snapshot.Context.Generation = opaqueID()
+	m.releaseDocuments(a)
+	a.events = nil
+	a.gap = false
+	m.cancelAll(a)
+	a.snapshot.ResultSets = []ResultSet{}
+	a.snapshot.Approval = Approval{State: "revoked"}
+	a.snapshot.Preparation = nil
+	for i := range a.snapshot.Providers {
+		p := &a.snapshot.Providers[i]
+		p.RunID = ""
+		p.Phase = "idle"
+		p.Freshness = "uncertain"
+		p.Coverage.Partial = true
+		p.Truncated = false
+		p.Failure = nil
+		if a.inProcess[p.ProviderID] {
+			p.Coverage.ExternalChanges = "unwatched"
+		}
+	}
+	m.syncAvailability(a)
+	// Invalidate manager epoch first even if persistent removal fails.
+	err = m.trust.Revoke(a.root)
+	m.commit(a)
+	return copySnapshot(a.snapshot), err
+}
+
+func (m *Manager) Detach(c Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return err
+	}
+	delete(m.attachments, c.AttachmentID)
+	m.cancelAll(a)
+	m.releaseDocuments(a)
+	m.idleDocuments(a)
+	return nil
+}
+
+// Invalidate requires reattach; unlike Revoke it cannot switch a live generation.
+func (m *Manager) Invalidate(c Context) error { return m.Detach(c) }
+
+func (m *Manager) Close() {
+	m.mu.Lock()
+	m.closed = true
+	for id, a := range m.attachments {
+		delete(m.attachments, id)
+		m.cancelAll(a)
+		m.releaseDocuments(a)
+	}
+	m.mu.Unlock()
+	m.trust.Close()
+	m.supervisor.Close()
+	m.workers.Wait()
+}
+
+// Run coalesces current work. supersede is a backend policy flag, not an argv
+// escape hatch. A bounded number of adapter goroutines may exist, including
+// canceled work still cleaning up. A full budget leaves current work untouched.
+func (m *Manager) Run(c Context, ids []string, supersede bool) ([]RunIdentity, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return nil, err
+	}
+	if ids != nil && len(ids) == 0 {
+		return nil, failure("invalidArgument", "Provider list is empty")
+	}
+	if a.snapshot.Approval.State != "approved" {
+		return nil, failure("approvalRequired", "Explicit execution approval is required")
+	}
+	if a.snapshot.Preparation != nil {
+		return nil, failure("busy", "Tool setup must complete before running checks")
+	}
+	requested := ids != nil
+	if ids == nil {
+		for _, p := range a.snapshot.Providers {
+			if p.Availability == "available" && a.adapters[p.ProviderID] != nil {
+				ids = append(ids, p.ProviderID)
+			}
+		}
+	}
+	// In-process analyzers follow the project watcher and are never run on demand;
+	// listing them is a harmless no-op rather than an error.
+	ids = slices.DeleteFunc(slices.Clone(ids), func(id string) bool { return a.inProcess[id] })
+	slices.Sort(ids)
+	if len(ids) == 0 {
+		if !requested {
+			return nil, failure("unsupported", "No available saved-file checker")
+		}
+		// Only in-process analyzers were listed: no executable work, no
+		// preflight, nothing to launch.
+		return []RunIdentity{}, nil
+	}
+	needed := 0
+	for i, id := range ids {
+		p := provider(a, id)
+		if p == nil || p.Availability != "available" || a.adapters[id] == nil || (i > 0 && ids[i-1] == id) {
+			return nil, failure("invalidArgument", "Provider is unavailable or duplicated")
+		}
+		if a.runs[id] == nil || supersede {
+			needed++
+		}
+	}
+	if m.pending+needed > m.limits.Pending {
+		return nil, failure("busy", "Checker manager queue is full")
+	}
+	lease, err := m.trust.Preflight(a.root, a.tools)
+	if err != nil {
+		return nil, err
+	}
+	out := []RunIdentity{}
+	for _, id := range ids {
+		old := a.runs[id]
+		if old != nil && !supersede {
+			out = append(out, RunIdentity{id, old.id})
+			continue
+		}
+		if old != nil {
+			old.cancel()
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		r := &managedRun{opaqueID(), cancel}
+		a.runs[id] = r
+		p := provider(a, id)
+		p.RunID = r.id
+		p.Phase = "checking"
+		p.Failure = nil
+		m.pending++
+		m.workers.Add(1)
+		m.ownedWork.Add(1)
+		tools := cloneTools(a.tools)
+		go m.execute(ctx, a, c, id, r, lease, tools)
+		out = append(out, RunIdentity{id, r.id})
+	}
+	if needed > 0 {
+		m.commit(a)
+	}
+	return out, nil
+}
+
+func cloneTools(in []ToolInput) []ToolInput {
+	out := slices.Clone(in)
+	for i := range out {
+		out[i].ConfigPaths = slices.Clone(out[i].ConfigPaths)
+	}
+	return out
+}
+
+func provider(a *attachment, id string) *ProviderState {
+	for i := range a.snapshot.Providers {
+		if a.snapshot.Providers[i].ProviderID == id {
+			return &a.snapshot.Providers[i]
+		}
+	}
+	return nil
+}
+
+func (m *Manager) execute(ctx context.Context, a *attachment, c Context, id string, r *managedRun, lease *Lease, tools []ToolInput) {
+	defer m.workers.Done()
+	defer m.ownedWork.Add(-1)
+	defer r.cancel()
+	result := a.adapters[id].RunApproved(ctx, m.supervisor, r.id, tools)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pending--
+	current, err := m.lookup(c)
+	if err != nil || current != a || a.runs[id] != r {
+		return
+	}
+	delete(a.runs, id)
+	if ctx.Err() != nil {
+		m.stale(a, id, "canceled")
+		m.commit(a)
+		return
+	}
+	if lease.Validate(a.root, a.tools) != nil {
+		m.stale(a, id, "failed")
+		provider(a, id).Availability = "approvalRequired"
+		m.commit(a)
+		return
+	}
+	m.apply(a, id, r.id, result)
+	m.commit(a)
+}
+
+func (m *Manager) Cancel(c Context, runs []RunIdentity) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return err
+	}
+	// Only latest identities are retained. Older known runs return staleContext,
+	// never cancel a newer run; no unbounded run-ID tombstone ledger is necessary.
+	for _, r := range runs {
+		p := provider(a, r.ProviderID)
+		if p == nil || p.RunID != r.RunID {
+			return failure("staleContext", "Run is no longer current")
+		}
+	}
+	changed := false
+	for _, r := range runs {
+		if run := a.runs[r.ProviderID]; run != nil {
+			delete(a.runs, r.ProviderID)
+			run.cancel()
+			m.stale(a, r.ProviderID, "canceled")
+			changed = true
+		}
+	}
+	if changed {
+		m.commit(a)
+	}
+	return nil
+}
+
+func (m *Manager) stale(a *attachment, id, phase string) {
+	p := provider(a, id)
+	p.Phase = phase
+	p.Freshness = "stale"
+	p.Coverage.Partial = true
+	for i := range a.snapshot.ResultSets {
+		s := &a.snapshot.ResultSets[i]
+		if s.ProviderID == id && s.Origin == "checker" {
+			for j := range s.Diagnostics {
+				s.Diagnostics[j].Freshness = "stale"
+			}
+		}
+	}
+}
+
+// DeletePath cancels all current work before clearing a deleted path. Thus an
+// adapter already reading that file cannot resurrect it; no tombstone set grows.
+func (m *Manager) DeletePath(c Context, path string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return err
+	}
+	if err = ValidatePath(path); err != nil {
+		return err
+	}
+	m.cancelAll(a)
+	for id, d := range a.docs {
+		if d.path == path {
+			m.dropDocument(a, id)
+			if m.provider != nil && !d.broken {
+				_ = m.docStep(context.Background(), a, d, DocumentStep{Generation: d.generation, Kind: "close", Version: d.version})
+			}
+		}
+	}
+	for i := range a.snapshot.ResultSets {
+		s := &a.snapshot.ResultSets[i]
+		s.Diagnostics = slices.DeleteFunc(s.Diagnostics, func(d Diagnostic) bool { return d.Path == path })
+	}
+	m.commit(a)
+	return nil
+}
+
+// DrainEvents transfers at most two complete updates. resnapshot is explicit
+// after overflow: consumers must discard assembly and GetSnapshot, not apply a
+// sequence gap as an empty replacement. There is no replay/history retention.
+func (m *Manager) DrainEvents(c Context) (updates [][]Event, resnapshot bool, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return nil, false, err
+	}
+	updates, a.events = a.events, nil
+	resnapshot, a.gap = a.gap, false
+	return updates, resnapshot, nil
+}
+
+func (m *Manager) commit(a *attachment) {
+	m.boundMetadata(a)
+	m.retain(a)
+	if a.snapshot.Sequence == maxSequence {
+		delete(m.attachments, a.snapshot.Context.AttachmentID)
+		m.cancelAll(a)
+		m.releaseDocuments(a)
+		return
+	}
+	a.snapshot.Sequence++
+	events, err := m.eventParts(a.snapshot)
+	if err != nil {
+		a.events = nil
+		a.gap = true
+		return
+	}
+	if len(a.events) == 2 || eventBufferBytes(a.events)+eventBufferBytes([][]Event{events}) > 16<<20 {
+		a.events = nil
+		a.gap = true
+	}
+	a.events = append(a.events, events)
+}
+
+// OwnedWorkers reports running goroutines this Manager started (adapter runs and
+// best-effort document releases). Zero after Close/Detach cleanup completes.
+func (m *Manager) OwnedWorkers() int64 { return m.ownedWork.Load() }

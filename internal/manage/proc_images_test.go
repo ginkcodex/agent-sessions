@@ -1,0 +1,370 @@
+package manage
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/ginkcode/agent-sessions/internal/model"
+)
+
+type fakeImageProc struct {
+	images map[int]string
+	err    error
+	args   map[int][]string // default: the image alone (interactive)
+}
+
+func (fakeImageProc) Cmdlines() (map[int][]string, error) {
+	return nil, errors.New("command lines must not be read")
+}
+
+func (p fakeImageProc) Images() (map[int]string, error) { return p.images, p.err }
+
+func (p fakeImageProc) Args(pid int, image string) ([]string, error) {
+	if argv, ok := p.args[pid]; ok {
+		return argv, nil
+	}
+	return []string{image}, nil
+}
+
+func idleImages() map[int]string { return map[int]string{1: "explorer.exe"} }
+
+func writeGuardFixture(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClassifyImages(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		images map[int]string
+		args   map[int][]string
+		want   map[string]string
+		err    error
+	}{
+		{name: "empty", err: ErrProcessUnknown},
+		{name: "missing image", images: map[int]string{1: ""}, err: ErrProcessUnknown},
+		{name: "idle", images: idleImages(), want: map[string]string{}},
+		{
+			name: "native agents and aliases",
+			images: map[int]string{
+				1: `C:\Program Files\Claude\CLAUDE.EXE`, 2: "codex-x86_64-pc-windows-msvc.exe",
+				3: `D:/Apps/OPENCODE.exe`, 4: "claude-code.exe",
+			},
+			want: map[string]string{"codex": "codex-x86_64-pc-windows-msvc.exe", "opencode": "opencode.exe"},
+		},
+		{
+			// The processes seen on a real machine with the ChatGPT and
+			// OpenCode desktop apps installed and no agent session running.
+			name:   "desktop helpers and servers",
+			images: map[int]string{1: "codex-windows-sandbox-service.exe", 2: "opencode-cli.exe", 3: "codex.exe"},
+			args: map[int][]string{
+				2: {`C:\Users\u\AppData\Roaming\ai.opencode.desktop\cli\2.0.22\opencode-cli.exe`, "serve", "--port", "4096"},
+				3: {"codex", "app-server"},
+			},
+			want: map[string]string{},
+		},
+		{name: "opencode acp", images: map[int]string{1: "opencode.exe"}, args: map[int][]string{1: {"opencode", "acp"}}, want: map[string]string{}},
+		{
+			name:   "interactive beside server",
+			images: map[int]string{1: "opencode-cli.exe", 2: "opencode.exe"},
+			args:   map[int][]string{1: {"opencode-cli", "serve"}, 2: {"opencode", "run"}},
+			want:   map[string]string{"opencode": "opencode.exe"},
+		},
+		{
+			// A server word as the program name or another agent's
+			// subcommand does not exempt.
+			name:   "only own subcommands exempt",
+			images: map[int]string{1: "codex.exe", 2: "opencode.exe"},
+			args:   map[int][]string{1: {"serve"}, 2: {"opencode", "app-server"}},
+			want:   map[string]string{"codex": "codex.exe", "opencode": "opencode.exe"},
+		},
+		// Claude sessions are checked one by one through the provider LiveFunc.
+		{name: "claude is not scanned", images: map[int]string{1: "claude.exe", 2: "Claude.exe"}, want: map[string]string{}},
+		{name: "unreadable arguments", images: map[int]string{1: "opencode-cli.exe"}, args: map[int][]string{1: nil}, err: ErrProcessUnknown},
+		{name: "unrelated", images: map[int]string{1: "claudette.exe", 2: "decodex.exe"}, want: map[string]string{}},
+		{name: "node", images: map[int]string{1: "Node.exe"}, err: errRuntimeHost},
+		{name: "nodejs", images: map[int]string{1: "nodejs"}, err: errRuntimeHost},
+		{name: "bun", images: map[int]string{1: `C:\bin\bun.exe`}, err: errRuntimeHost},
+		{name: "deno", images: map[int]string{1: "deno.EXE"}, err: errRuntimeHost},
+		{name: "runtime beside server", images: map[int]string{1: "opencode-cli.exe", 2: "bun.exe"}, args: map[int][]string{1: {"opencode-cli", "serve"}}, err: errRuntimeHost},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := classifyImages(tc.images, fakeImageProc{args: tc.args}.Args)
+			if !errors.Is(err, tc.err) || tc.err == nil && !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("classifyImages = %v, %v; want %v, %v", got, err, tc.want, tc.err)
+			}
+			if tc.err != nil && !errors.Is(err, ErrProcessUnknown) {
+				t.Errorf("unknown process state must block: %v", err)
+			}
+		})
+	}
+}
+
+func TestClassifyImagesReadsOnlyCodexAndOpenCodeArgs(t *testing.T) {
+	images := map[int]string{
+		1: "explorer.exe", 2: "claude.exe", 3: "codex-windows-sandbox-service.exe",
+		4: "codex.exe", 5: "opencode-cli.exe", 6: "notepad.exe",
+	}
+	var read []int
+	_, err := classifyImages(images, func(pid int, image string) ([]string, error) {
+		if images[pid] != image {
+			t.Errorf("pid %d read as %q", pid, image)
+		}
+		read = append(read, pid)
+		return []string{image, "serve"}, nil
+	})
+	if err != nil || !reflect.DeepEqual(read, []int{4, 5}) {
+		t.Fatalf("arguments read for %v, %v; want only Codex and OpenCode", read, err)
+	}
+	failing := func(int, string) ([]string, error) { return nil, errors.New(`private C:\Users\u`) }
+	if _, err := classifyImages(map[int]string{1: "codex.exe"}, failing); !errors.Is(err, ErrProcessUnknown) || strings.Contains(err.Error(), "private") {
+		t.Fatalf("unreadable arguments must fail closed without detail: %v", err)
+	}
+	if _, err := classifyImages(map[int]string{1: "codex.exe"}, nil); !errors.Is(err, ErrProcessUnknown) {
+		t.Fatalf("missing argument reader must fail closed: %v", err)
+	}
+}
+
+func TestProcessSafetyErrorNamesExecutable(t *testing.T) {
+	err := processSafetyError(map[string]string{"opencode": "opencode-cli.exe"}, nil, "opencode")
+	if !errors.Is(err, ErrLive) || err.Error() != "session is live: agent process is running: opencode-cli.exe" {
+		t.Fatalf("got %v", err)
+	}
+	if err := processSafetyError(map[string]string{"opencode": "opencode-cli.exe"}, nil, "codex"); err != nil {
+		t.Fatalf("other agent blocked: %v", err)
+	}
+}
+
+func TestImageProcGuardDoesNotReadCommandLines(t *testing.T) {
+	g := newLiveGuard(fakeImageProc{images: map[int]string{1: "codex.exe"}})
+	live, err := g.procLive(context.Background())
+	if err != nil || live["codex"] != "codex.exe" {
+		t.Fatalf("image guard = %v, %v", live, err)
+	}
+	for _, proc := range []fakeImageProc{{err: errors.New("private process path")}, {}} {
+		_, err := newLiveGuard(proc).procLive(context.Background())
+		if !errors.Is(err, ErrProcessUnknown) || strings.Contains(err.Error(), "private") {
+			t.Fatalf("must fail closed without exposing process errors: %v", err)
+		}
+	}
+}
+
+// On Windows a running claude.exe (Claude Code or Claude Desktop), a script
+// runtime or a failed snapshot no longer blocks Claude: its sessions are
+// checked one by one against Claude Code's status files.
+func TestPreviewClaudeUsesPerSessionLiveness(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		proc    fakeImageProc
+		live    bool
+		liveErr error
+		blocked string
+	}{
+		{name: "idle", proc: fakeImageProc{images: idleImages()}},
+		{name: "claude.exe running", proc: fakeImageProc{images: map[int]string{1: "claude.exe", 2: "Claude.exe"}}},
+		{name: "runtime host", proc: fakeImageProc{images: map[int]string{1: "node.exe"}}},
+		{name: "inspection failed", proc: fakeImageProc{err: errors.New("private")}},
+		{name: "session active", proc: fakeImageProc{images: idleImages()}, live: true, blocked: "session is currently active"},
+		{name: "liveness unknown", proc: fakeImageProc{images: idleImages()}, liveErr: errors.New("private"), blocked: "liveness check failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			roots := testRoots(t)
+			meta := claudeMainMeta(roots.Claude, uuidA)
+			writeGuardFixture(t, meta.SourcePath)
+			backdate(t, roots.Claude)
+			mgr, trash := newTestManager(t, roots, WithProcFS(tc.proc), WithLiveFunc(func(context.Context, string, string) (bool, error) {
+				return tc.live, tc.liveErr
+			}))
+			if err := mgr.SetConfig(Config{Enabled: true}); err != nil {
+				t.Fatal(err)
+			}
+			p, err := mgr.Preview(context.Background(), []model.SessionRef{meta.Ref}, []model.SessionMeta{meta})
+			if err != nil || len(p.Items) != 1 {
+				t.Fatalf("preview = %+v, %v", p, err)
+			}
+			if tc.blocked == "" && p.Items[0].Blocked != "" || tc.blocked != "" && !strings.Contains(p.Items[0].Blocked, tc.blocked) {
+				t.Errorf("blocked = %q, want %q", p.Items[0].Blocked, tc.blocked)
+			}
+			if len(trash.calls) != 0 {
+				t.Fatal("preview must not trash anything")
+			}
+		})
+	}
+}
+
+func TestImageProcPermanentGuard(t *testing.T) {
+	roots := testRoots(t)
+	metas := []model.SessionMeta{codexMeta(roots.Codex, uuidA), opencodeMeta(roots.OpenCodeData, "ses_one")}
+	for _, meta := range metas {
+		for _, tc := range []struct {
+			proc      fakeImageProc
+			permanent bool
+			want      error
+		}{
+			{proc: fakeImageProc{images: idleImages()}, want: ErrPermanentNotAllowed},
+			{proc: fakeImageProc{images: map[int]string{1: "bun.exe"}}, permanent: true, want: errRuntimeHost},
+			{proc: fakeImageProc{err: errors.New("failed")}, permanent: true, want: ErrProcessUnknown},
+			{proc: fakeImageProc{images: map[int]string{1: "codex.exe", 2: "opencode.exe"}}, permanent: true, want: ErrLive},
+		} {
+			mgr, _ := newTestManager(t, roots, WithProcFS(tc.proc))
+			live, procErr := mgr.procLiveMap(context.Background())
+			_, err := mgr.planOne(context.Background(), meta, newCatalogIndex(metas), Config{Enabled: true, AllowPermanentDelete: tc.permanent}, live, procErr)
+			if !errors.Is(err, tc.want) {
+				t.Errorf("%s: got %v, want %v", meta.Ref.Agent, err, tc.want)
+			}
+		}
+	}
+}
+
+type failingCmdlineProc struct{}
+
+func (failingCmdlineProc) Cmdlines() (map[int][]string, error) {
+	return nil, errors.New("private /proc failure")
+}
+
+// The /proc scan gates only permanent actions; Claude keeps its provider
+// LiveFunc outside Windows, so a scan failure must not newly block it.
+func TestCmdlineScanFailureGatesOnlyPermanent(t *testing.T) {
+	roots := testRoots(t)
+	claude := claudeMainMeta(roots.Claude, uuidA)
+	writeGuardFixture(t, claude.SourcePath)
+	backdate(t, roots.Claude)
+	metas := []model.SessionMeta{claude, codexMeta(roots.Codex, uuidB), opencodeMeta(roots.OpenCodeData, "ses_one")}
+	mgr, _ := newTestManager(t, roots, WithProcFS(failingCmdlineProc{}))
+	live, procErr := mgr.procLiveMap(context.Background())
+	if procErr == nil {
+		t.Fatal("scan failure not reported")
+	}
+	cfg := Config{Enabled: true, AllowPermanentDelete: true}
+	for _, meta := range metas {
+		_, err := mgr.planOne(context.Background(), meta, newCatalogIndex(metas), cfg, live, procErr)
+		if meta.Ref.Agent == model.AgentClaude {
+			if errors.Is(err, ErrProcessUnknown) {
+				t.Errorf("Claude gated by /proc scan: %v", err)
+			}
+			continue
+		}
+		if !errors.Is(err, ErrProcessUnknown) || strings.Contains(err.Error(), "private") {
+			t.Errorf("%s: got %v, want sanitized %v", meta.Ref.Agent, err, ErrProcessUnknown)
+		}
+	}
+}
+
+// The session's liveness is rechecked when the token is redeemed, when the
+// item is re-planned and before each recycled path. block is the first
+// LiveFunc call that reports the session active.
+func TestDeleteRechecksClaudeLiveness(t *testing.T) {
+	for _, block := range []int{2, 4, 5} {
+		t.Run(strconv.Itoa(block), func(t *testing.T) {
+			roots := testRoots(t)
+			meta := claudeMainMeta(roots.Claude, uuidA)
+			writeGuardFixture(t, meta.SourcePath)
+			writeGuardFixture(t, filepath.Join(filepath.Dir(meta.SourcePath), uuidA, "artifact.txt"))
+			backdate(t, roots.Claude)
+			calls := 0
+			mgr, trash := newTestManager(t, roots, WithProcFS(fakeImageProc{images: idleImages()}),
+				WithLiveFunc(func(context.Context, string, string) (bool, error) {
+					calls++
+					return calls >= block, nil
+				}))
+			enableAll(t, mgr)
+			catalog := []model.SessionMeta{meta}
+			p, err := mgr.Preview(context.Background(), []model.SessionRef{meta.Ref}, catalog)
+			if err != nil || p.Items[0].Blocked != "" {
+				t.Fatalf("preview = %+v, %v", p, err)
+			}
+			r, err := mgr.Delete(context.Background(), []model.SessionRef{meta.Ref}, catalog, p.Token)
+			if block == 2 {
+				if !errors.Is(err, ErrPreviewStale) || len(trash.calls) != 0 {
+					t.Fatalf("changed liveness must stale token before trash: %+v, %v, %v", r, err, trash.calls)
+				}
+				return
+			}
+			if err != nil || r.Failed != 1 || r.Deleted != 0 || len(r.Forgotten) != 0 {
+				t.Fatalf("liveness failure must not forget the session: %+v, %v", r, err)
+			}
+			wantMoved := block - 4
+			if len(trash.calls) != wantMoved || len(r.Items[0].Moved) != wantMoved || len(r.Items[0].Remaining) != 2-wantMoved {
+				t.Fatalf("per-file recheck must preserve partial result: %+v, calls=%v", r, trash.calls)
+			}
+			if !strings.Contains(r.Items[0].Error, ErrLive.Error()) {
+				t.Fatalf("wrong liveness error: %+v", r.Items[0])
+			}
+		})
+	}
+}
+
+type checkedFakeTrash struct {
+	fakeTrash
+	blocked error
+}
+
+func (*checkedFakeTrash) DisplayName() string           { return "Recycle Bin" }
+func (f *checkedFakeTrash) CheckTrashPath(string) error { return f.blocked }
+
+func TestDeleteTrashOutcomeUnknown(t *testing.T) {
+	for _, failAt := range []int{0, 1} {
+		t.Run(strconv.Itoa(failAt), func(t *testing.T) {
+			roots := testRoots(t)
+			meta := claudeMainMeta(roots.Claude, uuidA)
+			sessionDir := filepath.Join(filepath.Dir(meta.SourcePath), uuidA)
+			files := []string{meta.SourcePath, sessionDir}
+			writeGuardFixture(t, meta.SourcePath)
+			writeGuardFixture(t, filepath.Join(sessionDir, "artifact.txt"))
+			backdate(t, roots.Claude)
+			trash := &fakeTrash{fail: map[string]error{files[failAt]: ErrTrashOutcomeUnknown}}
+			mgr, _ := newTestManager(t, roots, WithTrash(trash))
+			enableAll(t, mgr)
+			catalog := []model.SessionMeta{meta}
+			p, err := mgr.Preview(context.Background(), []model.SessionRef{meta.Ref}, catalog)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := mgr.Delete(context.Background(), []model.SessionRef{meta.Ref}, catalog, p.Token)
+			if err != nil || r.Failed != 1 || r.Deleted != 0 || len(r.Forgotten) != 0 {
+				t.Fatalf("unknown outcome must not forget the session: %+v, %v", r, err)
+			}
+			item := r.Items[0]
+			if !reflect.DeepEqual(item.Unknown, []string{files[failAt]}) || len(item.Moved) != failAt || len(item.Remaining) != 1-failAt {
+				t.Fatalf("unknown and remaining must be distinct: %+v", item)
+			}
+			if failAt == 0 && item.Remaining[0] != sessionDir || failAt == 1 && item.Moved[0] != meta.SourcePath {
+				t.Fatalf("partial progress attributed to wrong path: %+v", item)
+			}
+			if item.Error != ErrTrashOutcomeUnknown.Error() {
+				t.Fatalf("outcome warning lost: %+v", item)
+			}
+		})
+	}
+}
+
+func TestPreviewTrashDestinationAndValidation(t *testing.T) {
+	roots := testRoots(t)
+	meta := claudeMainMeta(roots.Claude, uuidA)
+	writeGuardFixture(t, meta.SourcePath)
+	backdate(t, roots.Claude)
+	trash := &checkedFakeTrash{blocked: errors.New("this location has no Recycle Bin")}
+	mgr, _ := newTestManager(t, roots, WithTrash(trash))
+	enableAll(t, mgr)
+	p, err := mgr.Preview(context.Background(), []model.SessionRef{meta.Ref}, []model.SessionMeta{meta})
+	if err != nil || p.TrashLabel != "Recycle Bin" || p.Items[0].Blocked != trash.blocked.Error() {
+		t.Fatalf("trash preview = %+v, %v", p, err)
+	}
+	if len(trash.calls) != 0 {
+		t.Fatal("blocked preview invoked trash")
+	}
+	if _, err := os.Stat(meta.SourcePath); err != nil {
+		t.Fatal(err)
+	}
+}

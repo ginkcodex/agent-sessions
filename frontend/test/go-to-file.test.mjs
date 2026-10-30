@@ -1,0 +1,358 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { fixtureStore, loadServerComponent, renderWithFixture } from './helpers.mjs';
+
+const base = new URL('../src/lib/components/common/go-to-file/', import.meta.url);
+const lib = (path) => JSON.stringify(new URL(path, base).href);
+const store = ["import { files } from '../../../stores/files.svelte';", fixtureStore('files')];
+const dialog = await loadServerComponent(new URL('../GoToFileDialog.svelte', base), [
+  ["import { files } from '../../stores/files.svelte';", fixtureStore('files')],
+  ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
+  ["import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';", 'const codeDiagnostics = {};'],
+  ["import { connectionStore } from '../../stores/connection.svelte';", 'const connectionStore = {};'],
+  ["import ProblemsPanel from './go-to-file/ProblemsPanel.svelte';", 'const ProblemsPanel = () => {};'],
+  ["import CodeChecks from './go-to-file/CodeChecks.svelte';", 'const CodeChecks = () => {};'],
+  ["import { hostLabel } from '../../hosts';", 'const hostLabel = (host) => host;'],
+  ["import { copyToClipboard } from '../../portable';", 'const copyToClipboard = async () => true;'],
+  ["import { directoryName } from '../../tree';", 'const directoryName = (dir) => dir;'],
+  ["import ContextMenu from './ContextMenu.svelte';", 'const ContextMenu = () => {};'],
+  ["import { api, subscribeCatalogChanged } from '../../api';", 'const api = {}; const subscribeCatalogChanged = () => () => {};'],
+  ["import { toast } from '../../stores/toast.svelte';", 'const toast = {};'],
+  ["import { absoluteFilePath } from '../../fileActions';", 'const absoluteFilePath = () => "";'],
+  ["import FilePicker from './go-to-file/FilePicker.svelte';", 'const FilePicker = () => {};'],
+  ["import FileTabs from './go-to-file/FileTabs.svelte';", 'const FileTabs = () => {};'],
+  ["import FileViewer from './go-to-file/FileViewer.svelte';", 'const FileViewer = () => {};'],
+  ["import HistoryLayout from './go-to-file/HistoryLayout.svelte';", 'const HistoryLayout = () => {};'],
+  ["import HistoryToolbar from './go-to-file/HistoryToolbar.svelte';", 'const HistoryToolbar = () => {};'],
+  ["import HistoryBranches from './go-to-file/HistoryBranches.svelte';", 'const HistoryBranches = () => {};'],
+  ["import HistoryCommits from './go-to-file/HistoryCommits.svelte';", 'const HistoryCommits = () => {};'],
+  ["import HistoryDetails from './go-to-file/HistoryDetails.svelte';", 'const HistoryDetails = () => {};'],
+  ["import HistoryComparison from './go-to-file/HistoryComparison.svelte';", 'const HistoryComparison = () => {};'],
+  ["import { gitHistory } from '../../stores/gitHistory.svelte';", 'const gitHistory = {};'],
+  ["import FilePrompt from './go-to-file/FilePrompt.svelte';", 'const FilePrompt = () => {};'],
+  ["import RenamePrompt from './go-to-file/RenamePrompt.svelte';", 'const RenamePrompt = () => {};'],
+  ["import NewFolderPrompt from './go-to-file/NewFolderPrompt.svelte';", 'const NewFolderPrompt = () => {};'],
+  ["import { fileActions } from '../../stores/fileActions.svelte';", 'const fileActions = {};'],
+  ["import { newSession } from '../../stores/newSession.svelte';", 'const newSession = {};'],
+  ["import { newSessionMenuItems } from '../../newSession';", 'const newSessionMenuItems = () => [];'],
+  ["import { isNewSessionShortcut } from '../../terminal';", 'const isNewSessionShortcut = () => false;'],
+  ["'../../tabActions'", lib('../../../tabActions.ts')],
+  ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
+  ["'../../fullscreen'", lib('../../../fullscreen.ts')],
+  ["import { keepingFocus } from '../../tabDrag.svelte';", 'const keepingFocus = () => {};'],
+]);
+
+const badge = await loadServerComponent(new URL('DiagnosticBadge.svelte', base), [
+  ["'../../../codeDiagnosticCounts'", lib('../../../codeDiagnosticCounts.ts')],
+]);
+globalThis.__diagnosticBadge = badge.default;
+const [picker, tabs, source] = await Promise.all([
+  loadServerComponent(new URL('FilePicker.svelte', base), [
+    store,
+    ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
+    ["import DiagnosticBadge from './DiagnosticBadge.svelte';", 'const DiagnosticBadge = globalThis.__diagnosticBadge;'],
+    ["'../../../files'", lib('../../../files.ts')],
+    ["'../../../codeCheckSummary'", lib('../../../codeCheckSummary.ts')],
+    ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
+    ["import LoadingSpinner from '../LoadingSpinner.svelte';", 'const LoadingSpinner = () => {};'],
+  ]),
+  loadServerComponent(new URL('FileTabs.svelte', base), [
+    ["import { files, tabId, tabOwner, tabHasUnsaved } from '../../../stores/files.svelte';", `${fixtureStore('files')} const tabId = t => t.id ?? t.path; const tabOwner = t => t.owner ?? 'working'; const tabHasUnsaved = t => !!t.edit?.dirty;`],
+    ["import { fileActions } from '../../../stores/fileActions.svelte';", 'const fileActions = {};'],
+    ["'../../../tabActions'", lib('../../../tabActions.ts')],
+    ["'../../../codeNavigation'", lib('../../../codeNavigation.ts')],
+    ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
+    ["import ContextMenu from '../ContextMenu.svelte';", 'const ContextMenu = () => {};'],
+    ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
+    ["import { TabDrag, revealTab, scrollSideways } from '../../../tabDrag.svelte';", 'class TabDrag { id = null; press() {} offset() { return 0; } } const revealTab = () => {}; const scrollSideways = () => {};'],
+  ]),
+  loadServerComponent(new URL('SourceView.svelte', base), [store,
+    ["'../../../sourceDiagnostics'", lib('../../../sourceDiagnostics.ts')],
+    ["'../../../fileSelection'", JSON.stringify(new URL('../src/lib/fileSelection.ts', import.meta.url).href)], ["'../../../sourceNavigation'", JSON.stringify(new URL('../src/lib/sourceNavigation.ts', import.meta.url).href)],
+  ]),
+]);
+
+test('dialog offers an unlocked Escape lock toggle and a separate close button', async () => {
+  const html = await renderWithFixture(dialog, { files: { open: true, dir: '/project' }, link: {} });
+  assert.match(html, /aria-label="Lock dialog against Escape"/);
+  assert.match(html, /aria-pressed="false"/);
+  assert.match(html, /aria-keyshortcuts="Control\+Shift\+L"/);
+  assert.match(html, /Lock dialog \(Ctrl\+Shift\+L; prevent Escape from closing it\)/);
+  assert.match(html, /aria-label="Close"/);
+  assert.match(html, /<button[^>]*aria-label="Project directory actions"[^>]*>\/project<\/button>/);
+});
+
+function renderPicker(files = {}, props = {}, checks = {}) {
+  return renderWithFixture(picker, { checks: { status: 'ready', providers: [], counts: { error: 0, warning: 0 }, pathCounts: { files: new Map(), folders: new Map() }, ...checks }, files: { expanded: new Set(), ...files } }, {
+    onPick() {}, onContext() {}, ...props,
+  });
+}
+
+test('picker offers History as a separate Go to File mode', async () => {
+  const html = await renderPicker({ listing: { files: [], directories: [] } });
+  assert.match(html, /<button[^>]*role="tab"[^>]*title="Browse Git commit history"[^>]*>History<\/button>/);
+});
+
+function renderTabs(files = {}, props = {}) {
+  return renderWithFixture(tabs, { files: { tabs: [], ...files } }, {
+    presentation: false, onContext() {}, ...props,
+  });
+}
+
+function renderSource(files = {}, props = {}) {
+  return renderWithFixture(source, { files: { wrap: false, ...files } }, {
+    rows: [{ kind: 'line', index: 0 }], htmlLines: null, plainLines: ['hello'],
+    showDiff: false, presentation: false, presentationFontSize: 22, ...props,
+  });
+}
+
+// Scoped Svelte CSS hashes can change without changing the rendered classes.
+function classTag(html, tag, name) {
+  return [...html.matchAll(new RegExp(`<${tag}\\b[^>]*>`, 'g'))]
+    .find(([text]) => new RegExp(`class="[^"]*\\b${name}\\b`).test(text))?.[0];
+}
+
+test('picker renders explicit empty directories even when there are no files', async () => {
+  const html = await renderPicker({ listing: { files: [], directories: ['empty', 'empty/nested'] }, expanded: new Set(['empty']) });
+  assert.match(html, /aria-label="Project files"/);
+  assert.match(html, />empty<\/span>/);
+  assert.match(html, />nested<\/span>/);
+  assert.doesNotMatch(html, /This directory has no files/);
+});
+
+test('picker tree renders git statuses, deleted paths and the selected file', async () => {
+  const html = await renderPicker({
+    listing: {
+      files: ['src/main.ts', 'new.txt', 'README.md'],
+      status: { 'src/main.ts': 'M', 'new.txt': 'U', 'gone.txt': 'D' },
+    },
+    expanded: new Set(['src']), selected: 'src/main.ts',
+  });
+  assert.match(html, /role="tree" aria-label="Project files"/);
+  for (const [path, label] of [['src/main.ts', 'Modified'], ['new.txt', 'Untracked'], ['gone.txt', 'Deleted']]) {
+    assert.ok(html.includes(`title="${path} · ${label}"`));
+  }
+  assert.match(html, /class="tree-name git-D[^\"]*">gone\.txt<\/span>/);
+  assert.match(html, /class="tree-row file[^\"]*\bselected\b[^\"]*"[^>]*title="src\/main\.ts · Modified"/);
+  assert.match(html, /class="git-dot git-M[^\"]*" title="Holds changed files"/);
+  assert.match(html, /class="tree-name git-none[^\"]*">README\.md<\/span>/);
+});
+
+test('picker only renders expanded folder contents and shows ignored files and folders dimmed', async () => {
+  const listing = { files: ['src/nested/deep.ts'], ignored: ['.env', 'private/secret.txt'], ignoredDirectories: ['node_modules'] };
+  const collapsed = await renderPicker({ listing });
+  assert.match(collapsed, /aria-expanded="false"/);
+  assert.doesNotMatch(collapsed, /deep\.ts|nested|secret\.txt/);
+  assert.match(collapsed, /class="tree-row file[^"]*\bignored\b[^"]*"[^>]*title="\.env · Ignored by \.gitignore"/);
+  assert.match(collapsed, /class="tree-row[^"]*\bignored\b[^"]*"[^>]*title="node_modules · Ignored by \.gitignore"/);
+  // A folder that only holds ignored files is not itself ignored.
+  assert.doesNotMatch(collapsed, /title="private · Ignored/);
+  const expanded = await renderPicker({ listing, expanded: new Set(['src', 'src/nested', 'private']) });
+  assert.equal((expanded.match(/aria-expanded="true"/g) ?? []).length, 3);
+  assert.match(expanded, /class="tree-row file[^"]*"[^>]*title="src\/nested\/deep\.ts"/);
+  assert.doesNotMatch(expanded, /class="tree-row file[^"]*\bignored\b[^"]*"[^>]*title="src\/nested/);
+  assert.match(expanded, /class="tree-row file[^"]*\bignored\b[^"]*"[^>]*title="private\/secret\.txt · Ignored by \.gitignore"/);
+});
+
+test('an opened ignored folder shows its loaded entries dimmed, and while loading or failing says so', async () => {
+  const listing = { files: ['a.ts'], ignoredDirectories: ['node_modules'] };
+  const expanded = new Set(['node_modules']);
+  const entries = { path: 'node_modules', files: ['node_modules/.package-lock.json'], directories: ['node_modules/svelte'], truncated: true };
+  const loaded = await renderPicker({ listing, expanded, lazyFolders: new Map([['node_modules', { entries, loading: false }]]) });
+  assert.match(loaded, /class="tree-row file[^"]*\bignored\b[^"]*"[^>]*title="node_modules\/\.package-lock\.json · Ignored by \.gitignore"/);
+  assert.match(loaded, /class="tree-row[^"]*\bignored\b[^"]*"[^>]*title="node_modules\/svelte · Ignored by \.gitignore"/);
+  assert.match(loaded, /Only the first 2 entries are shown\./);
+  const loading = await renderPicker({ listing, expanded, lazyFolders: new Map([['node_modules', { loading: true }]]) });
+  assert.match(loading, /class="tree-note[^"]*"[^>]*>Loading…/);
+  const failed = await renderPicker({ listing, expanded, lazyFolders: new Map([['node_modules', { loading: false, error: 'Permission denied' }]]) });
+  assert.match(failed, /class="tree-note error[^"]*"[^>]*>Permission denied/);
+  // A collapsed folder renders none of it.
+  const collapsed = await renderPicker({ listing, lazyFolders: new Map([['node_modules', { entries, loading: false }]]) });
+  assert.doesNotMatch(collapsed, /package-lock|Only the first/);
+});
+
+test('picker distinguishes empty, loading and escaped error states', async () => {
+  const empty = await renderPicker({ listing: { files: [] } });
+  assert.match(empty, /This directory has no files\./);
+  const loading = await renderPicker({ loadingList: true, listError: 'stale error', listing: { files: [] } });
+  assert.match(loading, /Listing files…/);
+  assert.doesNotMatch(loading, /stale error|This directory has no files/);
+  assert.match(classTag(loading, 'button', 'refresh-btn'), /\bdisabled\b/);
+  const error = await renderPicker({ listError: 'Cannot list <repo> & files' });
+  assert.match(error, /role="alert">Cannot list &lt;repo> &amp; files/);
+  assert.doesNotMatch(error, /This directory has no files/);
+  assert.match(error, /aria-label="Refresh the file list"/);
+});
+
+test('picker footer counts listed files and changes, reports truncation and disables refresh while refreshing', async () => {
+  const html = await renderPicker({
+    listing: { files: ['a.ts', 'b.ts'], ignored: ['.env'], git: true, truncated: true, status: { 'a.ts': 'M', 'deleted.ts': 'D' } },
+    refreshing: true,
+  }, { presentation: true });
+  assert.match(html, /2 files \(list cut short\)/);
+  assert.doesNotMatch(html, /\.gitignore applied/);
+  assert.match(html, /· 2 changed/);
+  assert.match(classTag(html, 'button', 'refresh-btn'), /\bspinning\b/);
+  assert.match(classTag(html, 'button', 'refresh-btn'), /\bdisabled\b/);
+  assert.match(classTag(html, 'aside', 'picker'), /\bpresentation\b/);
+  const initial = await renderPicker();
+  assert.equal(classTag(initial, 'footer', 'picker-footer'), undefined);
+});
+
+test('retained listing stays browsable during refresh and after failure with honest freshness and retry', async () => {
+  const listing = { files: ['cached.ts'], truncated: true };
+  const refreshing = await renderPicker({ listing, listingStale: true, refreshing: true });
+  assert.match(refreshing, /title="cached\.ts"/);
+  assert.match(refreshing, /Retained listing; not yet verified/);
+  assert.match(refreshing, /Refreshing…/);
+  assert.match(refreshing, /list cut short/);
+  const failed = await renderPicker({ listing, listingStale: true, listError: 'Refresh failed' });
+  assert.match(failed, /role="alert">Refresh failed/);
+  assert.match(failed, /title="cached\.ts"/);
+  assert.match(failed, /Retained listing; not yet verified/);
+  assert.doesNotMatch(classTag(failed, 'button', 'refresh-btn'), /\bdisabled\b/);
+});
+
+test('diagnostic badges keep ancestor totals when collapsed and include unlisted descendants without discovery changes', async () => {
+  const counts = { error: 12345, warning: 2, stale: true, uncertain: true };
+  const checks = { counts, partial: true, truncated: true, pathCounts: { files: new Map([['src/nested/a.ts', counts]]), folders: new Map([['src', counts], ['src/nested', counts]]) } };
+  const listing = { files: ['src/nested/a.ts'], ignored: ['.env'], truncated: true, status: { 'src/nested/a.ts': 'M' } };
+  const collapsed = await renderPicker({ listing }, {}, checks);
+  assert.match(collapsed, /aria-label="12345 errors, 2 warnings · stale retained findings · freshness uncertain · partial coverage · diagnostics truncated"/);
+  assert.equal((collapsed.match(/class="diagnostic-badge/g) ?? []).length, 1);
+  assert.match(collapsed, /Holds changed files/);
+  assert.doesNotMatch(collapsed, />a.ts<|>nested</);
+  assert.match(collapsed, /Diagnostic counts include findings outside this listing and search/);
+  const expanded = await renderPicker({ listing, expanded: new Set(['src', 'src/nested']) }, {}, checks);
+  assert.equal((expanded.match(/class="diagnostic-badge/g) ?? []).length, 3);
+  assert.match(expanded, /title="src\/nested\/a.ts · Modified"/);
+});
+
+test('search-only ignored rows retain Git, ignored tags and accessible diagnostic context', async () => {
+  const searchPicker = await loadServerComponent(new URL('FilePicker.svelte', base), [
+    store,
+    ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
+    ["import DiagnosticBadge from './DiagnosticBadge.svelte';", 'const DiagnosticBadge = globalThis.__diagnosticBadge;'],
+    ["'../../../files'", lib('../../../files.ts')],
+    ["'../../../codeCheckSummary'", lib('../../../codeCheckSummary.ts')],
+    ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
+    ["import LoadingSpinner from '../LoadingSpinner.svelte';", 'const LoadingSpinner = () => {};'],
+    ["let query = '';", "let query = '.env';"],
+  ]);
+  const counts = { error: 1, warning: 0, stale: true, uncertain: false };
+  const html = await renderWithFixture(searchPicker, {
+    files: { expanded: new Set(), listing: { files: ['other.ts'], ignored: ['.env'], truncated: true, status: { '.env': 'M' } } },
+    checks: { status: 'disconnected', providers: [], counts, partial: true, pathCounts: { files: new Map([['.env', counts]]), folders: new Map() } },
+  }, { onPick() {}, onContext() {} });
+  assert.match(html, /role="option" aria-selected="true"/);
+  assert.match(html, /aria-label="1 errors, 0 warnings · stale retained findings · status uncertain; retained results are not a successful check · partial coverage"/);
+  assert.match(html, /title="Modified">M/);
+  assert.match(html, />ignored<\/span>/);
+  assert.doesNotMatch(html, />other.ts</);
+});
+
+test('tabs expose active and preview states, git status and accessible close labels', async () => {
+  const html = await renderTabs({
+    tabs: [{ path: 'src/main.ts', preview: true }, { path: 'gone.txt', preview: false }],
+    selected: 'src/main.ts', listing: { status: { 'src/main.ts': 'M', 'gone.txt': 'D' } },
+  });
+  assert.match(html, /role="tablist" aria-label="Open files"/);
+  const active = classTag(html, 'div', 'file-tab');
+  assert.match(active, /\bactive\b/);
+  assert.match(active, /\bpreview\b/);
+  assert.match(active, /aria-selected="true"/);
+  assert.match(html, /aria-selected="false" data-tab-id="gone\.txt" title="gone\.txt"/);
+  assert.match(html, /title="src\/main\.ts · Preview: double-click to keep it open"/);
+  assert.match(html, /class="tab-name git-M[^\"]*">main\.ts/);
+  assert.match(html, /class="tab-name git-D[^\"]*">gone\.txt/);
+  assert.match(html, /aria-label="Close main\.ts"/);
+  assert.match(html, /aria-label="Close gone\.txt"/);
+  assert.match(html, /title="Close \((?:Ctrl\+W|⌘W)\)"/);
+});
+
+test('a file outside the project shows read-only, its home-relative path and no git status', async () => {
+  const html = await renderTabs({
+    dir: '/Users/me/project',
+    tabs: [{ path: '/Users/me/go/pkg/mod/fmt/print.go', preview: true, external: true }],
+    selected: '/Users/me/go/pkg/mod/fmt/print.go',
+    listing: { status: { '/Users/me/go/pkg/mod/fmt/print.go': 'M' } },
+  });
+  assert.match(classTag(html, 'div', 'file-tab'), /\bexternal\b/);
+  assert.match(html, /title="~\/go\/pkg\/mod\/fmt\/print\.go · Read-only, outside the project · Preview: double-click to keep it open"/);
+  assert.match(html, /aria-label="Read-only"/);
+  assert.match(html, /class="tab-name git-none[^\"]*">print\.go/);
+  const windows = await renderTabs({ dir: 'C:\\Users\\me\\p', tabs: [{ path: 'C:\\Go\\src\\fmt\\print.go', external: true }] });
+  assert.match(windows, />print\.go</);
+});
+
+test('tabs omit the empty bar and attach the presentation hiding class only when requested', async () => {
+  assert.doesNotMatch(await renderTabs(), /role="tablist"/);
+  const files = { tabs: [{ path: 'plain.txt', preview: false }] };
+  const normal = await renderTabs(files);
+  assert.doesNotMatch(classTag(normal, 'div', 'tab-strip'), /\bpresentation\b/);
+  assert.doesNotMatch(classTag(normal, 'div', 'file-tab'), /\bactive\b|\bpreview\b/);
+  assert.match(normal, /class="tab-name git-none/);
+  const hidden = await renderTabs(files, { presentation: true });
+  assert.match(classTag(hidden, 'div', 'tab-strip'), /\bpresentation\b/);
+});
+
+test('tabs offer a closed list of the open files beside the bar', async () => {
+  const html = await renderTabs({ tabs: [{ path: 'a.txt' }, { path: 'b.txt' }], selected: 'a.txt' });
+  const toggle = classTag(html, 'button', 'tab-list-toggle');
+  assert.match(toggle, /aria-haspopup="menu"/);
+  assert.match(toggle, /aria-expanded="false"/);
+  assert.match(toggle, /aria-label="Show open files"/);
+  assert.doesNotMatch(html, /role="menu"/);
+  assert.doesNotMatch(await renderTabs(), /tab-list-toggle/);
+});
+
+test('source wraps number/text pairs and labels change markers without diff signs', async () => {
+  const marks = ['added', 'modified', 'deleted-above', 'deleted-below'];
+  const html = await renderSource({ wrap: true }, {
+    rows: marks.map((mark, index) => ({ kind: 'line', index, mark })),
+    plainLines: ['one', 'two', 'three', 'four'], presentation: true,
+  });
+  assert.match(classTag(html, 'div', 'source'), /\bwrap\b/);
+  assert.match(classTag(html, 'div', 'source'), /font-size: 22px/);
+  assert.doesNotMatch(html, /class="gutter|class="lines|class="line [^\"]*added/);
+  for (const [index, label] of ['Added line', 'Changed line', 'Lines removed above', 'Lines removed below'].entries()) {
+    assert.match(html, new RegExp(`class="ln line-select mark-${marks[index]}[^\"]*"[^>]*title="${label}[^\"]*">${index + 1}</button>`));
+  }
+  assert.match(html, />1<\/button>[\s\S]*?>one<\/span>[\s\S]*?>2<\/button>[\s\S]*?>two<\/span>/);
+});
+
+test('source selection highlights the range and exposes accessible line buttons', async () => {
+  const html = await renderSource({}, {
+    rows: [0, 1, 2].map(index => ({ kind: 'line', index })),
+    plainLines: ['one', 'two', 'three'], selection: { anchor: 2, head: 3 },
+  });
+  assert.match(html, /aria-label="Select line 1" aria-pressed="false"/);
+  assert.match(html, /aria-label="Select line 2" aria-pressed="true"/);
+  assert.match(html, /class="line[^\"]*selected[^\"]*" data-source-line="3"/);
+});
+
+test('unwrapped source separates gutter and lines, renders highlighted HTML and diff signs', async () => {
+  const html = await renderSource({}, {
+    rows: [{ kind: 'removed', text: '<old> & gone' }, { kind: 'line', index: 0, mark: 'added' }, { kind: 'line', index: 1 }],
+    htmlLines: ['<span class="hljs-keyword">const</span>', 'unchanged'], showDiff: true,
+  });
+  assert.match(classTag(html, 'div', 'source'), /\bdiff\b/);
+  assert.doesNotMatch(classTag(html, 'div', 'source'), /\bwrap\b|font-size/);
+  assert.ok(classTag(html, 'div', 'gutter'));
+  assert.ok(classTag(html, 'div', 'lines'));
+  assert.match(html, /class="ln sign removed[^\"]*">−<\/span>/);
+  assert.match(html, /class="ln[^\"]*\bsign\b[^\"]*\badded\b[^\"]*"[^>]*>\+<\/button>/);
+  assert.match(html, /class="line removed[^\"]*">&lt;old> &amp; gone<\/span>/);
+  assert.match(html, /class="line[^\"]*\badded\b[^\"]*"[^>]*>(?:<!--[\s\S]*?-->)*<span class="hljs-keyword">const<\/span>/);
+  assert.match(html, /class="ln[^\"]*"[^>]*>2<\/button>/);
+});
+
+test('plain source escapes HTML and sizes the gutter from the original line count', async () => {
+  const html = await renderSource({}, {
+    plainLines: Array(10).fill('<script>bad & worse</script>'), rows: [{ kind: 'line', index: 9 }],
+  });
+  assert.match(html, /--digits: 2/);
+  assert.match(html, /&lt;script>bad &amp; worse&lt;\/script>/);
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /class="ln line-select mark-none[^\"]*"[^>]*>10<\/button>/);
+});

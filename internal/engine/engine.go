@@ -1,0 +1,861 @@
+package engine
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/files"
+	"github.com/ginkcode/agent-sessions/internal/index"
+	"github.com/ginkcode/agent-sessions/internal/manage"
+	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
+	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/provider/all"
+	"github.com/ginkcode/agent-sessions/internal/scan"
+	"github.com/ginkcode/agent-sessions/internal/watch"
+)
+
+var _ Backend = (*Engine)(nil)
+
+// Engine is the central headless application engine. It owns the service,
+// scanner, indexer, watcher, destructive action manager, and catalog event bus.
+// It has zero GUI or Wails dependencies and implements Backend.
+type Engine struct {
+	mu        sync.Mutex
+	discovery discoveryOwner
+
+	svc             *Service
+	runner          *scan.Runner
+	refresher       *index.Refresher
+	indexer         *index.Indexer
+	closeWatch      func() error
+	events          *CatalogBus
+	emitter         Emitter
+	codeDiagnostics *diagnosticsOwner
+	managedTools    *managedToolsOwner
+	// logs keeps failed code check logs (codeCheckLogs); logsMu may be taken
+	// under mu, never the reverse.
+	logs   *checkLogs
+	logsMu sync.Mutex
+	// liveInjection is set only by tests/fixtures; production never sets it.
+	liveInjection *LiveCodeDiagnosticsInjection
+	// localLive enables the production local live route (desktop App only).
+	localLive bool
+	// remoteKind is "ssh" or "wsl" for a headless server that hosts code
+	// diagnostics for that connection, else empty (WithRemoteCodeDiagnostics).
+	remoteKind string
+	// machineID overrides host machine-identity discovery for fixtures only;
+	// nil (production) uses the platform source, which fails closed.
+	machineID func() (string, error)
+
+	manageMu       sync.Mutex
+	manage         *manage.Manager
+	manageOverride *manage.Manager
+
+	cacheEnabled     bool
+	cacheDirOverride string
+	roots            paths.Roots
+	// writerOpen overrides verified opening in barrier/recovery tests only.
+	writerOpen func(context.Context, string, string) (*index.DB, []model.SessionMeta, error)
+
+	// Cache roles (see cache.go). lock is held while this engine is the
+	// index writer; readDB is a reader's read-only handle on the writer's
+	// database.
+	lock         *index.Lock
+	readDB       *index.DB
+	promoteEvery time.Duration
+	// dbUse keeps a database open while a query runs on it: Search and
+	// IndexProgress hold it shared, closing a database takes it.
+	dbUse sync.RWMutex
+
+	runCtx    context.Context
+	runCancel context.CancelFunc
+	bg        sync.WaitGroup
+	started   bool
+	closed    bool
+	// purgePending is set while a cache purge is scheduled (see purge.go).
+	purgePending bool
+}
+
+// Option configures an Engine instance.
+type Option func(*Engine)
+
+// WithEmitter sets the event emitter for catalog and indexer notifications.
+func WithEmitter(emitter Emitter) Option {
+	return func(e *Engine) {
+		e.emitter = emitter
+	}
+}
+
+// WithCacheEnabled toggles sqlite-backed caching on or off.
+func WithCacheEnabled(enabled bool) Option {
+	return func(e *Engine) {
+		e.cacheEnabled = enabled
+	}
+}
+
+// WithCacheDir overrides the cache directory used by the engine.
+func WithCacheDir(dir string) Option {
+	return func(e *Engine) {
+		e.cacheDirOverride = dir
+	}
+}
+
+// WithRoots configures explicit filesystem roots.
+func WithRoots(roots paths.Roots) Option {
+	return func(e *Engine) {
+		e.roots = roots
+	}
+}
+
+// WithService wires an explicit Service instance.
+func WithService(svc *Service) Option {
+	return func(e *Engine) {
+		e.svc = svc
+	}
+}
+
+// WithRunner wires an explicit scan runner.
+func WithRunner(runner *scan.Runner) Option {
+	return func(e *Engine) {
+		e.runner = runner
+	}
+}
+
+// WithManage overrides the manage manager (useful in tests).
+func WithManage(mgr *manage.Manager) Option {
+	return func(e *Engine) {
+		e.manageOverride = mgr
+	}
+}
+
+// NewEngine creates an Engine instance with default options.
+func NewEngine(opts ...Option) *Engine {
+	e := &Engine{
+		cacheEnabled: true,
+		emitter:      NopEmitter{},
+		promoteEvery: defaultPromoteEvery,
+	}
+	for _, opt := range opts {
+		opt(e)
+	}
+
+	if e.svc == nil {
+		roots := e.roots
+		if roots.Claude == "" && roots.Codex == "" && roots.OpenCodeData == "" {
+			roots, _ = paths.Default()
+			e.roots = roots
+		}
+		var provs provider.Set
+		if roots.Claude != "" || roots.Codex != "" || roots.OpenCodeData != "" {
+			provs = all.Providers(roots, pathutil.NewGitResolver())
+		}
+		catalog := scan.NewCatalog()
+		e.svc = NewService(catalog, provs)
+		if e.runner == nil {
+			e.runner = &scan.Runner{
+				Providers: provs,
+				Catalog:   catalog,
+			}
+		}
+	} else if e.runner == nil {
+		e.runner = &scan.Runner{
+			Providers: e.svc.Providers(),
+			Catalog:   e.svc.Catalog(),
+		}
+	}
+
+	return e
+}
+
+// Service returns the underlying Service instance.
+func (e *Engine) Service() *Service {
+	return e.svc
+}
+
+// Refresher returns the underlying Refresher instance, if started.
+func (e *Engine) Refresher() *index.Refresher {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.refresher
+}
+
+// Events returns the catalog bus.
+func (e *Engine) Events() *CatalogBus {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.events
+}
+
+// SetEmitter updates the event emitter.
+func (e *Engine) SetEmitter(emitter Emitter) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if emitter == nil {
+		emitter = NopEmitter{}
+	}
+	e.emitter = emitter
+	e.setDiscoveryEmitter(emitter)
+	if e.events != nil {
+		e.events.emitter = emitter
+	}
+}
+
+// Start boots the engine's cache, catalog, indexer, watcher, and bootstrap scan.
+// It is idempotent and safe to call multiple times.
+func (e *Engine) Start(ctx context.Context) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.started {
+		return nil
+	}
+	done := startupObservation(ctx).begin("start")
+	defer done(true)
+	e.started = true
+	e.closed = false
+	if e.svc != nil {
+		e.svc.transcripts.start(ctx)
+		e.svc.projects.start(ctx)
+	}
+
+	if e.emitter == nil {
+		e.emitter = NopEmitter{}
+	}
+	e.events = NewCatalogBus(e.emitter)
+
+	runCtx, cancel := context.WithCancel(e.beginDiscovery(ctx))
+	e.runCtx = runCtx
+	e.runCancel = cancel
+	if !e.cacheEnabled {
+		e.startRunnerDiscovery(runCtx, DiscoveryCacheDisabled)
+		return nil
+	}
+
+	if len(e.svc.Providers()) == 0 {
+		e.discoverySettledEmpty(runCtx)
+		return nil
+	}
+
+	e.discoveryRestoring(runCtx)
+	if e.startCache(runCtx) {
+		return nil
+	}
+	if e.svc.Catalog() != nil {
+		e.svc.Catalog().Reset(nil)
+	}
+	e.startRunnerDiscovery(runCtx, DiscoveryCacheFallback)
+	return nil
+}
+
+// startWatcher rescans a provider when its files change. It looks up the
+// refresher on each change because a reader swaps it when promoted.
+func (e *Engine) startWatcher(ctx context.Context) func() error {
+	if e.svc == nil || len(e.svc.Providers()) == 0 || e.refresher == nil {
+		return nil
+	}
+	onChange := func(c watch.Change) {
+		p, ok := e.svc.Providers().Get(c.Agent)
+		if !ok {
+			return
+		}
+		go func() {
+			e.mu.Lock()
+			refresher := e.refresher
+			e.mu.Unlock()
+			if refresher == nil {
+				return
+			}
+			_, _, _ = refresher.Refresh(ctx, p)
+			e.svc.ApplyReport(refresher.Report())
+		}()
+	}
+	done := startupObservation(ctx).begin("watcher_setup")
+	closeWatch, err := watch.Start(ctx, e.svc.Providers(), onChange)
+	done(err == nil)
+	if err != nil {
+		return nil
+	}
+	return closeWatch
+}
+
+// Scan triggers a scan across all providers.
+func (e *Engine) Scan(ctx context.Context) error {
+	e.mu.Lock()
+	refresher := e.refresher
+	runner := e.runner
+	svc := e.svc
+	events := e.events
+	e.mu.Unlock()
+
+	if refresher == nil && runner == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if refresher != nil {
+		err := refresher.Bootstrap(ctx)
+		if svc != nil {
+			svc.ApplyReport(refresher.Report())
+		}
+		return err
+	}
+	if runner != nil && svc != nil {
+		report := runner.Run(ctx, svc.ScanStates())
+		svc.ApplyReport(report)
+		svc.ClearTranscripts()
+		if events != nil {
+			events.NotifyFullRefresh()
+		}
+	}
+	return nil
+}
+
+// Close gracefully terminates background scans, watchers, indexers, and the database.
+// It is idempotent and uses an explicit shutdown order.
+func (e *Engine) Close() error {
+	e.mu.Lock()
+	if e.closed {
+		e.mu.Unlock()
+		return nil
+	}
+	e.closed = true
+	e.started = false
+	e.stopDiscovery()
+	if e.svc != nil {
+		e.svc.transcripts.stop()
+		e.svc.projects.stop()
+	}
+
+	events := e.events
+	closeWatch := e.closeWatch
+	runCancel := e.runCancel
+	indexer := e.indexer
+	refresher := e.refresher
+	readDB := e.readDB
+	lock := e.lock
+
+	diagnostics := e.codeDiagnostics
+	e.codeDiagnostics = nil
+	managed := e.managedTools
+	e.managedTools = nil
+	e.events = nil
+	e.closeWatch = nil
+	e.runCtx = nil
+	e.runCancel = nil
+	e.indexer = nil
+	e.refresher = nil
+	e.readDB = nil
+	e.lock = nil
+	e.mu.Unlock()
+
+	if managed != nil {
+		managed.close()
+	}
+	if diagnostics != nil {
+		diagnostics.close()
+	}
+	if runCancel != nil {
+		runCancel()
+	}
+	if events != nil {
+		events.Stop()
+	}
+	if closeWatch != nil {
+		_ = closeWatch()
+	}
+	// Bootstrap scans, the promoter and cleanup.
+	e.bg.Wait()
+	if indexer != nil {
+		indexer.Close()
+	}
+	var err error
+	if refresher != nil {
+		e.dbUse.Lock()
+		err = refresher.Close()
+		e.dbUse.Unlock()
+	}
+	e.closeDB(readDB)
+	// Last, so the next writer never opens a database this one still writes.
+	_ = lock.Unlock()
+	return err
+}
+
+func (e *Engine) cacheDir() string {
+	if e.cacheDirOverride != "" {
+		return e.cacheDirOverride
+	}
+	if e.roots.Cache != "" {
+		return e.roots.Cache
+	}
+	roots, err := paths.Default()
+	if err != nil || roots.Cache == "" {
+		return ""
+	}
+	return roots.Cache
+}
+
+// Ping returns a greeting confirmation from the backend service.
+func (e *Engine) Ping(_ context.Context, name string) (string, error) {
+	if name == "" {
+		return "Hello from agent-sessions backend!", nil
+	}
+	return "Hello " + name + ", welcome to agent-sessions!", nil
+}
+
+// ListGroups returns the grouped navigation tree for the filtered snapshot.
+func (e *Engine) ListGroups(ctx context.Context, mode GroupMode, filter FilterOpts) ([]GroupNode, error) {
+	done := startupObservation(ctx).begin("groups")
+	result, err := e.svc.ListGroups(mode, filter)
+	done(err == nil)
+	return result, err
+}
+
+// ListSessions returns session metadata for one group.
+func (e *Engine) ListSessions(ctx context.Context, groupKey string, filter FilterOpts, sort SortOpts) ([]model.SessionMeta, error) {
+	done := startupObservation(ctx).begin("sessions")
+	result, err := e.svc.ListSessions(groupKey, filter, sort)
+	done(err == nil)
+	return result, err
+}
+
+// AgentCounts returns per-agent session totals across the filtered catalog.
+func (e *Engine) AgentCounts(ctx context.Context, filter FilterOpts) (map[string]int, error) {
+	done := startupObservation(ctx).begin("counts")
+	result, err := e.svc.AgentCounts(filter)
+	done(err == nil)
+	return result, err
+}
+
+// GetSessionMeta returns the catalog metadata for one session.
+func (e *Engine) GetSessionMeta(_ context.Context, ref model.SessionRef) (model.SessionMeta, error) {
+	return e.svc.GetSessionMeta(ref)
+}
+
+// GetMessages returns one page of a session transcript.
+func (e *Engine) GetMessages(ctx context.Context, ref model.SessionRef, offset int, limit int) (MessagesPage, error) {
+	return e.svc.GetMessages(ctx, ref, offset, limit)
+}
+
+// GetBlob returns provider-attached content referenced by a message part.
+func (e *Engine) GetBlob(ctx context.Context, ref model.SessionRef, key string) (BlobResponse, error) {
+	return e.svc.GetBlob(ctx, ref, key)
+}
+
+// Search queries the full-text search index.
+func (e *Engine) Search(ctx context.Context, query string, filter index.SearchFilter) ([]index.SearchHit, error) {
+	e.dbUse.RLock()
+	defer e.dbUse.RUnlock()
+	db, reader := e.searchDB()
+	if db == nil {
+		return []index.SearchHit{}, nil
+	}
+	hits, err := db.Search(ctx, query, filter)
+	if err != nil || !reader {
+		return hits, err
+	}
+	// The writer may not have caught up with a session this reader already
+	// saw removed, such as one deleted here.
+	catalog := e.svc.Catalog()
+	if catalog == nil {
+		return hits, nil
+	}
+	kept := hits[:0]
+	for _, h := range hits {
+		if _, ok := catalog.Get(h.Ref); ok {
+			kept = append(kept, h)
+		}
+	}
+	return kept, nil
+}
+
+// IndexProgress returns the status of background FTS indexing.
+func (e *Engine) IndexProgress(ctx context.Context) (index.FTSProgress, error) {
+	e.dbUse.RLock()
+	defer e.dbUse.RUnlock()
+	db, _ := e.searchDB()
+	if db == nil {
+		return index.FTSProgress{}, nil
+	}
+	return db.Progress(ctx)
+}
+
+// CopyResumeCommand builds the provider resume command for a session.
+func (e *Engine) CopyResumeCommand(_ context.Context, ref model.SessionRef) (string, error) {
+	return e.svc.CopyResumeCommand(ref)
+}
+
+// RevealSource reveals the session's source directory path.
+func (e *Engine) RevealSource(_ context.Context, ref model.SessionRef) (string, error) {
+	return e.svc.RevealSource(ref)
+}
+
+func (e *Engine) ProjectSnapshot(ctx context.Context, dir string) (files.ListingSnapshot, error) {
+	return e.svc.ProjectSnapshot(ctx, dir)
+}
+
+// ListFiles lists the files of a session directory.
+func (e *Engine) ListFiles(ctx context.Context, dir string) (files.Listing, error) {
+	return e.svc.ListFiles(ctx, dir)
+}
+
+// BlameFile returns blame for one saved line of a session directory file.
+func (e *Engine) BlameFile(ctx context.Context, dir, path string, line int) (files.BlameLine, error) {
+	return e.svc.BlameFile(ctx, dir, path, line)
+}
+
+// SearchFiles searches the text of a session directory's files.
+func (e *Engine) SearchFiles(ctx context.Context, dir string, q files.SearchQuery) (files.SearchResult, error) {
+	return e.svc.SearchFiles(ctx, dir, q)
+}
+
+// ReadFile reads one file of a session directory.
+func (e *Engine) ProbeFiles(ctx context.Context, dir string, paths []string) (files.ProbeResult, error) {
+	return e.svc.ProbeFiles(ctx, dir, paths)
+}
+
+func (e *Engine) ReadFile(ctx context.Context, dir, path string) (files.Content, error) {
+	return e.svc.ReadFile(ctx, dir, path, e.editPolicy())
+}
+
+// SaveFile saves an edited file of a session directory.
+func (e *Engine) SaveFile(ctx context.Context, dir string, req files.SaveRequest) (files.SaveResult, error) {
+	return e.svc.SaveFile(ctx, dir, req, e.editPolicy())
+}
+
+// ReplaceInFiles replaces search matches in files of a session directory.
+func (e *Engine) ReplaceInFiles(ctx context.Context, dir string, req files.ReplaceRequest) (files.ReplaceResult, error) {
+	return e.svc.ReplaceInFiles(ctx, dir, req, e.editPolicy())
+}
+
+// editPolicy protects the agents' data stores and this app's own
+// directories from the file editor, wherever a session directory is.
+func (e *Engine) editPolicy() files.EditPolicy {
+	// Configured roots and the defaults both: a partly configured engine
+	// must still protect the usual stores.
+	defaults, _ := paths.Default()
+	var p files.EditPolicy
+	seen := map[string]bool{}
+	for _, roots := range []paths.Roots{e.roots, defaults} {
+		for _, r := range []string{roots.Claude, roots.Codex, roots.OpenCodeData, roots.Cache, roots.Config, roots.Data} {
+			if r != "" && filepath.IsAbs(r) && !seen[r] {
+				seen[r] = true
+				p.ProtectedRoots = append(p.ProtectedRoots, r)
+			}
+		}
+	}
+	if r := e.cacheDirOverride; r != "" && filepath.IsAbs(r) && !seen[r] {
+		p.ProtectedRoots = append(p.ProtectedRoots, r)
+	}
+	return p
+}
+
+// Diagnostics returns aggregated scanner health.
+func (e *Engine) Diagnostics(_ context.Context) (provider.Diagnostics, error) {
+	return e.svc.Diagnostics()
+}
+
+func (e *Engine) ensureManage() (*manage.Manager, error) {
+	e.manageMu.Lock()
+	defer e.manageMu.Unlock()
+
+	if e.manageOverride != nil {
+		return e.manageOverride, nil
+	}
+	if e.manage != nil {
+		return e.manage, nil
+	}
+
+	roots := e.roots
+	if roots.Config == "" {
+		r, err := paths.Default()
+		if err != nil {
+			return nil, fmt.Errorf("manage: resolve roots: %w", err)
+		}
+		roots = r
+	}
+	cfgPath := filepath.Join(roots.Config, "config.toml")
+
+	opts := []manage.Option{}
+	if e.svc != nil {
+		if p, ok := e.svc.Providers().Get(model.AgentClaude); ok {
+			if ld, ok := p.(provider.LiveDetector); ok {
+				opts = append(opts, manage.WithLiveFunc(claudeLiveFunc(ld)), manage.WithClaudeRunning(func(ctx context.Context) (bool, error) {
+					live, err := ld.Live(ctx)
+					return len(live) != 0, err
+				}))
+			}
+		}
+	}
+
+	mgr, err := manage.New(roots, cfgPath, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("manage: init: %w", err)
+	}
+	e.manage = mgr
+	return mgr, nil
+}
+
+// claudeLiveFunc reports whether a Claude session, or the parent of a
+// subagent, is running. It checks with each call's own context: the manager
+// outlives the call that created it, and an RPC server cancels every
+// request's context once it has answered.
+func claudeLiveFunc(ld provider.LiveDetector) manage.LiveFunc {
+	return func(ctx context.Context, agent, id string) (bool, error) {
+		if agent != string(model.AgentClaude) {
+			return false, nil
+		}
+		parent := id
+		if i := strings.Index(id, "/agent-"); i > 0 {
+			parent = id[:i]
+		}
+		live, err := ld.Live(ctx)
+		if err != nil {
+			return false, err
+		}
+		_, ok := live[parent]
+		return ok, nil
+	}
+}
+
+// PreviewDelete plans a destructive action over the given sessions.
+func (e *Engine) PreviewDelete(ctx context.Context, refs []model.SessionRef) (DeletePreview, error) {
+	if len(refs) == 0 {
+		return DeletePreview{}, errors.New("manage: no sessions specified")
+	}
+	mgr, err := e.ensureManage()
+	if err != nil {
+		return DeletePreview{}, err
+	}
+	if e.svc == nil || e.svc.Catalog() == nil {
+		return DeletePreview{}, errors.New("manage: catalog not initialized")
+	}
+	if err := e.svc.ValidateRefs(refs); err != nil {
+		return DeletePreview{}, err
+	}
+	p, err := mgr.Preview(ctx, refs, e.svc.Catalog().All())
+	if err != nil {
+		return DeletePreview{}, err
+	}
+	return DeletePreview{Items: p.Items, TotalBytes: p.TotalBytes, Token: p.Token, TrashLabel: p.TrashLabel}, nil
+}
+
+// DeleteSessions executes a confirmed destructive plan.
+func (e *Engine) DeleteSessions(ctx context.Context, refs []model.SessionRef, token string) (DeleteReport, error) {
+	if len(refs) == 0 {
+		return DeleteReport{}, errors.New("manage: no sessions specified")
+	}
+	if strings.TrimSpace(token) == "" {
+		return DeleteReport{}, ErrPreviewStale
+	}
+	mgr, err := e.ensureManage()
+	if err != nil {
+		return DeleteReport{}, err
+	}
+	if e.svc == nil || e.svc.Catalog() == nil {
+		return DeleteReport{}, errors.New("manage: catalog not initialized")
+	}
+	if err := e.svc.ValidateRefs(refs); err != nil {
+		return DeleteReport{}, err
+	}
+	rep, err := mgr.Delete(ctx, refs, e.svc.Catalog().All(), token)
+	if err != nil {
+		return DeleteReport{}, err
+	}
+
+	out := DeleteReport{
+		Items:      rep.Items,
+		Deleted:    rep.Deleted,
+		Failed:     rep.Failed,
+		FreedBytes: rep.FreedBytes,
+		Forgotten:  rep.Forgotten,
+		Notes:      rep.Notes,
+	}
+	if len(rep.Forgotten) > 0 {
+		e.forget(ctx, rep.Forgotten)
+	}
+	return out, nil
+}
+
+// SetManageOverride overrides the destructive action manager (tests only).
+func (e *Engine) SetManageOverride(mgr *manage.Manager) {
+	e.manageMu.Lock()
+	defer e.manageMu.Unlock()
+	e.manageOverride = mgr
+}
+
+// TrashSupported reports whether the host system supports moving files to trash.
+func (e *Engine) TrashSupported() bool {
+	return manage.PlatformTrashSupported()
+}
+
+// Forget drops deleted sessions from the cache DB, catalog, and transcript
+// LRU, then notifies subscribers.
+func (e *Engine) Forget(ctx context.Context, refs []model.SessionRef) {
+	e.forget(ctx, refs)
+}
+
+func (e *Engine) forget(ctx context.Context, refs []model.SessionRef) {
+	if e.svc != nil {
+		e.svc.projects.invalidate("")
+		defer e.svc.projects.invalidate("")
+	}
+	e.mu.Lock()
+	refresher := e.refresher
+	events := e.events
+	e.mu.Unlock()
+
+	if refresher == nil || refresher.Forget(ctx, refs) != nil {
+		if e.svc != nil && e.svc.Catalog() != nil {
+			e.svc.Catalog().Remove(refs)
+		}
+	} else {
+		e.schedulePurge()
+	}
+	if e.svc != nil {
+		for _, ref := range refs {
+			e.svc.EvictTranscript(ref.Key())
+		}
+	}
+	if events != nil {
+		events.NoteChanged(nil, refs)
+	}
+}
+
+// GetSettings surfaces the current manage configuration.
+func (e *Engine) GetSettings(ctx context.Context) (Settings, error) {
+	mgr, err := e.ensureManage()
+	if err != nil {
+		return Settings{}, err
+	}
+	cfg, err := mgr.Config()
+	if err != nil {
+		return Settings{}, err
+	}
+	return settingsFrom(cfg), nil
+}
+
+// SetManageEnabled toggles destructive actions.
+func (e *Engine) SetManageEnabled(ctx context.Context, enabled bool) (Settings, error) {
+	mgr, err := e.ensureManage()
+	if err != nil {
+		return Settings{}, err
+	}
+	cfg, err := mgr.UpdateConfig(func(c *manage.Config) { c.Enabled = enabled })
+	if err != nil {
+		return Settings{}, err
+	}
+	return settingsFrom(cfg), nil
+}
+
+// SetAllowPermanentDelete toggles the permanent-delete allowance.
+func (e *Engine) SetAllowPermanentDelete(ctx context.Context, allow bool) (Settings, error) {
+	mgr, err := e.ensureManage()
+	if err != nil {
+		return Settings{}, err
+	}
+	cfg, err := mgr.UpdateConfig(func(c *manage.Config) { c.AllowPermanentDelete = allow })
+	if err != nil {
+		return Settings{}, err
+	}
+	return settingsFrom(cfg), nil
+}
+
+// SetPrunePromptHistory toggles removing deleted sessions from the agents'
+// prompt history.
+func (e *Engine) SetPrunePromptHistory(ctx context.Context, prune bool) (Settings, error) {
+	mgr, err := e.ensureManage()
+	if err != nil {
+		return Settings{}, err
+	}
+	cfg, err := mgr.UpdateConfig(func(c *manage.Config) { c.PrunePromptHistory = prune })
+	if err != nil {
+		return Settings{}, err
+	}
+	return settingsFrom(cfg), nil
+}
+
+// BuildHandoff renders the handoff document preview.
+func (e *Engine) BuildHandoff(ctx context.Context, req HandoffRequest) (HandoffPreview, error) {
+	return e.svc.BuildHandoff(ctx, req)
+}
+
+// HandoffCommand writes the handoff files and returns the launch command.
+func (e *Engine) HandoffCommand(ctx context.Context, req HandoffRequest) (string, error) {
+	return e.svc.HandoffCommand(ctx, req)
+}
+
+// SaveHandoff writes the self-contained full handoff document to destPath.
+func (e *Engine) SaveHandoff(ctx context.Context, req HandoffRequest, destPath string) (string, error) {
+	return e.svc.SaveHandoff(ctx, req, destPath)
+}
+
+// RenderHandoff builds the self-contained full handoff document text.
+func (e *Engine) RenderHandoff(ctx context.Context, req HandoffRequest) (string, error) {
+	return e.svc.RenderHandoff(ctx, req)
+}
+
+// HandoffCache reports the handoff files kept on disk.
+func (e *Engine) HandoffCache(_ context.Context) (HandoffCacheInfo, error) {
+	return e.svc.HandoffCache(), nil
+}
+
+// ClearHandoffCache deletes the handoff files kept on disk.
+func (e *Engine) ClearHandoffCache(_ context.Context) (HandoffCacheInfo, error) {
+	return e.svc.ClearHandoffCache()
+}
+
+// PreviewExport estimates an export without writing anything.
+func (e *Engine) PreviewExport(ctx context.Context, req ExportRequest) (ExportPreview, error) {
+	mgr, err := e.ensureManage()
+	if err != nil {
+		return ExportPreview{}, err
+	}
+	return e.svc.PreviewExport(ctx, req, mgr)
+}
+
+// ExportBundle writes the bundle to destPath.
+func (e *Engine) ExportBundle(ctx context.Context, req ExportRequest, destPath string) (string, error) {
+	mgr, err := e.ensureManage()
+	if err != nil {
+		return "", err
+	}
+	return e.svc.ExportBundle(ctx, req, destPath, mgr)
+}
+
+// OpenBundle opens and validates a bundle from disk.
+func (e *Engine) OpenBundle(ctx context.Context, path string) (BundleSummary, error) {
+	return e.svc.OpenBundle(ctx, path)
+}
+
+// OpenBundleBytes opens and validates a bundle from raw bytes.
+func (e *Engine) OpenBundleBytes(ctx context.Context, name string, data []byte) (BundleSummary, error) {
+	return e.svc.OpenBundleBytes(ctx, name, data)
+}
+
+// BuildBundleHandoff generates a handoff preview from an opened bundle.
+func (e *Engine) BuildBundleHandoff(ctx context.Context, req BundleHandoffRequest) (HandoffPreview, error) {
+	return e.svc.BuildBundleHandoff(ctx, req)
+}
+
+// BundleHandoffCommand writes the handoff files and returns the launch command.
+func (e *Engine) BundleHandoffCommand(ctx context.Context, req BundleHandoffRequest) (string, error) {
+	return e.svc.BundleHandoffCommand(ctx, req)
+}
+
+// SaveBundleHandoff writes the full handoff document to destPath.
+func (e *Engine) SaveBundleHandoff(ctx context.Context, req BundleHandoffRequest, destPath string) (string, error) {
+	return e.svc.SaveBundleHandoff(ctx, req, destPath)
+}
+
+// RenderBundleHandoff builds the self-contained full handoff document text for an opened bundle.
+func (e *Engine) RenderBundleHandoff(ctx context.Context, req BundleHandoffRequest) (string, error) {
+	return e.svc.RenderBundleHandoff(ctx, req)
+}

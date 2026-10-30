@@ -1,0 +1,362 @@
+/**
+ * Safe, zero-dependency Markdown parser and sanitizer for Agent Sessions.
+ * Neutralizes raw HTML tags and XSS vectors while rendering standard GFM syntax.
+ */
+
+import { highlightCode } from './highlight.js';
+import { isMessageFileLink, parseMessageFileLink } from './messageFileLinks.js';
+
+type FileLinkMode = boolean | 'transcript';
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeHref(url: string): string {
+  const trimmed = url.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('mailto:')) {
+    return escapeHtml(trimmed);
+  }
+  return '#';
+}
+
+// Emphasis must hug its text: "2 * 3 * 4" stays literal. `*` may emphasize
+// inside a word, but `_` only at word boundaries (as in GFM), so identifiers
+// like API_KEY_NAME and snake_case_fn render as written.
+const star = (n: number) => new RegExp(`\\*{${n}}(?!\\s)(.*?\\S)\\*{${n}}`, 'g');
+const underscore = (n: number) =>
+  new RegExp(`(^|[^\\p{L}\\p{N}_])_{${n}}(?!\\s)(.*?\\S)_{${n}}(?![\\p{L}\\p{N}_])`, 'gu');
+
+// A heading's id: the GitHub-style slug, plus -1, -2… for repeats, as GitHub does.
+function headingId(text: string, slugs: Map<string, number>): string {
+  let base = headingSlug(text);
+  if (!base) base = 'heading';
+  const seen = slugs.get(base) ?? -1;
+  const id = seen < 0 ? base : `${base}-${seen + 1}`;
+  slugs.set(base, seen + 1);
+  return id;
+}
+
+function renderEmphasis(text: string): string {
+  let out = text;
+
+  // Bold + Italic: ***text*** or ___text___
+  out = out.replace(star(3), '<strong><em>$1</em></strong>');
+  out = out.replace(underscore(3), '$1<strong><em>$2</em></strong>');
+
+  // Bold: **text** or __text__
+  out = out.replace(star(2), '<strong>$1</strong>');
+  out = out.replace(underscore(2), '$1<strong>$2</strong>');
+
+  // Italic: *text* or _text_
+  out = out.replace(star(1), '<em>$1</em>');
+  out = out.replace(underscore(1), '$1<em>$2</em>');
+
+  // Strikethrough: ~~text~~
+  out = out.replace(/~~(.*?)~~/g, '<del>$1</del>');
+
+  return out;
+}
+
+const namedEntities: Record<string, string> = {
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+};
+const inlineLiteral = /\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])|&(#x[\da-f]+|#\d+|[a-z][a-z\d]*);/gi;
+
+const literalStart = new RegExp(`^(?:${inlineLiteral.source})`, 'i');
+
+function literalText(match: string, punctuation?: string, entity?: string): string {
+  if (punctuation) return punctuation;
+  if (!entity) return match;
+  if (!entity.startsWith('#')) return Object.hasOwn(namedEntities, entity) ? namedEntities[entity] : match;
+  const value = entity[1].toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
+  return value > 0 && value <= 0x10ffff && !(value >= 0xd800 && value <= 0xdfff)
+    ? String.fromCodePoint(value) : '�';
+}
+
+function renderInline(text: string, fileLinks: FileLinkMode = false, links = true): string {
+  // Source NULs cannot impersonate our tokens. Restoring tokens is single-pass.
+  const source = text.replace(/\u0000/g, '�');
+  const stashed: string[] = [];
+  const stash = (html: string) => `\u0000${stashed.push(html) - 1}\u0000`;
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const rest = source.slice(i);
+    const code = source[i] === '`' && rest.match(/^`([^`]+)`/);
+    if (code) {
+      const html = `<code class="inline-code">${escapeHtml(code[1])}</code>`;
+      out += stash(fileLinks === 'transcript' && links && isMessageFileLink(code[1])
+        ? `<a href="#" data-file-link="${escapeHtml(code[1])}">${html}</a>` : html);
+      i += code[0].length;
+      continue;
+    }
+    const literal = rest.match(literalStart);
+    if (literal) {
+      out += stash(escapeHtml(literalText(literal[0], literal[1], literal[2])));
+      i += literal[0].length;
+      continue;
+    }
+    const link = links && source[i] === '[' && rest.match(/^\[([^\]]+)\]\(([^)]+)\)/);
+    if (link) {
+      // Preserve Windows separators in transcript destinations. Markdown
+      // entities still decode before validation, just as in document mode.
+      const url = link[2].replace(inlineLiteral, (match, punctuation, entity) =>
+        fileLinks === 'transcript' && punctuation ? match : literalText(match, punctuation, entity)).trim();
+      const label = renderInline(link[1], fileLinks, false);
+      // Validate normalized destinations before escaping them for attributes.
+      const controls = /[\u0000- \u007f]/.test(url);
+      const fileDestination = fileLinks === 'transcript'
+        ? parseMessageFileLink(url) !== null
+        : fileLinks && url && !controls && !/^[a-z][a-z\d+.-]*:|^[\\/]/i.test(url);
+      if (fileDestination) {
+        out += stash(`<a href="#" data-file-link="${escapeHtml(url)}">${label}</a>`);
+      } else {
+        out += stash(`<a href="${controls ? '#' : sanitizeHref(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+      }
+      i += link[0].length;
+      continue;
+    }
+    out += escapeHtml(source[i++]);
+  }
+  return renderEmphasis(out).replace(/\u0000(\d+)\u0000/g, (_match, idx) => stashed[Number(idx)]);
+}
+
+const TABLE_SEPARATOR = /^\s*\|?\s*[-:]+[-| :]*\|?\s*$/;
+
+// A table starts at any line with a pipe that sits on a separator line.
+function isTableStart(lines: string[], i: number): boolean {
+  return lines[i].includes('|') && i + 1 < lines.length && TABLE_SEPARATOR.test(lines[i + 1]);
+}
+
+// Splits a table row into trimmed cells. Pipes inside a code span or written
+// as \| belong to the cell; \| renders as a plain |.
+function splitTableRow(line: string): string[] {
+  let row = line.trim();
+  if (row.startsWith('|')) row = row.slice(1);
+  if (row.endsWith('|') && !row.endsWith('\\|')) row = row.slice(0, -1);
+
+  const cells: string[] = [];
+  let cell = '';
+  let i = 0;
+  while (i < row.length) {
+    const ch = row[i];
+    if (ch === '\\' && row[i + 1] === '|') {
+      cell += '|';
+      i += 2;
+    } else if (ch === '`' && row.indexOf('`', i + 1) !== -1) {
+      // Code span, matching renderInline: up to the next backtick.
+      const end = row.indexOf('`', i + 1);
+      cell += row.slice(i, end + 1).replace(/\\\|/g, '|');
+      i = end + 1;
+    } else if (ch === '|') {
+      cells.push(cell.trim());
+      cell = '';
+      i++;
+    } else {
+      cell += ch;
+      i++;
+    }
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+// A Mermaid diagram shows as its source until mermaid.ts draws it into the
+// empty .mermaid-diagram; the toggle then switches between the two, and
+// Expand (or a click on the diagram) shows it in the whole window.
+function mermaidBlock(rawCode: string): string {
+  return (
+    `<div class="code-block-container mermaid-block" data-lang="mermaid">` +
+      `<div class="code-block-header">` +
+        `<span class="code-lang-tag">mermaid</span>` +
+        `<span class="code-block-actions">` +
+          `<button type="button" class="mermaid-expand-btn" title="Show the diagram in the whole window" hidden>Expand</button>` +
+          `<button type="button" class="mermaid-toggle-btn" hidden>Source</button>` +
+          `<button type="button" class="copy-code-btn" data-code="${escapeHtml(rawCode)}">Copy</button>` +
+        `</span>` +
+      `</div>` +
+      `<div class="mermaid-diagram" hidden></div>` +
+      `<pre class="mermaid-source"><code class="hljs language-mermaid">${escapeHtml(rawCode)}</code></pre>` +
+    `</div>`
+  );
+}
+
+// A GitHub-style heading slug, so [text](#slug) links resolve: lowercase,
+// punctuation stripped, each space a hyphen. The raw heading text is the
+// source, so inline markup like `## **Setup**` never reaches it. Punctuation
+// between words leaves two adjacent hyphens, exactly as GitHub slugs it.
+function headingSlug(heading: string): string {
+  return heading
+    .replace(/<[^>]*>/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .trim()
+    .replace(/\s/g, '-');
+}
+
+// The slug map is shared through blockquote recursion, so a heading repeated
+// in and outside a quote still gets unique ids.
+export function renderMarkdown(source: string, fileLinks: FileLinkMode = false, headingIds?: Map<string, number>): string {
+  if (!source) return '';
+
+  const slugs = headingIds ?? new Map<string, number>();
+  const lines = source.split(/\r?\n/);
+  const out: string[] = [];
+  let i = 0;
+  const len = lines.length;
+
+  while (i < len) {
+    const line = lines[i];
+
+    // Fenced code blocks: ```lang ... ```
+    if (line.trimStart().startsWith('```')) {
+      const match = line.trimStart().match(/^```([a-zA-Z0-9_\-+]*)/);
+      const lang = match ? match[1] : '';
+      const codeLines: string[] = [];
+      i++;
+      while (i < len && !lines[i].trimStart().startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++; // Skip closing ```
+      const rawCode = codeLines.join('\n');
+      if (lang.toLowerCase() === 'mermaid' && rawCode.trim()) {
+        out.push(mermaidBlock(rawCode));
+        continue;
+      }
+      const highlighted = highlightCode(rawCode, lang);
+      const displayLang = lang || 'text';
+
+      out.push(
+        `<div class="code-block-container" data-lang="${escapeHtml(displayLang)}">` +
+          `<div class="code-block-header">` +
+            `<span class="code-lang-tag">${escapeHtml(displayLang)}</span>` +
+            `<button type="button" class="copy-code-btn" data-code="${escapeHtml(rawCode)}">Copy</button>` +
+          `</div>` +
+          `<pre><code class="hljs language-${escapeHtml(displayLang)}">${highlighted}</code></pre>` +
+        `</div>`
+      );
+      continue;
+    }
+
+    // Horizontal Rule: ---, ***, ___
+    if (/^(\*{3,}|-{3,}|_{3,})\s*$/.test(line.trim())) {
+      out.push('<hr class="markdown-divider" />');
+      i++;
+      continue;
+    }
+
+    // Headings: # h1 .. ###### h6
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const content = renderInline(headingMatch[2], fileLinks);
+      out.push(`<h${level} id="${headingId(headingMatch[2], slugs)}">${content}</h${level}>`);
+      i++;
+      continue;
+    }
+
+    // Blockquote: > text
+    if (line.startsWith('>')) {
+      const quoteLines: string[] = [];
+      while (i < len && lines[i].startsWith('>')) {
+        quoteLines.push(lines[i].replace(/^>\s?/, ''));
+        i++;
+      }
+      const quoteContent = renderMarkdown(quoteLines.join('\n'), fileLinks, slugs);
+      out.push(`<blockquote>${quoteContent}</blockquote>`);
+      continue;
+    }
+
+    // Unordered List: * or -
+    if (/^\s*[*+-]\s+/.test(line)) {
+      const listItems: string[] = [];
+      while (i < len && /^\s*[*+-]\s+/.test(lines[i])) {
+        const itemText = lines[i].replace(/^\s*[*+-]\s+/, '');
+        listItems.push(`<li>${renderInline(itemText, fileLinks)}</li>`);
+        i++;
+      }
+      out.push(`<ul>${listItems.join('')}</ul>`);
+      continue;
+    }
+
+    // Ordered List: 1. 2.
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const listItems: string[] = [];
+      while (i < len && /^\s*\d+\.\s+/.test(lines[i])) {
+        const itemText = lines[i].replace(/^\s*\d+\.\s+/, '');
+        listItems.push(`<li>${renderInline(itemText, fileLinks)}</li>`);
+        i++;
+      }
+      out.push(`<ol>${listItems.join('')}</ol>`);
+      continue;
+    }
+
+    // Tables: lines with |
+    if (isTableStart(lines, i)) {
+      const headerCells = splitTableRow(line);
+      i += 2; // Skip header and separator
+
+      const rows: string[][] = [];
+      while (i < len && lines[i].includes('|') && lines[i].trim().length > 0) {
+        rows.push(splitTableRow(lines[i]));
+        i++;
+      }
+
+      let tableHtml = '<div class="table-container"><table><thead><tr>';
+      for (const h of headerCells) {
+        tableHtml += `<th>${renderInline(h, fileLinks)}</th>`;
+      }
+      tableHtml += '</tr></thead><tbody>';
+      for (const row of rows) {
+        tableHtml += '<tr>';
+        for (let colIdx = 0; colIdx < headerCells.length; colIdx++) {
+          const val = row[colIdx] || '';
+          tableHtml += `<td>${renderInline(val, fileLinks)}</td>`;
+        }
+        tableHtml += '</tr>';
+      }
+      tableHtml += '</tbody></table></div>';
+      out.push(tableHtml);
+      continue;
+    }
+
+    // Blank lines
+    if (!line.trim()) {
+      i++;
+      continue;
+    }
+
+    // Regular paragraph. Its first line is taken whatever it starts with:
+    // a line no block above matched, such as "###" or "#tag", is text, and
+    // leaving it unread would loop forever.
+    const pLines: string[] = [line];
+    i++;
+    while (
+      i < len &&
+      lines[i].trim() &&
+      !lines[i].trimStart().startsWith('```') &&
+      !lines[i].startsWith('#') &&
+      !lines[i].startsWith('>') &&
+      !/^\s*[*+-]\s+/.test(lines[i]) &&
+      !/^\s*\d+\.\s+/.test(lines[i]) &&
+      !/^(\*{3,}|-{3,}|_{3,})\s*$/.test(lines[i].trim()) &&
+      !isTableStart(lines, i)
+    ) {
+      pLines.push(lines[i]);
+      i++;
+    }
+
+    const pText = pLines.map((l) => renderInline(l, fileLinks)).join('<br />');
+    out.push(`<p>${pText}</p>`);
+  }
+
+  return out.join('\n');
+}

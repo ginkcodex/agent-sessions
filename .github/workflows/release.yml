@@ -1,0 +1,218 @@
+# Builds installable packages when a v<version> tag is pushed and publishes
+# them as the GitHub Release for that tag. The tag must match
+# info.productVersion in wails.json, so the version shown in the app is the
+# one on the release page:
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Tags with a suffix (v1.2.0-beta.1) publish as pre-releases. Manual runs
+# (workflow_dispatch) build and upload artifacts only.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  WAILS_VERSION: v2.17.0
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: version
+        run: |
+          version=$(jq -r '.info.productVersion // empty' wails.json)
+          if ! [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error file=wails.json::info.productVersion '$version' is not a semantic version"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error file=wails.json::tag $GITHUB_REF_NAME does not match info.productVersion $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - name: Go tests
+        run: go test -race ./...
+      - name: Frontend type check and unit tests
+        working-directory: frontend
+        run: |
+          npm run check
+          npm test
+
+  linux:
+    needs: [version, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: amd64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+    # 22.04 keeps the glibc floor low enough for Debian 12 and Ubuntu 22.04+.
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install GTK and WebKitGTK headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-3-dev libwebkit2gtk-4.1-dev
+      - run: npm ci
+        working-directory: frontend
+      - name: Build .deb and .rpm
+        run: make package-linux VERSION=${{ needs.version.outputs.version }} ARCH=${{ matrix.arch }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            dist/*.deb
+            dist/*.rpm
+          if-no-files-found: error
+
+  macos:
+    needs: [version, test]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+      - name: Build universal .app and .dmg
+        run: make package-macos VERSION=${{ needs.version.outputs.version }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-universal
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  # Wails cross-compiles the Windows app and wixl builds the .msi on Linux,
+  # so this reuses the Makefile's bash recipes unchanged. CI's
+  # windows-test-build job covers the native Windows build and tests.
+  # 24.04 for wixl 0.103: 22.04's 0.101 lacks AllowSameVersionUpgrades.
+  windows:
+    needs: [version, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install wixl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wixl
+      - run: npm ci
+        working-directory: frontend
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+      - name: Build .msi
+        run: make package-windows VERSION=${{ needs.version.outputs.version }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-amd64
+          path: dist/*.msi
+          if-no-files-found: error
+
+  remote-servers:
+    needs: [version, test]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build headless server bundles
+        run: make remote-servers VERSION=${{ needs.version.outputs.version }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: remote-servers
+          path: build/remote/*
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [linux, macos, windows, remote-servers]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write checksums
+        working-directory: dist
+        run: |
+          # The server directory already carries its own SHA256SUMS.
+          find . -name SHA256SUMS -delete
+          sha256sum -- * > SHA256SUMS
+      - name: Publish release
+        run: |
+          # Versions with a suffix (1.2.0-beta.1) publish as pre-releases and
+          # never become "Latest".
+          if [[ $TAG == *-* ]]; then
+            channel=(--prerelease --latest=false)
+          else
+            channel=(--latest)
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Re-running the workflow for the same tag, or a draft left by an
+            # earlier run: refresh its assets and publish.
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --draft=false "${channel[@]}"
+          else
+            gh release create "$TAG" dist/* --verify-tag \
+              --title "Agent Sessions ${TAG#v}" --generate-notes "${channel[@]}"
+          fi

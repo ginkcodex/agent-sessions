@@ -1,0 +1,520 @@
+# Agent Sessions — Task Breakdown
+
+Derived from [SPEC.md](SPEC.md). Every task is scoped to be **≤ 4 h for a senior
+Go/TS developer**. Estimates include writing tests for the task.
+
+**Decided:** Wails **v2** (stable), using GTK3 + `webkit2gtk-4.1` on Linux.
+See SPEC §2.
+
+**Decided since the first draft:**
+- The frontend is Svelte 5 + TS.
+- Opt-in destructive actions (M4) shipped; they stay disabled by default.
+- Codex fixtures are still blocked on getting a real sample (M1-08).
+
+**Definition of Done (applies to every task):**
+- Code is linted (`golangci-lint`, `svelte-check`).
+- Unit or golden tests are added, and `make test` passes.
+- No writes to any tool's session store, except the M4 actions and the M6
+  restore after an explicit, previewed confirmation.
+- No credential files are read.
+- Public types and functions have doc comments where the intent is not obvious.
+
+Legend: **Est** = hours, **Deps** = task IDs that must be done first.
+**St** (status, audited against the code on 2026-09-28): ✅ done ·
+🟡 partial (the **Open:** note says what is missing) · ⬜ not started ·
+⛔ blocked. Rows marked *(retroactive)* record work that shipped without a
+planned task.
+
+---
+
+## M0 — Foundation & Claude Code provider (≈ 42 h)
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M0-01 | ✅ | Scaffold repo: `git init`, `go mod`, folder layout per SPEC §3, `Makefile` (`build`, `test`, `lint`, `fmt`), `.golangci.yml`, `.gitignore`, `README` stub | 2 | – | `make lint test` runs green on the empty skeleton. |
+| M0-02 | ✅ | `internal/model`: `SessionMeta`, `Message`, `Part`, `TokenUsage`, `MessageCounts`, `AgentID`/`Role`/`PartKind` enums, JSON tags | 2 | M0-01 | Types compile; JSON round-trip test passes. |
+| M0-03 | ✅ | `internal/provider`: `Provider` interface, `ScanState`, `SessionRef`, explicit ordered `provider.Set` (no global registry), `Diagnostics` collector | 2 | M0-02 | A fake provider registers and scans in a test. |
+| M0-04 | ✅ | `internal/paths` (Linux): default roots and env overrides (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`); `paths_darwin.go` stub | 2 | M0-01 | Table tests cover each env override. |
+| M0-05 | ✅ | Path utils: `NormalizeDir` (Clean, EvalSymlinks, trailing `/`), `GitRoot` found by walking up for `.git` (dir or worktree file, no `exec`), memoized; `Exists` check | 3 | M0-01 | Tests with a temp repo, a worktree, a symlinked dir and a missing dir. |
+| M0-06 | 🟡 | Fixture tooling: `cmd/fixture-sanitize` copies a real session and redacts message text/paths while keeping structure; golden-test helper with an `-update` flag | 3 | M0-01 | One sanitized Claude fixture is committed; the golden helper is used by a test. **Open:** the sanitizer and golden helper exist, but the committed Claude fixtures are hand-written. |
+| M0-07 | ✅ | Claude: `Detect()` and file discovery (`projects/*/*.jsonl`, `<uuid>/subagents/*.jsonl`) | 2 | M0-03, M0-04 | Discovers all 30 local sessions and their subagent files. |
+| M0-08 | ✅ | Shared JSONL reader: handles huge lines (> 10 MB), tolerates a truncated or partially written last line, supports start-at-offset, and exposes a cheap `"type"` pre-filter before full decode | 3 | M0-01 | Tests cover huge-line, partial-last-line and offset resume; benchmark on the 38 MB file. |
+| M0-09 | ✅ | Claude metadata scan: `cwd`, first non-meta user prompt, title priority (`ai-title` → `summary` → first prompt), model, branch, created/updated, version | 3 | M0-07, M0-08 | Golden metadata matches for fixtures; real `scan` shows sensible titles. |
+| M0-10 | ✅ | Claude message counting per SPEC §6 (user excluding meta/tool_result; assistant merged by `message.id`; tool-call count), returning the resume byte offset | 3 | M0-09 | Counts match a hand-verified fixture; appending lines and resuming from the offset gives the same total as a full rescan. |
+| M0-11 | ✅ | Claude `Load`: user/assistant records → `Message`/`Part`; merge split assistant blocks; pair `tool_use` ↔ `tool_result`; text/reasoning/tool parts | 4 | M0-08, M0-02 | Golden transcript test passes for a fixture containing tool calls. |
+| M0-12 | ✅ | Claude `Load` extras: `compact_boundary` → compaction part, `isMeta`/`attachment` → hidden meta, `isSidechain`, lazy refs to `tool-results/*.txt` (`Truncated=true`) | 3 | M0-11 | Fixture with compaction and meta renders correctly in golden output. |
+| M0-13 | ✅ | Claude subagents: expose `subagents/*.jsonl` as child sessions with `ParentID` | 2 | M0-09 | The parent lists its children; children are excluded from the top level. |
+| M0-14 | ✅ | Claude live detection: read `sessions/<pid>.json` and check the pid via `/proc/<pid>` plus its start time (guards pid reuse), mapping pid → `sessionId` | 2 | M0-07 | Test with a fake sessions dir; the real current session shows `Live=true`. |
+| M0-15 | ✅ | Claude hardening: fuzz test for the record parser, and a diagnostics count of unknown record types | 3 | M0-12 | `go test -fuzz` runs for 60 s without panic; unknown types are counted, not errors. |
+| M0-16 | ✅ | Headless CLI `agent-sessions-cli`: `scan [--agent] [--json]` (table: agent, cwd, title, msgs, updated) and `show <agent> <id> [--json]` | 3 | M0-10, M0-11 | Works against the real `~/.claude`; `--json` output is valid. |
+
+## M1 — Remaining providers + MVP GUI (≈ 90 h)
+
+### OpenCode
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M1-01 | ✅ | Read-only SQLite helper (`modernc.org/sqlite`, `mode=ro`, `busy_timeout`, short queries, `HasTable()` schema probe) | 3 | M0-01 | Opens the live 248 MB `opencode.db` while OpenCode runs, with no lock errors. |
+| M1-02 | ✅ | OpenCode `Detect` and generation detection (v2 tables / v1 tables / legacy `storage/`) | 2 | M1-01, M0-04 | Reports which generations are present locally. |
+| M1-03 | ✅ | OpenCode v2 scan: `session_v2` → `SessionMeta` (dir, title, model, tokens, cost, archived, parent) plus SQL message counts from `session_message` | 3 | M1-02 | 64 local sessions listed with counts. |
+| M1-04 | ✅ | OpenCode v2 `Load`: `session_message` (`user`, `assistant.content[]`, `compaction`, `synthetic`, `system`) → `Message`/`Part` | 4 | M1-03 | Golden test passes; sessions containing tools/patches render in the CLI `show`. |
+| M1-05 | ✅ | OpenCode v1 scan and `Load`: `session` + `message` + `part` (text, reasoning, tool, patch, file, compaction; step-start/finish ignored) | 4 | M1-02 | Golden test built from a v1-only fixture DB. |
+| M1-06 | ⬜ | OpenCode legacy JSON storage scan and `Load` (`storage/session|message|part`) | 4 | M1-02 | Golden test using a synthetic legacy fixture tree. |
+| M1-07 | 🟡 | OpenCode merge: dedupe by id (v2 wins unless the v1 row's `time_updated` is strictly newer; Scan and Load share the rule), `parent_id` children, `project.worktree`/`worktree` → `RepoRoot`; fixture DBs built by SQL in the tests | 3 | M1-03, M1-05, M1-06 | Local total is 64 with no duplicates; fixture tests pass. **Open:** legacy is not merged (M1-06) and the `worktree` table is not read. |
+
+### Codex
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M1-08 | ⛔ | Obtain a real Codex rollout plus a populated `state_N.sqlite`, then sanitize them into testdata **(blocked: SPEC Q3)** | 1 | M0-06 | Fixtures committed. |
+| M1-09 | ✅ | Codex `Detect` and discovery (`sessions/YYYY/MM/DD/rollout-*.jsonl`, `archived_sessions/`) | 2 | M0-03, M0-04 | Discovers fixture files; returns empty (not an error) when missing. |
+| M1-10 | 🟡 | Codex rollout metadata scan (`session_meta`, `turn_context`) and message counts (excluding injected env/instructions), with byte-offset resume | 3 | M1-09, M0-08, M1-08 | Golden metadata test passes. **Open:** synthetic assertion tests only; the golden test waits on M1-08. |
+| M1-11 | ✅ | Codex `threads` index fast path (highest `state_N.sqlite`), merged with the file scan; `thread_spawn_edges` → `ParentID`; `archived` flag | 3 | M1-01, M1-10 | Uses the index when populated and falls back to files when it's empty (as on this machine). |
+| M1-12 | 🟡 | Codex `Load`: `response_item` (message, reasoning, function_call ↔ function_call_output) and relevant `event_msg` → `Message`/`Part` | 4 | M1-10 | Golden transcript test passes. **Open:** synthetic assertion tests only; the golden test waits on M1-08. |
+
+### Core
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M1-13 | ✅ | Scan orchestrator: run all detected providers concurrently (bounded pool, context cancel), merge results and diagnostics | 3 | M0-03 | A slow fake provider doesn't block the others; cancellation works. |
+| M1-14 | ✅ | Grouping engine (pure Go): Dir→Agent, Agent→Dir, Flat; subagent nesting; missing-dir flag; per-node counts | 3 | M0-05, M0-02 | Table tests cover all 3 modes. |
+
+### GUI (Wails + Svelte)
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M1-15 | ✅ | Wails **v2** scaffold (`wails init -t svelte-ts`, then upgrade to Svelte 5 + current Vite), Linux build with `-tags webkit2_41`, `make dev` / `make app`, `WEBKIT_DISABLE_DMABUF_RENDERER` fallback | 3 | M0-01 | Empty window launches on this machine; build deps (`libgtk-3-dev libwebkit2gtk-4.1-dev`) documented. |
+| M1-16 | ✅ | App service bound via `options.App.Bind`: `ListGroups(mode, filter)`, `ListSessions(groupKey, filter, sort)`, `GetSessionMeta(ref)`, `GetMessages(ref, offset, limit)` (plus `AgentCounts`, `GetBlob`, `Scan`, `OpenURL`); `frontend/src/lib/api.ts` is the only module touching `window.go` (hand-written binding interface) and falls back to a browser mock | 3 | M1-13, M1-14, M1-15 | Frontend can call each binding through `api.ts`; the mock backend runs the UI in a plain browser. |
+| M1-17 | ✅ | Frontend: three-pane shell, resizable splitters (widths persisted), system light/dark theme, app-wide store | 3 | M1-15 | Panes resize; theme follows the OS. |
+| M1-18 | ✅ | Frontend: sidebar group tree (expand/collapse, counts, group-mode toggle, Agents section) | 3 | M1-16, M1-17 | Tree reflects real data in all three modes. |
+| M1-19 | ✅ | Frontend: session list column (virtualized rows with live dot, title, agent badge, **message count**, relative time, hover tooltip with count breakdown and absolute time) | 4 | M1-16, M1-17 | Smooth with 1k+ synthetic rows; counts match CLI output. |
+| M1-20 | 🟡 | Frontend: transcript viewer base (virtualized list, user/assistant bubbles, markdown via the zero-dependency sanitizing renderer in `lib/markdown.ts`) | 4 | M1-16, M1-17 | A real session renders; injected `<script>` in content is neutralized. **Open:** messages render with a paged `{#each}`, not a virtualized list. |
+| M1-21 | ✅ | Frontend: code highlighting (zero-dependency highlighter in `lib/highlight.ts`, `hljs-*` classes) and copy-code buttons | 2 | M1-20 | Highlighted blocks render; copy works. |
+| M1-22 | ✅ | Frontend part renderers: collapsible reasoning, tool call + result pair (status icon, highlighted input/output), patch/diff view, compaction divider, subagent link (opens child) | 4 | M1-20 | Every `PartKind` has a renderer; checked on real sessions. |
+| M1-23 | ✅ | Frontend: session header (title, agent, model, cwd, branch, msg count, tokens, cost, created/updated) | 2 | M1-19 | Header values match the CLI `show --json`. |
+| M1-24 | 🟡 | Progressive loading for big transcripts: paged `GetMessages`, load-on-scroll, first screen before the full parse | 4 | M1-20 | The 38 MB session shows its first screen in < 1 s (SPEC §8). **Open:** the target is met (see `docs/perf.md`), but the backend still parses the whole transcript before the first page. |
+| M1-25 | ✅ | Actions: copy resume command (per provider, including `cd`), reveal source file (`xdg-open` on parent dir) | 2 | M1-23 | Pasted command resumes the session in each tool. |
+| M1-26 | 🟡 | Empty, error and loading states (no agents detected, provider failed, session file vanished) | 2 | M1-18, M1-19, M1-20 | Each state is reachable and looks intentional. **Open:** a failed provider is never shown (`Service.ScanErrors` is not bound). |
+| M1-27 | ✅ | WebView hardening: strict CSP, external links open in the system browser, no remote resources | 2 | M1-20 | CSP header is set; clicking a link in a transcript opens the browser, not the WebView. |
+| M1-28 | ✅ | MVP QA pass on real data: measure against the SPEC §8 perf targets, then file and fix the top issues | 4 | M1-01 → M1-27 | Checklist signed off; perf numbers recorded in `docs/perf.md`. |
+| M1-29 | ✅ | *(retroactive)* Sidebar polish: node kinds (directory/agent/session) with agent icons, large groups collapsed by default (collapse state persisted and pruned), clicking a group selects its first visible session | 3 | M1-18 | Tree nodes are styled by kind; `sessionToSelect` and collapse-key tests pass. |
+| M1-30 | ✅ | *(retroactive)* Theming: manual light/dark toggle, neutral gray dark theme, higher-contrast light theme, themed `Dropdown` component for list menus | 2 | M1-17 | Both themes stay legible; dropdowns follow the theme. |
+| M1-31 | ✅ | *(retroactive)* Transcript "Bottom" jump loads the remaining pages (500 per request) before scrolling; pill pinned to the pane corner and re-evaluated when content grows | 1 | M1-24 | Bottom reaches the real last message of a long session. |
+
+## M2 — Index, search, live updates (≈ 36 h)
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M2-01 | ✅ | Cache DB (`$XDG_CACHE_HOME/agent-sessions/index-v<N>-<roots>.db`, mode `0600`; originally `index.db`, migrated by M7-21): schema and migrations for sessions, file state (path, size, mtime, offset) and counts | 3 | M1-13 | Migrations run idempotently; the file is created with `0600`. |
+| M2-02 | ✅ | Incremental indexing: skip unchanged files, resume from offset on append, rescan fully on shrink; startup paints from cache first, then refreshes | 4 | M2-01, M0-10, M1-10 | Warm start reaches first paint in < 300 ms; an appended session updates its count. |
+| M2-03 | ✅ | OpenCode incremental refresh via `time_updated >= cursor` plus the merged-ID checkpoint (re-merges IDs whose generation membership changed) | 2 | M2-01, M1-07 | Only changed sessions are re-read (verified by test). |
+| M2-04 | ✅ | FTS5 index of titles and message text, updated incrementally with the M2-02/03 pipeline | 4 | M2-02 | The FTS table stays in sync after append and delete. |
+| M2-05 | ✅ | Search API: `Search(query, filter)` → hits with snippet, session ref and message index; prefix and phrase queries | 3 | M2-04 | Tests cover ranking and snippet highlighting. |
+| M2-06 | ✅ | Search UI: `/` focuses the search box; results list with snippets; clicking a result opens the session, scrolls to the message and highlights the match | 4 | M2-05, M1-24 | Jumping to the matched message works in large sessions. |
+| M2-07 | ✅ | fsnotify watcher: watch provider roots (recursive for Claude/Codex dirs; the DB/WAL for OpenCode) with debounce, mapping events to targeted rescans | 4 | M2-02 | A new message in an active session is reflected within about 1 s. |
+| M2-08 | ✅ | Push backend changes to the UI (`runtime.EventsEmit` with the `OnStartup` ctx, subscribed through `api.ts`), reactively updating tree counts, list rows and the header | 3 | M2-07, M1-18, M1-19 | UI updates without manual refresh. A coalesced (100 ms) `catalog:changed` event carries changed/removed refs; the UI reloads the tree in the background, the list only when affected, and the header in place. |
+| M2-09 | ⬜ | Live tail in the transcript view (auto-append; "jump to latest" pill when scrolled up) | 3 | M2-08, M1-24 | Watching an active session shows new messages. |
+| M2-10 | ⬜ | Live badge refresh (periodic pid check, plus OpenCode/Codex activity heuristics based on recent updates) | 2 | M0-14, M2-08 | Badge disappears within 5 s of the agent exiting. |
+| M2-11 | 🟡 | Diagnostics panel: provider roots, detected generations and versions, parse-error and unknown-type counts per provider | 3 | M1-13, M1-16 | Panel shows real counts; errors link to the file. **Open:** `Diagnostics` binding exists; no panel. |
+| M2-12 | 🟡 | "Clear cache and rebuild" action | 1 | M2-01 | The cache is recreated and the UI reloads. **Open:** `Refresher.ClearCache` exists; not bound or in the UI. |
+
+## M3 — Polish & power features (≈ 37 h)
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M3-01 | 🟡 | Backend filters: agent, date range, model, archived, has-subagents, live-only | 3 | M1-16 | Filter tests pass; the counts in the tree respect filters. **Open:** agent (single), archived (bool), has-subagents, live-only, text query and path work; date range, model, multi-agent and archived tri-state do not. |
+| M3-02 | 🟡 | Filter UI (chips and popover), persisted per session of the app | 3 | M3-01 | Filters apply instantly and survive a restart. **Open:** toggles and dropdowns exist; no chips/popover, nothing persisted. |
+| M3-03 | 🟡 | Sort options: updated, created, message count, tokens/cost | 2 | M1-19 | Sort stays stable and persists. **Open:** fields and direction work (plus title); no persistence or specified tie-break. |
+| M3-04 | 🟡 | Repository folding: group by `RepoRoot`, collapsing subdirs and worktrees (`.claude/worktrees/*`, OpenCode `worktree`) | 3 | M1-14, M1-07 | This machine's worktree sessions collapse under the main repo. **Open:** `group.Options.FoldRepo` exists and is tested but is never enabled; no API/UI toggle. |
+| M3-05 | ⬜ | Config file (`config.toml`): load, validate, defaults, save; root overrides and multiple roots per provider | 3 | M0-04 | Invalid config produces a readable error; overrides take effect. |
+| M3-06 | 🟡 | Settings UI (providers on/off, roots, terminal command, theme, default grouping, hidden dirs) | 3 | M3-05 | Changes persist and apply without a restart. **Open:** only the manage toggles and the theme toggle exist. |
+| M3-07 | ⬜ | "Open terminal in cwd": a plain shell in the session directory | 2 | M3-05 | Opens in the terminal chosen in Settings. The configurable command design is superseded by M8-12 (terminal app chosen from the detected ones). |
+| M3-08 | ⬜ | Export to Markdown (respecting the meta/reasoning toggles) | 3 | M1-16 | Exported file reads cleanly; golden test passes. |
+| M3-09 | ⬜ | Export to JSON (unified model) and standalone HTML | 3 | M3-08 | Both formats open correctly; HTML is self-contained. |
+| M3-10 | ⬜ | Keyboard navigation: `j/k`, `Enter`, `Esc`, `/`, `g g`/`G`, pane focus switching; shortcut help overlay | 3 | M1-19, M1-20 | All shortcuts work and are listed in the overlay. |
+| M3-11 | 🟡 | View toggles: show meta/system, show reasoning, raw-JSON-per-record inspector | 3 | M1-22 | Toggles persist; raw JSON matches the source record. **Open:** a non-persisted meta toggle only. |
+| M3-12 | ⬜ | Stats view: messages, tokens and cost per dir, per agent and over time (read `dataviz` guidance first) | 4 | M2-01 | Charts render from index data; totals match the list. |
+| M3-13 | ✅ | *(retroactive)* Directory filter: debounced sidebar box, case-insensitive substring of cwd or repo root, applied to tree, list and agent counts | 1 | M3-01 | Backend and mock filter tests pass. |
+| M3-14 | ✅ | *(retroactive)* Manual refresh: sidebar footer button runs `Scan` and reloads tree and list | 1 | M1-16 | Button spins while scanning; new sessions appear without a restart. |
+
+## M4 — Destructive actions (opt-in) (≈ 18 h)
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M4-01 | ✅ | Linux trash via `gio trash` (freedesktop Trash; no `os.Remove` fallback), with a non-Linux stub | 3 | M0-04 | Trashed files show up in the file manager's Trash and can be restored. |
+| M4-02 | ✅ | Delete for Claude (trash the session file, subagent dir and tool-results) and Codex (`codex delete --force`, permanent, gated by `allow_permanent_delete`); preview + HMAC-token confirmation; refuse if the session is live or recently updated; setting to enable destructive actions (archive moved to M4-06) | 4 | M4-01, M2-10 | Actions are disabled by default; the live guard is tested. |
+| M4-03 | ✅ | OpenCode delete across both generations: v2 copies via `opencode session delete --standalone`, v1 rows via direct SQL in one transaction (`part`, `session`, v1-only `event_sequence`; never other tables); refuse while the 1.x→2.x migration is unfinished; `opencode serve`/`acp` processes don't count as live | 3 | M1-07 | Both copies are gone after a rescan and in OpenCode itself; fixture tests cover v2-only, v1-only, both, and linked parents. |
+| M4-04 | ✅ | *(retroactive)* Permanent delete: `allow_permanent_delete` setting (off by default) for non-reversible actions, one-click confirmation dialog stating the consequence | 2 | M4-02, M4-03 | Permanent actions are blocked until allowed; the dialog names what cannot be restored. |
+| M4-05 | ✅ | *(retroactive)* Bulk delete: row checkboxes, "older than N days" filter, one preview/confirmation for the whole selection | 3 | M4-02 | Mixed selections preview per item; blocked items are skipped with a reason. |
+| M4-06 | ⬜ | Archive action (originally part of M4-02/03): Claude/Codex/OpenCode archive through each tool's supported path, reversible | 3 | M4-02, M4-03 | Archived sessions leave the default list and reappear with the Archived toggle. |
+
+## M5 — macOS & distribution (≈ 20 h)
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M5-01 | 🟡 | `paths_darwin.go`: cache in `~/Library/Caches`, config in `~/Library/Application Support`; verify tool roots on macOS | 2 | M0-04 | Path tests pass on macOS. **Open:** paths and table test exist; tool roots not verified on a Mac. |
+| M5-02 | ⬜ | macOS build and fix WKWebView differences (fonts, scrolling, clipboard, `open -R`, terminal launch) | 4 | M5-01, M1-28 | Full MVP checklist passes on macOS. |
+| M5-03 | 🟡 | Universal binary (arm64 + amd64) and `.dmg` packaging | 3 | M5-02 | `.dmg` installs and runs on both architectures. **Open:** `make package-macos` builds an ad-hoc-signed universal `.dmg` in CI; not yet run on Mac hardware. |
+| M5-04 | ⬜ | Code signing and notarization pipeline (credentials stored in CI secrets) | 4 | M5-03 | Gatekeeper opens the app without warnings. |
+| M5-05 | 🟡 | Linux packaging: AppImage and `.deb` (declaring the webkit2gtk-4.1 dependency) | 4 | M1-28 | Installs and runs on a clean Ubuntu VM. **Open:** `make package-linux` builds `.deb` and `.rpm` via nfpm (amd64, arm64); no AppImage; not verified on a clean VM. |
+| M5-06 | 🟡 | CI (GitHub Actions): lint, test and fuzz-smoke on Linux; build artifacts for Linux and macOS on tag | 3 | M0-01 | CI is green; tagged release produces artifacts. **Open:** `release.yml` tests and packages on pushes to `release` into a draft GitHub Release; no lint, fuzz-smoke or per-PR CI. |
+
+## M6 — Portable sessions and cross-agent handoff (≈ 60 h)
+
+Design: [docs/plan/M6.md](docs/plan/M6.md). Order: docs and spikes first
+(M6-01, M6-02), then the handoff slice (M6-08 → 11, writes nothing to a tool
+store), then export (M6-03…07, M6-12), import (M6-13), restore (M6-14…16) and
+QA (M6-17).
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M6-01 | ✅ | SPEC §1/§7/§9/§12/§13, M0 contract note, `docs/plan/M6.md`, this table | 2 | – | Docs describe bundles, handoff and opt-in restore; manifest v1 is recorded as a contract. |
+| M6-02 | ✅ | Format spikes on disposable roots, recorded in `docs/formats.md`: Claude cwd encoder verified against every local pair and `claude --resume` of a copied, cwd-remapped session; Codex copied rollout without state/thread_history rows; OpenCode export→import ID, children, `--directory` | 4 | – | Each spike has a verified/failed note with the tool version. |
+| M6-03 | ✅ | `internal/bundle`: manifest v1, streaming writer (0600 temp + rename), validating reader, reader fuzz test | 4 | M6-01 | Round-trip test passes; zip-slip, oversize, bad checksum, unknown version and unsafe IDs are rejected. |
+| M6-04 | ✅ | `internal/redact`: PEM/token/JWT/assignment detectors, `~` path rewrite, per-rule counts, corpus test | 3 | – | Corpus has no false negatives on the known formats. |
+| M6-05 | ✅ | `manage/capture.go`: Claude and Codex file sets incl. descendants, OpenCode `session export` via `ExecFunc`, protected-name filter | 4 | M6-02 | Capture tests use fixture trees; OpenCode argv/env asserted with a fake exec. |
+| M6-06 | ✅ | Full-fidelity transcript for bundles: resolve truncated outputs and blobs via `Blob`, 64 MiB total cap, reported | 3 | M6-03 | A truncated tool output is complete in `transcript.json`; overflow is reported, not silently cut. |
+| M6-07 | ✅ | Export service/bindings (`PreviewExport`, `ExportBundle`, save dialog) and CLI `export`/`inspect` | 3 | M6-03, M6-04, M6-05, M6-06 | `export … -o` then `inspect` round-trips; cancel returns an empty path. |
+| M6-08 | ✅ | Handoff core: sections 1–8, working-state extraction, per-agent tool classification | 4 | M6-01 | Text helpers live in `internal/model/text.go`; files/commands/todos/plans/subagents extracted. |
+| M6-09 | ✅ | Handoff budget/trimming, `Report`, target adapters, golden tests per source→target pair | 4 | M6-08, M6-04 | Goldens cover tool pairs, compaction, subagents, trimming and injected markup. |
+| M6-10 | ✅ | Handoff delivery: per-agent argv, prompt file + full-context file (0600, pruned after 30 days), bindings, CLI `handoff`, settings "Delete cache" | 3 | M6-09 | Command always points at the prompt file; old files are pruned; the cache can be cleared from settings. |
+| M6-11 | ✅ | `HandoffDialog` and the "Continue in ▾" header menu, store, api/mock | 4 | M6-10 | Preview shows the token estimate and dropped-items report; clipboard errors are visible. |
+| M6-12 | ✅ | `ExportDialog` (two profiles) and the "Export ▾" menu, store, api/mock | 4 | M6-07 | Complete is the default and shows the sensitive-data warning; share-safe forces redaction. |
+| M6-13 | ✅ | `OpenBundle` and `ImportDialog`: summary, checksums, "Continue in…" from the bundle | 4 | M6-07, M6-11 | A share-safe bundle offers handoff but no restore. |
+| M6-14 | ✅ | Restore engine: `allow_restore`, preview token, live/collision/path checks, cwd remap, Claude writer with copy-as-new-ID | 4 | M6-05, M6-02 | Token staleness, collisions, live refusal, protected paths and no-overwrite are tested on temp roots. |
+| M6-15 | ✅ | OpenCode import restore; Codex writer only if M6-02 passed, otherwise the action is hidden with a reason | 4 | M6-14 | Fake `ExecFunc` asserts the OpenCode import argv and env. |
+| M6-16 | ✅ | Catalog event and selection after restore, restore UI in `ImportDialog`, directory chosen before import (sidebar directory menu; Import button opens a directory chooser with Browse on this computer), `allow_restore` dropped in favour of the explicit Import confirmation | 3 | M6-14, M6-13 | `TestRestoreBundleIntoChosenDirectory` imports a copy and a provider scan lists it under the chosen directory. The planned `Refresher.Reintroduce` is not needed: restore writes fresh files without restoring the original mtime, so the incremental scanner never sees an imported file as unchanged. |
+| M6-17 | ⬜ | QA: round-trips across two temp homes, cross-agent handoff smoke test with real CLIs (manual), security review | 3 | M6-01…16 | Checklist in `docs/plan/M6.md` signed off. |
+
+---
+
+## M7 — Remote over SSH (≈ 65 h)
+
+Design: [docs/plan/M7.md](docs/plan/M7.md). Order: docs and engine extraction
+(M7-01…07), RPC and server (M7-08…10), SSH/askpass/deploy (M7-11…14),
+flows/UI (M7-15…17), packaging (M7-18), and QA (M7-19…20).
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M7-01 | ✅ | SPEC §1/§9/§13, `docs/plan/M7.md`, this table | 2 | – | Docs describe SSH model, architecture, and task breakdown. |
+| M7-02 | ✅ | `internal/version` plus ldflags in Makefile and release.yml; replace `appVersion` | 2 | M7-01 | Stamped version package available across modules and build scripts. |
+| M7-03 | ✅ | `Emitter` interface; move the catalog bus into the engine; Wails emitter in app | 3 | M7-01 | Catalog bus is engine-side and emits via decoupled interface. |
+| M7-04 | ✅ | Move Service, DTOs, actions and LRUs (now synchronized) to `internal/engine`, with aliases in app | 4 | M7-03 | Core service logic compiles in `internal/engine` with backwards-compatible aliases in `internal/app`. |
+| M7-05 | ✅ | Move the Wails-free handoff/export/import/manage/search logic | 4 | M7-04 | Engine houses provider-facing and file operations without GUI dependencies. |
+| M7-06 | ✅ | Engine lifecycle (Start/Scan/Close, watcher diagnostics fix); App becomes a facade over the local engine | 4 | M7-05 | Engine encapsulates lifecycle; App delegates local backend operations to Engine. |
+| M7-07 | ✅ | `Backend` contract and local adapter; reflection coverage test | 3 | M7-06 | Unified `Backend` interface covers all RPC/local operations with reflection verification. |
+| M7-08 | ✅ | `internal/rpc`: framing, preface, caps, cancel, error registry | 4 | M7-07 | JSON-RPC 2.0 NDJSON transport with frame limits, preface scanner, and error mappings. |
+| M7-09 | ✅ | RPC dispatcher, notifications and client backend (pipe tests) | 4 | M7-08 | Full client/server roundtrip over in-memory pipes with notification and cancellation support. |
+| M7-10 | ✅ | `serve --stdio`, initialize handshake, EOF/idle exit, staging and `transfer` subcommands | 4 | M7-09 | Headless CLI `serve --stdio` and artifact transfer commands functional. The original process-wide busy lock was replaced by M7-21's shared index writer/readers. |
+| M7-11 | ✅ | `internal/remote` hosts parser, argv builder, ControlMaster, quoting (temp `-F` configs only) | 4 | M7-01 | SSH config parser and sanitized subprocess launcher with safe quoting. |
+| M7-12 | ✅ | Askpass helper branch in main, secure broker, Wails prompt event and reply | 4 | M7-11 | ASKPASS socket broker prompts local UI for SSH credentials and replies securely. |
+| M7-13 | ✅ | Probe, OS/arch mapping, server locator, atomic deploy and version verification | 4 | M7-02, M7-11 | Remote host environment probed, compatible binary staged, unpacked, and verified. |
+| M7-14 | ✅ | Remote session supervisor (login shell, preface, stderr drain) and the connection state machine in App | 4 | M7-09, M7-10, M7-12, M7-13 | Robust connection lifecycle in App managing disconnects, state transitions, and streams. |
+| M7-15 | ✅ | Artifact transfer; remote export/import/save flows; remote commands shown for an interactive shell on the host; capabilities, RevealSource and OpenURL | 4 | M7-14 | Remote bundle export/import, resume/handoff commands to paste in a shell on the host, and capability handling. |
+| M7-16 | ✅ | Frontend api/types/mock/connection store; store resets by generation | 4 | M7-14 | Frontend connection store, generation gating, and store resets. |
+| M7-17 | ✅ | Host chip and menu, banners, host-aware confirmations, AskpassDialog, per-host env override UI | 4 | M7-16 | Status bar host switcher, reconnect overlays, and credentials prompt dialog in UI. |
+| M7-18 | ✅ | `make remote-servers` (4 × gz plus SHA256SUMS); nfpm contents; macOS Resources before codesign; release.yml | 3 | M7-02, M7-10 | Pre-compiled headless server bundles built for linux/darwin × amd64/arm64. |
+| M7-19 | ✅ | Opt-in SSH integration harness (sshd in a container or on localhost with temp keys, known_hosts, HOME, and synthetic fixtures) | 4 | M7-15, M7-18 | End-to-end integration tests over local ephemeral SSH daemon. `make test-ssh` (`AGENT_SESSIONS_SSH_DOCKER=1`): `internal/remote/sshtest` runs Alpine sshd in Docker with generated host/client keys, pinned known_hosts, sh and zsh users with login banners, and Claude fixtures. Covers deploy, private install modes, reuse, browse, server exit, unknown alias, reconnect through the app loop, and version mismatch stopping retries. `TestSSHIntegration` still targets a real host via `AGENT_SESSIONS_SSH_HOST`. |
+| M7-20 | 🟡 | QA and security review (race tests, package inspection, no-Wails check, no listening sockets) | 3 | all | Comprehensive verification suite confirming clean architecture, safety, and race freedom. Done: `go test -race ./...`, deb layout/modes, no-Wails/no-app/no-sshtest dependency tests for the CLI and desktop, a runtime no-listening-sockets test in the sshd harness. Fixed from the review: a dropped host no longer falls back to Local (offline backend, one route snapshot per binding, local events gated), `ReadFrame` blank-line recursion, a duplicate response ID wedging the client, an unbounded or stalled preface (line cap, 60s handshake), ControlDir ownership/mode/symlink checks and a macOS-safe socket path length, constant-time askpass token, `serve` emitter race, per-host env overrides now applied before the cache lock and engine start (roots reported back, transfer staging via `--cache`, second initialize rejected), frontend stale overlay (panes inert, mutations refused, `/` search off), late replies from a previous backend dropped by an epoch guard, a host's collapse state no longer pruned by a tree from the other backend, a delete cut off by a drop reported as "outcome unknown" and never retried, a client heartbeat plus `serve --idle-timeout` so a half-open link cannot leave the server holding the cache lock, the ssh master closed on disconnect, host switch and quit (sshd tests assert no server or master is left). Open: transfer size/sha256 checks, darwin peer UID, askpass cancel and queueing, RPC blob cap and timeouts, delete-dialog wording when trash is unavailable. |
+| M7-21 | ✅ | Sharing a host: one server per client, index writer/readers per schema and provider roots, checksum redeploy, age-based build prune, locked config updates | 4 | M7-20 | Implemented: immutable `<version>-<sha8>` builds with checksum selection, unique deploy temp names (stale ones cleaned), 30-day prune-on-deploy and redeploy when a listed build was pruned before start; index/lock named by schema and provider-roots key, one writer plus read-only clients and promotion on exit; config read-modify-write under a cross-process lock with a 10s bounded wait. Race tests cover two local engines, engines with different roots and reader search after a delete; Docker sshd tests cover two concurrent clients, writer promotion and no leftover processes, plus same-version rebuild isolation and pruning. A synthetic second index schema cannot be run in one test binary; unit tests cover per-schema locks, seeding, locked/aged cleanup and legacy migration. |
+
+---
+
+## M8 — Windows support (≈ 62 h)
+
+Design: [docs/plan/M8.md](docs/plan/M8.md). Local-first (M8-01…07), then
+key/agent-only SSH (M8-09, requested 2026-10-04) and WSL distributions as
+remotes (M8-13, approved 2026-10-04). Password/passphrase dialogs remain
+gated on the M8-08 named-pipe credential channel.
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M8-01 | ✅ | `internal/paths` Windows `FromEnv` (Claude/Codex profiles, `%LOCALAPPDATA%`/`%APPDATA%` roots; verify OpenCode's Windows data dir on a real machine) | 3 | – | CLI and production desktop build; the user confirmed Windows detect/scan for all providers and GUI startup/session listing (2026-10-04). Installer and broader GUI QA remain M8-07/M8-10. |
+| M8-02 | 🟡 | `explorer /select` for Reveal and `rundll32`/`explorer` for OpenURL via a per-GOOS `desktopOpen` helper | 2 | M8-01 | Reveal opens the file in Explorer; links open in the default browser. **Done:** `desktopOpen` runs `explorer <dir>` and `rundll32 url.dll,FileProtocolHandler <url>`. **Open:** check both on a real machine (M8-10). |
+| M8-03 | ✅ | Windows path audit: grouping keys/labels, `pathutil` normalize + git resolver, Claude project-folder encoding, `tree.ts` path filter, export file-name fixtures (drive letters, backslashes, case-insensitivity) | 6 | M8-01 | Sessions recorded on Windows group, filter and label correctly; table tests with Windows-path fixtures pass on Linux. |
+| M8-04 | 🟡 | Live-session detection fallback: sessions never show live (no `/proc`); Windows process-API variant deferred | 1 | M8-01 | No crashes; LIVE badge absent on Windows; fallback documented. **Done (2026-10-04):** Claude status-file PIDs are checked with `OpenProcess` (a running or reused PID counts as live). |
+| M8-05 | 🟡 | Recycle Bin via native `IFileOperation` with recycle-only guards; Windows process-safety prerequisite; delete-dialog wording states Recycle Bin; `allowPermanentDelete` path unchanged | 5 | M8-01 | Deleting a Claude session moves it to the Recycle Bin; Codex/OpenCode permanent delete stays opt-in. **Done:** clearer blocked reasons, conservative native management process guard, `IFileOperation` transport; synthetic native smoke recycles a file and a directory and vetoes a permanent preflight (2026-10-04). **Gate opened (2026-10-04, user decision)** with read-only pre-checks: a drive whose Bin is turned off, a session larger than the Bin, or unverifiable settings are refused before the Shell runs. **Open:** real GUI restoration check. |
+| M8-06 | 🟡 | PowerShell command quoting for resume/handoff commands (decide PS5 vs PS7 target; single-line handoff pointer kept) | 4 | M8-01 | Pasted commands work in the target shell on a real Windows machine. **Done (2026-10-04):** local copies use PowerShell 5.1 syntax (`Set-Location -LiteralPath '<dir>' -ErrorAction Stop; & '<exe>' …`), with all PowerShell single-quote forms doubled; a CLI outside PATH is called by its full path; remote copies stay POSIX. Native tests run the generated line through `powershell.exe` and check argv and cwd. **Open:** real paste check (M8-10). |
+| M8-07 | 🟡 | CI `windows-latest` job (tests + `GOOS=windows` build assert), installer in release.yml, remote-server bundling, SmartScreen note | 6 | M8-01 | CI green on Windows; installer artifact published; unsigned warning documented. **Done:** the suite passes on Windows; the CI job tests and builds the CLI and desktop app (not yet run on GitHub). `make package-windows` and a release.yml `windows` job build a per-user `.msi` with wixl, including the remote servers (replaces NSIS at the user's request); the SmartScreen note is in the README. **Open:** first run of both jobs on GitHub, and a real install/uninstall check (M8-10). |
+| M8-08 | ⬜ | Askpass over a per-user named pipe with DACL (replaces the skipped Unix peer-UID/private-dir checks); re-enable no-listening-socket assertions | 8 | M8-07 | Password channel is scoped to the current user; security review passes. |
+| M8-09 | 🟡 | Native Windows SSH without ControlMaster: persistent stdio RPC session; separate setup/transfers; keys/agent gated by noninteractive probe; client discovery, prerequisite guidance and hidden console windows | 5 | M8-01 | Windows client connects to Linux over persistent RPC; Refresh/browse/delete/export work without per-action reconnects; setup/transfers use noninteractive auth; reconnect/disconnect work without master commands. **Done (2026-10-04):** native client discovery, explicit no-mux/batch options, hidden spawns, no Windows askpass listener, bounded probe/stderr and visible error details; read-only native `lit` check succeeds. **Open:** GUI connect/deploy/reconnect/transfer QA. M8-08 is required only for future credential dialogs. |
+| M8-10 | ⬜ | QA: real-machine pass over scan, search, export/import, handoff, Recycle Bin delete, PowerShell paste, install + first launch | 6 | M8-01…07 | Checklist in `docs/plan/M8.md` signed off. |
+| M8-11 | 🟡 | Open in terminal on Windows for local Resume and Continue in (handoff and bundle import): find the agent CLI on PATH or where standalone installs, desktop apps (Claude, Codex, OpenCode) and VS Code/Cursor extensions keep it; open a PowerShell console in the session directory | 5 | M8-06 | One click starts the agent in the right directory for a desktop-only install; SSH sessions keep Copy (WSL: M8-13). **Done (2026-10-04):** `internal/launch` (search, quoting, argument checks, `CREATE_NEW_CONSOLE` without `-EncodedCommand` or execution-policy flags), app bindings refusing remote data, `Resume ▾` split button and dialog buttons. **Open:** GUI check on a real machine (M8-10). |
+| M8-12 | 🟡 | Open in terminal on Linux and macOS: detect installed terminal apps, choose one in Settings (Automatic by default), open the agent in a new window of it | 5 | M8-11 | Resume and Continue in open the agent in the chosen terminal on GNOME, KDE and a Mac. **Done (2026-10-04):** `internal/launch` catalog (11 Linux terminals; Terminal, iTerm2, Ghostty on macOS), file-only detection, one `/bin/sh` script per window, AppleScript with values as arguments only; `[terminal] app` in the local config; Settings dropdown; `NSAppleEventsUsageDescription` in the packaged app; `macos-test` CI job. **Open:** real-desktop QA on Linux and macOS, and the first macOS CI run. |
+| M8-13 | 🟡 | WSL as a remote: the Windows host picker lists the user's registered distributions (`docker-desktop*` hidden, default marked) as `wsl:<distro>` targets; the M7 probe/deploy/serve/transfer stack runs through `wsl.exe` with no ssh, keys or ssh config; Open in terminal for Resume and Continue in (handoff, bundle) runs the distribution's Linux agent | 6 | M8-09, M8-11, M8-12 | Sessions in a WSL distribution browse, search, live-update, export and import like an SSH host's; Open in terminal starts the Linux agent in the project inside the distribution and the window stays open. **Done (2026-10-04):** registry-only listing; validated distribution names; `wsl.exe -d <distro> --exec /bin/sh` with an octal-escaped script and hidden window; the bundled Linux amd64/arm64 servers; missing `wsl.exe` or distribution stops retries; the server builds the terminal script and skips a Windows copy of the agent on the appended PATH; the console opens with `CREATE_NEW_CONSOLE` and ends in the login shell; SSH Open in terminal unchanged (copy only); WSL copy stays POSIX with `wsl -d <distro>` guidance. Opt-in smokes against Ubuntu pass (listing, probe, binary pipe, exit status, no-window `CreateProcess`). **Open:** real WSL GUI QA: sessions, live updates, export/import; resume/handoff/bundle directory and window survival; cold distribution boot; missing distribution without retries; disconnect. No real agent started yet. |
+
+---
+
+## Summary
+
+| Milestone | Tasks | Est. hours | ✅ | 🟡 | ⬜ / ⛔ |
+|---|---|---|---|---|---|
+| M0 Foundation + Claude | 16 | 42 | 15 | 1 | 0 |
+| M1 Providers + MVP GUI | 31 | 90 | 23 | 6 | 2 |
+| M2 Index, search, live | 12 | 36 | 3 | 4 | 5 |
+| M3 Polish | 14 | 37 | 2 | 6 | 6 |
+| M4 Destructive (opt-in) | 6 | 18 | 5 | 0 | 1 |
+| M5 macOS & distribution | 6 | 20 | 0 | 1 | 5 |
+| M6 Portable sessions | 17 | 60 | 15 | 0 | 2 |
+| M7 Remote over SSH | 20 | 65 | 1 | 0 | 19 |
+| M8 Windows support | 13 | 62 | 2 | 9 | 2 |
+| **Total** | **135** | **≈ 430 h** | **66** | **27** | **42** |
+
+## Follow-up — Go to File code diagnostics (proposed)
+
+Progress: **19/28 complete**. CD-01…CD-08, CD-10…CD-16 and CD-18…CD-21 are ✅ done; CD-09 is 🟡 partial (remote SSH/WSL diagnostics implemented 2026-10-23 with a host-side identity per the [editor model](docs/plan/code-diagnostics-zed-model.md); no real SSH/WSL QA, not counted); CD-17 is 🟡 partial/blocked (non-GUI QA preparation only; Stage 1 HOLD); CD-22 is 🟡 partial (gopls adapter with a local experimental desktop route and a real installed-gopls smoke; remote stays fail-closed and there is no native/manual QA, so not counted); CD-23 is 🟡 partial/blocked (TypeScript adapter seam, contained discovery and synthetic tests; no host-approved LSP server verified, not counted); CD-24 is 🟡 partial/blocked (Svelte adapter seam, ownership policy and synthetic tests; no Svelte language server verified, not counted); CD-25 is 🟡 partial (revision reconciliation and fake-session guards; external rename/delete reconciliation incomplete, not counted); CD-26 is 🟡 partial (deterministic fake lifecycle integration; live retention/ownership/status gaps and manual UI smoke remain, not counted); CD-27 is 🟡 partial/blocked ([live QA matrix](docs/plan/code-diagnostics-live-qa.md), focused fake preflight only; every live cell blocked/untested, Stage 2 HOLD, not counted); CD-28 is ⛔ blocked: Step 1 release prerequisites are unmet (both gates HOLD), no dependency exception granted; no automation implemented/enabled, off by default. CD-16 proves deterministic automated seams only, not native CD-17 QA or production remote activation.
+CD-10 explicitly proceeded locally against committed RPC contracts/tests; this dependency exception does not complete CD-09 or activate production remotes.
+Only the experimental local desktop route advertises diagnostics capabilities (Stage 1 plus live Go via an installed supported gopls); remote hosts remain fail-closed and both release HOLDs stand. Detailed estimates, dependencies,
+contracts, and acceptance criteria are in
+[docs/plan/code-diagnostics.md](docs/plan/code-diagnostics.md). Individual task
+briefs and acceptance checklists are in [docs/tasks](docs/tasks/README.md).
+These follow-up tasks are not included in the historical milestone totals above.
+Actual CD totals: **28 = 19 complete + 8 partial + 1 blocked + 0 not started**
+(partial: CD-09, CD-17, CD-22…CD-27; blocked: CD-28).
+See the [≤4h remaining-work backlog](docs/tasks/code-diagnostics-remaining.md) for
+safe independent coding versus approval/tool/environment blockers; no installs,
+activation or automation are authorized by that split.
+
+| IDs | St | Scope | Release gate |
+|---|---|---|---|
+| [CD-01](docs/tasks/CD-01.md) | ✅ | Authoritative contract v1, synthetic fixtures, validation/round-trip tests | Full Go suite, targeted race tests, and package lint pass |
+| CD-02 | ✅ | Backend project trust, grants, revocation and contained paths | [Trust policy and approval copy](docs/plan/code-diagnostics-trust.md); focused race tests |
+| CD-03 | ✅ | Bounded argv-only checker supervisor, trust hooks and process-tree cleanup | [Execution semantics](docs/plan/code-diagnostics-supervisor.md); fake/helper race tests and package lint pass |
+| CD-04 | ✅ | Installed Go vet/Svelte-check format spike, sanitized fixtures and tests | [Version/invocation evidence and explicit platform limits](docs/plan/code-diagnostics-checkers.md); full race suite and scoped lint pass; full lint has existing unrelated failures |
+| CD-05 | ✅ | Contained Go vet adapter, fixture parser and fake-supervisor tests | [Policy, evidence and limits](docs/plan/code-diagnostics-go-vet.md); full race suite/scoped lint pass; existing unrelated full-lint failures remain |
+| CD-06 | ✅ | Contained Svelte-check adapter and fixture/fake-supervisor tests | [Policy, evidence and limits](docs/plan/code-diagnostics-svelte.md); targeted race/scoped lint and full Go tests pass |
+| CD-07 | ✅ | Headless result manager, bounded snapshots/events and lifecycle ownership | [Policy, evidence and limits](docs/plan/code-diagnostics-manager.md); deterministic fake-adapter/supervisor races, scoped lint and full Go tests pass |
+| CD-08 | ✅ | Engine/App Stage 1 bindings, ownership and offline routing | [Identity, registry, lifecycle and validation evidence](docs/plan/code-diagnostics-engine.md); full Go/race tests and new-code scoped lint pass |
+| [CD-09](docs/tasks/CD-09.md) | 🟡 | RPC transport, recovery evidence, and host-side SSH/WSL identity with remote managed installs ([editor model](docs/plan/code-diagnostics-zed-model.md), 2026-10-23) | Unit/RPC tests only; no real SSH or WSL session run; not counted |
+| [CD-10](docs/tasks/CD-10.md) | ✅ | Standalone frontend API/store and synthetic mock lifecycle | [Atomic multipart assembly, bounded recovery, identity/epoch races and frontend validation](docs/plan/code-diagnostics-frontend.md); CD-09 activation exception explicit |
+| [CD-11](docs/tasks/CD-11.md) | ✅ | Dialog approval/status and explicit Check/Cancel/provider Retry controls | Local capability/identity discovery; SSR and store lifecycle tests; manual focus/keyboard QA not performed; CD-09 remotes still blocked |
+| CD-12 | ✅ | Problems panel, severity filters, keyboard navigation and draft-safe UTF-16 range reveal | Stage 1: explicit project checks; remote CD-09 blocked |
+| [CD-13](docs/tasks/CD-13.md) | ✅ | Shared exact-deduplication file/tree badges and ancestor totals | Stage 1; 403 frontend tests, check/build passed; native layout QA deferred |
+| [CD-14](docs/tasks/CD-14.md) | ✅ | Verified source gutter/range indicators and plain-text file/stale messages | Stage 1; 409 frontend tests, check/build passed; native paint/layout QA deferred |
+| [CD-15](docs/tasks/CD-15.md) | ✅ | Lazy CodeMirror lint, verified saved ranges, draft/cache freshness guards | 412 frontend tests; check/build passed; native tooltip/gutter QA deferred |
+| CD-16 | ✅ | Deterministic checker→manager→RPC and real-store/view/editor integration regressions; [evidence](docs/tasks/CD-16.md#automated-evidence-2026-10-22) | Automated Stage 1 gate only; CD-09 remote identity remains blocked |
+| [CD-17](docs/tasks/CD-17.md) | 🟡 | Partial/blocked: non-GUI inventory/build/runtime preflight and [blocked QA matrix](docs/plan/code-diagnostics-qa.md) | Stage 1 HOLD; native checks unperformed; macOS link preflight failed; CD-09 remotes blocked |
+| [CD-18](docs/tasks/CD-18.md) | ✅ | Bounded LSP Content-Length stdio transport: framing, correlation, cancel/timeout, queues, close, fake-server tests; [evidence](docs/tasks/CD-18.md#evidence-2026-10-22) | Transport only: no process start, adapters or trust bypass; Stage1 HOLD/CD-17 and CD-09 do not block it |
+| [CD-19](docs/tasks/CD-19.md) | ✅ | Safe LSP session lifecycle: trust/known-dir gate, initialize/initialized, UTF-16/sync negotiation, deny-by-default server requests, idle grace/limits, shutdown/kill, capped restarts; [evidence](docs/tasks/CD-19.md#evidence-2026-10-22) | Fake server/process/clock only: no adapters, document sync or live capability; file watchers rejected (`unwatched`); Stage1 HOLD/CD-17 and CD-09 exceptions do not block local lifecycle |
+| [CD-20](docs/tasks/CD-20.md) | ✅ | Bounded versioned live-document operations across Backend/App/RPC | Automated transport/contract evidence only; no production live activation |
+| [CD-21](docs/tasks/CD-21.md) | ✅ | Frontend displayed-document lifecycle bridge | Automated fake API/store evidence; inert without unadvertised live capability |
+| [CD-22](docs/tasks/CD-22.md) | 🟡 | gopls v0.24.0 spike/decision ([doc](docs/plan/code-diagnostics-gopls.md)), contained Go workspace detection, availability, publishDiagnostics normalization and version guards; fixtures + fake-server tests | Partial: **local desktop route active (experimental, darwin/arm64, 2026-10-23)**: installed gopls v0.24.0, approval-gated fixed argv, toolchain bound into approval, real-gopls draft smoke (error then empty clear, never saved); remote fail-closed, TS/Svelte unsupported, no native/manual draft QA |
+| [CD-23](docs/tasks/CD-23.md) | 🟡 | TypeScript adapter seam, package discovery, ownership, availability, shared normalizer; [doc](docs/plan/code-diagnostics-typescript.md) | Partial/blocked: no approved LSP server installed (observed only vtsls 0.3.0 in Zed's private cache, unversioned pushes); synthetic fake-server tests; not wired, `liveCodeDiagnostics` unadvertised |
+| [CD-24](docs/tasks/CD-24.md) | 🟡 | Svelte LS adapter seam, package detection, Svelte/TS ownership; [doc](docs/plan/code-diagnostics-svelte.md) | Partial/blocked: none verified (no svelte-language-server found on PATH, project or Zed cache); synthetic tests; not wired, `liveCodeDiagnostics` unadvertised |
+| [CD-25](docs/tasks/CD-25.md) | 🟡 | Reopen/refresh/pre-check saved revision reconciliation; draft/undo preservation; fake-session idle/publication guards; explicit unwatched stale fallback; approved local project watcher + `go-syntax` saved-file provider ([evidence](docs/plan/code-diagnostics-project-watch.md)) | Partial: TS/Svelte/gopls unopened coverage still `unwatched`; no unopened type checks, remote watching or manual QA |
+| [CD-26](docs/tasks/CD-26.md) | 🟡 | Deterministic framed fake-server lifecycle and real frontend store integration | Partial: live retention/ownership/status gaps, exhaustive cleanup and manual UI smoke remain; not production integration |
+| [CD-27](docs/tasks/CD-27.md) | 🟡 | Partial/blocked: focused fake preflight and [live QA matrix](docs/plan/code-diagnostics-live-qa.md); no real-server/native/remote runs or measurements | Stage 2 HOLD; production wiring/consumers, identity/bounds/status, approved tools and native/remote prerequisites remain; not counted |
+| [CD-28](docs/tasks/CD-28.md) | ⛔ | Blocked: release prerequisite review only; all acceptance unchecked | [Stage 1 HOLD](docs/plan/code-diagnostics-qa.md#release-decision-and-remaining-work) and [Stage 2 HOLD](docs/plan/code-diagnostics-live-qa.md#release-decision); no dependency exception; automation absent/off-default |
+
+## Follow-up — Editor essentials
+
+Progress: **23/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
+briefs: [docs/tasks](docs/tasks/README.md#editor-essentials). Not included in the
+milestone totals above.
+
+| IDs | St | Scope | Est |
+|---|---|---|---|
+| [PS-01](docs/tasks/PS-01.md) | ✅ | Content search engine on the host | 4 |
+| [PS-02](docs/tasks/PS-02.md) | ✅ | Search over Engine/App/RPC with cancel | 3 |
+| [PS-03](docs/tasks/PS-03.md) | ✅ | Search pane in Go to File | 4 |
+| [PS-04](docs/tasks/PS-04.md) | ✅ | Revision-checked replace engine | 3 |
+| [PS-05](docs/tasks/PS-05.md) | ✅ | Replace in the Search pane, drafts included | 4 |
+| [AG-01](docs/tasks/AG-01.md) | ✅ | New session launch: local, WSL, SSH; panel and external | 4 |
+| [AG-02](docs/tasks/AG-02.md) | ✅ | New session entry points | 3 |
+| [AG-03](docs/tasks/AG-03.md) | ✅ | Link terminal tabs to sessions | 3 |
+| [AG-04](docs/tasks/AG-04.md) | ✅ | Turn state from session files | 4 |
+| [AG-05](docs/tasks/AG-05.md) | ✅ | Terminal attention signals | 3 |
+| [AG-06](docs/tasks/AG-06.md) | ✅ | Alerts: badges, window title, system notifications | 4 |
+| [NAV-01](docs/tasks/NAV-01.md) | ✅ | LSP definition, references and hover requests | 4 |
+| [NAV-02](docs/tasks/NAV-02.md) | ✅ | Navigation over the wire | 3 |
+| [NAV-03](docs/tasks/NAV-03.md) | ✅ | Read-only external definitions | 3 |
+| [NAV-04](docs/tasks/NAV-04.md) | ✅ | Navigation in the viewer | 4 |
+| [NAV-05](docs/tasks/NAV-05.md) | ✅ | Navigation in the editor; HD-01/02 hover formatting follow-up complete | 3 |
+| [NAV-06](docs/tasks/NAV-06.md) | ✅ | References list | 3 |
+| [GIT-01](docs/tasks/GIT-01.md) | ✅ | Repository status | 3 |
+| [GIT-02](docs/tasks/GIT-02.md) | ✅ | Stage, unstage, discard, commit | 4 |
+| [GIT-03](docs/tasks/GIT-03.md) | ✅ | Branches | 3 |
+| [GIT-04](docs/tasks/GIT-04.md) | ✅ | Changes pane | 4 |
+| [GIT-05](docs/tasks/GIT-05.md) | ✅ | Staged and unstaged diffs | 3 |
+| [GIT-06](docs/tasks/GIT-06.md) | ✅ | Fetch, pull, push | 3 |
+
+## Follow-up — Git history
+
+Planned 2026-10-26. **17/18 complete; GH-01…GH-17 complete; GH-18 blocked on native UI access.**
+Plan: [Git history](docs/plan/git-history.md);
+[task briefs and dependencies](docs/tasks/git-history.md).
+Read-only IntelliJ-inspired History layout inside Go to File, supporting a Git
+workspace or a non-Git parent containing repositories. Not included in the
+milestone totals above. Estimates are developer hours, not elapsed commitments.
+
+| ID | Status | Scope | Est |
+|---|---|---|---|
+| [GH-01](docs/tasks/git-history.md#gh-01--shared-contracts-limits-and-fixtures) | ✅ | Contracts, limits and fixtures | 3 |
+| [GH-02](docs/tasks/git-history.md#gh-02--authorized-repository-resolution-and-discovery) | ✅ | Authorized repository resolution/discovery | 4 |
+| [GH-03](docs/tasks/git-history.md#gh-03--read-only-runner-and-history-branches) | ✅ | Read-only runner and branches | 3 |
+| [GH-04](docs/tasks/git-history.md#gh-04--pinned-commit-pagination-and-search) | ✅ | Pinned pagination and search | 4 |
+| [GH-05](docs/tasks/git-history.md#gh-05--commit-details-and-scoped-changed-files) | ✅ | Commit details and scoped changes | 4 |
+| [GH-06](docs/tasks/git-history.md#gh-06--immutable-historical-content-and-diffs) | ✅ | Immutable historical diffs | 4 |
+| [GH-07](docs/tasks/git-history.md#gh-07--engine-authorization-and-app-routing) | ✅ | Engine authorization and app routing | 3 |
+| [GH-08](docs/tasks/git-history.md#gh-08--rpc-and-compatibility) | ✅ | RPC capability and compatibility | 4 |
+| [GH-09](docs/tasks/git-history.md#gh-09--frontend-api-and-bindings) | ✅ | Frontend API, mocks and bindings | 3 |
+| [GH-10](docs/tasks/git-history.md#gh-10--stable-tab-identity) | ✅ | Stable tab identity | 4 |
+| [GH-11](docs/tasks/git-history.md#gh-11--immutable-sources-and-viewer-safeguards) | ✅ | Immutable sources and viewer safeguards | 4 |
+| [GH-12](docs/tasks/git-history.md#gh-12--dedicated-layout-and-splitters) | ✅ | History layout and splitters | 4 |
+| [GH-13](docs/tasks/git-history.md#gh-13--history-store-and-request-lifecycle) | ✅ | History store and stale-response guards | 4 |
+| [GH-14](docs/tasks/git-history.md#gh-14--repositorybranch-navigation-and-commit-list) | ✅ | Repository/branch navigation and commit list | 4 |
+| [GH-15](docs/tasks/git-history.md#gh-15--details-changed-files-and-bottom-diff) | ✅ | Details, files and bottom diff | 4 |
+| [GH-16](docs/tasks/git-history.md#gh-16--refresh-and-lifecycle-integration) | ✅ | Refresh and lifecycle integration | 3 |
+| [GH-17](docs/tasks/git-history.md#gh-17--automated-security-and-integration-gate) | ✅ | Automated security/integration gate | 4 |
+| [GH-18](docs/tasks/git-history.md#gh-18--native-ui-and-platformremote-qa) | Blocked / partial | Native UI and platform/remote QA | 4 |
+| **Total** | **17/18 complete** | | **67** |
+
+## Follow-up — Code check languages
+
+Planned 2026-10-30. **8/8 complete.** Plan:
+[code-diagnostics-languages.md](docs/plan/code-diagnostics-languages.md);
+[task briefs](docs/tasks/code-languages.md). Settings chooses which languages
+get code checks and Go to Definition. Not included in the milestone totals above.
+
+| ID | Status | Scope | Est |
+|---|---|---|---|
+| [CL-01](docs/tasks/code-languages.md#cl-01--language-table) | ✅ | Language table; hard-coded ID lists use it | 3 |
+| [CL-02](docs/tasks/code-languages.md#cl-02--one-bridge-for-plain-pushes) | ✅ | One bridge for plain diagnostic pushes | 3 |
+| [CL-03](docs/tasks/code-languages.md#cl-03--live-discovery-from-the-table) | ✅ | Live discovery from the table | 4 |
+| [CL-04](docs/tasks/code-languages.md#cl-04--discovery-skips-languages-that-are-off) | ✅ | Discovery skips languages that are off | 4 |
+| [CL-05](docs/tasks/code-languages.md#cl-05--disabled-languages-over-the-wire) | ✅ | `disabledLanguages` over Engine, App and RPC | 3 |
+| [CL-06](docs/tasks/code-languages.md#cl-06--frontend-preference-and-display) | ✅ | Frontend preference and display | 4 |
+| [CL-07](docs/tasks/code-languages.md#cl-07--settings-section) | ✅ | Settings section "Code checks" | 3 |
+| [CL-08](docs/tasks/code-languages.md#cl-08--contract-docs-and-gate) | ✅ | Contract, docs and gate | 2 |
+| **Total** | **8/8** | | **26** |
+
+## Follow-up — Performance
+
+Planned 2026-10-24, updated 2026-10-25. **Milestone 3 automated gate complete; next: Milestone 4 design** (PF-10A/B complete) ([roadmap](docs/plan/performance.md#next)).
+Milestone 1: **13/15 complete**, PF-01…PF-06, PF-09 and PF-11…PF-15 complete; PF-07 partial (production opt-out, no further work planned); PF-08 superseded by Milestone 2; PF-10A/B complete. Milestone 1 gate closed; native GUI QA unperformed.
+[Roadmap](docs/plan/performance.md) ·
+[Milestone 1 briefs and dependency graph](docs/tasks/performance-m1.md).
+PF-01 completed 2026-10-24: synthetic catalog/provider benchmarks, correctness and
+work-count regressions; repeated baseline and verification in [docs/perf.md](docs/perf.md#pf-01--synthetic-catalog-and-scanner-baseline-2026-10-24).
+PF-02 completed 2026-10-24: generated large transcript equivalence, repeated
+load/page/concurrency benchmarks, byte accounting and reusable deterministic barriers;
+[evidence](docs/perf.md#pf-02--synthetic-transcript-baseline-2026-10-24).
+PF-03 completed 2026-10-24: generated Git listing/cap/isolation tests, component
+benchmarks and frontend request-count baseline; [evidence](docs/perf.md#pf-03--synthetic-project-listing-baseline-2026-10-24).
+PF-04 completed 2026-10-24: atomic transcript invalidation using the existing LRU,
+per-key tokens and clear epoch; deterministic race/capacity/paging regressions and
+verification [evidence](docs/perf.md#pf-04--atomic-transcript-invalidation-2026-10-24).
+PF-05 completed 2026-10-24: current-flight coalescing, owned cancellation, four-load
+bound and engine restart/shutdown coverage; [evidence](docs/perf.md#pf-05--coalesced-transcript-loads-2026-10-24).
+PF-06 completed 2026-10-24: optional source-loading contract, bounded canonical
+fallback, ownership and Codex feasibility constraints; [evidence](docs/perf.md#pf-06--validated-source-loading-contract-2026-10-24).
+PF-07 split before coding: parent partial, not counted complete. PF-07A complete;
+PF-07B matrix/evidence implemented with byte-heavy regressions. PF-07C complete (safe opt-out), planned
+before coding (4 h): investigated cheap cost eligibility; no defensible policy
+established. Production Load/Blob immediately decline to zero-proof canonical
+fallback; experiment retained privately for tests, cold Blob proof prevented,
+deterministic bypass counts and isolated small/large/Blob evidence recorded.
+Parent remains partial. PF-09 completed with bounded Claude summary reuse; [evidence](docs/perf.md#pf-09--claude-checkpoint-summary-reuse-2026-10-24). PF-11 completed with bounded listing-only snapshots and immediate reopen; [evidence](docs/perf.md#pf-11--bounded-frontend-listing-snapshots-2026-10-24). PF-12 completed with mutation/hidden-save/Git listing invalidation and freshness/draft regressions; [evidence](docs/perf.md#pf-12--listing-freshness-and-draft-safety-2026-10-24). PF-13 completed with bounded cross-directory ignore frontiers and reference-equivalence tests; [evidence](docs/perf.md#pf-13--bounded-directory-frontiers-2026-10-24). PF-14 completed with 4096-path/256 KiB ignore batches and pathspec-safe anchoring; [evidence](docs/perf.md#pf-14--batched-ignore-checks-2026-10-24). PF-15 completed the milestone gate: all deterministic gates pass, before/after evidence and remaining bottlenecks recorded; [evidence](docs/perf.md#pf-15--integrated-evidence-and-milestone-gate-2026-10-24).
+[Decision and verification](docs/perf.md#pf-07c--cost-policy-decision-and-production-bypass-2026-10-24). [PF-07C brief](docs/tasks/performance-m1.md#pf-07c--cost-policy-decision-and-safe-production-bypass-4-h-pf-07b).
+- [PF-07A](docs/tasks/performance-m1.md#pf-07a--bounded-content-proof-and-accepting-source-methods-4-h-pf-06): bounded content proof, accepting Load/Blob methods and focused regression/verification (4 h; PF-06).
+- [PF-07B](docs/tasks/performance-m1.md#pf-07b--mutation-matrix-and-repeated-evidence-4-h-pf-07a): full mutation/overlay/parent/WAL/concurrency matrix and repeated benchmark evidence (4 h; PF-07A).
+- [PF-10A](docs/tasks/performance-m1.md#pf-10a--decode-once-per-scan-skip-unchanged-re-encodes-3-h-pf-01): decode each checkpoint once per scan and skip unchanged re-encodes (3 h; PF-01).
+- [PF-10B](docs/tasks/performance-m1.md#pf-10b--cross-scan-decoded-checkpoint-cache-3-h-pf-10a): bounded cross-scan decoded checkpoint cache shared with the resolver (3 h; PF-10A).
+
+These tasks are separate from the original milestone totals. Milestone 3 is now
+complete (automated gate): [shared project index design](docs/plan/performance-m3.md) and
+[PI-01…PI-10 briefs](docs/tasks/performance-m3.md), **10/10 complete**, 36 h.
+PI-01…10 complete; [gate, measured costs and native-check limits](docs/perf.md#pi-10--integrated-milestone-gate-2026-10-25).
+Milestones 4/5 still require their own design and ≤4h breakdown before coding.
+
+| ID | St | Milestone 1 scope | Est | Deps |
+|---|---|---|---|---|
+| [PF-01](docs/tasks/performance-m1.md#pf-01--catalog-and-scan-baselines) | ✅ | Catalog and scan baselines | 4 | — |
+| [PF-02](docs/tasks/performance-m1.md#pf-02--transcript-baselines) | ✅ | Transcript baselines | 4 | — |
+| [PF-03](docs/tasks/performance-m1.md#pf-03--project-listing-baselines) | ✅ | Project listing baselines | 4 | — |
+| [PF-04](docs/tasks/performance-m1.md#pf-04--atomic-transcript-cache-invalidation) | ✅ | Atomic transcript cache invalidation | 4 | PF-02 |
+| [PF-05](docs/tasks/performance-m1.md#pf-05--coalesced-transcript-loads) | ✅ | Coalesced loads and cancellation | 4 | PF-04 |
+| [PF-06](docs/tasks/performance-m1.md#pf-06--validated-source-loading-contract) | ✅ | Validated source-loading contract | 3 | PF-02 |
+| [PF-07](docs/tasks/performance-m1.md#pf-07--codex-load-and-blob-fast-paths) | partial | Codex Load/Blob fast paths (A/B implemented, C safe opt-out; blocked) | 4 + 4 + 4 | PF-06 |
+| [PF-08](docs/tasks/performance-m1.md#pf-08--source-aware-engine-and-fts-callers) | superseded | Engine/FTS source-aware callers (goal met by IT-06/IT-09) | 4 | PF-05, PF-07 |
+| [PF-09](docs/tasks/performance-m1.md#pf-09--claude-checkpoint-reuse) | complete | Claude checkpoint reuse | 4 | PF-01 |
+| [PF-10A](docs/tasks/performance-m1.md#pf-10a--decode-once-per-scan-skip-unchanged-re-encodes-3-h-pf-01) | ✅ | Codex checkpoint reuse: decode once per scan ([evidence](docs/perf.md#pf-10a--decode-once-per-scan-2026-10-25)) | 3 | PF-01 |
+| [PF-10B](docs/tasks/performance-m1.md#pf-10b--cross-scan-decoded-checkpoint-cache-3-h-pf-10a) | ✅ | Codex checkpoint reuse: cross-scan cache ([evidence](docs/perf.md#pf-10b--cross-scan-checkpoint-cache-2026-10-25)) | 3 | PF-10A |
+| [PF-11](docs/tasks/performance-m1.md#pf-11--bounded-frontend-listing-snapshots) | complete | Bounded frontend listing snapshots | 3 | PF-03 |
+| [PF-12](docs/tasks/performance-m1.md#pf-12--listing-freshness-and-draft-regressions) | complete | Listing freshness and draft safety | 4 | PF-11 |
+| [PF-13](docs/tasks/performance-m1.md#pf-13--bounded-directory-frontiers) | complete | Bounded directory frontiers | 3 | PF-03 |
+| [PF-14](docs/tasks/performance-m1.md#pf-14--batched-ignore-checks) | complete | Batched ignore checks | 4 | PF-13 |
+| [PF-15](docs/tasks/performance-m1.md#pf-15--integrated-evidence-and-milestone-gate) | complete | Integration and before/after evidence | 4 | PF-01…PF-14 |
+
+Milestone 1 estimate: **67 h**, focused tests included. If a package exceeds 4 h,
+split it before coding. Native GUI QA remains separately reported, not assumed.
+
+### Startup priority package
+
+Pulled forward from M4 and completed before Milestone 2. **ST-07 remote follow-up: A–F complete (synthetic gates; real SSH/native retest unperformed)** ([briefs](docs/tasks/performance-startup.md#st-07--remote-startup-responsiveness-2026-10-24)); preserve mandatory verification while exposing cached catalog through early remote initialization. [Plan and readiness/compatibility
+policy](docs/plan/performance-startup.md) · [Sequential ≤4h briefs](docs/tasks/performance-startup.md).
+Progress: original **6/6 complete**; **ST-06A/ST-06B complete** after the user retest still showed >10 s. Historical package gate 2026-10-24: ST-00…ST-04 complete; ST-05 integrated gate complete ([evidence](docs/perf.md#st-05--integrated-startup-gate-2026-10-24)) with native GUI/SSH/Windows execution explicitly unperformed. ST-04 resolves its measurement gate with generated fanout and fast/slow provider evidence; early disabled/fallback catalog notification is the one selected fix. Watcher fanout scaling remains a follow-up.
+The reported roughly 10-second launch delay is not a measured baseline; its exact
+cause is unknown. This narrow slice is pulled forward from performance M4, not a
+catalog overhaul. Historical evidence and native QA limitations stand.
+
+| ID | Status | Scope | Est | Deps |
+|---|---|---|---|---|
+| [ST-00](docs/tasks/performance-startup.md#st-00--document-startup-scope-and-tasks) | Complete | Startup scope, status policy, safety and task documentation | 1 h | — |
+| [ST-01](docs/tasks/performance-startup.md#st-01--measure-the-real-startup-path) | Complete | Repeated full startup baseline; ST-04 measurement blocker | 4 h | ST-00 |
+| [ST-02A](docs/tasks/performance-startup.md#st-02--backend-discovery-readiness-contract) | Complete | Engine lifecycle snapshot/event and actual detection outcomes | ≤4 h | ST-01 |
+| [ST-02B](docs/tasks/performance-startup.md#st-02--backend-discovery-readiness-contract) | Complete | Optional Backend/App/RPC adapters, capability, unavailable fallback and parity | ≤4 h | ST-02A |
+| [ST-03](docs/tasks/performance-startup.md#st-03--truthful-frontend-startup-states) | Complete | Truthful frontend discovery/empty/error states | 3 h | ST-02B |
+| [ST-04](docs/tasks/performance-startup.md#st-04--remove-the-measured-startup-blocker) | Complete | Measured fanout; early runner provider publication | ≤4 h | ST-03; ST-01 evidence |
+| [ST-05](docs/tasks/performance-startup.md#st-05--integrated-startup-gate) | Complete | Integrated barriers, before/after evidence and QA limits | 4 h | ST-04 |
+| [ST-06A](docs/tasks/performance-startup.md#st-06a--reproduce-large-index-startup-cost) | Complete | Generated large FTS cache: open/integrity/catalog timings | ≤4 h | ST-05 |
+| [ST-06B](docs/tasks/performance-startup.md#st-06b--publish-cached-hints-before-full-integrity-verification) | Complete | Early cached hints, mandatory integrity and recovery | ≤4 h | ST-06A |
+
+
+Strictly sequential; **≤24 h after ST-02 split** including focused tests. Split oversized tasks
+before coding. Generated fixtures and explicit roots only: no private session
+stores/logs or `scripts/qa-perf-bench.sh`. ST-00 makes no code changes;
+no Milestone 2 implementation is included.
+
+### Performance Milestone 2
+
+Incremental transcripts, designed 2026-10-25. Progress: **12/12 complete**.
+[Design](docs/plan/performance-m2.md) · [IT-01…IT-12 briefs](docs/tasks/performance-m2.md).
+Sequential by default; generated fixtures and explicit roots only.
+
+| ID | St | Scope | Est | Deps |
+|---|---|---|---|---|
+| [IT-01](docs/tasks/performance-m2.md#it-01--append-and-resolution-baselines) | ✅ | Append, resolution, retention and payload baselines | 3 | — |
+| [IT-02](docs/tasks/performance-m2.md#it-02--incremental-provider-contract-and-continuity) | ✅ | Incremental provider contract, continuity, harness | 4 | IT-01 |
+| [IT-03](docs/tasks/performance-m2.md#it-03--copy-on-write-message-builder) | ✅ | Copy-on-write message builder | 3 | IT-02 |
+| [IT-04](docs/tasks/performance-m2.md#it-04--claude-resumable-loader) | ✅ | Claude resumable loader | 4 | IT-03 |
+| [IT-05](docs/tasks/performance-m2.md#it-05--codex-resumable-loader) | ✅ | Codex resumable loader | 3 | IT-03 |
+| [IT-06](docs/tasks/performance-m2.md#it-06--incremental-codex-resolution) | ✅ | Codex resolution without a cold full scan | 4 | IT-02 |
+| [IT-07](docs/tasks/performance-m2.md#it-07--resumable-engine-cache-entries) | ✅ | Resumable engine cache entries | 4 | IT-04, IT-05 |
+| [IT-08](docs/tasks/performance-m2.md#it-08--byte-budget-and-revisions) | ✅ | Byte budget and revisions | 3 | IT-07 |
+| [IT-09](docs/tasks/performance-m2.md#it-09--shared-fts-loading) | ✅ | Shared FTS loading | 3 | IT-08 |
+| [IT-10](docs/tasks/performance-m2.md#it-10--transcript-delta-api) | ✅ | Transcript delta API | 4 | IT-08 |
+| [IT-11](docs/tasks/performance-m2.md#it-11--frontend-delta-refresh) | ✅ | Frontend delta refresh | 4 | IT-10 |
+| [IT-12](docs/tasks/performance-m2.md#it-12--integrated-gate) | ✅ | Integrated gate | 3 | IT-01…IT-11 |
+
+**Critical path to the MVP:**
+
+M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → M1-16 → M1-20 → M1-24 → M1-28
+
+**Parallelizable after M0-03:**
+- OpenCode (M1-01…07), Codex (M1-08…12), Claude (M0-07…15) and the GUI scaffold (M1-15, M1-17) can each go to a different developer.
+- Frontend work can start against a mocked `M1-16` binding layer.
+
+Dialog close controls: **DC-01 / DC-02 complete** — [centered shared close button](docs/tasks/dialog-close.md), consistent modal header controls.
+
+Dark theme tone: **DT-01…DT-05 complete** — [native-tone surfaces](docs/tasks/dark-tone.md), layer dark surfaces around the native #2C2C2B tone; theme-matched session-count tooltip.
+
+Transcript selection: **SL-01…SL-05 complete** — [selected-text menu and contextual translation](docs/tasks/selection-translate.md), Copy/Translate for a selection with its sentence as context.
+
+Internal terminal layout: **TM-01 / TM-02 complete** — [maximize/restore terminal](docs/tasks/terminal-maximize.md), expand within the app without restarting sessions.
+
+Startup regression follow-up: **ST-08A / ST-08B complete** — [stale initial connection snapshot](docs/tasks/performance-startup.md#st-08--startup-connection-snapshot-rollback-2026-10-24), preserve remote selection over delayed Local startup replies.
+
+Go to File blame: **NB-01…NB-04 complete** — [Git in nested repositories](docs/tasks/nested-repo-blame.md), line blame, changed-line markers and status tints for repositories under a non-Git directory.
+
+Internal terminal split: **TS-01…TS-04 complete** — [split terminals](docs/tasks/terminal-split.md), several shells side by side in one tab, as in VS Code.

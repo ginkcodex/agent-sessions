@@ -1,0 +1,355 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { changeGroups, branchLabel, isChangesShortcut } from '../src/lib/gitChanges.ts';
+import { fixtureStore, loadServerComponent, loadServerModule, renderWithFixture } from './helpers.mjs';
+
+const lib = name => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
+const status = entries => ({ ok: true, branch: 'main', head: 'abc1234', detached: false, hasCommits: true, upstream: 'origin/main', ahead: 1, behind: 0, entries, truncated: false });
+const entry = (path, index = '', worktree = '', conflict = false) => ({ path, index, worktree, conflict });
+
+test('change groups distinguish staged, unstaged, both and conflicts', () => {
+  const a = entry('a', 'M', 'M'), b = entry('b', '', '?'), c = entry('c', 'U', 'U', true);
+  assert.deepEqual(changeGroups(status([a, b, c])), { staged: [a], unstaged: [a, b], conflicts: [c] });
+  assert.equal(branchLabel({ ...status([]), detached: true }), 'Detached at abc1234');
+  assert.equal(isChangesShortcut({ code: 'KeyG', metaKey: true, shiftKey: true }, true), true);
+});
+
+const { GitChangesStore } = await loadServerModule(new URL('../src/lib/stores/gitChanges.svelte.ts', import.meta.url), [
+  ["import { api } from '../api';", fixtureStore('api', '__gitFixture')],
+  ["'../manage'", lib('manage')], ["'../gitChanges'", lib('gitChanges')],
+  ["import { files, tabHasUnsaved } from './files.svelte';", `${fixtureStore('files', '__gitFixture')} const tabHasUnsaved = t => Boolean(t.edit?.dirty);`],
+  ...['link', 'connectionStore', 'filePrompt', 'codeDiagnostics', 'gitHistory'].map(name => [
+    `import { ${name} } from './${name === 'connectionStore' ? 'connection' : name}.svelte';`, fixtureStore(name, '__gitFixture'),
+  ]),
+]);
+function fixture() {
+  const calls = [];
+  const f = {
+    files: {
+      dir: '/p', contextVersion: '1', tabs: [], async refresh() { calls.push('files'); }, async reloadReplaced(paths) { calls.push(['reload', paths]); },
+      invalidateListings(root, host) { calls.push(['invalidate', root, host]); return this.relist ?? false; },
+    },
+    link: { dataHost: undefined, blockedReason: null }, connectionStore: { capabilities: { gitChanges: true, gitWrite: true } },
+    filePrompt: { async ask() { calls.push('confirm'); return 'discard'; } },
+    codeDiagnostics: { async hide() {}, async show() {} },
+    gitHistory: { invalidations: [], invalidateHost(host) { this.invalidations.push(host); } },
+    api: {
+      async gitStatus() { calls.push('status'); return status([entry('a', '', 'M')]); },
+      async gitStage() { calls.push('stage'); }, async gitUnstage() {}, async gitDiscard() { calls.push('discard'); },
+      async gitCommit(_dir, _repo, request) { calls.push(['commit', request]); },
+      async gitBranches() { return { branches: [], truncated: false }; }, async gitSwitch() { calls.push('switch'); },
+    },
+  };
+  globalThis.__gitFixture = f;
+  return { f, calls, store: new GitChangesStore() };
+}
+
+test('Git actions serialize, refresh after failure and keep the commit message', async () => {
+  const { store, f, calls } = fixture();
+  await store.refresh();
+  let reject;
+  f.api.gitStage = () => new Promise((_resolve, fail) => reject = fail);
+  const pending = store.stage(['a']);
+  assert.equal(store.busy, true);
+  assert.equal(await store.unstage(['a']), false);
+  reject(new Error('hook failed'));
+  assert.equal(await pending, false);
+  assert.match(store.error, /hook failed/);
+  assert.deepEqual(calls.slice(-2), ['files', 'status']);
+  store.message = 'message';
+  f.api.gitCommit = async () => { throw new Error('commit hook failed'); };
+  assert.equal(await store.commit(), false);
+  assert.equal(store.message, 'message');
+  delete globalThis.__gitFixture;
+});
+
+test('discard asks with names, refuses drafts and branch switching refuses drafts', async () => {
+  const { store, f, calls } = fixture();
+  await store.refresh();
+  f.files.tabs = [{ path: 'a', edit: { dirty: true } }];
+  assert.equal(await store.discard(['a']), false);
+  assert.equal(await store.switchBranch('other'), false);
+  assert.equal(calls.includes('confirm'), false);
+  f.files.tabs = [];
+  assert.equal(await store.discard(['a']), true);
+  assert.ok(calls.indexOf('confirm') < calls.indexOf('discard'));
+  assert.ok(calls.some(c => Array.isArray(c) && c[0] === 'reload'));
+  delete globalThis.__gitFixture;
+});
+
+test('discard leaves submodules alone and asks nothing when only submodules were chosen', async () => {
+  const { store, f, calls } = fixture();
+  const discarded = [];
+  f.api.gitStatus = async () => status([entry('a', '', 'M'), { ...entry('ui', '', 'M'), submodule: { commit: true, modified: false, untracked: false } }]);
+  f.api.gitDiscard = async (_dir, _repo, request) => { discarded.push(request.paths); };
+  await store.refresh();
+  assert.equal(await store.discard(['ui']), false);
+  assert.equal(calls.includes('confirm'), false);
+  assert.equal(await store.discard([]), true);
+  assert.deepEqual(discarded, [['a']]);
+  delete globalThis.__gitFixture;
+});
+
+test('PF-12 Git writes invalidate host listings before reloads, including for a hidden project', async () => {
+  const { store, f, calls } = fixture();
+  await store.refresh();
+  calls.length = 0;
+  assert.equal(await store.discard(['a']), true);
+  assert.deepEqual(calls.filter(c => c !== 'confirm'), ['discard', ['invalidate', null, undefined], ['reload', ['a']], 'files', 'status']);
+  calls.length = 0;
+  let fail;
+  f.api.gitStage = () => new Promise((_resolve, reject) => fail = reject);
+  const pending = store.stage(['a']);
+  f.files.dir = '/other'; // The project closed or changed; its host listing may still show old status.
+  f.files.relist = true;
+  fail(new Error('hook failed after staging'));
+  assert.equal(await pending, false);
+  assert.deepEqual(calls, [['invalidate', null, undefined], 'files'], 'a failed hook still invalidates and relists');
+  assert.equal(store.error, null, 'the error belongs to the old project');
+  delete globalThis.__gitFixture;
+});
+
+test('late status from another host is ignored', async () => {
+  const { store, f } = fixture();
+  let resolve;
+  f.api.gitStatus = () => new Promise(r => resolve = r);
+  const pending = store.refresh();
+  f.link.dataHost = 'other';
+  resolve(status([entry('stale')]));
+  await pending;
+  assert.equal(store.status, null);
+  delete globalThis.__gitFixture;
+});
+
+function workspace(paths) {
+  const { f, calls, store } = fixture();
+  f.connectionStore.capabilities = { gitChanges: true, gitWrite: true, gitHistory: true, gitChangesRepository: true };
+  const none = { ok: false, reason: 'This project is not in a Git repository.', entries: [], truncated: false };
+  f.repositories = paths;
+  f.api.gitStatus = async (_dir, repo) => { calls.push(['status', repo]); return repo ? status([entry(`${repo}/x`, '', 'M')]) : none; };
+  f.api.gitHistoryRepositories = async () => { calls.push('discover'); return { repositories: f.repositories.map(path => ({ path, name: path, scope: 'nested' })), truncated: false }; };
+  f.api.gitStage = async (_dir, repo, paths) => { calls.push(['stage', repo, paths]); };
+  f.api.gitBranches = async (_dir, repo) => { calls.push(['branches', repo]); return { branches: [], truncated: false }; };
+  return { f, calls, store };
+}
+
+test('a project in no repository waits for a choice among several and works on the chosen one', async () => {
+  const { store, f, calls } = workspace(['a', 'b']);
+  await store.refresh();
+  assert.deepEqual(store.repositories.map(r => r.path), ['a', 'b']);
+  assert.equal(store.requiresRepository, true);
+  assert.equal(store.writeBlocker, 'Choose a repository.');
+  await store.loadBranches();
+  assert.equal(calls.some(c => c[0] === 'branches'), false, 'no branches without a repository');
+  await store.selectRepository('missing');
+  assert.equal(store.repository, '');
+  await store.selectRepository('b');
+  assert.equal(store.repository, 'b');
+  assert.deepEqual(calls.at(-1), ['status', 'b']);
+  assert.equal(store.status.entries[0].path, 'b/x');
+  assert.equal(store.writeBlocker, null);
+  await store.loadBranches();
+  assert.deepEqual(calls.at(-1), ['branches', 'b']);
+  assert.equal(await store.stage(['b/x']), true);
+  assert.ok(calls.some(c => c[0] === 'stage' && c[1] === 'b' && c[2][0] === 'b/x'));
+
+  f.files.dir = '/other';
+  await store.refresh();
+  assert.equal(store.repository, '');
+  f.files.dir = '/p';
+  calls.length = 0;
+  await store.refresh();
+  assert.equal(store.repository, 'b', 'the choice is remembered per project');
+  assert.deepEqual(calls, ['discover', ['status', 'b']], 'a remembered choice is checked before use');
+  delete globalThis.__gitFixture;
+});
+
+test('a single repository inside the project is chosen without asking', async () => {
+  const { store, calls } = workspace(['only']);
+  await store.refresh();
+  assert.equal(store.repository, 'only');
+  assert.equal(store.requiresRepository, false);
+  assert.deepEqual(calls.at(-1), ['status', 'only']);
+  assert.equal(store.status.ok, true);
+  delete globalThis.__gitFixture;
+});
+
+test('a remembered repository that is gone falls back, and older hosts never look inside', async () => {
+  const { store, f, calls } = workspace(['a', 'b']);
+  await store.refresh();
+  await store.selectRepository('a');
+  f.files.dir = '/other'; await store.refresh();
+  f.repositories = ['b', 'c'];
+  f.files.dir = '/p'; await store.refresh();
+  assert.equal(store.repository, '');
+  assert.deepEqual(store.repositories.map(r => r.path), ['b', 'c']);
+  assert.equal(store.requiresRepository, true);
+
+  const old = workspace(['a', 'b']);
+  old.f.connectionStore.capabilities = { gitChanges: true, gitWrite: true, gitHistory: true };
+  await old.store.refresh();
+  assert.equal(old.calls.includes('discover'), false);
+  assert.deepEqual(old.store.repositories, []);
+  assert.equal(old.store.writeBlocker, 'This project is not in a Git repository.');
+  delete globalThis.__gitFixture;
+});
+
+const pane = await loadServerComponent(new URL('../src/lib/components/common/go-to-file/ChangesPane.svelte', import.meta.url), [
+  ["import { connectionStore } from '../../../stores/connection.svelte';", fixtureStore('connectionStore')],
+  ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
+]);
+test('Changes pane renders separate sections, commit labels and unsupported host state', async () => {
+  const { store } = fixture();
+  store.status = status([entry('both.ts', 'M', 'M'), entry('conflict.ts', 'U', 'U', true)]);
+  let html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: { gitChanges: true } } }, { onOpen() {} });
+  assert.match(html, /Staged changes/); assert.match(html, /Merge conflicts/); assert.match(html, /Commit staged/);
+  assert.equal((html.match(/class="path[^>]*>both.ts</g) ?? []).length, 2);
+  store.status = status([entry('new.ts', '', '?')]);
+  html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: { gitChanges: true } } }, { onOpen() {} });
+  assert.match(html, /Commit all/);
+  html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: {} } }, { onOpen() {} });
+  assert.match(html, /Update agent-sessions on the host/);
+  delete globalThis.__gitFixture;
+});
+
+test('Changes pane offers the repositories inside a project in none', async () => {
+  const { store, f } = workspace(['a', 'b']);
+  await store.refresh();
+  const caps = f.connectionStore.capabilities;
+  let html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: caps } }, { onOpen() {} });
+  assert.match(html, /aria-label="Changes repository"/); assert.match(html, /Choose a repository…/);
+  assert.match(html, /This workspace contains 2 repositories/); assert.match(html, /No repository chosen/);
+  assert.doesNotMatch(html, /rev-parse|rpc error/);
+  await store.selectRepository('a');
+  html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: caps } }, { onOpen() {} });
+  assert.doesNotMatch(html, /Choose a repository…|contains 2 repositories/);
+  assert.match(html, /a\/x/);
+  delete globalThis.__gitFixture;
+});
+
+test('Changes pane shows a submodule as a repository to review, never one to discard', async () => {
+  const { store, f } = workspace(['app', 'app/ui']);
+  const sub = { ...entry('app/ui', '', 'M'), submodule: { commit: true, modified: true, untracked: false } };
+  const none = await f.api.gitStatus('/p', '');
+  f.api.gitStatus = async (_dir, repo) => repo ? status(repo === 'app' ? [sub] : []) : none;
+  await store.refresh();
+  await store.selectRepository('app');
+  const caps = f.connectionStore.capabilities;
+  let html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: caps } }, { onOpen() {} });
+  assert.match(html, /title="app\/ui · Submodule: new commits, modified content"/);
+  assert.match(html, /aria-label="Review changes in app\/ui"/);
+  assert.doesNotMatch(html, /aria-label="Discard/);
+  f.api.gitStatus = async (_dir, repo) => repo ? status([sub, entry('app/x', '', 'M')]) : none;
+  await store.refresh();
+  html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: caps } }, { onOpen() {} });
+  assert.match(html, /aria-label="Discard app\/x"/); assert.doesNotMatch(html, /aria-label="Discard app\/ui"/);
+  assert.match(html, /Discard all changes, except in submodules/);
+  delete globalThis.__gitFixture;
+});
+
+test('Git sync cancels, keeps pull safe for drafts, publishes after asking and reloads tabs after pull', async () => {
+  const { store, f, calls } = fixture();
+  f.connectionStore.capabilities.gitSync = true;
+  await store.refresh();
+  let signal;
+  f.api.gitSync = (_dir, _repo, op, _host, s) => { signal = s; calls.push(['sync', op]); return new Promise((_resolve, reject) => s.addEventListener('abort', () => reject(Object.assign(new Error('git fetch was canceled.'), { code: 'canceled' })))); };
+  const pending = store.sync('fetch');
+  assert.equal(store.syncOperation, 'fetch');
+  assert.equal(store.syncBlocker, 'Wait for the current Git action to finish.');
+  store.cancelSync();
+  assert.equal(signal.aborted, true);
+  assert.equal(await pending, false);
+  assert.equal(store.error, null);
+  assert.match(store.syncMessage, /Canceled fetch/);
+  assert.equal(store.syncOperation, null);
+  assert.equal(store.busy, false);
+
+  f.files.tabs = [{ path: 'a', edit: { dirty: true } }];
+  assert.equal(await store.sync('pull'), false);
+  assert.match(store.error, /unsaved drafts before pulling/);
+  f.files.tabs = [{ path: 'a' }, { path: '/elsewhere', external: true }];
+  f.api.gitSync = async (_dir, _repo, op) => { calls.push(['sync', op]); return { op, summary: 'Fast-forwarded main.', status: status([]) }; };
+  assert.equal(await store.sync('pull'), true);
+  assert.equal(store.syncMessage, 'Fast-forwarded main.');
+  assert.ok(calls.some(c => Array.isArray(c) && c[0] === 'reload' && c[1].length === 1 && c[1][0] === 'a'));
+
+  calls.length = 0;
+  store.status = { ...status([]), upstream: '' };
+  f.filePrompt.ask = async () => { calls.push('confirm'); return undefined; };
+  assert.equal(await store.sync('push'), false);
+  assert.deepEqual(calls, ['confirm'], 'a declined publish never pushes');
+  f.filePrompt.ask = async () => { calls.push('confirm'); return 'push'; };
+  assert.equal(await store.sync('push'), true);
+  assert.deepEqual(calls.slice(0, 3), ['confirm', 'confirm', ['sync', 'push']]);
+  calls.length = 0;
+  store.status = status([]);
+  f.api.gitSync = async () => { throw Object.assign(new Error('The remote has commits this branch does not.'), { code: 'nonFastForward' }); };
+  assert.equal(await store.sync('push'), false);
+  assert.equal(calls.includes('confirm'), false, 'a push to the upstream does not ask');
+  assert.match(store.error, /remote has commits/);
+  f.connectionStore.capabilities.gitSync = false;
+  assert.match(store.syncBlocker, /does not support Git sync/);
+  delete globalThis.__gitFixture;
+});
+
+test('Changes pane shows sync actions by ahead/behind and a cancel while running', async () => {
+  const { store } = fixture();
+  const caps = { gitChanges: true, gitWrite: true, gitSync: true };
+  store.status = { ...status([]), ahead: 2, behind: 3 };
+  let html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: caps } }, { onOpen() {} });
+  assert.match(html, />Fetch</); assert.match(html, /Pull ↓3/); assert.match(html, /Push ↑2/);
+  store.status = { ...status([]), ahead: 0, behind: 0, upstream: '' };
+  html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: caps } }, { onOpen() {} });
+  assert.match(html, /Publish branch…/); assert.doesNotMatch(html, /Pull ↓/);
+  store.syncOperation = 'pull';
+  html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: caps } }, { onOpen() {} });
+  assert.match(html, /Pulling…/); assert.match(html, />Cancel</); assert.doesNotMatch(html, />Fetch</);
+  store.syncOperation = null;
+  html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: { gitChanges: true } } }, { onOpen() {} });
+  assert.match(html, /does not support Git sync/);
+  delete globalThis.__gitFixture;
+});
+
+test('a sync reply after a host switch cannot overwrite or reload the new project', async () => {
+  const { store, f, calls } = fixture();
+  f.connectionStore.capabilities.gitSync = true;
+  await store.refresh();
+  let finish;
+  f.api.gitSync = () => new Promise(resolve => finish = resolve);
+  const pending = store.sync('pull');
+  f.link.dataHost = 'other';
+  await store.refresh();
+  calls.length = 0;
+  finish({ op: 'pull', summary: 'old project updated', status: { ...status([]), branch: 'wrong' } });
+  assert.equal(await pending, true);
+  assert.equal(store.status.branch, 'main');
+  assert.equal(store.syncMessage, '');
+  assert.deepEqual(calls, [['invalidate', null, undefined]], 'only the old host listings are invalidated');
+  assert.equal(store.busy, false);
+  delete globalThis.__gitFixture;
+});
+
+test('GH-16 commit, amend, switch, fetch and pull invalidate history for their host, including failures', async () => {
+  const { store, f } = fixture();
+  f.link.dataHost = 'ssh'; f.connectionStore.capabilities.gitSync = true;
+  f.api.gitSync = async (_dir, _repo, op) => ({ op, summary: op, status: status([]) });
+  await store.refresh();
+  const seen = () => f.gitHistory.invalidations.splice(0);
+  await store.stage(['a']); await store.unstage(['a']); await store.discard(['a']);
+  assert.deepEqual(seen(), [], 'index/worktree-only writes keep the history selection');
+  store.message = 'one'; assert.equal(await store.commit(), true); assert.deepEqual(seen(), ['ssh']);
+  store.message = 'two'; assert.equal(await store.commit(true), true); assert.deepEqual(seen(), ['ssh']);
+  assert.equal(await store.switchBranch('other'), true); assert.deepEqual(seen(), ['ssh']);
+  assert.equal(await store.sync('fetch'), true); assert.deepEqual(seen(), ['ssh']);
+  assert.equal(await store.sync('pull'), true); assert.deepEqual(seen(), ['ssh']);
+  f.api.gitSync = async () => { throw new Error('pull failed after fetching'); };
+  assert.equal(await store.sync('pull'), false); assert.deepEqual(seen(), ['ssh']);
+  store.message = 'three'; f.api.gitCommit = async () => { throw new Error('hook moved HEAD then failed'); };
+  assert.equal(await store.commit(), false); assert.deepEqual(seen(), ['ssh']);
+  // A reply after a host switch reports its own host; the history store ignores mismatches.
+  let finish; f.api.gitSync = () => new Promise(resolve => finish = resolve);
+  const pending = store.sync('fetch'); f.link.dataHost = 'other';
+  finish({ op: 'fetch', summary: '', status: status([]) }); await pending;
+  assert.deepEqual(seen(), ['ssh']);
+  delete globalThis.__gitFixture;
+});

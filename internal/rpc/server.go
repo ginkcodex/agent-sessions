@@ -1,0 +1,939 @@
+package rpc
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
+	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/launch"
+	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/version"
+)
+
+// Starter builds the backend during initialize, after the client's env
+// overrides are applied, so the roots, the cache lock and the engine all see
+// them. ctx lives as long as Serve.
+type Starter func(ctx context.Context) (engine.Backend, Capabilities, paths.Roots, error)
+
+// Server handles JSON-RPC 2.0 requests over stdio and forwards to an engine.Backend.
+type Server struct {
+	backend   engine.Backend
+	starter   Starter
+	preparer  Preparer
+	startup   *startupTask
+	startups  sync.WaitGroup
+	reader    *FrameReader
+	writer    *FrameWriter
+	cancelReg *CancelRegistry
+	// initState: 0 not started, 1 running, 2 done. A failed initialize
+	// keeps initErr and is not retried.
+	initState         int
+	initialized       bool
+	gitWrite          bool
+	gitSync           bool
+	gitHistory        bool
+	gitHistoryActions bool
+	gitHistoryCompare bool
+	initErr           error
+	mu                sync.Mutex
+	handlers          sync.WaitGroup
+	closeOnce         sync.Once
+	closed            chan struct{}
+	idleTimeout       time.Duration
+	diagnostics       diagnosticsRPC
+	rawW              io.Writer
+	rawR              io.Reader
+}
+
+// NewServer wraps a backend with JSON-RPC stdio transport.
+func NewServer(backend engine.Backend, r io.Reader, w io.Writer) *Server {
+	return &Server{
+		backend:     backend,
+		rawW:        w,
+		rawR:        r,
+		diagnostics: diagnosticsRPC{owned: map[string]cd.Context{}, queue: make(chan Notification, 64), pendingUpdates: map[string]map[string]int{}},
+		reader:      NewFrameReader(r),
+		writer:      NewFrameWriter(w),
+		cancelReg:   NewCancelRegistry(),
+		closed:      make(chan struct{}),
+	}
+}
+
+// SetStarter makes initialize build the backend with fn instead of using the
+// one passed to NewServer.
+func (s *Server) SetStarter(fn Starter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.starter = fn
+	s.preparer = nil
+}
+
+// SetIdleTimeout makes Serve return ErrIdleTimeout when no frame arrives for
+// d. The client heartbeats well inside d, so this fires only when it is gone
+// but the transport never closed, such as a half-open ssh connection whose
+// sshd has not noticed yet. Zero disables it.
+func (s *Server) SetIdleTimeout(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.idleTimeout = d
+}
+
+// Notify sends a JSON-RPC notification to the client.
+func (s *Server) Notify(method string, payload any) error {
+	if method == engine.CodeDiagnosticsUpdatedEvent {
+		return s.notifyDiagnostics(payload)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return s.writer.WriteFrame(Notification{
+		JSONRPC: JSONRPCVersion,
+		Method:  method,
+		Params:  data,
+	})
+}
+
+// Serve reads and processes frames until EOF or context cancellation. On
+// return it has cancelled and waited for every in-flight handler.
+func (s *Server) Serve(parent context.Context) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer func() {
+		cancel()
+		_ = s.Close()
+		s.handlers.Wait()
+		s.startups.Wait()
+		s.expireDiagnostics()
+	}()
+	go s.diagnosticsWriter(ctx)
+
+	// Reads run apart from the loop so the idle timer and ctx can end Serve
+	// while a read is blocked on a client that went silent.
+	frames := make(chan []byte)
+	readErr := make(chan error, 1)
+	go func() {
+		for {
+			frame, err := s.reader.ReadFrame()
+			if err != nil {
+				readErr <- err
+				return
+			}
+			select {
+			case frames <- frame:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	s.mu.Lock()
+	idleTimeout := s.idleTimeout
+	s.mu.Unlock()
+	var idle <-chan time.Time
+	var idleTimer *time.Timer
+	if idleTimeout > 0 {
+		idleTimer = time.NewTimer(idleTimeout)
+		defer idleTimer.Stop()
+		idle = idleTimer.C
+	}
+
+	for {
+		var frame []byte
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-s.closed:
+			return nil
+		case <-idle:
+			return ErrIdleTimeout
+		case err := <-readErr:
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		case frame = <-frames:
+		}
+		if idleTimer != nil {
+			idleTimer.Reset(idleTimeout)
+		}
+
+		// Try to parse as Request
+		var req Request
+		if err := json.Unmarshal(frame, &req); err != nil {
+			_ = s.writer.WriteFrame(Response{
+				JSONRPC: JSONRPCVersion,
+				Error: &ResponseError{
+					Code:    CodeParseError,
+					Message: fmt.Sprintf("invalid json: %v", err),
+				},
+			})
+			continue
+		}
+
+		// Handle notifications (no ID). A heartbeat needs nothing beyond
+		// the idle reset above.
+		if req.ID == nil {
+			if req.Method == MethodCancelRequest {
+				var cancelParams CancelParams
+				if err := json.Unmarshal(req.Params, &cancelParams); err == nil {
+					s.cancelReg.Cancel(cancelParams.ID)
+				}
+			}
+			continue
+		}
+
+		// Handshake enforcement: must initialize first
+		if !s.isInitialized() && req.Method != MethodInitialize {
+			_ = s.sendError(req.ID, &ResponseError{
+				Code:    CodeInvalidRequest,
+				Message: "server not initialized; call initialize first",
+			})
+			continue
+		}
+
+		s.handlers.Add(1)
+		go func() {
+			defer s.handlers.Done()
+			s.handleRequest(ctx, req)
+		}()
+	}
+}
+
+func (s *Server) isInitialized() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.initialized
+}
+
+func (s *Server) sendResult(id any, result any) error {
+	var raw json.RawMessage
+	if result != nil {
+		data, err := json.Marshal(result)
+		if err != nil {
+			return s.sendError(id, ToRPCError(err))
+		}
+		raw = data
+	}
+	return s.writer.WriteFrame(Response{
+		JSONRPC: JSONRPCVersion,
+		ID:      id,
+		Result:  raw,
+	})
+}
+
+func (s *Server) sendError(id any, rpcErr *ResponseError) error {
+	return s.writer.WriteFrame(Response{
+		JSONRPC: JSONRPCVersion,
+		ID:      id,
+		Error:   rpcErr,
+	})
+}
+
+// allowlistedEnvKeys defines environment variables that the client may override.
+var allowlistedEnvKeys = map[string]bool{
+	"CLAUDE_CONFIG_DIR": true,
+	"CODEX_HOME":        true,
+	"XDG_CONFIG_HOME":   true,
+	"XDG_DATA_HOME":     true,
+	"XDG_CACHE_HOME":    true,
+	"XDG_STATE_HOME":    true,
+	"XDG_RUNTIME_DIR":   true,
+}
+
+func (s *Server) handleInitialize(serveCtx context.Context, req Request) (any, error) {
+	s.mu.Lock()
+	switch {
+	case s.initErr != nil:
+		err := s.initErr
+		s.mu.Unlock()
+		return nil, ToRPCError(err)
+	case s.initState != 0:
+		s.mu.Unlock()
+		return nil, &ResponseError{Code: CodeInvalidRequest, Message: "initialize already called"}
+	}
+	s.initState = 1
+	starter, preparer := s.starter, s.preparer
+	s.mu.Unlock()
+
+	res, err := s.initialize(serveCtx, req, starter, preparer)
+
+	s.mu.Lock()
+	s.initState = 2
+	if err != nil {
+		s.initErr = err
+	} else {
+		s.initialized = true
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return nil, ToRPCError(err)
+	}
+	return res, nil
+}
+
+func (s *Server) initialize(serveCtx context.Context, req Request, starter Starter, preparer Preparer) (InitializeResult, error) {
+	var initReq InitializeRequest
+	if len(req.Params) > 0 {
+		if err := json.Unmarshal(req.Params, &initReq); err != nil {
+			return InitializeResult{}, &ResponseError{
+				Code:    CodeInvalidParams,
+				Message: fmt.Sprintf("invalid initialize params: %v", err),
+			}
+		}
+	}
+
+	if initReq.ProtocolVersion != 0 && initReq.ProtocolVersion != ProtocolVersion {
+		return InitializeResult{}, &ResponseError{
+			Code:    CodeInvalidRequest,
+			Message: fmt.Sprintf("unsupported protocol version %d (server requires %d)", initReq.ProtocolVersion, ProtocolVersion),
+			Data:    &ErrorData{Code: ErrCodeProtocolMismatch},
+		}
+	}
+
+	// Apply allowlisted client env variables to the process environment
+	// before anything resolves roots; agent CLIs the engine runs inherit them.
+	for k, v := range initReq.ClientEnv {
+		if allowlistedEnvKeys[strings.ToUpper(k)] {
+			_ = os.Setenv(k, v)
+		}
+	}
+
+	caps := Capabilities{
+		Trash:                true,
+		Manage:               true,
+		Export:               true,
+		Import:               true,
+		Search:               true,
+		SearchPath:           true,
+		Blame:                true,
+		GitChanges:           true,
+		GitChangesRepository: true,
+		GitDiff:              true,
+		GitHistory:           true,
+		GitHistoryActions:    true,
+		GitHistoryCompare:    true,
+		GitSync:              true, // still masked below without gitWrite
+		SearchFiles:          true,
+		NewSession:           true,
+		// SaveFile and ReplaceFiles stay off without a starter, which is a
+		// test setup.
+	}
+	prepareDone := engine.BeginStartupPhase(serveCtx, "rpc_prepare")
+	var roots paths.Roots
+	var start func(context.Context) error
+	switch {
+	case preparer != nil:
+		prepared, err := preparer(serveCtx)
+		if err != nil {
+			return InitializeResult{}, err
+		}
+		caps, roots, start = prepared.Capabilities, prepared.Roots, prepared.Start
+		s.mu.Lock()
+		s.backend = prepared.Backend
+		s.mu.Unlock()
+	case starter != nil:
+		backend, c, r, err := starter(serveCtx)
+		if err != nil {
+			return InitializeResult{}, err
+		}
+		caps, roots = c, r
+		s.mu.Lock()
+		s.backend = backend
+		s.mu.Unlock()
+	default:
+		roots, _ = paths.Default()
+	}
+
+	s.mu.Lock()
+	_, caps.DiscoveryStatus = s.backend.(engine.DiscoveryBackend)
+	_, caps.TranscriptDelta = s.backend.(engine.TranscriptDeltaBackend)
+	_, caps.ProjectSnapshot = s.backend.(engine.ProjectSnapshotBackend)
+	_, caps.ListDirectory = s.backend.(engine.ListDirectoryBackend)
+	_, caps.SessionSearch = s.backend.(engine.SessionSearchBackend)
+	_, historyBackend := s.backend.(engine.GitHistoryBackend)
+	caps.GitHistory = caps.GitHistory && historyBackend
+	s.gitHistory = caps.GitHistory
+	s.mu.Unlock()
+	caps.GitWrite = caps.GitWrite && caps.SaveFile
+	// Pull and push change the repository, so sync follows write permission.
+	caps.GitSync = caps.GitSync && caps.GitWrite
+	s.mu.Lock()
+	s.gitWrite = caps.GitWrite
+	s.gitSync = caps.GitSync
+	_, actionsBackend := s.backend.(engine.GitHistoryActionsBackend)
+	_, compareBackend := s.backend.(engine.GitHistoryCompareBackend)
+	caps.GitHistoryActions = caps.GitHistoryActions && actionsBackend && caps.GitWrite
+	caps.GitHistoryCompare = caps.GitHistoryCompare && compareBackend
+	s.gitHistoryActions = caps.GitHistoryActions
+	s.gitHistoryCompare = caps.GitHistoryCompare
+	s.mu.Unlock()
+	prepareDone(true)
+	identityDone := engine.BeginStartupPhase(serveCtx, "rpc_diagnostics_identity")
+	host := s.initializeDiagnostics(serveCtx, &caps)
+	identityDone(true)
+	if start != nil {
+		if err := s.startPrepared(serveCtx, start); err != nil {
+			return InitializeResult{}, err
+		}
+	}
+	return InitializeResult{
+		CodeDiagnosticsHostID: host,
+		ProtocolVersion:       ProtocolVersion,
+		AppVersion:            version.Current(),
+		Capabilities:          caps,
+		Roots:                 roots,
+	}, nil
+}
+
+func (s *Server) handleRequest(parentCtx context.Context, req Request) {
+	callCtx, cancel := context.WithCancel(parentCtx)
+	s.cancelReg.Register(req.ID, cancel)
+	defer func() {
+		s.cancelReg.Unregister(req.ID)
+		cancel()
+	}()
+
+	var res any
+	var err error
+	if req.Method == MethodInitialize {
+		res, err = s.handleInitialize(parentCtx, req)
+	} else {
+		res, err = s.dispatch(callCtx, req)
+	}
+	if err == nil {
+		err = boundDiagnosticsResult(res)
+	}
+	if err != nil {
+		_ = s.sendError(req.ID, ToRPCError(err))
+		return
+	}
+	_ = s.sendResult(req.ID, res)
+}
+
+func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
+	if err := s.awaitStartup(ctx, req.Method); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	backend := s.backend
+	s.mu.Unlock()
+	if backend == nil {
+		return nil, &ResponseError{Code: CodeInvalidRequest, Message: "server not initialized; call initialize first"}
+	}
+	switch req.Method {
+	case "managedTool":
+		return s.dispatchManagedTool(ctx, req)
+	case "invalidateCodeDiagnosticsPath", "attachCodeDiagnostics", "detachCodeDiagnostics", "getCodeDiagnosticsSnapshot", "approveCodeDiagnostics", "revokeCodeDiagnostics", "runCodeDiagnostics", "cancelCodeDiagnostics",
+		"openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument", "navigateCode", "readNavigationFile":
+		return s.dispatchDiagnostics(ctx, req)
+	case "ping":
+		var p PingParams
+		if len(req.Params) > 0 {
+			_ = json.Unmarshal(req.Params, &p)
+		}
+		return backend.Ping(ctx, p.Name)
+
+	case "scan":
+		return nil, backend.Scan(ctx)
+
+	case "listGroups":
+		var p ListGroupsParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ListGroups(ctx, p.Mode, p.Filter)
+
+	case "listSessions":
+		var p ListSessionsParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ListSessions(ctx, p.GroupKey, p.Filter, p.Sort)
+
+	case "agentCounts":
+		var p AgentCountsParams
+		if len(req.Params) > 0 {
+			_ = json.Unmarshal(req.Params, &p)
+		}
+		return backend.AgentCounts(ctx, p.Filter)
+
+	case "getSessionMeta":
+		var p GetSessionMetaParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.GetSessionMeta(ctx, p.Ref)
+
+	case "getMessages":
+		var p GetMessagesParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.GetMessages(ctx, p.Ref, p.Offset, p.Limit)
+
+	case "getMessagesSince":
+		d, ok := backend.(engine.TranscriptDeltaBackend)
+		if !ok {
+			return nil, &ResponseError{Code: CodeMethodNotFound, Message: "method not found: getMessagesSince"}
+		}
+		var p GetMessagesSinceParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return d.GetMessagesSince(ctx, p.Req)
+
+	case "searchSession":
+		ss, ok := backend.(engine.SessionSearchBackend)
+		if !ok {
+			return nil, &ResponseError{Code: CodeMethodNotFound, Message: "method not found: searchSession"}
+		}
+		var p SearchSessionParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return ss.SearchSession(ctx, p.Req)
+
+	case "getBlob":
+		var p GetBlobParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.GetBlob(ctx, p.Ref, p.Key)
+
+	case "search":
+		var p SearchParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.Search(ctx, p.Query, p.Filter)
+
+	case "indexProgress":
+		return backend.IndexProgress(ctx)
+
+	case "discoveryStatus":
+		d, ok := backend.(engine.DiscoveryBackend)
+		if !ok {
+			return nil, &ResponseError{Code: CodeMethodNotFound, Message: "method not found: discoveryStatus"}
+		}
+		return d.DiscoveryStatus(ctx)
+
+	case "copyResumeCommand":
+		var p CopyResumeCommandParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.CopyResumeCommand(ctx, p.Ref)
+
+	case "revealSource":
+		var p RevealSourceParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.RevealSource(ctx, p.Ref)
+
+	case "diagnostics":
+		return backend.Diagnostics(ctx)
+
+	case "projectSnapshot":
+		snapshots, ok := backend.(engine.ProjectSnapshotBackend)
+		if !ok {
+			return nil, &ResponseError{Code: CodeMethodNotFound, Message: "method not found: projectSnapshot"}
+		}
+		var p ListFilesParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return snapshots.ProjectSnapshot(ctx, p.Dir)
+
+	case "listFiles":
+		var p ListFilesParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ListFiles(ctx, p.Dir)
+
+	case "listDirectory":
+		lister, ok := backend.(engine.ListDirectoryBackend)
+		if !ok {
+			return nil, &ResponseError{Code: CodeMethodNotFound, Message: "method not found: listDirectory"}
+		}
+		var p ReadFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return lister.ListDirectory(ctx, p.Dir, p.Path)
+
+	case "probeFiles":
+		var p ProbeFilesParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return backend.ProbeFiles(ctx, p.Dir, p.Paths)
+	case "readFile":
+		var p ReadFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ReadFile(ctx, p.Dir, p.Path)
+
+	case "gitHistoryRefAction":
+		return s.dispatchGitHistoryRefAction(ctx, req, backend)
+	case "gitHistoryCompare", "readGitHistoryCompareDiff":
+		return s.dispatchGitHistoryCompare(ctx, req, backend)
+	case "gitHistoryRepositories", "gitHistoryBranches", "gitHistoryList", "gitHistoryCommit", "readGitHistoryDiff":
+		return s.dispatchGitHistory(ctx, req, backend)
+	case "readGitDiff":
+		return s.dispatchGitDiff(ctx, req, backend)
+	case "gitBranches", "gitSwitch":
+		return s.dispatchGitBranches(ctx, req, backend)
+	case "gitStage", "gitUnstage", "gitDiscard", "gitCommit":
+		return s.dispatchGitWrite(ctx, req, backend)
+	case "gitSync":
+		return s.dispatchGitSync(ctx, req, backend)
+	case "gitStatus":
+		var p GitStatusParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		git, ok := backend.(engine.GitChangesBackend)
+		if !ok {
+			return nil, engine.ErrUnsupportedAction
+		}
+		return git.GitStatus(ctx, p.Dir, p.Repo)
+
+	case "blameFile":
+		var p BlameFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.BlameFile(ctx, p.Dir, p.Path, p.Line)
+
+	case "searchFiles":
+		var p SearchFilesParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.SearchFiles(ctx, p.Dir, p.Query)
+
+	case "saveFile":
+		var p SaveFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.SaveFile(ctx, p.Dir, p.Request)
+
+	case "replaceInFiles":
+		var p ReplaceInFilesParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ReplaceInFiles(ctx, p.Dir, p.Request)
+
+	case "resolveFile":
+		var p ReadFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ResolveFile(ctx, p.Dir, p.Path)
+
+	case "resolveTerminalFile":
+		var p ReadFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ResolveTerminalFile(ctx, p.Dir, p.Path)
+
+	case "deleteFile":
+		var p DeleteFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return nil, backend.DeleteFile(ctx, p.Dir, p.Path)
+
+	case "createDirectory":
+		var p CreateDirectoryParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return nil, backend.CreateDirectory(ctx, p.Dir, p.Path, p.Name)
+
+	case "createFile":
+		var p CreateDirectoryParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return nil, backend.CreateFile(ctx, p.Dir, p.Path, p.Name)
+
+	case "renameFile":
+		var p RenameFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return nil, backend.RenameFile(ctx, p.Dir, p.Path, p.Name)
+
+	case "commitFileUpload":
+		var p FileDownloadParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return nil, backend.CommitFileUpload(ctx, p.Dir, p.Path, p.Token)
+
+	case "prepareFileDownload":
+		var p FileDownloadParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.PrepareFileDownload(ctx, p.Dir, p.Path, p.Token)
+
+	case "getSettings":
+		return backend.GetSettings(ctx)
+
+	case "setManageEnabled":
+		var p SetManageEnabledParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.SetManageEnabled(ctx, p.Enabled)
+
+	case "setAllowPermanentDelete":
+		var p SetAllowPermanentDeleteParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.SetAllowPermanentDelete(ctx, p.Allow)
+
+	case "setPrunePromptHistory":
+		var p SetPrunePromptHistoryParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.SetPrunePromptHistory(ctx, p.Prune)
+
+	case "previewDelete":
+		var p PreviewDeleteParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.PreviewDelete(ctx, p.Refs)
+
+	case "deleteSessions":
+		var p DeleteSessionsParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.DeleteSessions(ctx, p.Refs, p.Token)
+
+	case "buildHandoff":
+		var p BuildHandoffParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.BuildHandoff(ctx, p.Req)
+
+	case "handoffCommand":
+		var p HandoffCommandParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.HandoffCommand(ctx, p.Req)
+
+	case "saveHandoff":
+		var p SaveHandoffParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.SaveHandoff(ctx, p.Req, p.DestPath)
+
+	case "renderHandoff":
+		var p RenderHandoffParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.RenderHandoff(ctx, p.Req)
+
+	case "handoffCache":
+		return backend.HandoffCache(ctx)
+
+	case "clearHandoffCache":
+		return backend.ClearHandoffCache(ctx)
+
+	case "codeCheckLogs":
+		return backend.CodeCheckLogs(ctx)
+
+	case "clearCodeCheckLogs":
+		return backend.ClearCodeCheckLogs(ctx)
+
+	case "previewExport":
+		var p PreviewExportParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.PreviewExport(ctx, p.Req)
+
+	case "exportBundle":
+		var p ExportBundleParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ExportBundle(ctx, p.Req, p.DestPath)
+
+	case "openBundle":
+		var p OpenBundleParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.OpenBundle(ctx, p.Path)
+
+	case "openBundleBytes":
+		var p OpenBundleBytesParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.OpenBundleBytes(ctx, p.Name, p.Data)
+
+	case "buildBundleHandoff":
+		var p BuildBundleHandoffParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.BuildBundleHandoff(ctx, p.Req)
+
+	case "bundleHandoffCommand":
+		var p BundleHandoffCommandParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.BundleHandoffCommand(ctx, p.Req)
+
+	case "previewBundleRestore":
+		var p PreviewBundleRestoreParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.PreviewBundleRestore(ctx, p.Req)
+
+	case "restoreBundle":
+		var p RestoreBundleParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.RestoreBundle(ctx, p.Req, p.Token)
+
+	case "saveBundleHandoff":
+		var p SaveBundleHandoffParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.SaveBundleHandoff(ctx, p.Req, p.DestPath)
+
+	case "renderBundleHandoff":
+		var p RenderBundleHandoffParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.RenderBundleHandoff(ctx, p.Req)
+
+	case "resumeTerminalScript":
+		var p CopyResumeCommandParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return terminalScript(backend, req.Method, p.Panel, func(l terminalLauncher) (provider.Command, error) {
+			return l.ResumeLaunch(ctx, p.Ref)
+		})
+
+	case "newSessionTerminalScript":
+		var p NewSessionParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return terminalScript(backend, req.Method, p.Panel, func(l terminalLauncher) (provider.Command, error) {
+			return l.NewSessionLaunch(ctx, p.Agent, p.Dir)
+		})
+
+	case "newSessionAgents":
+		l, ok := backend.(terminalLauncher)
+		if !ok {
+			return nil, &ResponseError{Code: CodeMethodNotFound, Message: "method not supported: " + req.Method}
+		}
+		return l.NewSessionAgents(ctx)
+
+	case "handoffTerminalScript":
+		var p HandoffCommandParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return terminalScript(backend, req.Method, p.Panel, func(l terminalLauncher) (provider.Command, error) {
+			return l.HandoffLaunch(ctx, p.Req)
+		})
+
+	case "bundleHandoffTerminalScript":
+		var p BundleHandoffCommandParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return terminalScript(backend, req.Method, p.Panel, func(l terminalLauncher) (provider.Command, error) {
+			return l.BundleHandoffLaunch(ctx, p.Req)
+		})
+
+	default:
+		return nil, &ResponseError{
+			Code:    CodeMethodNotFound,
+			Message: fmt.Sprintf("method not found: %s", req.Method),
+		}
+	}
+}
+
+// terminalLauncher builds the agent commands a terminal runs. The engine is
+// one; a backend that is not cannot open terminals.
+type terminalLauncher interface {
+	ResumeLaunch(context.Context, model.SessionRef) (provider.Command, error)
+	NewSessionLaunch(context.Context, model.AgentID, string) (provider.Command, error)
+	NewSessionAgents(context.Context) ([]engine.AgentStatus, error)
+	HandoffLaunch(context.Context, engine.HandoffRequest) (provider.Command, error)
+	BundleHandoffLaunch(context.Context, engine.BundleHandoffRequest) (provider.Command, error)
+}
+
+var _ terminalLauncher = (*engine.Engine)(nil)
+
+// terminalScript builds a command and renders the script a terminal runs for
+// it, with the agent found on this machine. The client opens the window, or
+// a tab in its terminal panel when panel is set.
+func terminalScript(backend engine.Backend, method string, panel bool, build func(terminalLauncher) (provider.Command, error)) (string, error) {
+	l, ok := backend.(terminalLauncher)
+	if !ok {
+		return "", &ResponseError{Code: CodeMethodNotFound, Message: fmt.Sprintf("method not supported: %s", method)}
+	}
+	cmd, err := build(l)
+	if err != nil {
+		return "", err
+	}
+	if panel {
+		return launch.PosixPanelScript(cmd)
+	}
+	return launch.PosixTerminalScript(cmd)
+}
+
+// Close closes the server.
+func (s *Server) Close() error {
+	s.closeOnce.Do(func() {
+		close(s.closed)
+		if c, ok := s.rawW.(io.Closer); ok {
+			_ = c.Close()
+		}
+		if c, ok := s.rawR.(io.Closer); ok {
+			_ = c.Close()
+		}
+	})
+	return nil
+}

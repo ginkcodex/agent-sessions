@@ -1,0 +1,236 @@
+package codediagnostics
+
+import (
+	"context"
+	"strings"
+	"sync"
+)
+
+// LiveDocuments owns the internal, host-local route. Installing it is not feature
+// negotiation: callers must still keep live capability advertisement disabled.
+// All registrations must be the same complete proposal installed on Manager.
+// No default launcher or inherited host environment is supplied here.
+type LiveDocuments struct {
+	Sessions *SessionManager
+	manager  *Manager
+	mu       sync.RWMutex
+	projects map[Project]liveProject
+}
+
+type liveProject struct {
+	root      AuthorizedRoot
+	documents SessionDocuments
+	servers   []ServerConfig
+}
+
+func NewLiveDocuments(trust *Trust, manager *Manager, options SessionOptions) *LiveDocuments {
+	d := &LiveDocuments{manager: manager, projects: map[Project]liveProject{}}
+	options.Notifications = d.notification
+	d.Sessions = NewSessionManager(trust, options)
+	return d
+}
+
+func (d *LiveDocuments) Register(root AuthorizedRoot, registrations []Registration) error {
+	documents, err := DiscoveryDocuments(root, registrations, d.Sessions)
+	if err != nil {
+		return err
+	}
+	var tools []ToolInput
+	var servers []ServerConfig
+	for _, r := range registrations {
+		if r.Adapter != nil {
+			tools = append(tools, r.Adapter.Tools()...)
+		}
+		if r.Live != nil && r.Availability == "available" {
+			servers = append(servers, liveServers(r.Live)...)
+			tools = append(tools, liveTools(r.Live)...)
+		}
+	}
+	_, preparationTools := collectPreparations(registrations)
+	tools = append(tools, preparationTools...)
+	for i := range servers {
+		servers[i].ApprovalTools = cloneTools(tools)
+	}
+	d.mu.Lock()
+	d.projects[root.Project()] = liveProject{root, documents, servers}
+	d.mu.Unlock()
+	return nil
+}
+
+func (d *LiveDocuments) project(root AuthorizedRoot) (liveProject, bool) {
+	d.mu.RLock()
+	p, ok := d.projects[root.Project()]
+	d.mu.RUnlock()
+	return p, ok
+}
+
+// EnsureSession is invoked only after Manager validates approval, containment and
+// displayed text. Attach preflights the current complete grant before every reuse
+// or launch. Failure is not automatically retried.
+func (d *LiveDocuments) EnsureSession(ctx context.Context, root AuthorizedRoot, path string) error {
+	p, ok := d.project(root)
+	if !ok {
+		return failure("unsupported", "Live discovery is unavailable")
+	}
+	servers := p.documents.servers(root, path)
+	if len(servers) == 0 {
+		return failure("unsupported", "No unique language server owns this file")
+	}
+	var first error
+	healthy := false
+	for _, server := range servers {
+		if _, err := d.Sessions.Attach(ctx, root, server.Config); err != nil {
+			if first == nil {
+				first = err
+			}
+		} else {
+			healthy = true
+		}
+	}
+	if healthy {
+		return nil
+	}
+	return first
+}
+
+func (d *LiveDocuments) ValidateDocument(root AuthorizedRoot, path string, owner DocumentOwnerIdentity, text string) error {
+	p, ok := d.project(root)
+	if !ok {
+		return failure("unsupported", "Live discovery is unavailable")
+	}
+	return p.documents.ValidateDocument(root, path, owner, text)
+}
+
+func (d *LiveDocuments) OwnerSessions(root AuthorizedRoot, path string) []DocumentSession {
+	p, ok := d.project(root)
+	if !ok {
+		return nil
+	}
+	return p.documents.OwnerSessions(root, path)
+}
+
+func (d *LiveDocuments) OwnerSession(root AuthorizedRoot, path string) (DocumentOwnerIdentity, string, ServerCapabilities, error) {
+	p, ok := d.project(root)
+	if !ok {
+		return DocumentOwnerIdentity{}, "", ServerCapabilities{}, failure("unsupported", "Live discovery is unavailable")
+	}
+	return p.documents.OwnerSession(root, path)
+}
+
+func (d *LiveDocuments) Session(root AuthorizedRoot, path string) (string, ServerCapabilities, error) {
+	_, generation, caps, err := d.OwnerSession(root, path)
+	return generation, caps, err
+}
+
+func (d *LiveDocuments) PublicationIsolated(root AuthorizedRoot, path, generation string) bool {
+	p, ok := d.project(root)
+	return ok && p.documents.PublicationIsolated(root, path, generation)
+}
+
+func (d *LiveDocuments) PublicationIsolatedFor(root AuthorizedRoot, path, providerID, generation string) bool {
+	p, ok := d.project(root)
+	return ok && p.documents.PublicationIsolatedFor(root, path, providerID, generation)
+}
+
+func (d *LiveDocuments) Apply(ctx context.Context, step DocumentStep) error {
+	p, ok := d.project(step.Root)
+	if !ok {
+		return failure("unsupported", "Live discovery is unavailable")
+	}
+	return p.documents.Apply(ctx, step)
+}
+
+// Navigate asks the project's running session; it never starts one.
+func (d *LiveDocuments) Navigate(ctx context.Context, req NavigationRequest) (NavigationResult, error) {
+	p, ok := d.project(req.Root)
+	if !ok {
+		return NavigationResult{}, failure("unsupported", "Live discovery is unavailable")
+	}
+	return p.documents.Navigate(ctx, req)
+}
+
+// WatchedFiles notifies the current gopls session (only) of saved Go file
+// transitions observed by the approved project watcher. Non-Go paths and
+// projects without a running session are ignored.
+func (d *LiveDocuments) WatchedFiles(ctx context.Context, root AuthorizedRoot, changes []FileChange) error {
+	p, ok := d.project(root)
+	if !ok {
+		return failure("unsupported", "Live discovery is unavailable")
+	}
+	var goChanges []FileChange
+	for _, c := range changes {
+		if strings.HasSuffix(c.Path, ".go") {
+			goChanges = append(goChanges, c)
+		}
+	}
+	return p.documents.WatchedFiles(ctx, root, goChanges)
+}
+
+func (d *LiveDocuments) notification(n SessionNotification) {
+	d.mu.RLock()
+	p, ok := d.projects[n.Project]
+	d.mu.RUnlock()
+	if !ok {
+		return
+	}
+	notice := func(text string) { d.manager.LiveNotice(n.Project, n.ProviderID, text) }
+	if handle := liveBridge(n.ProviderID, p.root, d.manager, notice); handle != nil {
+		handle(n)
+	}
+}
+
+// Refresh propagates terminal failures without keeping raw server error text.
+// Called by the Engine event pump and before snapshots, not the serve goroutine.
+func (d *LiveDocuments) Refresh() {
+	d.mu.RLock()
+	projects := make([]liveProject, 0, len(d.projects))
+	for _, p := range d.projects {
+		projects = append(projects, p)
+	}
+	d.mu.RUnlock()
+	for _, p := range projects {
+		// Contexts of one provider fail independently: the provider is failed
+		// only when every context that ever ran has failed. A failed sibling of
+		// a healthy context is a bounded partial-coverage notice instead.
+		type tally struct {
+			failed, running int
+			cause           error // of the first failed context
+		}
+		byProvider := map[string]*tally{}
+		for _, cfg := range p.servers {
+			t := byProvider[cfg.ProviderID]
+			if t == nil {
+				t = &tally{}
+				byProvider[cfg.ProviderID] = t
+			}
+			switch info := d.Sessions.Info(p.root, cfg); {
+			case info.Phase == phaseFailed || info.Phase == phaseDisconnected:
+				if t.failed++; t.cause == nil {
+					t.cause = info.Err
+				}
+			case live(info.Phase):
+				t.running++
+			}
+		}
+		for id, t := range byProvider {
+			switch {
+			case t.failed > 0 && t.running == 0:
+				d.manager.LiveFailure(p.root.Project(), id, t.cause)
+			case t.failed > 0:
+				d.manager.LiveNotice(p.root.Project(), id, "One Go build context failed; files in it have no live results. Other contexts keep working.")
+			}
+		}
+	}
+}
+
+// Idle is attachment-level: only attachments with no displayed documents may
+// enter grace. One document closing must not idle peers sharing its server.
+func (d *LiveDocuments) Idle(root AuthorizedRoot) {
+	if p, ok := d.project(root); ok {
+		for _, cfg := range p.servers {
+			d.Sessions.Hide(root, cfg)
+		}
+	}
+}
+func (d *LiveDocuments) Revoke(root AuthorizedRoot) { d.Sessions.Revoke(root) }
+func (d *LiveDocuments) Close()                     { d.Sessions.Close() }

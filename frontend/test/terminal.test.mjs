@@ -1,0 +1,1186 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
+import {
+  canOpenExternal,
+  canOpenOther,
+  canOpenPanel,
+  canOpenTerminal,
+  isPanelToggle,
+  openMode,
+  terminalKeyAction,
+  terminalTabShortcut,
+  isNewShellShortcut,
+  isNewWindowShortcut,
+  isSplitShortcut,
+  isTerminalFindShortcut,
+  splitShortcutLabel,
+  terminalFindShortcutLabel,
+  terminalFindColors,
+  windowCycleShortcut,
+  newShellShortcutLabel,
+  newWindowShortcutLabel,
+  terminalOptions,
+  terminalTheme,
+} from '../src/lib/terminal.ts';
+import { hostLabel, shellCommand, windowTitle, wslDistro } from '../src/lib/hosts.ts';
+import { StaleReplyError } from '../src/lib/link.ts';
+import { ALL_AGENTS } from '../src/lib/portable.ts';
+import { fixtureStore, loadServerModule, loadServerComponent } from './helpers.mjs';
+import { render } from 'svelte/server';
+import { readFileSync } from 'node:fs';
+
+test('MockBackendAPI opens terminals only when supported and not over SSH', async () => {
+  const mock = new MockBackendAPI();
+  const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+  assert.deepEqual(await mock.launchInfo(), { terminal: false, shell: 'posix', panel: true, open: 'panel' });
+  await assert.rejects(mock.openResumeInTerminal(meta.ref), /not supported on this platform/);
+
+  mock.launch = { terminal: true, shell: 'powershell' };
+  await mock.openResumeInTerminal(meta.ref);
+  await mock.openHandoffInTerminal({ ref: meta.ref, target: 'codex', budget: 80000, includeReasoning: false, redactSecrets: false });
+  assert.equal(mock.openedTerminals.length, 2);
+  assert.match(mock.openedTerminals[1], /codex/);
+
+  await mock.connect('dev-box');
+  await assert.rejects(mock.openResumeInTerminal(meta.ref), /local and WSL sessions only/);
+  assert.equal(mock.openedTerminals.length, 2);
+});
+
+test('MockBackendAPI chooses only installed terminals and refuses a missing one', async () => {
+  const mock = new MockBackendAPI();
+  const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+  assert.equal((await mock.terminalSettings()).choose, false);
+  await assert.rejects(mock.setTerminal('kitty'), /not supported/);
+
+  mock.launch = { terminal: true, chooseTerminal: true, shell: 'posix' };
+  mock.terminals = [{ id: 'konsole', name: 'Konsole' }, { id: 'kitty', name: 'kitty' }];
+  let s = await mock.terminalSettings();
+  assert.deepEqual([s.selected, s.auto?.id, s.options.length, s.missing], ['', 'konsole', 2, false]);
+  s = await mock.setTerminal('kitty');
+  assert.deepEqual([s.selected, s.selectedName, s.missing], ['kitty', 'kitty', false]);
+  await assert.rejects(mock.setTerminal('/bin/sh'), /not installed/);
+  await mock.openResumeInTerminal(meta.ref);
+  assert.equal(mock.openedTerminals.length, 1);
+
+  mock.terminals = [{ id: 'konsole', name: 'Konsole' }];
+  s = await mock.terminalSettings();
+  assert.deepEqual([s.selected, s.missing], ['kitty', true]);
+  await assert.rejects(mock.openResumeInTerminal(meta.ref), /kitty was not found\. Choose another terminal in Settings/);
+  assert.equal(mock.openedTerminals.length, 1);
+  assert.equal((await mock.setTerminal('')).selected, '');
+});
+
+test('terminalOptions names what Automatic opens and keeps a missing choice', () => {
+  const base = { choose: true, selected: '', selectedName: '', missing: false, auto: null, options: [] };
+  assert.deepEqual(terminalOptions(base), [{ value: '', label: 'Automatic (none found)' }]);
+  const found = { ...base, auto: { id: 'ptyxis', name: 'Ptyxis' }, options: [{ id: 'ptyxis', name: 'Ptyxis' }, { id: 'kitty', name: 'kitty' }] };
+  assert.deepEqual(terminalOptions(found).map((o) => o.label), ['Automatic (Ptyxis)', 'Ptyxis', 'kitty']);
+  const missing = { ...found, selected: 'ghostty', selectedName: 'Ghostty', missing: true };
+  assert.deepEqual(terminalOptions(missing).at(-1), { value: 'ghostty', label: 'Ghostty (not found)' });
+});
+
+test('host helpers name WSL distributions and the shell that opens them', () => {
+  assert.equal(wslDistro('wsl:Ubuntu'), 'Ubuntu');
+  assert.equal(wslDistro('wsl:Ubuntu-22.04'), 'Ubuntu-22.04');
+  for (const host of [undefined, '', 'wsl:', 'plgl', 'wsl-box', 'my-wsl:Ubuntu']) {
+    assert.equal(wslDistro(host), undefined, `${host} is not a WSL distribution`);
+  }
+
+  assert.equal(hostLabel('wsl:Ubuntu'), 'Ubuntu (WSL)');
+  assert.equal(hostLabel('wsl:Ubuntu-22.04'), 'Ubuntu-22.04 (WSL)');
+  assert.equal(hostLabel('plgl'), 'plgl');
+  assert.equal(hostLabel('wsl-box'), 'wsl-box');
+
+  assert.equal(windowTitle(undefined), 'Local — Agent Sessions');
+  assert.equal(windowTitle(''), 'Local — Agent Sessions');
+  assert.equal(windowTitle('plgl'), 'plgl — Agent Sessions');
+  assert.equal(windowTitle('wsl:Ubuntu'), 'Ubuntu (WSL) — Agent Sessions');
+
+  assert.equal(shellCommand('wsl:Ubuntu'), 'wsl -d Ubuntu');
+  assert.equal(shellCommand('wsl:Ubuntu-22.04'), 'wsl -d Ubuntu-22.04');
+  assert.equal(shellCommand('plgl'), 'ssh plgl');
+  assert.equal(shellCommand('wsl-box'), 'ssh wsl-box');
+});
+
+test('canOpenTerminal gates Open in terminal for local, WSL, SSH and older backends', () => {
+  const cases = [
+    // [name, launch info, data host, expected]
+    ['local with a terminal', { terminal: true, shell: 'posix' }, undefined, true],
+    ['local without a terminal', { terminal: false, shell: 'posix' }, undefined, false],
+    ['local ignores WSL support', { terminal: false, wsl: true, shell: 'powershell' }, undefined, false],
+    ['WSL with a terminal', { terminal: true, wsl: true, shell: 'powershell' }, 'wsl:Ubuntu', true],
+    ['WSL without a local terminal', { terminal: false, wsl: true, shell: 'powershell' }, 'wsl:Ubuntu', true],
+    ['WSL not installed', { terminal: true, wsl: false, shell: 'powershell' }, 'wsl:Ubuntu', false],
+    ['older backend without wsl', { terminal: true, shell: 'powershell' }, 'wsl:Ubuntu', false],
+    ['empty WSL distribution', { terminal: true, wsl: true, shell: 'powershell' }, 'wsl:', false],
+    ['SSH host', { terminal: true, wsl: true, shell: 'powershell' }, 'plgl', false],
+    ['SSH host named like WSL', { terminal: true, wsl: true, shell: 'powershell' }, 'wsl-box', false],
+    ['SSH from an older backend', { terminal: true, shell: 'posix' }, 'plgl', false],
+  ];
+  for (const [name, info, host, expected] of cases) {
+    assert.equal(canOpenTerminal(info, host), expected, name);
+  }
+});
+
+const LAUNCHER_STORE_URL = new URL('../src/lib/stores/launcher.svelte.ts', import.meta.url);
+
+let launcherStoreModule;
+
+// The real LauncherStore with plain api and link fixtures.
+async function loadLauncherStore() {
+  const lib = (rel) => JSON.stringify(new URL(rel, LAUNCHER_STORE_URL).href);
+  launcherStoreModule ??= await loadServerModule(LAUNCHER_STORE_URL, [
+    ["import { api } from '../api';", fixtureStore('api', '__storeFixture')],
+    ["'../manage'", lib('../manage.ts')],
+    ["import { link } from './link.svelte';", fixtureStore('link', '__storeFixture')],
+    ["'../terminal'", lib('../terminal.ts')],
+  ]);
+  return launcherStoreModule;
+}
+
+test('LauncherStore offers Open in terminal for local and WSL data only', async () => {
+  const { LauncherStore } = await loadLauncherStore();
+  const run = async (launchInfo, dataHost) => {
+    globalThis.__storeFixture = { api: { launchInfo }, link: { dataHost } };
+    try {
+      const store = new LauncherStore();
+      await store.init();
+      return { canOpen: store.canOpen, copyShell: store.copyShell };
+    } finally {
+      delete globalThis.__storeFixture;
+    }
+  };
+  const windows = async () => ({ terminal: true, wsl: true, shell: 'powershell' });
+  assert.deepEqual(await run(windows, undefined), { canOpen: true, copyShell: 'powershell' });
+  assert.deepEqual(await run(windows, 'wsl:Ubuntu'), { canOpen: true, copyShell: 'posix' });
+  assert.deepEqual(await run(windows, 'plgl'), { canOpen: false, copyShell: 'posix' });
+  // An older backend reports no wsl field, or lacks launchInfo entirely.
+  assert.equal((await run(async () => ({ terminal: true, shell: 'powershell' }), 'wsl:Ubuntu')).canOpen, false);
+  const missing = async () => { throw new Error('ListWSLDistros is not a function'); };
+  assert.deepEqual(await run(missing, undefined), { canOpen: false, copyShell: 'posix' });
+  assert.equal((await run(missing, 'wsl:Ubuntu')).canOpen, false);
+});
+
+test('canOpenTerminal follows where agents open; the panel reaches SSH hosts', () => {
+  const panel = { terminal: true, wsl: true, shell: 'powershell', panel: true };
+  const external = { ...panel, open: 'external' };
+  assert.equal(openMode(panel), 'panel');
+  assert.equal(openMode({ ...panel, open: 'panel' }), 'panel');
+  assert.equal(openMode(external), 'external');
+  // An older backend has no panel, whatever the saved choice.
+  assert.equal(openMode({ terminal: true, shell: 'posix', open: 'panel' }), 'external');
+
+  const cases = [
+    // [name, launch info, data host, terminal, external, panel, other]
+    ['panel, local', panel, undefined, true, true, true, true],
+    ['panel, WSL', panel, 'wsl:Ubuntu', true, true, true, true],
+    ['panel, SSH', panel, 'plgl', true, false, true, false],
+    ['panel, WSL not installed', { ...panel, wsl: false }, 'wsl:Ubuntu', false, false, false, false],
+    ['panel, empty WSL distribution', panel, 'wsl:', false, false, false, false],
+    ['panel, no local terminal app', { ...panel, terminal: false }, undefined, true, false, true, false],
+    ['external, local', external, undefined, true, true, true, true],
+    ['external, SSH', external, 'plgl', false, false, true, true],
+    ['no panel, SSH', { terminal: true, shell: 'posix' }, 'plgl', false, false, false, false],
+  ];
+  for (const [name, info, host, terminal, ext, pan, other] of cases) {
+    assert.deepEqual(
+      [canOpenTerminal(info, host), canOpenExternal(info, host), canOpenPanel(info, host), canOpenOther(info, host)],
+      [terminal, ext, pan, other],
+      name,
+    );
+  }
+});
+
+test('terminal keys: Ctrl+` toggles the panel; copy and paste follow the platform', () => {
+  const key = (k, mods = {}) => ({ type: 'keydown', key: k, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.ok(isPanelToggle(key('`', { ctrlKey: true })));
+  assert.ok(isPanelToggle({ ...key('Dead', { ctrlKey: true }), code: 'Backquote' }), 'layouts with a dead backquote');
+  assert.ok(!isPanelToggle(key('`')));
+  assert.ok(!isPanelToggle(key('`', { ctrlKey: true, altKey: true })));
+
+  assert.equal(terminalKeyAction(key('`', { ctrlKey: true }), false), 'app');
+  assert.equal(terminalKeyAction(key(',', { ctrlKey: true }), false), 'app');
+  assert.equal(terminalKeyAction(key(',', { metaKey: true }), true), 'app');
+  // Moving the tab is the app's; Shift+PageUp alone still scrolls the terminal.
+  for (const mac of [true, false]) assert.equal(terminalKeyAction(key('PageUp', { ctrlKey: true, shiftKey: true }), mac), 'app');
+  assert.equal(terminalKeyAction(key('PageUp', { shiftKey: true }), false), null);
+  // Elsewhere Ctrl+C stays an interrupt; Ctrl+Shift+C copies.
+  assert.equal(terminalKeyAction(key('c', { ctrlKey: true }), false), null);
+  assert.equal(terminalKeyAction(key('C', { ctrlKey: true, shiftKey: true }), false), 'copy');
+  assert.equal(terminalKeyAction(key('V', { ctrlKey: true, shiftKey: true }), false), 'paste');
+  assert.equal(terminalKeyAction({ ...key('C', { ctrlKey: true, shiftKey: true }), type: 'keyup' }), null);
+  // macOS: Cmd+C and Cmd+V; Ctrl+C reaches the terminal.
+  assert.equal(terminalKeyAction(key('c', { metaKey: true }), true), 'copy');
+  assert.equal(terminalKeyAction(key('v', { metaKey: true }), true), 'paste');
+  assert.equal(terminalKeyAction(key('c', { ctrlKey: true }), true), null);
+  assert.equal(terminalKeyAction(key('x', { metaKey: true }), true), null);
+});
+
+test('New shell shortcut: Cmd+T on macOS, Ctrl+Shift+T elsewhere', () => {
+  const key = (k, code, mods = {}) => ({ key: k, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.ok(isNewShellShortcut(key('t', 'KeyT', { metaKey: true }), true));
+  assert.ok(isNewShellShortcut(key('T', 'KeyT', { ctrlKey: true, shiftKey: true }), false));
+  assert.ok(isNewShellShortcut(key('t', 'KeyK', { metaKey: true }), true), 'layouts with T elsewhere');
+  assert.ok(!isNewShellShortcut(key('y', 'KeyT', { metaKey: true }), true), 'their key in T\'s place types another letter');
+  assert.ok(isNewShellShortcut(key('е', 'KeyT', { metaKey: true }), true), 'a layout without Latin letters');
+  assert.ok(!isNewShellShortcut(key('t', 'KeyT', { ctrlKey: true }), false), 'Ctrl+T reaches the terminal');
+  assert.ok(!isNewShellShortcut(key('t', 'KeyT', { ctrlKey: true }), true));
+  assert.ok(!isNewShellShortcut(key('T', 'KeyT', { metaKey: true, shiftKey: true }), true));
+  assert.ok(!isNewShellShortcut(key('t', 'KeyT', { metaKey: true }), false));
+  assert.ok(!isNewShellShortcut(key('T', 'KeyT', { ctrlKey: true, shiftKey: true, altKey: true }), false));
+  assert.equal(terminalKeyAction({ ...key('t', 'KeyT', { metaKey: true }), type: 'keydown' }, true), 'app');
+  assert.equal(terminalKeyAction({ ...key('T', 'KeyT', { ctrlKey: true, shiftKey: true }), type: 'keydown' }, false), 'app');
+  assert.deepEqual([newShellShortcutLabel(true), newShellShortcutLabel(false)], ['⌘T', 'Ctrl+Shift+T']);
+});
+
+test('terminal find shortcut: Cmd+F on macOS, Ctrl+Shift+F elsewhere', () => {
+  const key = (k, code, mods = {}) => ({ type: 'keydown', key: k, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.ok(isTerminalFindShortcut(key('f', 'KeyF', { metaKey: true }), true));
+  assert.ok(isTerminalFindShortcut(key('а', 'KeyF', { metaKey: true }), true), 'a layout without Latin letters');
+  assert.ok(!isTerminalFindShortcut(key('g', 'KeyF', { metaKey: true }), true), 'their key in F\'s place types another letter');
+  assert.ok(isTerminalFindShortcut(key('F', 'KeyF', { ctrlKey: true, shiftKey: true }), false));
+  assert.ok(!isTerminalFindShortcut(key('f', 'KeyF', { ctrlKey: true }), false), 'Ctrl+F reaches the terminal');
+  assert.ok(!isTerminalFindShortcut(key('f', 'KeyF', { ctrlKey: true, shiftKey: true, altKey: true }), false));
+  assert.ok(!isTerminalFindShortcut(key('F', 'KeyF', { metaKey: true, shiftKey: true }), true));
+  assert.equal(terminalKeyAction(key('f', 'KeyF', { metaKey: true }), true), 'find');
+  assert.equal(terminalKeyAction(key('F', 'KeyF', { ctrlKey: true, shiftKey: true }), false), 'find');
+  assert.equal(terminalKeyAction(key('f', 'KeyF', { ctrlKey: true }), false), null);
+  assert.deepEqual([terminalFindShortcutLabel(true), terminalFindShortcutLabel(false)], ['⌘F', 'Ctrl+Shift+F']);
+  assert.equal(terminalFindColors('light').matchBackground[0], '#');
+  assert.equal(terminalFindColors('dark').activeMatchBorder.length, 7);
+});
+
+const terminalFindModule = await loadServerModule(
+  new URL('../src/lib/terminalFind.svelte.ts', import.meta.url),
+  [
+    ["import { searchSeed } from './contentSearch';", "const searchSeed = (sel) => sel || undefined;"],
+    ["import { terminalFindColors } from './terminal';", "const terminalFindColors = (mode) => ({ mode, activeMatchBorder: '#' + 'f'.repeat(6) });"],
+  ],
+);
+
+test('terminal find tracks matches per pane and passes case and theme to the addon', () => {
+  const calls = [];
+  const addon = {
+    findNext: (term, opts) => { calls.push(['next', term, opts]); return true; },
+    findPrevious: (term, opts) => { calls.push(['previous', term, opts]); return false; },
+    clearDecorations: () => calls.push(['clear']),
+  };
+  const find = new terminalFindModule.TerminalFind({
+    addon: () => addon,
+    selection: () => 'needle',
+    focus: () => {},
+    theme: () => 'dark',
+  });
+
+  assert.equal(find.open, false);
+  find.openFind();
+  assert.equal(find.open, true);
+  assert.equal(find.query, 'needle', 'the selected text seeds the query');
+  assert.equal(calls[0][0], 'next');
+  assert.equal(calls[0][2].caseSensitive, false);
+  assert.equal(calls[0][2].decorations.activeMatchBorder, '#ffffff');
+  assert.equal(find.found, true);
+
+  find.setResults({ resultIndex: 2, resultCount: 7 });
+  assert.equal(find.count, '3 of 7');
+  find.setResults({ resultIndex: 3, resultCount: 1000 });
+  assert.equal(find.count, '4 of 1000+', 'caps at the highlight limit');
+
+  find.toggleCase();
+  assert.equal(find.matchCase, true);
+  assert.equal(calls.at(-2)[0], 'clear', 'option changes rebuild the highlights');
+  assert.equal(calls.at(-1)[0], 'next');
+  assert.equal(calls.at(-1)[2].caseSensitive, true);
+  find.setResults({ resultIndex: 0, resultCount: 0 });
+  assert.equal(find.found, false, 'a search with no matches reports none');
+
+  find.search('previous', false);
+  assert.equal(calls.at(-1)[0], 'previous');
+  assert.equal(find.found, false);
+  assert.equal(find.count, 'No results');
+
+  find.setQuery('');
+  assert.equal(calls.at(-1)[0], 'clear', 'an empty query clears the marks');
+  assert.equal(find.count, '');
+
+  find.closeFind();
+  assert.equal(find.open, false);
+  assert.equal(calls.at(-1)[0], 'clear');
+});
+
+test('Split shortcut: Cmd+\\ on macOS, Ctrl+Shift+5 elsewhere', () => {
+  const key = (k, code, mods = {}) => ({ key: k, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.ok(isSplitShortcut(key('\\', 'Backslash', { metaKey: true }), true));
+  assert.ok(isSplitShortcut(key('\\', 'IntlBackslash', { metaKey: true }), true), 'the key that types a backslash');
+  assert.ok(!isSplitShortcut(key('\\', 'Backslash', { metaKey: true, shiftKey: true }), true));
+  assert.ok(!isSplitShortcut(key('\\', 'Backslash', { ctrlKey: true }), true), 'Ctrl+\\ reaches the terminal');
+  assert.ok(isSplitShortcut(key('%', 'Digit5', { ctrlKey: true, shiftKey: true }), false));
+  assert.ok(isSplitShortcut(key('(', 'Digit5', { ctrlKey: true, shiftKey: true }), false), 'AZERTY types ( there');
+  assert.ok(!isSplitShortcut(key('[', 'Digit5', { ctrlKey: true, shiftKey: true, altKey: true }), false), 'AltGr');
+  assert.ok(!isSplitShortcut(key('\\', 'Backslash', { ctrlKey: true }), false), 'Ctrl+\\ is SIGQUIT');
+  assert.ok(!isSplitShortcut(key('5', 'Digit5', { ctrlKey: true }), false));
+  assert.ok(!isSplitShortcut(key('\\', 'Backslash', { metaKey: true }), false));
+  assert.equal(terminalKeyAction({ ...key('\\', 'Backslash', { metaKey: true }), type: 'keydown' }, true), 'app');
+  assert.equal(terminalKeyAction({ ...key('%', 'Digit5', { ctrlKey: true, shiftKey: true }), type: 'keydown' }, false), 'app');
+  assert.equal(terminalKeyAction({ ...key('\\', 'Backslash', { ctrlKey: true }), type: 'keydown' }, false), null);
+  assert.deepEqual([splitShortcutLabel(true), splitShortcutLabel(false)], ['⌘\\', 'Ctrl+Shift+5']);
+
+  // The app splits only a shown terminal, and the terminal's menu splits or
+  // closes its own pane.
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  assert.match(app, /isSplitShortcut\(event, isMac\)\) \{\s*if \(!launcher\.info\.panel \|\| !terminals\.open \|\| !terminals\.active \|\| hasOpenModal\(\)\) return;/);
+  assert.match(app, /if \(!event\.repeat\) void terminals\.split\(terminals\.active, shellCwd, link\.dataHost \?\? ''\)/);
+  const view = readFileSync(new URL('../src/lib/components/terminal/TerminalView.svelte', import.meta.url), 'utf8');
+  assert.match(view, /label: 'Split Terminal',[\s\S]*?disabled: !terminals\.canSplit\(tab\.id\),[\s\S]*?onSelect: onSplit/);
+  assert.match(view, /label: 'Close Terminal', onSelect: \(\) => terminals\.close\(tab\.id\)/);
+});
+
+test('terminal tab shortcuts: Cmd+1–9 on macOS, Alt+1–9 elsewhere', () => {
+  const key = (code, mods = {}) => ({ code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.equal(terminalTabShortcut(key('Digit1', { metaKey: true }), true), 1);
+  assert.equal(terminalTabShortcut(key('Digit9', { metaKey: true }), true), 9);
+  assert.equal(terminalTabShortcut(key('Numpad3', { metaKey: true }), true), 3);
+  assert.equal(terminalTabShortcut(key('Digit2', { altKey: true }), false), 2);
+  assert.equal(terminalTabShortcut(key('Digit0', { metaKey: true }), true), null);
+  assert.equal(terminalTabShortcut(key('KeyA', { metaKey: true }), true), null);
+  assert.equal(terminalTabShortcut(key('Digit1', { altKey: true }), true), null, 'Option+digit types on macOS');
+  assert.equal(terminalTabShortcut(key('Digit1', { metaKey: true }), false), null);
+  assert.equal(terminalTabShortcut(key('Digit1', { metaKey: true, shiftKey: true }), true), null);
+  assert.equal(terminalTabShortcut(key('Digit1', { altKey: true, ctrlKey: true }), false), null, 'AltGr');
+  assert.equal(terminalTabShortcut(key('Digit1'), false), null);
+});
+
+test('terminalTheme takes the app colors and falls back per theme', () => {
+  const vars = { '--bg-primary': '#101010', '--text-primary': '#eeeeee', '--accent-color': '#3b82f6' };
+  const dark = terminalTheme('dark', (name) => vars[name] ?? '');
+  assert.deepEqual([dark.background, dark.foreground, dark.cursor, dark.cursorAccent], ['#101010', '#eeeeee', '#3b82f6', '#101010']);
+  const light = terminalTheme('light', () => '');
+  assert.deepEqual([light.background, light.foreground, light.cursor], ['#ffffff', '#0b1220', '#0b1220']);
+  assert.notEqual(light.red, dark.red);
+  const fallback = terminalTheme('dark', () => '');
+  assert.deepEqual([fallback.background, fallback.cursorAccent, fallback.black], ['#242423', '#242423', '#1c1c1e']);
+  const matched = terminalTheme('dark', name => name === '--bg-primary' ? '#2c2c2b' : '');
+  assert.deepEqual([matched.background, matched.cursorAccent], ['#2c2c2b', '#2c2c2b']);
+});
+
+test('LauncherStore saves where agents open and reports a failure', async () => {
+  const { LauncherStore } = await loadLauncherStore();
+  const calls = [];
+  let fail = false;
+  globalThis.__storeFixture = {
+    api: {
+      launchInfo: async () => ({ terminal: true, shell: 'posix', panel: true }),
+      setTerminalOpen: async (mode) => {
+        calls.push(mode);
+        if (fail) throw new Error('config.toml: permission denied');
+        return { terminal: true, shell: 'posix', panel: true, open: mode };
+      },
+    },
+    link: { dataHost: 'plgl' },
+  };
+  try {
+    const store = new LauncherStore();
+    await store.init();
+    assert.deepEqual([store.openMode, store.canOpen, store.canOpenPanel, store.canOpenExternal], ['panel', true, true, false]);
+    await store.setOpenMode('external');
+    assert.deepEqual([store.openMode, store.canOpen, store.savingOpenMode], ['external', false, false]);
+    fail = true;
+    await store.setOpenMode('panel');
+    assert.equal(store.openMode, 'external');
+    assert.match(store.terminalError, /permission denied/);
+    assert.deepEqual(calls, ['external', 'panel']);
+  } finally {
+    delete globalThis.__storeFixture;
+  }
+});
+
+const TERMINALS_STORE_URL = new URL('../src/lib/stores/terminals.svelte.ts', import.meta.url);
+
+let terminalsStoreModule;
+
+// The real TerminalsStore on a mock backend with its fake terminals.
+async function loadTerminalsStore() {
+  const lib = (rel) => JSON.stringify(new URL(rel, TERMINALS_STORE_URL).href);
+  terminalsStoreModule ??= await loadServerModule(TERMINALS_STORE_URL, [
+    [
+      "import { api, subscribeTerminalData, subscribeTerminalExit } from '../api';",
+      fixtureStore('api', '__storeFixture') +
+        "const subscribeTerminalData = (fn) => api.onEvent('term:data', fn);" +
+        "const subscribeTerminalExit = (fn) => api.onEvent('term:exit', fn);",
+    ],
+    ["'../link'", lib('../link.ts')],
+    ["'../portable'", lib('../portable.ts')],
+    ["'../guidance'", lib('../guidance.ts')],
+    ["'../hosts'", lib('../hosts.ts')],
+    ["'../attention'", lib('../attention.ts')],
+    ["import { toast } from './toast.svelte';", fixtureStore('toast', '__storeFixture')],
+  ]);
+  return terminalsStoreModule;
+}
+
+async function withTerminals(fn) {
+  const { TerminalsStore, ...rest } = await loadTerminalsStore();
+  const mock = new MockBackendAPI();
+  const toasts = [];
+  const storage = new Map();
+  const hadStorage = 'localStorage' in globalThis;
+  const previous = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem: (k) => storage.get(k) ?? null,
+    setItem: (k, v) => storage.set(k, String(v)),
+  };
+  // The fixture proxy calls methods on itself; bind them to the mock.
+  const api = new Proxy(mock, { get: (m, key) => (typeof m[key] === 'function' ? m[key].bind(m) : m[key]) });
+  const toast = {
+    current: null,
+    show: (t) => {
+      toasts.push(t);
+      toast.current = { ...t, id: toasts.length };
+    },
+    dismiss: () => (toast.current = null),
+  };
+  globalThis.__storeFixture = { api, toast };
+  const store = new TerminalsStore();
+  store.init();
+  try {
+    return await fn({ store, mock, toasts, toast, storage, TerminalsStore, ...rest });
+  } finally {
+    store.destroy();
+    delete globalThis.__storeFixture;
+    if (hadStorage) globalThis.localStorage = previous;
+    else delete globalThis.localStorage;
+  }
+}
+
+function sinkFor(store, id) {
+  const sink = { text: '', exits: [], pastes: [] };
+  const decoder = new TextDecoder();
+  sink.detach = store.attach(id, {
+    write: (data) => (sink.text += decoder.decode(data)),
+    exit: (code) => sink.exits.push(code),
+    paste: (text) => sink.pastes.push(text),
+  });
+  return sink;
+}
+
+test('TerminalsStore buffers output until the view attaches, then streams it', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    store.setSize(100, 30);
+    const tab = await store.runResume(meta.ref);
+    assert.deepEqual([tab.kind, tab.status, tab.label, store.active, store.open], ['agent', 'running', ALL_AGENTS.find((a) => a.id === meta.ref.agent).label, tab.id, true]);
+    assert.deepEqual(mock.panelTerminals.get(tab.id).size, { cols: 100, rows: 30 }, 'the tab starts at the views size');
+
+    // The banner arrived before the start reply and waits for the view.
+    const sink = sinkFor(store, tab.id);
+    assert.match(sink.text, /\[mock\] .*mock\x1b\[0m \$ $/s);
+    await mock.terminalWrite(tab.id, 'ls\r');
+    assert.match(sink.text, /ls\r\nmock: ls\r\n/);
+
+    sink.detach();
+  });
+});
+
+test('agentTabLabel names a tab after the session, shortened with an ellipsis', async () => {
+  const { agentTabLabel, TAB_LABEL_MAX } = await loadTerminalsStore();
+  assert.equal(agentTabLabel('Fix  the\nbuild ', 'codex'), 'Fix the build');
+  assert.equal(agentTabLabel('', 'claude-code'), 'Claude Code');
+  assert.equal(agentTabLabel(undefined, 'unknown'), 'Agent');
+  const long = agentTabLabel('word '.repeat(20) + '🙂', 'codex');
+  assert.equal(Array.from(long).length <= TAB_LABEL_MAX, true);
+  assert.match(long, /^word word .*\S…$/);
+  assert.equal(agentTabLabel('é'.repeat(TAB_LABEL_MAX), 'codex'), 'é'.repeat(TAB_LABEL_MAX));
+});
+
+test('TerminalsStore labels Resume and Continue tabs with the session and its agent', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const resumed = await store.runResume(meta.ref, meta.cwd, 'Refactor the parser');
+    assert.deepEqual([resumed.label, resumed.agent], ['Refactor the parser', meta.ref.agent]);
+    const handed = await store.runHandoff({ ref: meta.ref, target: 'codex' }, meta.cwd, 'Refactor the parser');
+    assert.deepEqual([handed.label, handed.agent], ['Refactor the parser', 'codex']);
+    const shell = await store.newShell();
+    assert.deepEqual([shell.label, shell.agent], ['Shell', undefined]);
+  });
+});
+
+test('TerminalsStore closes a tab when its process exits, keeping a quick failure readable', async () => {
+  const realNow = Date.now;
+  let now = 1_000_000;
+  Date.now = () => now;
+  try {
+    await withTerminals(async ({ store, mock, KEEP_FAILED_MS }) => {
+      const first = await store.newShell();
+      const second = await store.newShell();
+      store.select(first.id);
+      // Typing exit closes the tab; the neighbour stays.
+      await mock.terminalWrite(first.id, 'exit\r');
+      assert.deepEqual(store.tabs.map((t) => t.id), [second.id]);
+      assert.deepEqual([store.active, store.open], [second.id, true]);
+
+      // A failure right after the start stays, with its exit code shown.
+      const failed = await store.newShell();
+      const sink = sinkFor(store, failed.id);
+      mock.emit('term:exit', { id: failed.id, code: 127 });
+      assert.deepEqual([store.tabs.at(-1).status, store.tabs.at(-1).exitCode, sink.exits], ['exited', 127, [127]]);
+      // A view mounted later still learns how the tab ended.
+      sink.detach();
+      assert.deepEqual(sinkFor(store, failed.id).exits, [127]);
+
+      // A failure later on, like exit after a failed command, closes.
+      now += KEEP_FAILED_MS;
+      mock.emit('term:exit', { id: second.id, code: 1 });
+      assert.deepEqual(store.tabs.map((t) => t.id), [failed.id]);
+
+      // The last tab closing hides the panel.
+      store.close(failed.id);
+      assert.deepEqual([store.tabs.length, store.open], [0, false]);
+
+      // A process that finished before its start returned never shows a tab.
+      const panelShell = mock.panelShell.bind(mock);
+      mock.panelShell = async (cwd, size) => {
+        const tab = await panelShell(cwd, size);
+        mock.emit('term:exit', { id: tab.id, code: 0 });
+        return tab;
+      };
+      assert.equal((await store.newShell()).status, 'exited');
+      assert.equal(store.tabs.length, 0);
+    });
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('TerminalsStore asks before closing a running agent, not a shell', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const agent = await store.runResume(meta.ref, meta.cwd);
+    const shell = await store.newShell('/work');
+    assert.equal(store.active, shell.id);
+    // The backend's directory wins; the caller's fills in where it has none.
+    assert.deepEqual([agent.dir, shell.dir], [meta.cwd, '/work']);
+
+    assert.equal(store.close(agent.id), false);
+    assert.deepEqual([store.confirming, store.active, store.tabs.length], [agent.id, agent.id, 2]);
+    store.cancelClose();
+    assert.equal(store.confirming, null);
+    assert.ok(mock.panelTerminals.has(agent.id));
+
+    store.close(agent.id);
+    store.confirmClose();
+    assert.deepEqual(store.tabs.map((t) => t.id), [shell.id]);
+    assert.equal(store.active, shell.id);
+    assert.ok(!mock.panelTerminals.has(agent.id), 'closing ended the agent');
+
+    // A shell closes at once; the last tab hides the panel.
+    assert.equal(store.close(shell.id), true);
+    assert.deepEqual([store.tabs.length, store.active, store.open], [0, null, false]);
+    assert.equal(mock.panelTerminals.size, 0);
+  });
+});
+
+test('TerminalsStore bulk closing pauses at each running agent and Cancel stops the queue', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const first = await store.runResume(meta.ref, meta.cwd);
+    const second = await store.runResume(meta.ref, meta.cwd);
+    const shell = await store.newShell('/work');
+    store.closeMany([first.id, second.id, shell.id]);
+    assert.equal(store.confirming, first.id);
+    assert.equal(store.tabs.length, 3);
+    store.confirmClose();
+    assert.equal(store.confirming, second.id);
+    assert.deepEqual(store.tabs.map(t => t.id), [second.id, shell.id]);
+    store.cancelClose();
+    store.confirmClose();
+    assert.equal(store.tabs.length, 2, 'Cancel also drops remaining bulk targets');
+    store.closeMany([second.id, shell.id]);
+    store.confirmClose();
+    assert.equal(store.tabs.length, 0);
+    assert.equal(store.confirming, null);
+  });
+});
+
+test('TerminalsStore tracks cwd independently for active and inactive tabs', async () => {
+  await withTerminals(async ({ store }) => {
+    const first = await store.newShell('/a');
+    const second = await store.newShell('/b');
+    store.setCwd(first.id, '/a/nested');
+    store.setCwd(second.id, '/other project');
+    assert.equal(store.tabs.find(t => t.id === first.id).cwd, '/a/nested');
+    assert.equal(store.tabs.find(t => t.id === second.id).cwd, '/other project');
+    assert.equal(store.tabs.find(t => t.id === first.id).dir, '/a');
+    assert.equal(store.active, second.id);
+    store.setCwd('missing-tab', '/ignored');
+    assert.equal(store.tabs.length, 2);
+  });
+});
+
+test('TerminalsStore selects a tab by its position while the panel shows', async () => {
+  await withTerminals(async ({ store }) => {
+    const first = await store.newShell('/a');
+    const second = await store.newShell('/b');
+    assert.equal(store.active, second.id);
+    assert.equal(store.selectNth(1), true);
+    assert.equal(store.active, first.id);
+    assert.equal(store.selectNth(3), false, 'no third tab');
+    assert.equal(store.active, first.id);
+    store.setOpen(false);
+    assert.equal(store.selectNth(2), false, 'a hidden panel keeps its tab');
+    assert.equal(store.active, first.id);
+  });
+});
+
+const panes = (store) => store.groups.map((g) => g.panes);
+
+test('TerminalsStore moves a tab, its panes with it', async () => {
+  await withTerminals(async ({ store }) => {
+    const a = await store.newShell();
+    const a2 = await store.split(a.id);
+    const b = await store.newShell();
+    const c = await store.newShell();
+    const [ga, gb, gc] = store.groups.map((g) => g.id);
+    assert.equal(store.moveGroup(ga, 2), true);
+    assert.deepEqual(panes(store), [[b.id], [c.id], [a.id, a2.id]]);
+    assert.equal(store.moveGroup(gc, 0), true);
+    assert.deepEqual(store.groups.map((g) => g.id), [gc, gb, ga]);
+    assert.equal(store.selectNth(3), true, 'positions follow the new order');
+    assert.equal(store.active, a2.id, 'with the pane the tab had focused');
+    for (const to of [0, -1, 3]) assert.equal(store.moveGroup(gc, to), false);
+    assert.equal(store.moveGroup('missing', 0), false);
+    assert.deepEqual(store.groups.map((g) => g.id), [gc, gb, ga]);
+  });
+});
+
+test('TerminalsStore splits a tab into panes beside the source, in its directory on the same host', async () => {
+  await withTerminals(async ({ store, mock, MAX_GROUP_PANES }) => {
+    const first = await store.newShell('/a');
+    const second = await store.newShell('/b');
+    assert.deepEqual(panes(store), [[first.id], [second.id]], 'each launch is a tab of its own');
+    assert.match(store.groups[0].id, /^g\d+$/);
+
+    store.setCwd(first.id, '/a/nested');
+    store.setSize(120, 30, first.id);
+    const right = await store.split(first.id, '/default', '');
+    assert.deepEqual(panes(store), [[first.id, right.id], [second.id]]);
+    assert.deepEqual(store.tabs.map((t) => t.id), [first.id, second.id, right.id], 'tabs stay in start order');
+    assert.deepEqual([store.active, store.shownGroup.focus, store.groups[0].sizes], [right.id, right.id, [0.5, 0.5]]);
+    assert.equal(right.dir, '/a/nested', 'the source pane’s directory');
+    assert.deepEqual(mock.panelTerminals.get(right.id).size, { cols: 60, rows: 30 }, 'half the source’s width');
+
+    // Splitting the first pane again puts the shell right after it.
+    const middle = await store.split(first.id, '/default', '');
+    assert.deepEqual(store.groups[0].panes, [first.id, middle.id, right.id]);
+    assert.ok(store.groups[0].sizes.every((share) => Math.abs(share - 1 / 3) < 1e-9));
+
+    // A pane on another host than the selected one starts at the default.
+    mock.connState = { ...mock.connState, phase: 'connected', host: 'box' };
+    const remote = await store.newShell('/srv');
+    const local = await store.split(remote.id, '/default', '');
+    assert.equal(local.dir, '/default');
+
+    // The panel docked left stacks panes, so a split halves the rows.
+    store.setPosition('left');
+    store.setSize(80, 40, second.id);
+    const below = await store.split(second.id, '', 'box');
+    assert.deepEqual(mock.panelTerminals.get(below.id).size, { cols: 80, rows: 20 });
+
+    // A full tab takes no more panes.
+    await store.split(first.id);
+    assert.equal(store.groups[0].panes.length, MAX_GROUP_PANES);
+    assert.equal(store.canSplit(first.id), false);
+    const count = store.tabs.length;
+    assert.equal(await store.split(first.id), null);
+    assert.equal(store.tabs.length, count);
+    assert.equal(store.canSplit('missing'), false);
+  });
+});
+
+test('TerminalsStore gives a split its own tab when the source closed while it started', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const source = await store.newShell('/a');
+    const other = await store.newShell('/b');
+    const panelShell = mock.panelShell.bind(mock);
+    mock.panelShell = async (cwd, size) => {
+      store.close(source.id);
+      return panelShell(cwd, size);
+    };
+    const split = await store.split(source.id);
+    assert.deepEqual(panes(store), [[other.id], [split.id]]);
+    assert.equal(store.active, split.id);
+  });
+});
+
+test('TerminalsStore closing a pane focuses its neighbour and an empty tab gives way to the next', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const a = await store.newShell();
+    const a2 = await store.split(a.id);
+    const a3 = await store.split(a2.id);
+    const b = await store.newShell();
+    store.resizePanes(store.groups[0].id, 0, 0.2);
+    store.select(a2.id);
+
+    // The focused pane closes: the next pane in its tab takes focus.
+    store.close(a2.id);
+    assert.deepEqual(panes(store), [[a.id, a3.id], [b.id]]);
+    assert.deepEqual([store.active, store.groups[0].focus], [a3.id, a3.id]);
+    const [left, right] = store.groups[0].sizes;
+    assert.ok(Math.abs(left + right - 1) < 1e-9 && left > right, 'the others keep their proportions');
+
+    // A pane exiting in a tab not shown leaves the shown tab alone.
+    store.select(b.id);
+    await mock.terminalWrite(a3.id, 'exit\r');
+    assert.deepEqual([panes(store), store.active, store.groups[0].focus], [[[a.id], [b.id]], b.id, a.id]);
+
+    // The last pane of a tab closing shows its neighbour's focused pane.
+    store.select(a.id);
+    store.close(a.id);
+    assert.deepEqual([panes(store), store.active], [[[b.id]], b.id]);
+    store.close(b.id);
+    assert.deepEqual([store.groups, store.active, store.open], [[], null, false]);
+
+    // Exited-before-shown and stale starts add no tab.
+    const panelShell = mock.panelShell.bind(mock);
+    mock.panelShell = async (cwd, size) => {
+      const tab = await panelShell(cwd, size);
+      mock.emit('term:exit', { id: tab.id, code: 0 });
+      return tab;
+    };
+    await store.newShell();
+    mock.panelShell = async (cwd, size) => {
+      await panelShell(cwd, size);
+      throw new StaleReplyError();
+    };
+    await store.newShell();
+    assert.deepEqual(store.groups, []);
+  });
+});
+
+test('TerminalsStore selects tabs by position and shows a pane in a hidden tab', async () => {
+  await withTerminals(async ({ store }) => {
+    const a = await store.newShell();
+    const a2 = await store.split(a.id);
+    const b = await store.newShell();
+    store.select(a.id);
+    store.select(b.id);
+    assert.equal(store.selectNth(1), true);
+    assert.equal(store.active, a.id, 'the pane the tab had focused');
+    assert.equal(store.selectNth(3), false, 'three panes, two tabs');
+    store.setOpen(false);
+    store.show(a2.id);
+    assert.deepEqual([store.open, store.active, store.groups[0].focus], [true, a2.id, a2.id]);
+  });
+});
+
+test('TerminalsStore resizes panes within their limits', async () => {
+  await withTerminals(async ({ store }) => {
+    const a = await store.newShell();
+    await store.split(a.id);
+    await store.split(a.id);
+    const id = store.groups[0].id;
+    assert.equal(store.resizePanes(id, 0, 1, 0.1), 1 / 3 - 0.1, 'the right pane keeps its minimum');
+    assert.ok(Math.abs(store.groups[0].sizes[1] - 0.1) < 1e-9);
+    assert.ok(Math.abs(store.resizePanes(id, 0, 0.5, 0.1)) < 1e-9, 'nothing left to give');
+    assert.ok(Math.abs(store.resizePanes(id, 0, -1, 0.1) - (0.1 - (2 / 3 - 0.1))) < 1e-9);
+    assert.equal(store.resizePanes(id, 2, 0.1), 0, 'no border after the last pane');
+    assert.equal(store.resizePanes('missing', 0, 0.1), 0);
+    assert.ok(Math.abs(store.groups[0].sizes.reduce((s, x) => s + x, 0) - 1) < 1e-9);
+  });
+});
+
+test('TerminalsStore closing a split tab asks for each running agent in it', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const agent = await store.runResume(meta.ref, meta.cwd);
+    const shell = await store.split(agent.id);
+    store.closeMany(store.groups[0].panes);
+    assert.deepEqual([store.confirming, store.active, store.tabs.length], [agent.id, agent.id, 2]);
+    store.confirmClose();
+    assert.deepEqual([store.tabs.length, store.groups.length, store.open], [0, 0, false]);
+    assert.ok(!mock.panelTerminals.has(shell.id));
+  });
+});
+
+test('TerminalsStore reports a failed start and opens a shell when toggled empty', async () => {
+  await withTerminals(async ({ store, mock, toasts }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    mock.launch = { ...mock.launch, panel: false };
+    await assert.rejects(store.runResume(meta.ref), /not available/);
+    assert.equal(await store.newShell(), null);
+    assert.equal(toasts.at(-1).title, "Couldn't open a terminal");
+    assert.equal(store.tabs.length, 0);
+
+    mock.launch = { ...mock.launch, panel: true };
+    await store.toggle('/work');
+    assert.deepEqual([store.open, store.tabs.length, store.tabs[0].kind], [true, 1, 'shell']);
+    await store.toggle();
+    assert.deepEqual([store.open, store.tabs.length], [false, 1], 'hiding keeps the tabs running');
+    await store.toggle();
+    assert.equal(store.tabs.length, 1, 'showing again opens no second shell');
+  });
+});
+
+test('TerminalsStore ends terminals whose start reply went stale', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const panelShell = mock.panelShell.bind(mock);
+    mock.panelShell = async (cwd, size) => {
+      await panelShell(cwd, size);
+      throw new StaleReplyError();
+    };
+    assert.equal(await store.newShell(), null);
+    assert.equal(store.tabs.length, 0);
+    assert.equal(mock.panelTerminals.size, 0, 'the orphan was closed');
+  });
+});
+
+test('TerminalsStore sends a tab its input one write at a time, in order', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const tab = await store.newShell();
+    const sent = [];
+    const pending = [];
+    mock.terminalWrite = (id, data) => {
+      sent.push(`${id}:${data}`);
+      return new Promise((resolve) => pending.push(resolve));
+    };
+    store.write(tab.id, 'a');
+    store.write(tab.id, 'b');
+    store.write(tab.id, 'c');
+    assert.deepEqual(sent, [`${tab.id}:a`], 'later input waits for the write in flight');
+    pending.shift()();
+    await new Promise((r) => setTimeout(r));
+    assert.deepEqual(sent, [`${tab.id}:a`, `${tab.id}:bc`], 'what waited goes together');
+    pending.shift()();
+    await new Promise((r) => setTimeout(r));
+    store.write(tab.id, 'd');
+    assert.deepEqual(sent.at(-1), `${tab.id}:d`, 'an idle tab writes at once');
+    pending.shift()();
+  });
+});
+
+test('TerminalsStore types dropped files into the active tab, copying them to an SSH host', async () => {
+  await withTerminals(async ({ store, mock, toasts, toast }) => {
+    const local = await store.newShell();
+    const sink = sinkFor(store, local.id);
+    await store.dropFiles(['/home/me/shot.png', '/home/me/my shot.png']);
+    assert.deepEqual(sink.pastes, ['/home/me/shot.png ', "'/home/me/my shot.png' "], 'each path is its own paste');
+    assert.equal(toasts.length, 0);
+
+    mock.connState = { ...mock.connState, phase: 'connected', host: 'box' };
+    const remote = await store.newShell();
+    const remoteSink = sinkFor(store, remote.id);
+    const drop = mock.terminalDropFiles.bind(mock);
+    let shownWhileCopying;
+    mock.terminalDropFiles = async (id, paths) => {
+      shownWhileCopying = toast.current?.title;
+      return drop(id, paths);
+    };
+    await store.dropFiles(['C:\\Users\\me\\shot.png']);
+    assert.equal(shownWhileCopying, 'Copying the file to box');
+    assert.equal(toast.current, null, 'the progress toast goes once the copy is done');
+    assert.deepEqual(remoteSink.pastes, ['/tmp/agent-sessions-drop.mock/shot.png ']);
+    assert.deepEqual(sink.pastes.length, 2, 'only the active tab gets the paths');
+
+    mock.terminalDropFiles = async () => {
+      throw new Error('Permission denied (publickey)');
+    };
+    await store.dropFiles(['/a.png', '/b.png']);
+    assert.deepEqual([toasts.at(-2).title, toasts.at(-1).title, toasts.at(-1).body], ['Copying 2 files to box', "Couldn't add the dropped files", 'Permission denied (publickey)']);
+    assert.equal(remoteSink.pastes.length, 1);
+
+    // Files dropped on a pane go to it, focused or not.
+    mock.terminalDropFiles = drop;
+    await store.dropFiles(['/home/me/beside.png'], local.id);
+    assert.deepEqual([sink.pastes.at(-1), remoteSink.pastes.length], ['/home/me/beside.png ', 1]);
+
+    // An ended tab takes no files.
+    store.select(local.id);
+    const failed = mock.droppedFiles.length;
+    store.tabs = store.tabs.map((t) => (t.id === local.id ? { ...t, status: 'exited', exitCode: 1 } : t));
+    await store.dropFiles(['/c.png']);
+    assert.equal(mock.droppedFiles.length, failed);
+  });
+});
+
+test('TerminalsStore keeps its height within the window and remembers the layout', async () => {
+  const { clampPanelHeight, PANEL_HEIGHT, decodeTerminalData } = await loadTerminalsStore();
+  assert.equal(clampPanelHeight(50, 1000), PANEL_HEIGHT.min);
+  assert.equal(clampPanelHeight(900, 1000), 700);
+  assert.equal(clampPanelHeight(900, 800), 500, 'the sessions keep 300px');
+  assert.equal(clampPanelHeight(333.4, 1000), 333);
+  assert.deepEqual(new TextDecoder().decode(decodeTerminalData(Buffer.from('héllo ✓').toString('base64'))), 'héllo ✓');
+
+  await withTerminals(async ({ store, storage, TerminalsStore }) => {
+    assert.deepEqual([store.open, store.height, store.position], [false, PANEL_HEIGHT.default, 'bottom']);
+    assert.equal(store.maximizedStacked, false);
+    store.setHeight(400, 1000);
+    store.setPosition('left');
+    store.setMaximizedStacked(true);
+    store.setOpen(true);
+    assert.deepEqual(JSON.parse(storage.get('agent-sessions:terminal-panel')), {
+      open: true,
+      height: 400,
+      position: 'left',
+      maximizedStacked: true,
+    });
+    const restored = new TerminalsStore();
+    restored.init();
+    assert.deepEqual([restored.open, restored.height, restored.position, restored.maximizedStacked], [true, 400, 'left', true]);
+    restored.destroy();
+
+    storage.set('agent-sessions:terminal-panel', '{not json');
+    const fallback = new TerminalsStore();
+    fallback.init();
+    assert.deepEqual([fallback.open, fallback.height, fallback.position, fallback.maximizedStacked], [false, PANEL_HEIGHT.default, 'bottom', false]);
+    fallback.destroy();
+  });
+});
+
+test('maximizing preserves dock layout and live terminal routing without restarting', async () => {
+  await withTerminals(async ({ store, mock, storage, TerminalsStore }) => {
+    store.toggleMaximized();
+    assert.equal(store.maximized, false, 'a hidden panel cannot maximize');
+    for (const position of ['bottom', 'left']) {
+      store.setPosition(position);
+      store.setHeight(360, 1000);
+      const tab = await store.newShell('/generated');
+      const sink = sinkFor(store, tab.id);
+      const ids = store.tabs.map(t => t.id);
+      const process = mock.panelTerminals.get(tab.id);
+      const saved = storage.get('agent-sessions:terminal-panel');
+      store.toggleMaximized();
+      assert.equal(store.maximized, true);
+      store.setHeight(800, 1000);
+      await mock.terminalWrite(tab.id, 'echo retained\r');
+      assert.match(sink.text, /echo retained/);
+      assert.equal(mock.panelTerminals.get(tab.id), process);
+      assert.deepEqual(store.tabs.map(t => t.id), ids);
+      assert.equal(store.active, tab.id);
+      assert.equal(storage.get('agent-sessions:terminal-panel'), saved);
+      const restored = new TerminalsStore();
+      restored.init();
+      assert.equal(restored.maximized, false);
+      assert.deepEqual([restored.height, restored.position], [360, position]);
+      restored.destroy();
+      store.toggleMaximized();
+      assert.deepEqual([store.maximized, store.height, store.position], [false, 360, position]);
+      store.toggleMaximized();
+      await store.toggle();
+      assert.deepEqual([store.open, store.maximized], [false, false]);
+      await store.toggle();
+      assert.equal(store.maximized, false);
+      assert.equal(mock.panelTerminals.get(tab.id), process);
+      sink.detach();
+      store.close(tab.id);
+    }
+  });
+});
+
+test('maximize clears on final tab close or exit, but not canceled agent close', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const agent = await store.runResume(meta.ref);
+    store.toggleMaximized();
+    store.close(agent.id);
+    store.cancelClose();
+    assert.equal(store.maximized, true);
+    store.close(agent.id);
+    store.confirmClose();
+    assert.deepEqual([store.open, store.maximized], [false, false]);
+    const shell = await store.newShell();
+    store.toggleMaximized();
+    mock.emit('term:exit', { id: shell.id, code: 0 });
+    assert.deepEqual([store.open, store.maximized], [false, false]);
+    assert.equal(terminalKeyAction({ key: 'Escape' }, false), null);
+  });
+});
+
+test('split panes follow the dock, or the chosen layout while maximized', async () => {
+  await withTerminals(async ({ store }) => {
+    await store.newShell('/generated');
+    for (const position of ['bottom', 'left']) {
+      store.setPosition(position);
+      assert.equal(store.stacked, position === 'left');
+      store.toggleMaximized();
+      for (const stacked of [true, false]) {
+        store.setMaximizedStacked(stacked);
+        assert.equal(store.stacked, stacked);
+      }
+      store.toggleMaximized();
+      assert.equal(store.stacked, position === 'left', 'restoring brings back the dock layout');
+    }
+  });
+});
+
+async function loadPanel() {
+  const lib = (name) => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
+  const { default: Panel } = await loadServerComponent(new URL('../src/lib/components/terminal/TerminalPanel.svelte', import.meta.url), [
+    ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
+    ["import TerminalView from './TerminalView.svelte';", 'const TerminalView = ($$renderer, props) => $$renderer.push(`<div data-terminal-id="${props.tab.id}"></div>`);'],
+    ["import { api } from '../../api';", 'const api = {};'],
+    ["import { MAX_GROUP_PANES, terminals } from '../../stores/terminals.svelte';", 'const MAX_GROUP_PANES = 4;' + fixtureStore('terminals')],
+    ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
+    ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
+    ["import { isMac } from '../../../main';", 'const isMac = false;'],
+    ["import { TabDrag, keepingFocus, revealTab, scrollSideways } from '../../tabDrag.svelte';", 'class TabDrag { id = null; press() {} offset() { return 0; } } const keepingFocus = () => {}; const revealTab = () => {}; const scrollSideways = () => {};'],
+    ...['hosts', 'terminal', 'alerts', 'tabActions'].map(name => [`'../../${name}'`, lib(name)]),
+    ...['ContextMenu', 'AgentIcon', 'AttentionDot'].map(name => [`import ${name} from '../common/${name}.svelte';`, `const ${name} = () => {};`]),
+    ["import Splitter from '../common/Splitter.svelte';", 'const Splitter = ($$renderer, props) => $$renderer.push(`<div role="separator" aria-label="${props.ariaLabel}"></div>`);'],
+  ]);
+  return Panel;
+}
+
+const shellPane = (id, label = 'Shell') => ({ id, kind: 'shell', label, status: 'running' });
+
+test('terminal toolbar renders maximize and restore without replacing tab views', async () => {
+  const Panel = await loadPanel();
+  try {
+    for (const position of ['bottom', 'left']) for (const maximized of [false, true]) {
+      const stacked = position === 'left';
+      globalThis.__componentFixture = {
+        terminals: {
+          tabs: [shellPane('generated-shell')],
+          groups: [{ id: 'g1', panes: ['generated-shell'], focus: 'generated-shell', sizes: [1] }],
+          active: 'generated-shell', attention: {}, height: 360, position, maximized, stacked, canSplit: () => true,
+        },
+        appState: {}, link: {},
+      };
+      const html = render(Panel).body;
+      assert.match(html, new RegExp(`aria-label="${maximized ? 'Restore' : 'Maximize'} terminal" aria-pressed="${maximized}"`));
+      assert.match(html, /data-terminal-id="generated-shell"/);
+      assert.equal(html.includes('height: 360px'), !maximized);
+      const dock = html.match(/<button[^>]*aria-label="Move terminal[^>]*>/)?.[0] ?? '';
+      const layout = html.match(/<button[^>]*aria-label="(?:Stack split panes|Place split panes side by side)"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? '';
+      if (maximized) {
+        assert.equal(dock, '', 'a maximized panel has no dock to move to');
+        assert.match(layout, stacked ? /side by side/ : /Stack split panes/);
+        assert.match(layout, stacked ? /class="mask-icon[^"]* split-h"/ : /class="mask-icon[^"]* split-v"/, 'the icon shows the layout it switches to');
+      } else {
+        assert.equal(layout, '');
+        assert.match(dock, position === 'left' ? /to the bottom/ : /to the left/);
+        assert.doesNotMatch(dock, /\sdisabled/);
+      }
+      assert.doesNotMatch(html, /Resize terminal panes/, 'a single pane has no splitter');
+      const splitButton = html.match(/<button[^>]*aria-label="Split terminal"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? '';
+      assert.match(splitButton, /title="Split terminal \(Ctrl\+Shift\+5\)"/);
+      assert.doesNotMatch(splitButton, /\sdisabled/);
+      assert.match(splitButton, position === 'left' ? /d="M3 12h18"/ : /d="M12 3v18"/, 'the icon divides the way the panes will');
+      assert.doesNotMatch(html, /class="segment[^"]*focused/);
+    }
+  } finally { delete globalThis.__componentFixture; }
+});
+
+test('a split tab renders its panes side by side under one tab', async () => {
+  const Panel = await loadPanel();
+  try {
+    for (const position of ['bottom', 'left']) {
+      globalThis.__componentFixture = {
+        terminals: {
+          tabs: [shellPane('a', 'Left'), shellPane('other', 'Other'), shellPane('b', 'Right')],
+          groups: [
+            { id: 'g1', panes: ['a', 'b'], focus: 'b', sizes: [0.25, 0.75] },
+            { id: 'g2', panes: ['other'], focus: 'other', sizes: [1] },
+          ],
+          active: 'b', attention: {}, height: 360, position, maximized: false, stacked: position === 'left', canSplit: () => false,
+        },
+        appState: {}, link: {},
+      };
+      const html = render(Panel).body;
+      assert.equal((html.match(/role="tab"/g) ?? []).length, 2, 'one tab per group');
+      const tab = html.match(/<div class="tab[^"]*"[^>]*>[\s\S]*?class="tab-close[^>]*>/)?.[0] ?? '';
+      assert.match(tab, /class="tab[^"]* split/);
+      assert.deepEqual([...tab.matchAll(/data-segment="([^"]+)"/g)].map((m) => m[1]), ['a', 'b']);
+      assert.match(tab, /class="segment[^"]*focused[^"]*" data-segment="b"/);
+      assert.match(tab, /aria-label="Close Left, Right"/);
+      for (const id of ['a', 'b', 'other']) assert.match(html, new RegExp(`data-terminal-id="${id}"`));
+      assert.equal((html.match(/aria-label="Resize terminal panes"/g) ?? []).length, 1);
+      assert.match(html, /class="panel-body[^"]*"/);
+      assert.equal(/class="panel-body[^"]*stacked/.test(html), position === 'left');
+      const pane = (id) => html.match(new RegExp(`<div class="pane[^"]*"[^>]*data-pane="${id}"[^>]*>`))?.[0] ?? '';
+      assert.match(pane('a'), /flex-grow: 0.25/);
+      assert.match(pane('b'), /class="pane[^"]*focused/);
+      assert.match(pane('other'), /class="pane[^"]*hidden/);
+      const splitButton = html.match(/<button[^>]*aria-label="Split terminal"[^>]*>/)?.[0] ?? '';
+      assert.match(splitButton, /\sdisabled/);
+      assert.match(splitButton, /title="A tab holds up to 4 terminals"/);
+    }
+  } finally { delete globalThis.__componentFixture; }
+});
+
+test('maximized workspace hides panes but leaves dialogs mounted and one terminal panel', () => {
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  assert.equal((app.match(/<TerminalPanel\b/g) ?? []).length, 1);
+  assert.match(app, /terminals\.position === 'left' && !panelMaximized/);
+  assert.match(app, /terminals\.open && !panelMaximized/);
+  assert.match(app, /inert=\{stale \|\| panelMaximized\}/);
+  assert.match(app, /\.panel-maximized \.shell > \.pane,[\s\S]*?display: none/);
+  assert.match(app, /<GoToFileDialog \/>/);
+});
+
+test('MockBackendAPI runs fake panel terminals on every host', async () => {
+  const mock = new MockBackendAPI();
+  const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+  const events = [];
+  mock.onEvent('term:data', (e) => events.push(['data', e.id, Buffer.from(e.data, 'base64').toString()]));
+  mock.onEvent('term:exit', (e) => events.push(['exit', e.id, e.code]));
+
+  const local = await mock.panelResume(meta.ref, { cols: 80, rows: 24 });
+  assert.deepEqual([local.host, local.kind], ['', 'agent']);
+  assert.ok(events.some(([kind, id]) => kind === 'data' && id === local.id), 'output can precede the reply');
+  await mock.terminalWrite(local.id, 'ab\x7f\r');
+  assert.match(events.at(-1)[2], /^ab\x08 \x08\r\nmock: a\r\n/);
+  assert.ok(mock.panelTerminals.get(local.id).unacked > 0);
+  await mock.terminalAck(local.id, 1 << 20);
+  assert.equal(mock.panelTerminals.get(local.id).unacked, 0);
+  await mock.terminalClose(local.id);
+  assert.deepEqual(events.at(-1), ['exit', local.id, 129]);
+  await assert.rejects(mock.terminalWrite(local.id, 'x'), /terminal not found/);
+
+  // SSH works in the panel; agents need the server, a shell does not.
+  await mock.connect('dev-box');
+  assert.equal((await mock.panelResume(meta.ref, { cols: 80, rows: 24 })).host, 'dev-box');
+  mock.setMockConnectionState({ phase: 'reconnecting' });
+  await assert.rejects(mock.panelResume(meta.ref, { cols: 80, rows: 24 }), /remote disconnected/);
+  assert.equal((await mock.panelShell('', { cols: 80, rows: 24 })).kind, 'shell');
+
+  assert.equal((await mock.setTerminalOpen('external')).open, 'external');
+  await assert.rejects(mock.setTerminalOpen('tmux'), /unknown terminal mode/);
+});
+
+test('new window: Cmd+N on macOS, Ctrl+Shift+N elsewhere, kept from the terminal', () => {
+  const key = (k, mods = {}) => ({ type: 'keydown', key: k, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.ok(isNewWindowShortcut(key('n', { metaKey: true }), true));
+  assert.ok(!isNewWindowShortcut(key('n', { metaKey: true, shiftKey: true }), true));
+  assert.ok(!isNewWindowShortcut(key('n', { ctrlKey: true }), true));
+  assert.ok(isNewWindowShortcut(key('N', { ctrlKey: true, shiftKey: true }), false));
+  // Ctrl+N alone is the shell's next-history.
+  assert.ok(!isNewWindowShortcut(key('n', { ctrlKey: true }), false));
+  assert.equal(terminalKeyAction(key('n', { ctrlKey: true }), false), null);
+  assert.ok(!isNewWindowShortcut(key('N', { ctrlKey: true, shiftKey: true, altKey: true }), false));
+  // Layouts without Latin letters use the key in N's place.
+  assert.ok(isNewWindowShortcut({ ...key('т', { ctrlKey: true, shiftKey: true }), code: 'KeyN' }, false));
+  assert.ok(!isNewWindowShortcut({ ...key('t', { ctrlKey: true, shiftKey: true }), code: 'KeyN' }, false));
+  assert.equal(terminalKeyAction(key('N', { ctrlKey: true, shiftKey: true }), false), 'app');
+  assert.equal(terminalKeyAction(key('n', { metaKey: true }), true), 'app');
+  assert.equal(newWindowShortcutLabel(true), '⌘N');
+  assert.equal(newWindowShortcutLabel(false), 'Ctrl+Shift+N');
+});
+
+test('window cycling: Alt+` on Windows and Linux, kept from the terminal', () => {
+  const key = (k, code, mods = {}) => ({ type: 'keydown', key: k, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.equal(windowCycleShortcut(key('`', 'Backquote', { altKey: true }), false), 'next');
+  assert.equal(windowCycleShortcut(key('~', 'Backquote', { altKey: true, shiftKey: true }), false), 'previous');
+  // Other layouts type something else on that key.
+  assert.equal(windowCycleShortcut(key('ё', 'Backquote', { altKey: true }), false), 'next');
+  // Ctrl+` is the terminal panel, and a plain ` is typed.
+  assert.equal(windowCycleShortcut(key('`', 'Backquote', { ctrlKey: true }), false), null);
+  assert.equal(windowCycleShortcut(key('`', 'Backquote', { ctrlKey: true, altKey: true }), false), null);
+  assert.equal(windowCycleShortcut(key('`', 'Backquote'), false), null);
+  assert.equal(windowCycleShortcut(key('1', 'Digit1', { altKey: true }), false), null);
+  // macOS handles Cmd+` natively; Option+` types there.
+  assert.equal(windowCycleShortcut(key('`', 'Backquote', { altKey: true }), true), null);
+  assert.equal(windowCycleShortcut(key('`', 'Backquote', { metaKey: true }), true), null);
+  assert.equal(terminalKeyAction(key('`', 'Backquote', { altKey: true }), false), 'app');
+  assert.equal(terminalKeyAction(key('~', 'Backquote', { altKey: true, shiftKey: true }), false), 'app');
+  assert.equal(terminalKeyAction(key('`', 'Backquote', { altKey: true }), true), null);
+});

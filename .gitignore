@@ -1,0 +1,11 @@
+bin/
+# build/ holds generated Wails and package output.
+build/*
+/dist/
+frontend/node_modules/
+frontend/dist/
+# Runtime glue `wails build` writes; the frontend does not import it.
+frontend/wailsjs/
+*.test
+/testdata/private/
+.DS_Store

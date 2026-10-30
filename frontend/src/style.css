@@ -1,0 +1,410 @@
+/* frontend/src/style.css tokens */
+
+/* Fontsource's JetBrains Mono subsets leave out box drawing, arrows and
+   shapes, so diagrams drawn in text fell back to another monospace font with
+   other widths and lost their alignment. These glyphs come from the official
+   JetBrains Mono 2.304 (SIL OFL, assets/fonts/JetBrainsMono-OFL.txt). */
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url(./assets/fonts/jetbrains-mono-symbols-wght-normal.woff2) format('woff2-variations');
+  unicode-range: U+2190-23FF, U+2500-27BF, U+27F0-27FF, U+2900-297F, U+E0A0-E0FF;
+}
+
+:root {
+  /* Surfaces separate by tone rather than outlines; borders are hairlines. */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f1f3f6;
+  --bg-tertiary: #e2e7ef;
+  --border-color: rgba(15, 23, 42, 0.1);
+  --text-primary: #0b1220;
+  --text-secondary: #334155;
+  --text-muted: #5f6b7c;
+  --accent-color: #0284c7;
+  --accent: var(--accent-color);
+  --accent-hover: #0369a1;
+  --agent-claude: #b8532f;
+  --agent-codex: #0b7a5e;
+  --agent-opencode: #1d4ed8;
+  --badge-bg: #d9dfe7;
+  --hover-bg: rgba(15, 23, 42, 0.07);
+  --active-bg: rgba(2, 132, 199, 0.14);
+  --remote-footer-bg: #e0f2fe;
+  --status-live: #047857;
+  /* An agent waiting for the user. */
+  --status-needs: #b45309;
+  --danger: #dc2626;
+  --count-badge-bg: #dc2626;
+  --count-badge-text: #ffffff;
+  --star-color: #d97706;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
+  /* Bundled Inter and JetBrains Mono (imported in main.ts) look the same on
+     every platform. The system fallbacks avoid Helvetica: fontconfig aliases
+     it to Nimbus Sans, whose metrics sit text ~2.5px above center in every
+     button and input. */
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", "Noto Sans", "DejaVu Sans", Arial, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  color-scheme: light;
+}
+
+/* color-scheme makes WebKitGTK draw native controls (select popups,
+   scrollbars, search fields) in the matching palette. Printing always uses
+   the light palette. */
+@media screen {
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --bg-primary: #242423;
+    --bg-secondary: #2c2c2b;
+    --bg-tertiary: #383837;
+    --border-color: rgba(255, 255, 255, 0.08);
+    --text-primary: #f2f2f2;
+    --text-secondary: #cccccc;
+    --text-muted: #b0b0ad;
+    --accent-color: #0284c7;
+    --accent: var(--accent-color);
+    --accent-hover: #0ea5e9;
+    --agent-claude: #d97757;
+    --agent-codex: #10a37f;
+    --agent-opencode: #3b82f6;
+    --badge-bg: #454545;
+    --hover-bg: rgba(255, 255, 255, 0.06);
+    --active-bg: rgba(14, 165, 233, 0.2);
+    --remote-footer-bg: #0c4a6e;
+    --status-live: #34d399;
+    --status-needs: #fbbf24;
+    --danger: #f87171;
+    --count-badge-bg: #f87171;
+    --count-badge-text: #450a0a;
+    --star-color: #facc15;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* CSS scrollbars on Linux (see main.ts): unlike native GTK ones they are
+   painted with their element and respect stacking order. */
+[data-platform="linux"] {
+  --scrollbar-thumb: rgba(0, 0, 0, 0.25);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.4);
+}
+
+@media screen {
+  [data-platform="linux"][data-theme="dark"] {
+    --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
+  }
+}
+
+[data-platform="linux"] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-platform="linux"] ::-webkit-scrollbar-track,
+[data-platform="linux"] ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+[data-platform="linux"] ::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+[data-platform="linux"] ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* 18px base lifts every rem-sized control. Session content is sized in
+     px (the previous 16px-rem values) so it keeps its size. */
+  font-size: 18px;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Inherited text in session content stays at the previous 16px base. The
+   session header (title, actions) follows the app size. */
+.messages-scroll-area {
+  font-size: 16px;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+}
+
+/* A tab being dragged to another place in its bar. */
+html.tab-dragging,
+html.tab-dragging * {
+  cursor: grabbing !important;
+}
+
+input, select {
+  font-family: inherit;
+  color: inherit;
+  background: inherit;
+}
+
+/* Text boxes look like the session filter: a filled, borderless field,
+   ringed in the accent color while it has focus. Put the class on the
+   input or textarea, or on a box holding the input with its icon and
+   buttons. */
+.text-field {
+  min-width: 0;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  background-color: var(--bg-secondary);
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.text-field:not(input, textarea) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.text-field:focus-within {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+.text-field input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.text-field::placeholder,
+.text-field input::placeholder {
+  color: var(--text-muted);
+}
+
+/* A transcript selection held while its menu or translation has focus. */
+::highlight(held-selection) {
+  background-color: Highlight;
+}
+
+/* Syntax highlighting tokens (Light mode) */
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in {
+  color: #d73a49;
+  font-weight: 600;
+}
+.hljs-string, .hljs-attr {
+  color: #032f62;
+}
+.hljs-comment {
+  color: #6a737d;
+  font-style: italic;
+}
+.hljs-number, .hljs-literal {
+  color: #005cc5;
+}
+.hljs-title, .hljs-function {
+  color: #6f42c1;
+}
+.hljs-addition {
+  background-color: rgba(46, 160, 67, 0.15);
+  color: #22863a;
+  display: block;
+}
+.hljs-deletion {
+  background-color: rgba(248, 81, 73, 0.15);
+  color: #b31d28;
+  display: block;
+}
+.hljs-meta {
+  color: #005cc5;
+  font-weight: bold;
+}
+
+/* Syntax highlighting tokens (Dark mode); print stays light. */
+@media screen {
+  [data-theme="dark"] .hljs-keyword,
+  [data-theme="dark"] .hljs-selector-tag,
+  [data-theme="dark"] .hljs-built_in {
+    color: #ff7b72;
+  }
+  [data-theme="dark"] .hljs-string,
+  [data-theme="dark"] .hljs-attr {
+    color: #a5d6ff;
+  }
+  [data-theme="dark"] .hljs-comment {
+    color: #8b949e;
+  }
+  [data-theme="dark"] .hljs-number,
+  [data-theme="dark"] .hljs-literal {
+    color: #79c0ff;
+  }
+  [data-theme="dark"] .hljs-title,
+  [data-theme="dark"] .hljs-function {
+    color: #d2a8ff;
+  }
+  [data-theme="dark"] .hljs-addition {
+    background-color: rgba(46, 160, 67, 0.2);
+    color: #7ee787;
+  }
+  [data-theme="dark"] .hljs-deletion {
+    background-color: rgba(248, 81, 73, 0.2);
+    color: #ffa198;
+  }
+  [data-theme="dark"] .hljs-meta {
+    color: #79c0ff;
+  }
+}
+
+/* Fenced code block container & copy button */
+.code-block-container {
+  margin: 0.8em 0;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 10px;
+  background-color: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.code-lang-tag {
+  font-size: 10.88px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.copy-code-btn {
+  font-size: 10.88px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.copy-code-btn:hover {
+  color: var(--text-primary);
+}
+
+.copy-code-btn.copied {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: var(--status-live);
+  border-color: var(--status-live);
+}
+
+.code-block-container pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background-color: var(--bg-primary);
+}
+
+.code-block-container code.hljs {
+  font-family: var(--font-mono);
+  font-size: 12.8px;
+  line-height: 1.45;
+}
+
+/* Checkbox for picking sessions to delete (session rows and "Select all").
+   Drawn in CSS: the native GTK checkbox is tiny and its tick sits off
+   center. The tick is an SVG whose bounds are centered in the box. */
+.bulk-check {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--text-muted);
+  border-radius: 4px;
+  background-color: var(--bg-primary);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+.bulk-check:hover {
+  border-color: var(--danger);
+}
+
+.bulk-check:checked {
+  border-color: var(--danger);
+  background-color: var(--danger);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.25 5 8.75 9.5 3.25' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.bulk-check:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 1px;
+}
+
+/* Printing shows only the print sheet (PrintSheet.svelte): the page grows
+   with it instead of clipping it to the window. */
+@page {
+  margin: 14mm;
+}
+
+@media print {
+  html, body {
+    height: auto;
+    overflow: visible;
+    background: #ffffff;
+  }
+
+  body > :not(.print-sheet) {
+    display: none !important;
+  }
+}
+
+/* While a splitter is dragged nothing is selected, and the resize cursor
+   stays when the pointer outruns the splitter. */
+html.splitter-dragging,
+html.splitter-dragging * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+html[data-splitter-cursor='col-resize'] * {
+  cursor: col-resize !important;
+}
+
+html[data-splitter-cursor='row-resize'] * {
+  cursor: row-resize !important;
+}

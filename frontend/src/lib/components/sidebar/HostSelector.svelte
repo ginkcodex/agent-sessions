@@ -1,0 +1,557 @@
+<script lang="ts">
+  import { connectionStore } from '../../stores/connection.svelte';
+  import HostEnvDialog from '../common/HostEnvDialog.svelte';
+  import { filterHosts } from '../../link';
+
+  let menuOpen = $state(false);
+  let manualHost = $state('');
+  // The alias being typed also narrows the SSH host list.
+  let visibleHosts = $derived(filterHosts(connectionStore.hosts, manualHost));
+  let envDialogOpen = $state(false);
+  let envDialogHost = $state('');
+  let menuEl = $state<HTMLElement | null>(null);
+  let manualInput = $state<HTMLInputElement | null>(null);
+
+  let statusClass = $derived.by(() => {
+    switch (connectionStore.phase) {
+      case 'connected':
+        return 'status-connected';
+      case 'connecting':
+        return 'status-connecting';
+      case 'reconnecting':
+        return 'status-reconnecting';
+      case 'disconnected':
+        return 'status-disconnected';
+      default:
+        return 'status-local';
+    }
+  });
+
+  let statusTitle = $derived.by(() => {
+    switch (connectionStore.phase) {
+      case 'connected':
+        return `Connected to ${connectionStore.currentHost}`;
+      case 'connecting':
+        return `Connecting to ${connectionStore.currentHost}…`;
+      case 'reconnecting':
+        return `Reconnecting to ${connectionStore.currentHost}…`;
+      case 'disconnected':
+        return `Disconnected from ${connectionStore.currentHost}`;
+      default:
+        return 'Target: Local Machine';
+    }
+  });
+
+  function toggleMenu() {
+    menuOpen = !menuOpen;
+    if (menuOpen) {
+      manualHost = '';
+      void connectionStore.refreshHosts();
+      // Typing a name is the last resort, so the field is ready first.
+      queueMicrotask(() => manualInput?.focus());
+    }
+  }
+
+  function closeMenu() {
+    menuOpen = false;
+  }
+
+  function handleSelectLocal() {
+    closeMenu();
+    if (connectionStore.phase !== 'local') {
+      void connectionStore.disconnect();
+    }
+  }
+
+  function handleSelectHost(name: string) {
+    closeMenu();
+    if (connectionStore.host !== name || connectionStore.phase !== 'connected') {
+      void connectionStore.connect(name);
+    }
+  }
+
+  function handleManualConnect(e: Event) {
+    e.preventDefault();
+    const alias = manualHost.trim();
+    // WSL distros are picked from their own section, never typed.
+    if (!alias || alias.startsWith('wsl:')) return;
+    closeMenu();
+    manualHost = '';
+    void connectionStore.connect(alias);
+  }
+
+  function handleOpenEnv(e: Event, host: string) {
+    e.stopPropagation();
+    envDialogHost = host;
+    envDialogOpen = true;
+    closeMenu();
+  }
+
+  function handleWindowClick(e: MouseEvent) {
+    if (menuOpen && menuEl && !menuEl.contains(e.target as Node)) {
+      closeMenu();
+    }
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && menuOpen) {
+      closeMenu();
+    }
+  }
+</script>
+
+<svelte:window onclick={handleWindowClick} onkeydown={handleKeydown} />
+
+<div class="host-selector" bind:this={menuEl}>
+  <button
+    type="button"
+    class="host-chip"
+    title={statusTitle}
+    aria-label={statusTitle}
+    aria-expanded={menuOpen}
+    aria-haspopup="true"
+    onclick={toggleMenu}
+  >
+    <span class="status-dot {statusClass}"></span>
+    <span class="host-name">{connectionStore.currentHost}</span>
+    <span class="caret-icon" aria-hidden="true">▾</span>
+  </button>
+
+  {#if menuOpen}
+    <div class="host-menu" role="menu">
+      <div class="menu-section-header">Target Machine</div>
+
+      <button
+        type="button"
+        class="menu-item"
+        class:selected={connectionStore.phase === 'local'}
+        role="menuitem"
+        onclick={handleSelectLocal}
+      >
+        <span class="item-icon">💻</span>
+        <span class="item-label">Local</span>
+        {#if connectionStore.phase === 'local'}
+          <span class="item-check">✓</span>
+        {/if}
+      </button>
+
+      {#if connectionStore.wslDistros.length > 0}
+        <div class="menu-divider"></div>
+        <div class="menu-section-header">WSL</div>
+        <div class="hosts-list">
+          {#each connectionStore.wslDistros as distro}
+            <div
+              class="menu-item host-row"
+              class:selected={connectionStore.isRemote && connectionStore.host === distro.host}
+              role="menuitem"
+              tabindex="0"
+              onclick={() => handleSelectHost(distro.host)}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') handleSelectHost(distro.host);
+              }}
+            >
+              <span class="item-icon">🐧</span>
+              <div class="host-details">
+                <span class="item-label">{distro.name}</span>
+                {#if distro.default}
+                  <span class="item-sub">Default distribution</span>
+                {/if}
+              </div>
+              <div class="host-row-actions">
+                <button
+                  type="button"
+                  class="env-btn"
+                  title="Configure environment overrides"
+                  aria-label="Configure environment overrides for {distro.name}"
+                  onclick={(e) => handleOpenEnv(e, distro.host)}
+                >
+                  ⚙
+                </button>
+                {#if connectionStore.isRemote && connectionStore.host === distro.host}
+                  <span class="item-check">✓</span>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <div class="menu-divider"></div>
+
+      <div class="menu-section-header with-action">
+        <span>SSH Hosts</span>
+        <button
+          type="button"
+          class="refresh-hosts-btn"
+          title="Refresh SSH config hosts"
+          onclick={() => void connectionStore.refreshHosts()}
+        >
+          ↻
+        </button>
+      </div>
+
+      {#if connectionStore.loadingHosts}
+        <div class="menu-note">Loading hosts…</div>
+      {:else if connectionStore.hostsError}
+        <div class="menu-note">{connectionStore.hostsError}</div>
+      {:else if connectionStore.hosts.length === 0}
+        <div class="menu-note">No SSH config hosts found</div>
+      {:else if visibleHosts.length === 0}
+        <div class="menu-note">No SSH config hosts match "{manualHost.trim()}"</div>
+      {:else}
+        <div class="hosts-list">
+          {#each visibleHosts as host}
+            <div
+              class="menu-item host-row"
+              class:selected={connectionStore.isRemote && connectionStore.host === host.name}
+              role="menuitem"
+              tabindex="0"
+              onclick={() => handleSelectHost(host.name)}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') handleSelectHost(host.name);
+              }}
+            >
+              <span class="item-icon">🌐</span>
+              <div class="host-details">
+                <span class="item-label">{host.name}</span>
+                {#if host.hostName || host.user}
+                  <span class="item-sub">
+                    {host.user ? `${host.user}@` : ''}{host.hostName || ''}
+                  </span>
+                {/if}
+              </div>
+              <div class="host-row-actions">
+                <button
+                  type="button"
+                  class="env-btn"
+                  title="Configure environment overrides"
+                  onclick={(e) => handleOpenEnv(e, host.name)}
+                >
+                  ⚙
+                </button>
+                {#if connectionStore.isRemote && connectionStore.host === host.name}
+                  <span class="item-check">✓</span>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <div class="menu-divider"></div>
+
+      <form class="manual-connect-form text-field" onsubmit={handleManualConnect}>
+        <svg class="manual-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <path d="M3 5l3 3-3 3M8 11h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <input
+          type="text"
+          class="manual-input"
+          placeholder="Connect to SSH alias…"
+          aria-label="Connect to SSH alias"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          bind:value={manualHost}
+          bind:this={manualInput}
+        />
+        <button
+          type="submit"
+          class="manual-btn"
+          disabled={!manualHost.trim() || manualHost.trim().startsWith('wsl:')}
+        >
+          Go
+        </button>
+      </form>
+
+      {#if connectionStore.isRemote || connectionStore.phase !== 'local'}
+        <div class="menu-divider"></div>
+        <button
+          type="button"
+          class="menu-item disconnect-item"
+          role="menuitem"
+          onclick={handleSelectLocal}
+        >
+          <span class="item-icon">🔌</span>
+          <span class="item-label">Disconnect</span>
+        </button>
+      {/if}
+    </div>
+  {/if}
+</div>
+
+<HostEnvDialog
+  open={envDialogOpen}
+  host={envDialogHost}
+  onClose={() => (envDialogOpen = false)}
+/>
+
+<style>
+  .host-selector {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .host-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .host-chip:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-hover, var(--border-color));
+  }
+
+  .host-name {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .status-local {
+    background: var(--text-muted);
+  }
+
+  .status-connected {
+    background: #22c55e;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  }
+
+  .status-connecting,
+  .status-reconnecting {
+    background: #f59e0b;
+    animation: pulse 1.2s infinite ease-in-out;
+  }
+
+  .status-disconnected {
+    background: #ef4444;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.4;
+      transform: scale(0.85);
+    }
+  }
+
+  .caret-icon {
+    font-size: 0.65rem;
+    opacity: 0.6;
+  }
+
+  .host-menu {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    width: 250px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    padding: 6px 0;
+    z-index: 105;
+  }
+
+  .menu-section-header {
+    padding: 4px 10px 2px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+  }
+
+  .menu-section-header.with-action {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .refresh-hosts-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 0 4px;
+  }
+
+  .refresh-hosts-btn:hover {
+    color: var(--text-primary);
+  }
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 10px;
+    background: transparent;
+    border: none;
+    text-align: left;
+    font-size: 0.78rem;
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  .menu-item:hover {
+    background: var(--bg-hover);
+  }
+
+  .menu-item.selected {
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+    font-weight: 600;
+  }
+
+  .item-icon {
+    font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+
+  .item-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .item-check {
+    color: var(--accent-color);
+    font-size: 0.8rem;
+    font-weight: bold;
+    flex-shrink: 0;
+  }
+
+  .hosts-list {
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  .host-row {
+    justify-content: space-between;
+  }
+
+  .host-details {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .item-sub {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .host-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .env-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 2px 4px;
+    border-radius: 3px;
+  }
+
+  .env-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .menu-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 0;
+  }
+
+  .menu-note {
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  /* One rounded field: icon, input and Go button, ringed on focus. */
+  .manual-connect-form {
+    margin: 4px 8px;
+    padding: 3px 3px 3px 8px;
+  }
+
+  .manual-icon {
+    flex-shrink: 0;
+    color: var(--text-muted);
+  }
+
+  .manual-input {
+    /* A text input keeps a width of about 20 characters unless allowed to
+       shrink, which pushed the Go button out of the menu. */
+    width: 0;
+  }
+
+  .manual-btn {
+    flex-shrink: 0;
+    height: 24px;
+    padding: 0 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+  }
+
+  .manual-btn:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+
+  .manual-btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+  }
+
+  .manual-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .disconnect-item {
+    color: #ef4444;
+  }
+</style>

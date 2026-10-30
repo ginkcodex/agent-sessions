@@ -1,0 +1,262 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { openMode } from '../src/lib/terminal.ts';
+import { fixtureStore, loadServerComponent, renderWithFixture } from './helpers.mjs';
+
+const SETTINGS_DIALOG_URL = new URL('../src/lib/components/common/ManageSettingsDialog.svelte', import.meta.url);
+
+const DROPDOWN_URL = new URL('../src/lib/components/common/Dropdown.svelte', import.meta.url);
+
+let settingsDialogModule;
+
+const TRANSLATE_DEFAULTS = {
+  settings: { baseURL: '', model: '', language: 'Vietnamese', apiKeySet: false, configured: false },
+  configured: false, error: null, saving: false, testing: false, testResult: null, testError: null,
+};
+
+async function renderSettingsDialog(
+  launcher,
+  preferences = { transcriptMode: 'activity', timeZone: 'utc' },
+  { section = 'general', translateSettings = {}, alerts = {}, manage: manageState = {}, codeDiagnostics = {} } = {},
+) {
+  if (!settingsDialogModule) {
+    globalThis.__dropdown = (await loadServerComponent(DROPDOWN_URL, [])).default;
+    const fontURL = new URL('./TerminalFontSetting.svelte', SETTINGS_DIALOG_URL);
+    globalThis.__terminalFontSetting = (await loadServerComponent(fontURL, [
+      ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
+      ["import { api } from '../../api';", 'const api = {};'],
+      ["'../../terminalFont'", JSON.stringify(new URL('../../terminalFont.ts', fontURL).href)],
+      ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
+    ])).default;
+    const lib = (rel) => JSON.stringify(new URL(rel, SETTINGS_DIALOG_URL).href);
+    settingsDialogModule = await loadServerComponent(SETTINGS_DIALOG_URL, [
+      ["'../../format'", lib('../../format.ts')],
+      ["'../../fullscreen'", lib('../../fullscreen.ts')],
+      ["'../../terminal'", lib('../../terminal.ts')],
+      ["'../../transcript'", lib('../../transcript.ts')],
+      ["'../../date'", lib('../../date.ts')],
+      ["'../../codeLanguages'", lib('../../codeLanguages.ts')],
+      ["import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';", fixtureStore('codeDiagnostics')],
+      ["import Dropdown from './Dropdown.svelte';", 'const Dropdown = globalThis.__dropdown;'],
+      ["import TerminalFontSetting from './TerminalFontSetting.svelte';", 'const TerminalFontSetting = globalThis.__terminalFontSetting;'],
+      ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
+      ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
+      ["import { terminals } from '../../stores/terminals.svelte';", fixtureStore('terminals')],
+      ["import { alerts } from '../../stores/alerts.svelte';", fixtureStore('alerts')],
+      ["import { translateSettings } from '../../stores/translate.svelte';", fixtureStore('translateSettings')],
+      ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
+    ]);
+  }
+  const manage = {
+    settingsDialogOpen: true, settingsSection: section, settings: { enabled: false, allowPermanentDelete: false }, loadingSettings: false,
+    settingsError: null, firstEnableWarningVisible: false, handoffCache: null, handoffCacheError: null, handoffCacheBusy: false,
+    codeCheckLogs: null, codeCheckLogsError: null, codeCheckLogsBusy: false, ...manageState,
+  };
+  return renderWithFixture(settingsDialogModule, {
+    manage,
+    launcher: { terminalError: null, terminal: null, ...launcher },
+    terminals: { position: 'bottom' },
+    alerts: { notifyNeeds: true, notifyDone: true, status: null, refreshStatus: async () => {}, ...alerts },
+    translateSettings: { ...TRANSLATE_DEFAULTS, ...translateSettings },
+    preferences: { disabledLanguages: [], autoInstallLanguageServers: true, ...preferences },
+    codeDiagnostics,
+  });
+}
+
+test('Settings shows the default transcript display level', async () => {
+  const info = { terminal: true, chooseTerminal: false, shell: 'powershell' };
+  const html = await renderSettingsDialog({ info }, { transcriptMode: 'chat', timeZone: 'utc' });
+  assert.match(html, /<h3[^>]*>Transcript<\/h3>/);
+  assert.match(html, /aria-label="Default transcript display"/);
+  assert.match(html, />Chat</);
+  assert.match(html, /User messages and assistant answers.*The header buttons change it for the open session only\./);
+});
+
+test('Settings shows the time zone used for timestamps', async () => {
+  const info = { terminal: true, chooseTerminal: false, shell: 'powershell' };
+  const utc = await renderSettingsDialog({ info });
+  assert.match(utc, /<h3[^>]*>Time zone<\/h3>/);
+  assert.match(utc, /aria-label="Time zone for timestamps"/);
+  const local = await renderSettingsDialog({ info }, { transcriptMode: 'activity', timeZone: 'local' });
+  assert.match(local, /Local time \(this computer\)/);
+});
+
+test('Settings shows the terminal choice only where it can be chosen', async () => {
+  const windows = await renderSettingsDialog({ info: { terminal: true, chooseTerminal: false, shell: 'powershell' } }, undefined, { section: 'terminal' });
+  assert.match(windows, /<h2 id="settings-title"[^>]*>Settings<\/h2>/);
+  assert.doesNotMatch(windows, /Terminal \(this computer\)|>Terminal</);
+  // Without a terminal section, Settings falls back to General.
+  assert.match(windows, /<h3[^>]*>Transcript<\/h3>/);
+
+  const info = { terminal: true, chooseTerminal: true, shell: 'posix' };
+  const terminal = {
+    choose: true, selected: '', selectedName: '', missing: false,
+    auto: { id: 'konsole', name: 'Konsole' }, options: [{ id: 'konsole', name: 'Konsole' }],
+  };
+  const auto = await renderSettingsDialog({ info, terminal }, undefined, { section: 'terminal' });
+  assert.match(auto, /Terminal \(this computer\)/);
+  assert.match(auto, /Automatic \(Konsole\)/);
+  assert.doesNotMatch(auto, /no longer installed|macOS/);
+
+  const missing = await renderSettingsDialog({ info, terminal: { ...terminal, selected: 'kitty', selectedName: 'kitty', missing: true } }, undefined, { section: 'terminal' });
+  assert.match(missing, /kitty \(not found\)/);
+  assert.match(missing, /kitty is no longer installed/);
+
+  const none = await renderSettingsDialog({ info, terminal: { ...terminal, auto: null, options: [] } }, undefined, { section: 'terminal' });
+  assert.match(none, /Automatic \(none found\)/);
+  assert.match(none, /No supported terminal app was found/);
+
+  const mac = await renderSettingsDialog({ info, terminal: { ...terminal, hint: 'The first time, macOS asks whether Agent Sessions may control the terminal app.' } }, undefined, { section: 'terminal' });
+  assert.match(mac, /macOS asks whether Agent Sessions may control/);
+
+  const failed = await renderSettingsDialog({ info, terminalError: 'read settings: permission denied' }, undefined, { section: 'terminal' });
+  assert.match(failed, /read settings: permission denied/);
+  assert.doesNotMatch(failed, /Looking for terminal apps/);
+});
+
+test('Settings chooses where agents open when the built-in panel runs', async () => {
+  const checked = (html, label) => new RegExp(`<input[^>]*type="radio"[^>]*checked[^>]*/?>\\s*${label}`).test(html);
+  // Windows: the panel makes the section appear, without a terminal app choice.
+  const windows = await renderSettingsDialog(
+    { info: { terminal: true, chooseTerminal: false, shell: 'powershell', panel: true }, openMode: 'panel', savingOpenMode: false },
+    undefined,
+    { section: 'terminal' },
+  );
+  assert.match(windows, /Terminal \(this computer\)/);
+  assert.match(windows, /<legend[^>]*>Open agents in<\/legend>/);
+  assert.ok(checked(windows, 'Built-in panel'), 'the panel is chosen');
+  assert.ok(!checked(windows, 'External terminal'));
+  assert.match(windows, /in a tab of the terminal panel, for sessions on this computer, WSL and SSH hosts/);
+  assert.doesNotMatch(windows, /External terminal app|aria-label="Terminal app"|Looking for terminal apps/);
+
+  // Linux: the external terminal app is chosen below the mode.
+  const terminal = {
+    choose: true, selected: '', selectedName: '', missing: false,
+    auto: { id: 'konsole', name: 'Konsole' }, options: [{ id: 'konsole', name: 'Konsole' }],
+  };
+  const linux = await renderSettingsDialog(
+    { info: { terminal: true, chooseTerminal: true, shell: 'posix', panel: true, open: 'external' }, openMode: 'external', savingOpenMode: false, terminal },
+    undefined,
+    { section: 'terminal' },
+  );
+  assert.ok(checked(linux, 'External terminal'), 'the external terminal is chosen');
+  assert.ok(!checked(linux, 'Built-in panel'));
+  assert.match(linux, /<h4[^>]*>External terminal app<\/h4>/);
+  assert.match(linux, /Automatic \(Konsole\)/);
+  assert.match(linux, /The Resume ▾ menu still offers the built-in panel/);
+
+  const tabs = [...windows.matchAll(/role="tab"[^>]*>([^<]+)<\/button>/g)].map((m) => m[1]);
+  assert.ok(tabs.includes('Terminal'));
+});
+
+test('Settings lists its sections in a side navigation', async () => {
+  const info = { terminal: true, chooseTerminal: true, shell: 'posix' };
+  const html = await renderSettingsDialog({ info });
+  const tabs = [...html.matchAll(/role="tab"[^>]*>([^<]+)<\/button>/g)].map((m) => m[1]);
+  assert.deepEqual(tabs, ['General', 'Translation', 'Terminal', 'Session management', 'Handoff files', 'Code checks']);
+  assert.match(html, /aria-selected="true"[^>]*>General</);
+  assert.doesNotMatch(html, /Enable session management|Handoff files<\/h3>/);
+
+  const management = await renderSettingsDialog({ info }, undefined, { section: 'management' });
+  assert.match(management, /Enable session management/);
+  assert.match(management, /Allow permanent deletion/);
+  assert.match(management, /Also remove deleted sessions from prompt history/);
+  assert.doesNotMatch(management, /<h3[^>]*>Transcript<\/h3>/);
+
+  const handoff = await renderSettingsDialog({ info }, undefined, { section: 'handoff' });
+  assert.match(handoff, /<h3[^>]*>Handoff files<\/h3>/);
+  assert.match(handoff, /Checking…/);
+});
+
+test('Settings reports code check logs and deletes them', async () => {
+  const info = { terminal: true, chooseTerminal: true, shell: 'posix' };
+  const checks = (manage) => renderSettingsDialog({ info }, undefined, { section: 'checks', manage });
+  const button = (html) => html.match(/<button[^>]*>(Delete logs|Deleting…)<\/button>/)?.[0] ?? '';
+
+  const loading = await checks({});
+  assert.match(loading, /<h3[^>]*>Logs<\/h3>/);
+  assert.match(loading, /never sent anywhere/);
+  assert.match(loading, /Checking…/);
+  assert.match(button(loading), /disabled/);
+
+  const some = await checks({ codeCheckLogs: { dir: '/data/code-diagnostics/logs', files: 3, bytes: 3 * 1024 } });
+  assert.match(some, /title="\/data\/code-diagnostics\/logs"/);
+  assert.match(some, /3 logs, 3(\.0)? KB/);
+  assert.doesNotMatch(button(some), /disabled/);
+
+  assert.match(await checks({ codeCheckLogs: { dir: '/d', files: 0, bytes: 0 } }), /No logs/);
+  const failed = await checks({ codeCheckLogsError: 'Failed to read code check logs' });
+  assert.match(failed, /role="alert"[^>]*>Failed to read code check logs</);
+  assert.match(failed, /Unavailable/);
+  assert.match(button(await checks({ codeCheckLogs: { dir: '/d', files: 1, bytes: 9 }, codeCheckLogsBusy: true })), /Deleting…/);
+});
+
+test('Settings › Code checks: language switches with their saved state, then automatic downloads, then logs', async () => {
+  const info = { terminal: true, chooseTerminal: true, shell: 'posix' };
+  const render = (preferences) => renderSettingsDialog({ info }, preferences, { section: 'checks' });
+  const switches = (html) => [...html.matchAll(/<label class="setting[^"]*">\s*<input type="checkbox"([^>]*)\/>\s*([^<]+?)\s*(?:<span class="extensions[^"]*">([^<]*)<\/span>)?\s*<\/label>/g)]
+    .map((m) => [m[2], /\bchecked\b/.test(m[1]), m[3] ?? '']);
+  const all = await render({});
+  assert.deepEqual(switches(all), [
+    ['Go', true, '.go'],
+    ['TypeScript/JavaScript', true, '.ts .mts .cts .tsx .js .mjs .cjs .jsx'],
+    ['Svelte', true, '.svelte'],
+    ['Python', true, '.py .pyi'],
+    ['Rust', true, '.rs'],
+    ['Download missing language servers automatically', true, ''],
+  ]);
+  assert.match(all, /Turning a language on starts its checks in projects already approved; turning it off stops them\./);
+  const headings = [...all.matchAll(/<h3[^>]*>([^<]+)<\/h3>/g)].map((m) => m[1]);
+  assert.deepEqual(headings, ['Languages', 'Language servers', 'Logs']);
+
+  const saved = await render({ disabledLanguages: ['python', 'rust'], autoInstallLanguageServers: false });
+  assert.deepEqual(switches(saved).map(([name, on]) => [name, on]), [
+    ['Go', true], ['TypeScript/JavaScript', true], ['Svelte', true], ['Python', false], ['Rust', false],
+    ['Download missing language servers automatically', false],
+  ]);
+  // The switches act through the code checks store, which rediscovers an open project.
+  const source = readFileSync(SETTINGS_DIALOG_URL, 'utf8');
+  assert.match(source, /onchange=\{\(e\) => void codeDiagnostics\.setLanguageEnabled\(l\.id, \(e\.currentTarget as HTMLInputElement\)\.checked\)\}/);
+  assert.match(source, /onchange=\{\(e\) => codeDiagnostics\.setAutoInstall\(\(e\.currentTarget as HTMLInputElement\)\.checked\)\}/);
+});
+
+test('Settings Translation shows a saved key as Saved, never the key', async () => {
+  const info = { terminal: true, chooseTerminal: false, shell: 'powershell' };
+  const empty = await renderSettingsDialog({ info }, undefined, { section: 'translation' });
+  assert.match(empty, /<h3[^>]*>Translation<\/h3>/);
+  assert.match(empty, /type="password"/);
+  assert.match(empty, /Message text is sent to this provider from this computer/);
+  assert.match(empty, /<button[^>]*disabled[^>]*>Test<\/button>/);
+
+  const settings = { baseURL: 'https://api.example.com/v1', model: 'gpt-test', language: 'French', apiKeySet: true, configured: true };
+  const saved = await renderSettingsDialog({ info }, undefined, { section: 'translation', translateSettings: { settings, configured: true } });
+  assert.match(saved, /Saved/);
+  assert.match(saved, />Replace</);
+  assert.match(saved, />Clear</);
+  assert.doesNotMatch(saved, /type="password"/);
+  assert.doesNotMatch(saved, /<button[^>]*disabled[^>]*>Test<\/button>/);
+
+  const failed = await renderSettingsDialog({ info }, undefined, { section: 'translation', translateSettings: { testError: 'translate: 401 Unauthorized: bad key' } });
+  assert.match(failed, /401 Unauthorized: bad key/);
+});
+
+test('Settings turns agent alerts on or off and says why notifications cannot show', async () => {
+  const launcher = { info: { terminal: true, chooseTerminal: false, shell: 'posix', panel: true }, openMode: 'panel', savingOpenMode: false };
+  const checked = (html, label) => new RegExp(`<input[^>]*type="checkbox"[^>]*checked[^>]*/?>\\s*${label}`).test(html);
+  const on = await renderSettingsDialog(launcher, undefined, { section: 'terminal', alerts: { status: { available: true } } });
+  assert.match(on, /<h4[^>]*>Agent alerts<\/h4>/);
+  assert.ok(checked(on, 'Notify when an agent needs me'));
+  assert.ok(checked(on, 'Notify when an agent finishes'));
+  assert.match(on, /only while this window is in the\s+background/);
+  assert.doesNotMatch(on, /notify-status/);
+
+  const reason = 'Notifications from Agent Sessions are turned off. Allow them in System Settings → Notifications → Agent Sessions.';
+  const denied = await renderSettingsDialog(launcher, undefined, {
+    section: 'terminal',
+    alerts: { notifyDone: false, status: { available: false, reason } },
+  });
+  assert.ok(checked(denied, 'Notify when an agent needs me'));
+  assert.ok(!checked(denied, 'Notify when an agent finishes'));
+  assert.ok(denied.includes(reason));
+});

@@ -1,0 +1,1072 @@
+export type AgentID = 'claude-code' | 'codex' | 'opencode' | string;
+
+export interface SessionRef {
+  agent: AgentID;
+  id: string;
+}
+
+export interface SearchFilter {
+  agents?: string[];
+  dir?: string;
+  /** Partial cwd or repo root text, matched like the session list's path filter. */
+  path?: string;
+  limit?: number;
+}
+
+export type SearchHitKind = 'title' | 'text' | 'reasoning' | 'tool';
+
+export interface SearchHit {
+  ref: SessionRef;
+  /** Global, zero-based transcript index; -1 identifies the session title. */
+  messageIndex: number;
+  /** Backend-escaped HTML containing no elements other than <mark>. */
+  snippet: string;
+  score: number;
+  kind: SearchHitKind;
+  /** The session's working directory; absent from older servers. */
+  cwd?: string;
+  /** Display title from catalog metadata; absent from older servers. */
+  title?: string;
+}
+
+/**
+ * Coalesced catalog update from the backend. groupsDirty with no refs is a
+ * full refresh: the catalog was rebuilt and every view must reload.
+ */
+export interface CatalogChanged {
+  changed: SessionRef[] | null;
+  removed: SessionRef[] | null;
+  groupsDirty: boolean;
+}
+
+// Engine startup discovery, separate from catalog rows and FTS indexing.
+export interface DiscoveryStatus {
+  lifetime: number;
+  revision: number;
+  state: 'initializing' | 'restoring' | 'reconciling' | 'settled' | 'degraded' | 'failed';
+  catalogUsable: boolean;
+  complete: boolean;
+  cacheMode?: 'writer' | 'reader' | 'disabled' | 'fallback' | 'none';
+  configuredProviders: number;
+  detectedProviders: number;
+  failedProviders: number;
+  detectionComplete: boolean;
+  /** Each failed provider's error, by agent ID. */
+  providerErrors?: Record<string, string>;
+}
+
+export interface DiscoveryStatusReply {
+  available: boolean;
+  status?: DiscoveryStatus;
+  host: string;
+  generation: number;
+}
+
+// Wails adds route identity; RPC carries the unwrapped engine snapshot.
+export interface DiscoveryStatusEvent extends DiscoveryStatus {
+  host: string;
+  generation: number;
+}
+
+export interface FTSProgress {
+  done: number;
+  pending: number;
+  failed: number;
+  running: boolean;
+}
+
+export interface MessageJump {
+  id: number;
+  ref: SessionRef;
+  messageIndex: number;
+  kind: SearchHitKind;
+  query: string;
+  /** Resolves once the selected session header metadata has settled. */
+  ready?: Promise<unknown>;
+  /** Indexes of the message's parts to open, as a session search reports them. */
+  parts?: number[];
+  /** Keep the marks until the next jump or clearJump, not for a few seconds. */
+  sticky?: boolean;
+}
+
+export interface ManageSettings {
+  enabled: boolean;
+  allowPermanentDelete: boolean;
+  /** Also remove deleted sessions from Claude's and Codex's prompt history. */
+  prunePromptHistory?: boolean;
+}
+
+export interface DeletePreviewItem {
+  ref: SessionRef;
+  agent: AgentID;
+  title: string;
+  // Go nil slices and omitempty strings arrive as null / absent.
+  paths: string[] | null;
+  bytes: number;
+  reversible: boolean;
+  warning?: string;
+  /** Reason the item cannot be deleted; absent when actionable. */
+  blocked?: string;
+  action: string;
+}
+
+export interface DeletePreview {
+  items: DeletePreviewItem[];
+  totalBytes: number;
+  token: string;
+  /**
+   * Where reversible items go on the host performing the delete: "Recycle
+   * Bin" on Windows, "Trash" elsewhere. Absent from older servers.
+   */
+  trashLabel?: string;
+}
+
+export interface DeleteResultItem {
+  ref: SessionRef;
+  title: string;
+  ok: boolean;
+  error?: string;
+  moved?: string[] | null;
+  remaining?: string[] | null;
+  /** Paths whose removal could not be verified; neither moved nor remaining. */
+  unknown?: string[] | null;
+}
+
+export interface DeleteResult {
+  items: DeleteResultItem[];
+  deleted: number;
+  failed: number;
+  freedBytes: number;
+  forgotten: SessionRef[] | null;
+  /** Cleanup that was skipped, such as prompt history. */
+  notes?: string[] | null;
+}
+
+export type GroupMode = 'dir-agent' | 'agent-dir' | 'flat';
+
+export interface FilterOpts {
+  agent?: string;
+  query?: string;
+  liveOnly?: boolean;
+  archived?: boolean;
+  hasSubagents?: boolean;
+  // Case-insensitive substring of the session's cwd or repo root.
+  path?: string;
+}
+
+export interface SortOpts {
+  field: string;
+  desc: boolean;
+}
+
+export type GroupNodeKind = 'directory' | 'agent' | 'session';
+
+export interface GroupNode {
+  key: string;
+  label: string;
+  kind?: GroupNodeKind;
+  secondary?: string;
+  agent?: string;
+  cwd?: string;
+  cwdMissing?: boolean;
+  sessionCount: number;
+  children?: GroupNode[];
+  sessions?: SessionRef[];
+}
+
+export interface MessageCounts {
+  user: number;
+  assistant: number;
+  toolCalls: number;
+  errors?: number;
+}
+
+export interface TokenUsage {
+  input: number;
+  output: number;
+  reasoning?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
+export interface SessionMeta {
+  ref: SessionRef;
+  parentId?: string;
+  parentToolCallId?: string;
+  cwd: string;
+  cwdMissing?: boolean;
+  repoRoot?: string;
+  title: string;
+  firstPrompt?: string;
+  model?: string;
+  agentName?: string;
+  agentVersion?: string;
+  gitBranch?: string;
+  createdAt: string;
+  updatedAt: string;
+  counts: MessageCounts;
+  tokens: TokenUsage;
+  costUsd?: number;
+  live?: boolean;
+  liveStatus?: string;
+  /**
+   * Where the agent's last turn stands, read from its files: working, done
+   * (waiting for a prompt) or tool (a tool call without a result, as when it
+   * asks for approval).
+   */
+  turn?: SessionTurn;
+  archived?: boolean;
+  sourcePath?: string;
+}
+
+export type SessionTurn = 'working' | 'done' | 'tool';
+
+export type PartKind =
+  | 'text'
+  | 'reasoning'
+  | 'tool'
+  | 'patch'
+  | 'file'
+  | 'files'
+  | 'compaction'
+  | 'notice'
+  | 'meta';
+
+export type ToolStatus = 'pending' | 'completed' | 'error' | 'unknown';
+
+export interface FileRef {
+  path?: string;
+  name?: string;
+  mime?: string;
+  size?: number;
+  ref?: string;
+}
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  input?: any; // tagged ts_type:"any" on backend
+  output?: string;
+  outputTruncated?: boolean;
+  outputRef?: string;
+  status: ToolStatus;
+  child?: SessionRef;
+}
+
+export interface Part {
+  kind: PartKind;
+  text?: string;
+  tool?: ToolCall;
+  file?: FileRef;
+  files?: string[];
+}
+
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  time: string;
+  model?: string;
+  parts: Part[];
+  isMeta?: boolean;
+  isSidechain?: boolean;
+  tokens?: TokenUsage;
+}
+
+export interface Transcript {
+  meta: SessionMeta;
+  messages: Message[];
+}
+
+export interface MessagesPage {
+  messages: Message[];
+  offset: number;
+  limit: number;
+  totalCount: number;
+  hasMore: boolean;
+  /** The transcript snapshot the page came from; pages of one revision fit together. */
+  revision?: string;
+}
+
+/** A page wanted as for getMessages, given the window [haveOffset, haveOffset+haveCount) held from baseRevision. */
+export interface MessagesSinceRequest {
+  ref: SessionRef;
+  baseRevision: string;
+  haveOffset: number;
+  haveCount: number;
+  offset: number;
+  limit: number;
+}
+
+/**
+ * The page without its first `reused` messages, which equal the window's
+ * messages from `offset - haveOffset`. `reused` 0 is a full page.
+ */
+export interface MessagesDelta extends MessagesPage {
+  reused: number;
+}
+
+/** supported:false: the answering host has no deltas; page with getMessages on that connection. */
+export interface MessagesSinceReply {
+  supported: boolean;
+  delta?: MessagesDelta;
+  host: string;
+  generation: number;
+}
+
+/** Finds the messages of one session containing every term of query. */
+export interface SessionSearchRequest {
+  ref: SessionRef;
+  query: string;
+  /** Also search meta and system messages, which only the "all" level shows. */
+  includeHidden?: boolean;
+  limit?: number;
+}
+
+export interface SessionSearchHit {
+  messageIndex: number;
+  /** Indexes into the message's parts that contain a term. */
+  parts: number[];
+}
+
+export interface SessionSearchResult {
+  /** In transcript order. */
+  hits: SessionSearchHit[];
+  /** More messages match past the limit. */
+  truncated?: boolean;
+  revision?: string;
+}
+
+/** supported:false: the answering host cannot search a session. */
+export interface SessionSearchReply {
+  supported: boolean;
+  result?: SessionSearchResult;
+}
+
+export interface BlobResponse {
+  data: string;
+  mime: string;
+  isBinary: boolean;
+}
+
+/** The files of a session directory, for the Go to File dialog. */
+export interface FileListing {
+  root: string;
+  /** Slash-separated paths relative to root, sorted. */
+  files: string[];
+  /** Explicit directories, including empty ones; older servers may omit this. */
+  directories?: string[];
+  truncated?: boolean;
+  /** The list came from git: ignored files are listed apart, and ignored folders are not walked. */
+  git?: boolean;
+  /** Git work trees inside a listing made without git (relative directories); older servers omit this. */
+  repositories?: string[];
+  /** Git status of each changed file; deleted files are here, not in files. */
+  status?: Record<string, GitStatus>;
+  /** Files .gitignore leaves out (such as .env); the tree shows them dimmed. */
+  ignored?: string[];
+  /**
+   * Folders the listing does not look into: ignored by git, or dependency and
+   * build folders in a listing made without git. listDirectory reads one
+   * when it is opened. Older servers omit this.
+   */
+  ignoredDirectories?: string[];
+}
+
+/** The entries of one folder, as paths relative to the listing root, sorted. */
+export interface DirectoryEntries {
+  path: string;
+  files: string[];
+  directories: string[];
+  truncated?: boolean;
+}
+
+/** Optional retained paths hint; always refresh with an authoritative listing. */
+export interface ListingSnapshot {
+  paths?: FileListing;
+  generation?: string;
+  unverified: boolean;
+}
+
+/** A file's git status letter, as VS Code shows it. */
+export type GitStatus = 'M' | 'A' | 'U' | 'D' | 'R' | 'C';
+
+/**
+ * Lines that differ from the last commit, in current line numbers. A
+ * deletion has count 0 and start the line after which lines went (0: before
+ * the first).
+ */
+export interface LineChange {
+  kind: 'added' | 'modified' | 'deleted';
+  start: number;
+  count: number;
+  /** The lines it replaced or removed, as at the last commit. */
+  removed?: string[];
+}
+
+/** One file read for the Go to File dialog. */
+export interface FileProbeResult {
+  root: string;
+  observations: Array<
+    | { path: string; state: 'present'; revision: string }
+    | { path: string; state: 'absent' }
+    | { path: string; state: 'unknown'; reason: 'unavailable' | 'changed' | 'limit' | 'cancelled' | 'unsupported' }
+  >;
+}
+
+export interface FileContent {
+  path: string;
+  size: number;
+  text?: string;
+  binary?: boolean;
+  tooLarge?: boolean;
+  /** The MIME type of a common image file; data holds it base64 encoded. */
+  image?: string;
+  data?: string;
+  changes?: LineChange[];
+  /**
+   * Opaque revision of the exact bytes returned in text, for a later
+   * revision-checked save. Absent without text, and from older servers.
+   */
+  revision?: string;
+  /** Edit eligibility and text format; absent without text, and from older servers. */
+  edit?: FileEditInfo;
+}
+
+/** Why a text file cannot be edited. Unknown future reasons may appear. */
+export type FileEditReason =
+  | 'too_large'
+  | 'unsupported_newlines'
+  | 'not_checked'
+  | 'protected'
+  | 'linked'
+  | 'read_only'
+  | 'unsupported'
+  | (string & {});
+
+/**
+ * An editor snapshot to save. text has LF line breaks and no leading BOM;
+ * the host restores the file's own BOM and line endings.
+ */
+export interface FileSaveRequest {
+  path: string;
+  text: string;
+  /** The revision the text was edited from; a changed file conflicts. */
+  expectedRevision: string;
+}
+
+/**
+ * A saved file's new content, or a conflict: the file changed since it was
+ * read and nothing was written.
+ */
+export type FileSaveResult =
+  | { status: 'saved'; content: FileContent; observedRevision?: undefined }
+  | { status: 'conflict'; content?: undefined; observedRevision?: string };
+
+/**
+ * Whether a text file may be edited, and the format a save must keep. Text
+ * in FileContent is the file's bytes unchanged, BOM and CRs included.
+ */
+export interface FileEditInfo {
+  /** Always sent; only an explicit true allows editing. */
+  eligible: boolean;
+  reason?: FileEditReason;
+  /** The file's line endings; absent when they are mixed or bare CR. */
+  newline?: 'lf' | 'crlf' | 'none';
+  /** The file starts with a UTF-8 byte order mark. */
+  bom?: boolean;
+}
+
+export interface Warning {
+  file: string;
+  line: number;
+  msg: string;
+}
+
+export interface Diagnostics {
+  warnings?: Warning[];
+  errors?: string[];
+}
+
+export interface HandoffReport {
+  estimatedTokens: number;
+  budgetTokens: number;
+  trimmed: boolean;
+  droppedItems: string[];
+  redactionCounts: {
+    emails?: number;
+    ipv4?: number;
+    apiKeys?: number;
+    sshKeys?: number;
+    tokens?: number;
+    passwords?: number;
+  };
+}
+
+export interface HandoffRequest {
+  ref: SessionRef;
+  target: AgentID;
+  budget?: number;
+  includeReasoning?: boolean;
+  redactSecrets?: boolean;
+  cwd?: string;
+}
+
+export interface HandoffPreview {
+  promptMarkdown: string;
+  fullMarkdown: string;
+  report: HandoffReport;
+  contextFile: string;
+  /** File the launch command tells the agent to read. */
+  promptFile: string;
+  command: string;
+  promptBytes: number;
+}
+
+/** How sessions can be continued on this machine. */
+export interface LaunchInfo {
+  /** Open in terminal works for local sessions. */
+  terminal: boolean;
+  /** Settings chooses the terminal app (Linux, macOS); absent on older backends. */
+  chooseTerminal?: boolean;
+  /** Syntax of locally copied commands; remote commands are always POSIX. */
+  shell: 'powershell' | 'posix';
+  /** Open in terminal also works for a WSL distribution's sessions; absent on older backends. */
+  wsl?: boolean;
+  /** The built-in terminal panel runs here; absent on older backends. */
+  panel?: boolean;
+  /** Where Resume and "Continue in" open agents: the panel or an external terminal. */
+  open?: TerminalOpenMode;
+}
+
+export type TerminalOpenMode = 'panel' | 'external';
+
+/** A size in character cells. */
+export interface TerminalSize {
+  cols: number;
+  rows: number;
+}
+
+/** A terminal running in the built-in panel, as the backend started it. */
+export interface TerminalTab {
+  id: string;
+  label: string;
+  /** Where it runs: "" for this computer, or the WSL or SSH host. */
+  host: string;
+  kind: 'agent' | 'shell';
+  /**
+   * The directory it starts in, where the backend knows it; empty is the
+   * home directory, or unknown for an agent on a WSL or SSH host.
+   */
+  dir?: string;
+  /** The agent an agent tab runs, where known. */
+  agent?: AgentID;
+  /** When it started, in Unix milliseconds on this computer. */
+  startedAt?: number;
+}
+
+/** Whether an agent's CLI is installed where its new sessions would start. */
+export interface AgentStatus {
+  agent: AgentID;
+  name: string;
+  /** True when the lookup a launch makes finds the CLI. */
+  installed: boolean;
+  /** What to install when it is not. */
+  hint?: string;
+}
+
+export interface TerminalDataEvent {
+  id: string;
+  /** Output, base64-encoded. */
+  data: string;
+}
+
+export interface TerminalExitEvent {
+  id: string;
+  code: number;
+}
+
+/**
+ * Whether agent alerts reach the desktop's notifications; when not, reason
+ * says why and what would turn them on.
+ */
+export interface NotificationStatus {
+  available: boolean;
+  reason?: string;
+}
+
+/** An alert about an agent tab. */
+export interface AgentNotification {
+  tab: string;
+  title: string;
+  body: string;
+}
+
+/** A terminal app installed on this computer. */
+export interface TerminalOption {
+  id: string;
+  name: string;
+}
+
+/** The terminal this computer opens sessions in. Local, whichever host is selected. */
+export interface TerminalSettings {
+  /** False where the terminal is fixed (Windows PowerShell). */
+  choose: boolean;
+  /** Chosen terminal id; empty means Automatic. */
+  selected: string;
+  selectedName: string;
+  /** The chosen terminal is no longer installed. */
+  missing: boolean;
+  /** What Automatic opens; null when no terminal is installed. */
+  auto: TerminalOption | null;
+  options: TerminalOption[];
+  /** A note for this platform, such as macOS asking for permission. */
+  hint?: string;
+}
+
+/**
+ * Where messages are translated: an OpenAI-compatible endpoint called from
+ * this computer, whichever host is selected. The API key is never returned.
+ */
+export interface TranslateSettings {
+  baseURL: string;
+  model: string;
+  language: string;
+  apiKeySet: boolean;
+  /** Base URL, API key and model are all set. */
+  configured: boolean;
+}
+
+/** Saves translation settings. An empty apiKey keeps the saved key. */
+export interface TranslateSettingsRequest {
+  baseURL: string;
+  model: string;
+  language: string;
+  apiKey: string;
+  clearApiKey: boolean;
+}
+
+/** An image to save on this computer: SVG text, or the image in base64. */
+export interface SaveImageRequest {
+  /** Suggested file name; the extension follows the format. */
+  name: string;
+  format: 'svg' | 'png' | 'jpeg' | 'gif' | 'webp';
+  data: string;
+}
+
+/** Handoff files kept in the app data directory. */
+export interface HandoffCacheInfo {
+  dir: string;
+  files: number;
+  bytes: number;
+}
+
+/** Code check logs kept in the app data directory of the backend host. */
+export interface CodeCheckLogsInfo {
+  dir: string;
+  files: number;
+  bytes: number;
+}
+
+export type ExportProfile = 'complete' | 'share-safe';
+
+export interface RedactionCounts {
+  pem?: number;
+  token?: number;
+  jwt?: number;
+  assignment?: number;
+  home?: number;
+}
+
+export interface FidelityReport {
+  resolved: number;
+  resolvedBytes: number;
+  overflow?: string[];
+  unavailable?: string[];
+}
+
+export interface ExportRequest {
+  ref: SessionRef;
+  profile: ExportProfile;
+  budget?: number;
+  includeReasoning?: boolean;
+  redactSecrets?: boolean;
+}
+
+export interface ExportPreview {
+  profile: ExportProfile;
+  sessions: number;
+  nativeFiles: number;
+  nativeBytes: number;
+  redaction: RedactionCounts;
+  fidelity: FidelityReport;
+  handoffTokens: number;
+  warning?: string;
+}
+
+export interface BundleSessionSummary {
+  ref: SessionRef;
+  parentId?: string;
+  nativeFiles: number;
+  nativeBytes: number;
+  title?: string;
+}
+
+export interface BundleSummary {
+  bundleId: string;
+  path: string;
+  format: string;
+  version: number;
+  createdAt: string;
+  appVersion?: string;
+  profile: ExportProfile;
+  source: {
+    agent: AgentID;
+    agentVersion?: string;
+    id: string;
+    cwd: string;
+    repoRoot?: string;
+    gitBranch?: string;
+    title?: string;
+  };
+  sessionsCount: number;
+  nativeFilesCount: number;
+  nativeBytes: number;
+  redactionRules?: Record<string, number>;
+  redactionCounts: number;
+  handoffTokens: number;
+  verified: boolean;
+  restoreAvailable: boolean;
+  handoffAvailable: boolean;
+  sessions: BundleSessionSummary[];
+}
+
+export interface BundleRestoreRequest {
+  bundleId: string;
+  /** Directory on the selected host the session is imported into. */
+  cwd: string;
+  /** Import under a new session id when the original id already exists. */
+  copy?: boolean;
+  /** The id the preview minted for a copy; pass it back when confirming. */
+  copyId?: string;
+}
+
+export interface RestorePreviewItem {
+  sourceRef: SessionRef;
+  targetRef: SessionRef;
+  targetCwd: string;
+  paths: string[];
+  bytes: number;
+  blocked?: string;
+  warning?: string;
+  isCopy: boolean;
+}
+
+export interface RestorePreview {
+  items: RestorePreviewItem[];
+  totalBytes: number;
+  token: string;
+  copyId?: string;
+}
+
+export interface RestoreReport {
+  items: { ref: SessionRef; title: string; ok: boolean; error?: string; created?: string[] }[];
+  restored: number;
+  failed: number;
+  totalBytes: number;
+  createdRefs: SessionRef[];
+}
+
+export interface BundleHandoffRequest {
+  bundleId: string;
+  target: AgentID;
+  budget?: number;
+  includeReasoning?: boolean;
+  redactSecrets?: boolean;
+  cwd?: string;
+}
+
+export type ConnectionPhase =
+  | 'local'
+  | 'connecting'
+  | 'connected'
+  | 'disconnected'
+  | 'reconnecting';
+
+/** The last commit that touched one line of a file (git blame). */
+export interface BlameLine {
+  /** 1-based line number the blame is for. */
+  line: number;
+  /** Full commit hash; all zeros when the line is uncommitted. */
+  commit: string;
+  author: string;
+  /** Author time, Unix seconds. */
+  authorTime: number;
+  /** First line of the commit message; empty when uncommitted. */
+  summary: string;
+  /** The line has changes not yet committed. */
+  uncommitted: boolean;
+  /** .gitignore leaves the file out, so it has no history; older hosts fail instead. */
+  ignored?: boolean;
+}
+
+/** What to look for across a project's files. */
+export interface SearchQuery {
+  pattern: string;
+  regex?: boolean;
+  matchCase?: boolean;
+  wholeWord?: boolean;
+  /** Comma-separated globs such as `*.go, src/**`; a file must match one. */
+  include?: string;
+  /** Comma-separated globs; a file matching one is skipped. */
+  exclude?: string;
+  /** Caps the matches returned; 0 or absent means the host's default. */
+  maxMatches?: number;
+}
+
+/** One match on one line. Columns count UTF-16 code units. */
+export interface SearchMatch {
+  /** 1-based line number. */
+  line: number;
+  start: number;
+  end: number;
+  /** The line, trimmed and cut to a window around the match when long. */
+  preview: string;
+  previewStart: number;
+  previewEnd: number;
+}
+
+/** The matches in one file. */
+export interface SearchFile {
+  path: string;
+  /** Identifies the bytes searched, so a replace can tell they changed. */
+  revision: string;
+  matches: SearchMatch[];
+  /** The file had more matches than the per-file cap. */
+  truncated?: boolean;
+  /** Set in the browser: the matches are in an unsaved draft, not on disk. */
+  draft?: boolean;
+}
+
+/** The files with matches, sorted by path. */
+export interface SearchResult {
+  files: SearchFile[];
+  matches: number;
+  /** Text files looked through. */
+  searched: number;
+  /** A cap cut the result short. */
+  truncated?: boolean;
+}
+
+/** One match to replace, as Search reported it. */
+export interface ReplaceMatch {
+  line: number;
+  start: number;
+}
+
+/** One file to change and the revision it was searched at. */
+export interface ReplaceFile {
+  path: string;
+  expectedRevision: string;
+  /** Only these matches are replaced; absent means every match in the file. */
+  matches?: ReplaceMatch[];
+}
+
+/**
+ * Replaces the matches of query in files. For a regular expression, $1 and
+ * ${name} expand to groups as in Go's Regexp.Expand ($$ is a dollar sign);
+ * otherwise replacement is taken as it is.
+ */
+export interface ReplaceRequest {
+  query: SearchQuery;
+  replacement: string;
+  files: ReplaceFile[];
+}
+
+/**
+ * replaced: written. conflict: changed since the search. skipped: may not or
+ * need not change (reason). failed: an error (message). Only replaced wrote.
+ */
+export type ReplaceStatus = 'replaced' | 'conflict' | 'skipped' | 'failed';
+
+/** Why a file was skipped: an edit reason, or one of Replace's own. */
+export type ReplaceSkipReason = FileEditReason | 'unsupported_text' | 'stale_match' | 'duplicate';
+
+export interface ReplaceFileResult {
+  path: string;
+  status: ReplaceStatus;
+  replaced?: number;
+  /** The new revision, for replaced. */
+  revision?: string;
+  /** The file's current revision, for a conflict. */
+  observedRevision?: string;
+  reason?: ReplaceSkipReason;
+  message?: string;
+}
+
+/** One entry per requested file, in request order. */
+export interface ReplaceResult {
+  files: ReplaceFileResult[];
+  replaced: number;
+}
+
+export interface HostCapabilities {
+  /** Optional retained, unverified project paths hint. */
+  projectSnapshot?: boolean;
+  /** Absent on older servers; discovery readiness is then unknown. */
+  discoveryStatus?: boolean;
+  /** Optional Stage 1 support. Live remains false until Stage 2. */
+  codeDiagnostics?: boolean;
+  liveCodeDiagnostics?: boolean;
+  /** Definition, references and hover for live documents; only with liveCodeDiagnostics. */
+  codeNavigation?: boolean;
+  /** The host honors the languages turned off in Settings. */
+  codeDiagnosticsLanguages?: boolean;
+  /** Absent on older servers; editing requires an explicit true. */
+  saveFile?: boolean;
+  /** Absent on older servers; per-line blame requires an explicit true. */
+  blame?: boolean;
+  /** Absent on older servers; full Git status requires explicit true. */
+  gitChanges?: boolean;
+  /** Absent on older servers; Changes in a repository inside a project that is in none. */
+  gitChangesRepository?: boolean;
+  gitDiff?: boolean;
+  /** Independent read-only commit history capability. */
+  gitHistory?: boolean;
+  gitHistoryActions?: boolean;
+  gitHistoryCompare?: boolean;
+  gitWrite?: boolean;
+  /** Fetch/pull/push; absent on older servers and only advertised with gitWrite. */
+  gitSync?: boolean;
+  /** Absent on older servers; content search requires an explicit true. */
+  searchFiles?: boolean;
+  /** Absent on older servers; replacing in files requires an explicit true. */
+  replaceFiles?: boolean;
+  /** Absent on older servers; starting new sessions requires an explicit true. */
+  newSession?: boolean;
+  trash: boolean;
+  manage: boolean;
+  export: boolean;
+  import: boolean;
+  search: boolean;
+  /** Absent on older servers, which only filter search by an absolute directory. */
+  searchPath?: boolean;
+}
+
+export interface ConnectionState {
+  /** Stable authenticated backend identity, not the host picker label. */
+  hostId?: string;
+  phase: ConnectionPhase;
+  host?: string;
+  generation: number;
+  error?: string;
+  capabilities: HostCapabilities;
+  appVersion?: string;
+}
+
+export interface HostEntry {
+  name: string;
+  hostName?: string;
+  user?: string;
+  port?: number;
+}
+
+/** A WSL distribution on this Windows computer; host is "wsl:<name>". */
+export interface WSLEntry {
+  name: string;
+  host: string;
+  default?: boolean;
+}
+
+export interface AskpassPrompt {
+  id: string;
+  prompt: string;
+}
+
+
+
+
+/** Full repository status; unchanged XY states are empty, untracked is worktree "?". */
+export interface GitChange {
+  path: string;
+  /** Project-relative rename/copy origin; absent if outside the project. */
+  originalPath?: string;
+  index: string;
+  worktree: string;
+  conflict: boolean;
+  /** Set for a submodule: another commit checked out, changed or untracked files in it. */
+  submodule?: { commit: boolean; modified: boolean; untracked: boolean };
+}
+export interface RepoStatus {
+  ok: boolean;
+  reason?: string;
+  /** Repository-root metadata; entry paths remain relative to the project. */
+  repoRoot?: string;
+  branch: string;
+  head: string;
+  detached: boolean;
+  hasCommits: boolean;
+  upstream: string;
+  ahead: number;
+  behind: number;
+  /** The last commit is on a remote-tracking branch. Absent from older servers. */
+  headPublished?: boolean;
+  operation?: string;
+  entries: GitChange[];
+  truncated: boolean;
+}
+
+export interface GitDiscardRequest {
+  paths: string[];
+  /** Live unsaved drafts, supplied by the Changes UI before confirmation. */
+  draftPaths?: string[];
+}
+export interface GitCommitRequest {
+  message: string;
+  amend: boolean;
+  stageAll: boolean;
+}
+
+export interface GitBranch {
+  name: string;
+  remote: boolean;
+  current: boolean;
+  upstream?: string;
+  commitTime: number;
+}
+export interface GitBranchList {
+  branches: GitBranch[];
+  truncated: boolean;
+}
+export interface GitSwitchRequest {
+  name: string;
+  create: boolean;
+  /** Explicitly select refs/remotes/name and create its local tracking branch. */
+  remote?: boolean;
+  /** Any live draft blocks branch switching/creation. */
+  draftPaths?: string[];
+}
+
+/** pull is fast-forward only; push sets the upstream when there is none. Never forces. */
+export type GitSyncOp = 'fetch' | 'pull' | 'push';
+export interface GitSyncResult {
+  op: GitSyncOp;
+  /** Short sentence, e.g. "Fast-forwarded main to origin/main (2 commits)." */
+  summary: string;
+  /** Refreshed upstream/ahead/behind; ok is false only if the refresh failed. */
+  status: RepoStatus;
+}
+/** Stable GitSyncError codes; Git's own output follows the message's first line. */
+export type GitSyncErrorCode =
+  | 'authRequired' | 'nonFastForward' | 'localChanges' | 'detached' | 'noUpstream'
+  | 'noRemote' | 'ambiguousRemote' | 'pushRemote' | 'noCommits' | 'inProgress' | 'timeout'
+  | 'canceled' | 'unsupported' | 'failed';
+
+export type GitDiffBasis = 'head' | 'index' | 'staged';
+export interface GitDiffContent {
+  content: FileContent;
+  basis: GitDiffBasis;
+  deleted: boolean;
+  readOnly: boolean;
+  /** A submodule: content names the commits it is at, as git diff does. */
+  submodule?: boolean;
+}

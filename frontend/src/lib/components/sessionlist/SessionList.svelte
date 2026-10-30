@@ -1,0 +1,457 @@
+<script lang="ts">
+  import type { SessionMeta, SortOpts } from '../../types';
+  import { appState } from '../../stores/appState.svelte';
+  import { discovery } from '../../stores/discovery.svelte';
+  import { catalogNotice, emptyCatalogState, discoveryProblem } from '../../discovery';
+  import { onDestroy } from 'svelte';
+  import VirtualList from './VirtualList.svelte';
+  import SessionListSkeleton from './SessionListSkeleton.svelte';
+  import SessionRow from './SessionRow.svelte';
+  import EmptyState from '../common/EmptyState.svelte';
+  import ErrorState from '../common/ErrorState.svelte';
+  import { manage } from '../../stores/manage.svelte';
+  import { AGE_FILTERS, filterSessionsByAge, isAgeFilter } from '../../manage';
+  import Dropdown from '../common/Dropdown.svelte';
+
+  const AGE_OPTIONS = AGE_FILTERS.map((f) => ({ value: f.id, label: f.label }));
+
+  const SORT_OPTIONS = [
+    { value: 'updated', label: 'Updated' },
+    { value: 'created', label: 'Created' },
+    { value: 'title', label: 'Title' },
+    { value: 'messages', label: 'Messages' },
+    { value: 'tokens', label: 'Tokens' },
+    { value: 'cost', label: 'Cost' },
+  ];
+
+  let listEl: HTMLElement | null = $state(null);
+
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  let visibleSessions = $derived(
+    filterSessionsByAge(appState.sessions, manage.ageFilter)
+  );
+
+  let narrowed = $derived(Boolean(
+    appState.filter.query || appState.filter.path || appState.filter.agent ||
+    appState.filter.liveOnly || appState.filter.hasSubagents || appState.filter.archived ||
+    appState.selectedGroupKey || manage.ageFilter !== 'any'
+  ));
+  let emptyState = $derived(
+    emptyCatalogState(discovery.outcome, discovery.status, narrowed, appState.discoveryReloading)
+  );
+  let notice = $derived(catalogNotice(discovery.outcome, discovery.status));
+  let problem = $derived(
+    emptyState === 'failed' || emptyState === 'degraded'
+      ? discoveryProblem(emptyState, discovery.status)
+      : null
+  );
+
+  let selectedVisibleCount = $derived(
+    manage.getSelectedRefs(visibleSessions).length
+  );
+
+  // Debounce so fast typing doesn't trigger a backend query per keystroke.
+  function handleSearchInput(e: Event) {
+    const val = (e.target as HTMLInputElement).value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      appState.setFilter({ query: val });
+    }, 250);
+  }
+
+  onDestroy(() => {
+    clearTimeout(searchTimer);
+  });
+
+  function toggleLiveOnly() {
+    appState.setFilter({ liveOnly: !appState.filter.liveOnly });
+  }
+
+  function toggleArchived() {
+    appState.setFilter({ archived: !appState.filter.archived });
+  }
+
+  function handleSortChange(field: string) {
+    appState.setSort({ field, desc: appState.sort.desc });
+  }
+
+  function toggleSortDirection() {
+    appState.setSort({ field: appState.sort.field, desc: !appState.sort.desc });
+  }
+
+  function handleSelectSession(session: SessionMeta) {
+    appState.selectSession(session.ref, 'push');
+  }
+
+  function handleClearFilters() {
+    clearTimeout(searchTimer);
+    appState.setFilter({ query: '', liveOnly: false, archived: false });
+    manage.setAgeFilter('any');
+  }
+
+  function handleAgeChange(value: string) {
+    manage.setAgeFilter(isAgeFilter(value) ? value : 'any');
+    manage.clearSelection();
+  }
+
+  function toggleSelectAll() {
+    if (selectedVisibleCount === visibleSessions.length) {
+      manage.clearSelection();
+    } else {
+      manage.selectAll(visibleSessions);
+    }
+  }
+
+  function handleBulkDelete() {
+    const refs = manage.getSelectedRefs(visibleSessions);
+    if (!refs.length) return;
+    void manage.requestDelete(refs);
+  }
+
+  function handleKeyDown(e: KeyboardEvent) {
+    if (appState.sessions.length === 0) return;
+
+    const currentIndex = appState.sessions.findIndex(
+      (s) =>
+        s.ref.agent === appState.selectedSessionRef?.agent &&
+        s.ref.id === appState.selectedSessionRef?.id
+    );
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextIndex = Math.min(appState.sessions.length - 1, currentIndex + 1);
+      appState.selectSession(appState.sessions[nextIndex].ref, 'step');
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevIndex = Math.max(0, currentIndex - 1);
+      appState.selectSession(appState.sessions[prevIndex].ref, 'step');
+    }
+  }
+</script>
+
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+  bind:this={listEl}
+  class="session-list-pane"
+  role="region"
+  aria-label="Session list"
+  onkeydown={handleKeyDown}
+  tabindex="-1"
+>
+  <div class="search-toolbar">
+    <div class="text-field">
+      <span class="search-icon">🔍</span>
+      <input
+        type="search"
+        placeholder="Filter sessions (title, prompt, cwd, model)…"
+        value={appState.filter.query || ''}
+        oninput={handleSearchInput}
+        aria-label="Search sessions"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+      />
+    </div>
+
+    <div class="filter-controls">
+      <button
+        type="button"
+        class="filter-btn live-btn"
+        class:active={appState.filter.liveOnly}
+        title="Show only active sessions"
+        onclick={toggleLiveOnly}
+      >
+        <span class="live-indicator">●</span> Live
+      </button>
+
+      <button
+        type="button"
+        class="filter-btn"
+        class:active={appState.filter.archived}
+        title="Include archived sessions"
+        onclick={toggleArchived}
+      >
+        Archived
+      </button>
+
+      <!-- A view filter, so it stays visible on hosts without session management. -->
+      <Dropdown
+        options={AGE_OPTIONS}
+        value={manage.ageFilter}
+        onChange={handleAgeChange}
+        ariaLabel="Filter sessions by age"
+      />
+
+      <div class="sort-wrapper">
+        <Dropdown
+          options={SORT_OPTIONS}
+          value={appState.sort.field}
+          onChange={handleSortChange}
+          ariaLabel="Sort sessions by"
+          align="right"
+        />
+        <button
+          type="button"
+          class="sort-dir-btn"
+          title={appState.sort.desc ? 'Descending (click for ascending)' : 'Ascending (click for descending)'}
+          onclick={toggleSortDirection}
+          aria-label="Toggle sort order"
+        >
+          {appState.sort.desc ? '↓' : '↑'}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="list-subhead">
+    <span class="session-count">
+      {visibleSessions.length} {visibleSessions.length === 1 ? 'session' : 'sessions'}
+    </span>
+
+    {#if notice && visibleSessions.length > 0}
+      <span class="discovery-notice" class:warning={notice.tone === 'warning'} role="status" title={notice.title}>
+        {notice.text}
+      </span>
+    {/if}
+
+    {#if manage.settings.enabled}
+      <label class="select-all-label">
+        <input
+          type="checkbox"
+          class="bulk-check"
+          checked={visibleSessions.length > 0 &&
+            selectedVisibleCount === visibleSessions.length}
+          onclick={toggleSelectAll}
+        />
+        Select all
+      </label>
+
+      <button
+        type="button"
+        class="bulk-delete-btn"
+        disabled={selectedVisibleCount === 0 || manage.deleting}
+        title="Delete the selected sessions"
+        onclick={handleBulkDelete}
+      >
+        Delete ({selectedVisibleCount})
+      </button>
+    {/if}
+  </div>
+
+  <div class="list-body">
+    {#if appState.loadingSessions}
+      <SessionListSkeleton />
+    {:else if appState.error}
+      <ErrorState
+        title="Could not load sessions"
+        message="The session list could not be loaded."
+        details={appState.error}
+        onRetry={() => appState.reload()}
+      />
+    {:else if visibleSessions.length === 0}
+      {#if emptyState === 'discovering'}
+        <div class="discovering" role="status">
+          <EmptyState
+            icon="⏳"
+            title="Discovering sessions…"
+            description="Looking for agent session history. Sessions appear here as they are found."
+          />
+        </div>
+      {:else if emptyState === 'no-agents' || emptyState === 'no-sessions'}
+        <EmptyState
+          icon="📭"
+          title="No sessions found"
+          description={emptyState === 'no-agents'
+            ? 'No supported agents were detected.'
+            : 'Discovery finished without finding any session history.'}
+        />
+      {:else if problem}
+        <EmptyState icon="⚠️" title={problem.title} description={problem.description} />
+      {:else}
+        <EmptyState
+          icon="🔍"
+          title="No matching sessions"
+          description="No sessions match the current search and filters."
+          actionText="Clear filters"
+          onAction={handleClearFilters}
+        />
+      {/if}
+    {:else}
+      <VirtualList items={visibleSessions} itemHeight={84} overscan={5}>
+        {#snippet children(session: SessionMeta)}
+          <SessionRow
+            {session}
+            isSelected={appState.selectedSessionRef?.agent === session.ref.agent &&
+              appState.selectedSessionRef?.id === session.ref.id}
+            onSelect={handleSelectSession}
+          />
+        {/snippet}
+      </VirtualList>
+    {/if}
+  </div>
+</div>
+
+<style>
+  .session-list-pane {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    background-color: var(--bg-primary);
+    overflow: hidden;
+  }
+
+  .search-toolbar {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .search-icon {
+    font-size: 0.8rem;
+    opacity: 0.5;
+  }
+
+  /* Every control in the row shares one height (also read by Dropdown). */
+  .filter-controls {
+    --control-height: 24px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: var(--control-height);
+    padding: 0 7px;
+    white-space: nowrap;
+    border-radius: var(--radius-sm);
+    font-size: 0.72rem;
+    font-weight: 500;
+    background-color: var(--bg-secondary);
+    border: none;
+    color: var(--text-secondary);
+    transition: all 0.15s ease;
+  }
+
+  .filter-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--hover-bg);
+  }
+
+  .filter-btn.active {
+    background-color: var(--active-bg);
+    color: var(--accent-color);
+    font-weight: 600;
+  }
+
+  .live-btn .live-indicator {
+    color: var(--status-live);
+    font-size: 0.75rem;
+  }
+
+  .sort-wrapper {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .sort-dir-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-height);
+    height: var(--control-height);
+    padding: 0;
+    font-size: 0.75rem;
+    font-weight: bold;
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-secondary);
+    border: none;
+    color: var(--text-secondary);
+    transition: all 0.15s ease;
+  }
+
+  .sort-dir-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--hover-bg);
+  }
+
+  .list-subhead {
+    padding: 4px 10px;
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .select-all-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    cursor: pointer;
+  }
+
+  .bulk-delete-btn {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    font-weight: 500;
+    background-color: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger);
+    border: none;
+    cursor: pointer;
+  }
+
+  .bulk-delete-btn:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--danger) 20%, transparent);
+  }
+
+  .bulk-delete-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .discovery-notice {
+    white-space: nowrap;
+  }
+
+  .discovery-notice.warning {
+    color: var(--text-secondary);
+  }
+
+  .discovering {
+    height: 100%;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .list-body {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+</style>

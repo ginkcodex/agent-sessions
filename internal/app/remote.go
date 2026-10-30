@@ -1,0 +1,598 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"os"
+	"sync"
+	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/remote"
+	"github.com/ginkcode/agent-sessions/internal/rpc"
+)
+
+// Connection phases reported to the frontend. A dropped remote stays on the
+// selected host; it does not fall back to Local.
+const (
+	ConnLocal        = "local"
+	ConnConnecting   = "connecting"
+	ConnConnected    = "connected"
+	ConnDisconnected = "disconnected"
+	ConnReconnecting = "reconnecting"
+)
+
+// connectionEvent is the Wails event carrying ConnectionState.
+const connectionEvent = "connection:state"
+
+// askpassEvent is the Wails event carrying AskpassPrompt.
+const askpassEvent = "askpass:prompt"
+
+// AskpassPrompt is the event payload for askpass:prompt.
+type AskpassPrompt struct {
+	ID     string `json:"id"`
+	Prompt string `json:"prompt"`
+}
+
+// reconnect delays. Mutations are never retried across these.
+var reconnectBackoff = []time.Duration{
+	time.Second,
+	2 * time.Second,
+	5 * time.Second,
+	10 * time.Second,
+	30 * time.Second,
+}
+
+// ConnectionState is the snapshot the frontend renders.
+type ConnectionState struct {
+	Phase        string           `json:"phase"`
+	Host         string           `json:"host,omitempty"`
+	HostID       string           `json:"hostId,omitempty"`
+	Generation   uint64           `json:"generation"`
+	Error        string           `json:"error,omitempty"`
+	Capabilities rpc.Capabilities `json:"capabilities"`
+	AppVersion   string           `json:"appVersion,omitempty"`
+}
+
+// HostEntry is one row in the host picker.
+type HostEntry struct {
+	Name     string `json:"name"`
+	HostName string `json:"hostName,omitempty"`
+	User     string `json:"user,omitempty"`
+	Port     int    `json:"port,omitempty"`
+}
+
+// WSLEntry is a WSL distribution the host picker offers.
+type WSLEntry struct {
+	Name string `json:"name"`
+	// Host is what Connect takes for it: "wsl:<name>".
+	Host    string `json:"host"`
+	Default bool   `json:"default,omitempty"`
+}
+
+// sessionDialer starts a remote serve session. Tests replace it.
+type sessionDialer func(ctx context.Context, alias string, opts remote.SSHOptions, clientEnv map[string]string, emitter engine.Emitter) (*remote.Session, error)
+
+func defaultDialer(ctx context.Context, alias string, opts remote.SSHOptions, clientEnv map[string]string, emitter engine.Emitter) (*remote.Session, error) {
+	return remote.StartSession(ctx, alias, opts, clientEnv, emitter)
+}
+
+type connSnap struct {
+	state   ConnectionState
+	session *remote.Session
+	gen     uint64
+}
+
+// connection tracks the active target. The local engine stays running while a
+// remote session is connected; events from a stale generation are dropped.
+type connection struct {
+	mu      sync.Mutex
+	state   ConnectionState
+	session *remote.Session
+	// client and xport serve the connected session (set with it; tests set
+	// them directly).
+	client   engine.Backend
+	xport    remote.ArtifactTransport
+	gen      uint64
+	dial     sessionDialer
+	opts     remote.SSHOptions
+	env      map[string]string
+	emitter  engine.Emitter
+	askpass  *remote.AskpassBroker
+	wantHost string // host the user selected; empty means Local
+	// localActive: Local still serves calls. True until a host first
+	// connects, and again after Disconnect.
+	localActive bool
+	attempt     int
+	cancel      context.CancelFunc
+	stopped     bool
+	stopMaster  masterStopper
+	// busy reports whether a built-in terminal tab still uses a host's ssh
+	// master; its master is then left to ControlPersist.
+	busy     func(host string) bool
+	forwards *portForwards
+	// claims keeps each host open in one window at most; nil (tests, no
+	// cache dir) lets every window open any host.
+	claims *hostClaims
+}
+
+// masterStopper closes the shared ssh connection (ControlMaster) for a host
+// the user explicitly left, so it does not linger for ControlPersist.
+type masterStopper func(ctx context.Context, alias string, opts remote.SSHOptions) error
+
+func stopControlMaster(ctx context.Context, alias string, opts remote.SSHOptions) error {
+	return remote.StopControlMaster(ctx, opts.Binary, alias, opts)
+}
+
+// newMasterStopper is what newConnection installs. Unit tests swap it so
+// they never run ssh.
+var newMasterStopper masterStopper = stopControlMaster
+
+// stopMasterTimeout bounds "ssh -O exit", which only talks to the local
+// control socket.
+const stopMasterTimeout = 3 * time.Second
+
+func newConnection(emitter engine.Emitter) *connection {
+	c := &connection{
+		state:       ConnectionState{Phase: ConnLocal},
+		dial:        defaultDialer,
+		emitter:     emitter,
+		localActive: true,
+		stopMaster:  newMasterStopper,
+	}
+	if !remote.SupportsSSHAskpass() {
+		c.opts.ControlMaster = "no"
+		return c
+	}
+	broker, err := remote.NewAskpassBroker(func(id, prompt string) {
+		c.emitAskpass(id, prompt)
+	})
+	if err == nil {
+		c.askpass = broker
+		execPath, err := os.Executable()
+		if err == nil {
+			c.opts.AskpassBinary = execPath
+		}
+		c.opts.AskpassSock = broker.SocketPath()
+		c.opts.AskpassToken = broker.Token()
+	}
+	return c
+}
+
+func (c *connection) snapshot() ConnectionState {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.state
+}
+
+func (c *connection) generation() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.gen
+}
+
+// route is one consistent view of where a binding call goes. Callers take a
+// single snapshot per call, so the backend that ran a call and the host its
+// command is wrapped for cannot disagree.
+type route struct {
+	generation uint64         // connection epoch for read-only reconciliation replies
+	backend    engine.Backend // nil means Local
+	host       string         // non-empty: the call belongs to this remote host
+	transport  remote.ArtifactTransport
+}
+
+// route returns the live remote while connected. Otherwise Local stays
+// active only during a first connect from Local; once a host has been in
+// use, a dropped or switching connection gets the offline backend, never
+// Local.
+func (c *connection) route() route {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.state.Phase == ConnConnected && c.client != nil {
+		return route{backend: c.client, host: c.state.Host, transport: c.xport, generation: c.state.Generation}
+	}
+	if c.wantHost != "" && !c.localActive {
+		return route{backend: offlineBackend{host: c.wantHost}, host: c.wantHost}
+	}
+	return route{}
+}
+
+func (c *connection) backend(local engine.Backend) engine.Backend {
+	if b := c.route().backend; b != nil {
+		return b
+	}
+	return local
+}
+
+func (c *connection) setBusy(busy func(host string) bool) {
+	c.mu.Lock()
+	c.busy = busy
+	c.mu.Unlock()
+}
+
+// sshOptions is how ssh reaches hosts, with the shared master's settings.
+func (c *connection) sshOptions() remote.SSHOptions {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.opts
+}
+
+func (c *connection) setEmitter(e engine.Emitter) {
+	c.mu.Lock()
+	c.emitter = e
+	c.mu.Unlock()
+}
+
+func (c *connection) emit() {
+	c.mu.Lock()
+	if c.forwards != nil {
+		c.forwards.sync(c.state, c.opts)
+	}
+	e := c.emitter
+	st := c.state
+	c.mu.Unlock()
+	if e != nil {
+		e.Emit(connectionEvent, st)
+	}
+}
+
+func (c *connection) emitAskpass(id, prompt string) {
+	c.mu.Lock()
+	e := c.emitter
+	c.mu.Unlock()
+	if e != nil {
+		e.Emit(askpassEvent, AskpassPrompt{ID: id, Prompt: prompt})
+	}
+}
+
+func (c *connection) askpassReply(id, answer string) bool {
+	c.mu.Lock()
+	broker := c.askpass
+	c.mu.Unlock()
+	if broker == nil {
+		return false
+	}
+	return broker.Reply(id, answer)
+}
+
+func (c *connection) setEnv(env map[string]string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.env = env
+}
+
+func (c *connection) getEnv() map[string]string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.env == nil {
+		return nil
+	}
+	cp := make(map[string]string, len(c.env))
+	for k, v := range c.env {
+		cp[k] = v
+	}
+	return cp
+}
+
+// setPhase publishes state. gen, when non-zero, must still be current or the
+// update is dropped (a newer connect/disconnect won).
+func (c *connection) setPhase(gen uint64, phase, host, errMsg string, caps rpc.Capabilities, appVer string) bool {
+	c.mu.Lock()
+	if gen != 0 && gen != c.gen {
+		c.mu.Unlock()
+		return false
+	}
+	c.state = ConnectionState{
+		Phase:        phase,
+		Host:         host,
+		Generation:   c.gen,
+		Error:        errMsg,
+		Capabilities: caps,
+		AppVersion:   appVer,
+	}
+	c.mu.Unlock()
+	c.emit()
+	return true
+}
+
+// Connect begins a connection to alias. Coming from Local, Local stays the
+// active backend until the remote handshake finishes; coming from another
+// host, calls fail as disconnected meanwhile. A newer Connect or Disconnect
+// cancels this one.
+//
+// A host open in another window is not opened again: that window is brought
+// to the front, this one stays as it is and the error wraps
+// ErrHostInOtherWindow.
+func (c *connection) Connect(ctx context.Context, alias string) error {
+	if err := remote.ValidateHost(alias); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	claims := c.claims
+	c.mu.Unlock()
+	if claims != nil {
+		// Only another window holding the host stops this connect. If the
+		// claim cannot be made at all (an unwritable cache dir), connecting
+		// works as it did before windows shared hosts.
+		var inUse *hostInUseError
+		if err := claims.claim(alias); errors.As(err, &inUse) {
+			inUse.focusErr = claims.focusOwner(alias)
+			return err
+		}
+	}
+	c.mu.Lock()
+	if c.stopped {
+		held := c.wantHost == alias
+		c.mu.Unlock()
+		if claims != nil && !held {
+			claims.release(alias)
+		}
+		return errors.New("app is shut down")
+	}
+	prevHost := c.wantHost
+	c.closeLocked()
+	c.gen++
+	gen := c.gen
+	c.wantHost = alias
+	c.attempt = 0
+	runCtx, cancel := context.WithCancel(ctx)
+	c.cancel = cancel
+	dial := c.dial
+	opts := c.opts
+	env := c.env
+	emitter := c.emitter
+	c.state = ConnectionState{Phase: ConnConnecting, Host: alias, Generation: gen}
+	c.mu.Unlock()
+	// Switching hosts leaves the previous one; a retry of the same host
+	// reuses its master. This runs before the new dial so two aliases for
+	// one host cannot have the new master closed under them.
+	if prevHost != "" && prevHost != alias {
+		c.releaseHost(prevHost, opts)
+		if claims != nil {
+			claims.release(prevHost)
+		}
+	}
+	c.emit()
+
+	go c.dialLoop(runCtx, gen, alias, dial, opts, env, emitter)
+	return nil
+}
+
+func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dial sessionDialer, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) {
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		sess, err := dial(ctx, alias, opts, env, generationEmitter(emitter, gen, c))
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			c.mu.Lock()
+			still := c.gen == gen && c.wantHost == alias
+			c.attempt++
+			attempt := c.attempt
+			c.mu.Unlock()
+			if !still {
+				return
+			}
+			c.setPhase(gen, ConnDisconnected, alias, err.Error(), rpc.Capabilities{}, "")
+			if permanentDialError(err) {
+				// Stay disconnected on the host; the user can Retry.
+				return
+			}
+			delay := reconnectBackoff[(attempt-1)%len(reconnectBackoff)]
+			c.setPhase(gen, ConnReconnecting, alias, err.Error(), rpc.Capabilities{}, "")
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+			continue
+		}
+
+		c.mu.Lock()
+		if c.gen != gen || c.wantHost != alias {
+			c.mu.Unlock()
+			_ = sess.Close()
+			return
+		}
+		c.session = sess
+		if cl := sess.Client(); cl != nil {
+			c.client = cl
+		}
+		c.xport = sess
+		c.localActive = false
+		c.attempt = 0
+		caps := rpc.Capabilities{}
+		appVer := ""
+		if res := sess.InitializeResult(); res != nil {
+			caps = res.Capabilities
+			appVer = res.AppVersion
+		}
+		c.state = ConnectionState{
+			Phase:        ConnConnected,
+			Host:         alias,
+			Generation:   gen,
+			Capabilities: caps,
+			HostID: func() string {
+				if res := sess.InitializeResult(); res != nil {
+					return res.CodeDiagnosticsHostID
+				}
+				return ""
+			}(),
+			AppVersion: appVer,
+		}
+		c.mu.Unlock()
+		c.emit()
+
+		select {
+		case <-ctx.Done():
+			_ = sess.Close()
+			return
+		case <-sess.Done():
+		}
+		_ = sess.Close()
+
+		c.mu.Lock()
+		if c.gen != gen || c.wantHost != alias {
+			c.mu.Unlock()
+			return
+		}
+		c.session, c.client, c.xport = nil, nil, nil
+		c.attempt++
+		attempt := c.attempt
+		c.mu.Unlock()
+		// Dropped, not a user disconnect: stay on the host and retry.
+		c.setPhase(gen, ConnDisconnected, alias, "connection lost", rpc.Capabilities{}, "")
+		delay := reconnectBackoff[(attempt-1)%len(reconnectBackoff)]
+		c.setPhase(gen, ConnReconnecting, alias, "connection lost", rpc.Capabilities{}, "")
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+// permanentDialError reports failures that a reconnect cannot fix.
+func permanentDialError(err error) bool {
+	return errors.Is(err, remote.ErrSSHClientNotFound) ||
+		errors.Is(err, remote.ErrSSHAuthentication) ||
+		errors.Is(err, remote.ErrSSHHostKey) ||
+		errors.Is(err, remote.ErrServerBundleNotFound) ||
+		errors.Is(err, remote.ErrServerVersionMismatch) ||
+		errors.Is(err, remote.ErrUnsupportedOS) ||
+		errors.Is(err, remote.ErrUnsupportedArch) ||
+		errors.Is(err, remote.ErrInvalidHostAlias) ||
+		errors.Is(err, remote.ErrWSLNotInstalled) ||
+		errors.Is(err, remote.ErrWSLDistroNotFound) ||
+		errors.Is(err, rpc.ErrProtocolMismatch)
+}
+
+// Disconnect returns to Local and stops reconnects. The selected host is cleared.
+func (c *connection) Disconnect() {
+	c.mu.Lock()
+	prevHost := c.wantHost
+	opts := c.opts
+	c.wantHost = ""
+	c.localActive = true
+	c.closeLocked()
+	c.gen++
+	c.state = ConnectionState{Phase: ConnLocal, Generation: c.gen}
+	claims := c.claims
+	c.mu.Unlock()
+	if prevHost != "" {
+		c.releaseHost(prevHost, opts)
+		if claims != nil {
+			claims.release(prevHost)
+		}
+	}
+	c.emit()
+}
+
+// releaseHost closes the ssh master for alias after its session is closed.
+// A missing master (never started, or already gone) is not an error worth
+// reporting.
+func (c *connection) releaseHost(alias string, opts remote.SSHOptions) {
+	c.mu.Lock()
+	busy := c.busy
+	c.mu.Unlock()
+	if c.stopMaster == nil || opts.ControlMaster == "no" || busy != nil && busy(alias) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), stopMasterTimeout)
+	defer cancel()
+	_ = c.stopMaster(ctx, alias, opts)
+}
+
+// Shutdown cancels any dial and closes the session. Called from App.Close.
+func (c *connection) Shutdown() {
+	c.mu.Lock()
+	c.stopped = true
+	if c.forwards != nil {
+		c.forwards.sync(ConnectionState{Phase: ConnLocal}, c.opts)
+	}
+	prevHost := c.wantHost
+	opts := c.opts
+	c.wantHost = ""
+	c.closeLocked()
+	broker := c.askpass
+	c.askpass = nil
+	claims := c.claims
+	c.mu.Unlock()
+	if prevHost != "" {
+		c.releaseHost(prevHost, opts)
+	}
+	if claims != nil {
+		claims.close()
+	}
+	if broker != nil {
+		_ = broker.Close()
+	}
+}
+
+// setClaims makes this connection share hosts with the app's other windows.
+func (c *connection) setClaims(h *hostClaims) {
+	c.mu.Lock()
+	c.claims = h
+	c.mu.Unlock()
+}
+
+func (c *connection) closeLocked() {
+	if c.forwards != nil {
+		st := c.state
+		st.Phase = ConnDisconnected
+		c.forwards.sync(st, c.opts)
+	}
+	if c.cancel != nil {
+		c.cancel()
+		c.cancel = nil
+	}
+	if c.session != nil {
+		_ = c.session.Close()
+		c.session = nil
+	}
+	c.client, c.xport = nil, nil
+}
+
+// localOnlyEmitter forwards local engine events only while Local serves the
+// UI, so local catalog or index changes never land in a remote host's view.
+// Switching back to Local reloads everything, so nothing is lost.
+func localOnlyEmitter(inner engine.Emitter, c *connection) engine.Emitter {
+	return engine.EmitterFunc(func(name string, payload any) {
+		if c.route().backend != nil {
+			return
+		}
+		if name == engine.DiscoveryStatusEvent {
+			if status, ok := payload.(engine.DiscoveryStatus); ok {
+				payload = DiscoveryStatusEvent{DiscoveryStatus: status}
+			}
+		}
+		inner.Emit(name, payload)
+	})
+}
+
+// generationEmitter drops events whose connection generation is no longer current.
+func generationEmitter(inner engine.Emitter, gen uint64, c *connection) engine.Emitter {
+	return engine.EmitterFunc(func(name string, payload any) {
+		c.mu.Lock()
+		current, host := c.gen == gen, c.wantHost
+		c.mu.Unlock()
+		if !current {
+			return
+		}
+		if name == engine.DiscoveryStatusEvent {
+			if status, ok := payload.(engine.DiscoveryStatus); ok {
+				payload = DiscoveryStatusEvent{DiscoveryStatus: status, Host: host, Generation: gen}
+			}
+		}
+		if inner != nil {
+			inner.Emit(name, payload)
+		}
+	})
+}

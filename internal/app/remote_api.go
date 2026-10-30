@@ -1,0 +1,141 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"path/filepath"
+
+	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/remote"
+)
+
+// ListHosts returns SSH config aliases. Manual entry is not represented here;
+// Connect accepts any alias that passes validation.
+func (a *App) ListHosts() ([]HostEntry, error) {
+	aliases, err := remote.ListConfigHosts()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]HostEntry, 0, len(aliases))
+	for _, h := range aliases {
+		out = append(out, HostEntry{
+			Name:     h.Name,
+			HostName: h.HostName,
+			User:     h.User,
+			Port:     h.Port,
+		})
+	}
+	return out, nil
+}
+
+// ListWSLDistros returns this computer's WSL distributions, or none where
+// WSL is not installed.
+func (a *App) ListWSLDistros() ([]WSLEntry, error) {
+	distros, err := remote.ListWSLDistros()
+	if errors.Is(err, remote.ErrWSLNotInstalled) {
+		return []WSLEntry{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WSLEntry, 0, len(distros))
+	for _, d := range distros {
+		out = append(out, WSLEntry{Name: d.Name, Host: remote.WSLTarget(d.Name), Default: d.Default})
+	}
+	return out, nil
+}
+
+// Connect starts a connection to alias. The call returns once the attempt is
+// underway; progress arrives on the connection:state event. Local remains the
+// active backend until the handshake completes.
+func (a *App) Connect(alias string) error {
+	a.ensureConn()
+	err := a.conn.Connect(a.appCtx(), alias)
+	if err == nil {
+		// Results from the old host would land in the new host's views.
+		a.searches.cancelAll()
+		if a.localEngine != nil {
+			a.localEngine.ResetCodeDiagnostics()
+		}
+	}
+	return err
+}
+
+// Disconnect closes the remote session and returns the app to Local.
+func (a *App) Disconnect() {
+	a.ensureConn()
+	a.conn.Disconnect()
+	a.searches.cancelAll()
+	if a.localEngine != nil {
+		a.localEngine.ResetCodeDiagnostics()
+	}
+}
+
+// ConnectionState returns the current connection snapshot.
+func (a *App) ConnectionState() ConnectionState {
+	a.ensureConn()
+	state := a.conn.snapshot()
+	if a.conn.route().backend == nil {
+		local := a.localBackend()
+		_, state.Capabilities.GitHistory = local.(engine.GitHistoryBackend)
+		_, state.Capabilities.GitHistoryActions = local.(engine.GitHistoryActionsBackend)
+		_, state.Capabilities.GitHistoryCompare = local.(engine.GitHistoryCompareBackend)
+		if identity, ok := local.(interface {
+			CodeDiagnosticsHostID(context.Context) (string, error)
+		}); ok {
+			state.HostID, _ = identity.CodeDiagnosticsHostID(a.appCtx())
+		}
+		// Local reports its diagnostics capabilities like a remote handshake
+		// does. Live is advertised only when the local Engine owns a live route
+		// and implements the document surface; tool availability stays a
+		// per-provider status, never a capability.
+		_, stage1 := local.(engine.CodeDiagnosticsBackend)
+		state.Capabilities.CodeDiagnostics = stage1 && state.HostID != ""
+		_, languages := local.(engine.CodeDiagnosticsLanguagesBackend)
+		state.Capabilities.CodeDiagnosticsLanguages = state.Capabilities.CodeDiagnostics && languages
+		if ready, ok := local.(interface{ LiveCodeDiagnosticsReady() bool }); ok && state.Capabilities.CodeDiagnostics {
+			_, docs := local.(engine.LiveCodeDiagnosticsBackend)
+			state.Capabilities.LiveCodeDiagnostics = docs && ready.LiveCodeDiagnosticsReady()
+			_, nav := local.(engine.CodeNavigationBackend)
+			state.Capabilities.CodeNavigation = state.Capabilities.LiveCodeDiagnostics && nav
+		}
+	}
+	return state
+}
+
+// AskpassReply sends an answer for an active askpass prompt.
+func (a *App) AskpassReply(id, answer string) bool {
+	a.ensureConn()
+	return a.conn.askpassReply(id, answer)
+}
+
+// SetHostEnv configures environment variable overrides passed to remote servers on connect.
+func (a *App) SetHostEnv(env map[string]string) {
+	a.ensureConn()
+	a.conn.setEnv(env)
+}
+
+// GetHostEnv returns currently configured environment variable overrides.
+func (a *App) GetHostEnv() map[string]string {
+	a.ensureConn()
+	return a.conn.getEnv()
+}
+
+func (a *App) ensureConn() {
+	a.backendMu.Lock()
+	defer a.backendMu.Unlock()
+	if a.conn == nil {
+		a.conn = newConnection(a.wailsEvents)
+	}
+	if a.conn.forwards == nil {
+		path, err := a.localConfigPath()
+		p := newPortForwards(filepath.Join(filepath.Dir(path), "port-forwards.json"))
+		if err != nil {
+			p.pathErr, p.loadErr = err, err
+		}
+		a.conn.mu.Lock()
+		p.sync(a.conn.state, a.conn.opts)
+		a.conn.forwards = p
+		a.conn.mu.Unlock()
+	}
+}
