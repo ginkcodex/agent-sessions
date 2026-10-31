@@ -337,7 +337,10 @@ func (o *diagnosticsOwner) discoverAll(root cd.AuthorizedRoot, off cd.DisabledLa
 	if o.discoverSaved != nil {
 		registrations = o.discoverSaved(root, off)
 	} else {
-		registrations = discoverCheckersIn(root, "", nil, off)
+		// Engine.diagnostics always sets discoverSaved. An owner built directly
+		// (a test fixture) must not depend on the host's installed toolchains,
+		// whose discovery and hashing time varies by machine.
+		registrations = discoverCheckersOn(root, checkerHost{}, "", off)
 	}
 	if o.discoverLive != nil {
 		live, err := o.discoverLive(root, off)
@@ -367,6 +370,14 @@ func discoverCheckers(root cd.AuthorizedRoot) []cd.Registration {
 	return discoverCheckersIn(root, "", nil, nil)
 }
 
+// checkerHost is the host environment saved-checker discovery may read. The
+// zero value reads nothing from the host: every toolchain checker is reported
+// unavailable, and only in-process analyzers remain.
+type checkerHost struct {
+	home, cache string
+	path        []string
+}
+
 func discoverCheckersIn(root cd.AuthorizedRoot, prepareDir string, managed []string, off cd.DisabledLanguages) []cd.Registration {
 	home, _ := os.UserHomeDir()
 	cache, _ := os.UserCacheDir()
@@ -374,6 +385,11 @@ func discoverCheckersIn(root cd.AuthorizedRoot, prepareDir string, managed []str
 	// Finder-launched app (minimal PATH) finds the same installed toolchain.
 	path := localExecutableDirs(home)
 	path = append(path[:min(len(path), 64-len(managed))], managed...)
+	return discoverCheckersOn(root, checkerHost{home: home, cache: cache, path: path}, prepareDir, off)
+}
+
+func discoverCheckersOn(root cd.AuthorizedRoot, host checkerHost, prepareDir string, off cd.DisabledLanguages) []cd.Registration {
+	home, cache, path := host.home, host.cache, host.path
 	register := func(id string, adapter cd.CheckerAdapter, err error) cd.Registration {
 		if err == nil {
 			return cd.Registration{ProviderID: id, Availability: "available", Adapter: adapter}
