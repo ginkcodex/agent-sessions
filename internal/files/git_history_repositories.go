@@ -9,7 +9,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
+
+// gitHistoryResolveWorkers bounds concurrent Git processes during discovery.
+const gitHistoryResolveWorkers = 8
 
 var errGitHistoryNotRepository = errors.New("not a Git worktree")
 var errGitHistoryInvalidRepository = errors.New("invalid Git worktree")
@@ -46,22 +50,45 @@ func GitHistoryRepositories(ctx context.Context, dir string) (GitHistoryReposito
 		return result, err
 	}
 	result.Truncated = paths.Truncated
-	for _, rel := range paths.Repositories {
-		if len(result.Repositories) == MaxGitHistoryRepositories {
+	// Each candidate costs a Git process, and process start-up on Windows is slow
+	// enough that a few hundred sequential checks exhaust GitHistoryTimeout.
+	// Resolve small batches concurrently, but consume each batch in candidate
+	// order so the chosen repositories and error precedence match a sequential
+	// scan. A batch never exceeds the remaining cap, so no Git process is spent
+	// on a candidate that could not be listed.
+	type resolved struct {
+		target gitHistoryResolvedTarget
+		err    error
+	}
+	candidates := paths.Repositories
+	for next := 0; next < len(candidates); {
+		remaining := MaxGitHistoryRepositories - len(result.Repositories)
+		if remaining == 0 {
 			result.Truncated = true
 			break
 		}
-		child, err := resolveGitHistoryTarget(ctx, GitHistoryTarget{Dir: dir, Repo: rel})
-		if err != nil {
-			if errors.Is(err, errGitHistoryInvalidRepository) || errors.Is(err, errGitHistoryNotRepository) || errors.Is(err, ErrOutsideRoot) || errors.Is(err, ErrEditProtected) || errors.Is(err, os.ErrNotExist) {
-				// A stale/broken candidate must not hide its healthy siblings.
-				// Truncated also signals choices omitted during validation.
-				result.Truncated = true
-				continue
-			}
-			return result, err
+		batch := candidates[next:min(next+min(gitHistoryResolveWorkers, remaining), len(candidates))]
+		next += len(batch)
+		out := make([]resolved, len(batch))
+		var wg sync.WaitGroup
+		for i, rel := range batch {
+			wg.Go(func() {
+				out[i].target, out[i].err = resolveGitHistoryTarget(ctx, GitHistoryTarget{Dir: dir, Repo: rel})
+			})
 		}
-		result.Repositories = append(result.Repositories, gitHistoryRepository(child))
+		wg.Wait()
+		for _, r := range out {
+			if err := r.err; err != nil {
+				if errors.Is(err, errGitHistoryInvalidRepository) || errors.Is(err, errGitHistoryNotRepository) || errors.Is(err, ErrOutsideRoot) || errors.Is(err, ErrEditProtected) || errors.Is(err, os.ErrNotExist) {
+					// A stale/broken candidate must not hide its healthy siblings.
+					// Truncated also signals choices omitted during validation.
+					result.Truncated = true
+					continue
+				}
+				return result, err
+			}
+			result.Repositories = append(result.Repositories, gitHistoryRepository(r.target))
+		}
 	}
 	sort.Slice(result.Repositories, func(i, j int) bool { return result.Repositories[i].Path < result.Repositories[j].Path })
 	if err := ctx.Err(); err != nil {
