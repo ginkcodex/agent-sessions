@@ -138,7 +138,7 @@ func TestMutationRouteSupersedesInFlightListing(t *testing.T) {
 	catalog.Reset([]model.SessionMeta{{CWD: root}})
 	e := &Engine{svc: NewService(catalog, nil)}
 	p := e.svc.projects
-	entered, release := make(chan struct{}), make(chan struct{}, 1)
+	entered, release, written := make(chan struct{}), make(chan struct{}, 1), make(chan struct{})
 	defer p.stop()
 	defer close(release)
 	var calls atomic.Int32
@@ -151,6 +151,15 @@ func TestMutationRouteSupersedesInFlightListing(t *testing.T) {
 			case <-ctx.Done():
 				return files.Listing{}, ctx.Err()
 			}
+		}
+		// The pre-write invalidation already supersedes the first loader, so a
+		// retry can otherwise list the directory before the file exists. That
+		// listing overlaps the write and may legitimately miss it; hold retries
+		// until the write has returned so the result is deterministic.
+		select {
+		case <-written:
+		case <-ctx.Done():
+			return files.Listing{}, ctx.Err()
 		}
 		return files.List(ctx, dir)
 	}
@@ -170,6 +179,7 @@ func TestMutationRouteSupersedesInFlightListing(t *testing.T) {
 	if err := e.CreateFile(ctx, root, "", "new"); err != nil {
 		t.Fatal(err)
 	}
+	close(written)
 	// Leave release open for deferred cleanup while unblocking the first loader.
 	release <- struct{}{}
 	select {
