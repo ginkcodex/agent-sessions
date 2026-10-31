@@ -12,7 +12,7 @@
   import { preferences } from '../../stores/preferences.svelte';
   import { terminalFontFamily } from '../../terminalFont';
   import { TerminalResize } from '../../terminalResize';
-  import { splitShortcutLabel, terminalFindShortcutLabel, terminalKeyAction, terminalTabShortcut, terminalTheme } from '../../terminal';
+  import { splitShortcutLabel, terminalFindShortcutLabel, terminalKeyAction, terminalKeySequence, terminalTabShortcut, terminalTheme } from '../../terminal';
   import { TERMINAL_FIND_LIMIT, TerminalFind } from '../../terminalFind.svelte';
   import { copyToClipboard, readClipboard } from '../../portable';
   import { isMac } from '../../../main';
@@ -113,6 +113,13 @@
       if (action === 'paste') {
         event.preventDefault();
         void paste();
+        return false;
+      }
+      // Typed on keydown; the keypress that follows must not add a CR.
+      const sequence = terminalKeySequence(event);
+      if (sequence !== null) {
+        event.preventDefault();
+        if (event.type === 'keydown') t.input(sequence);
         return false;
       }
       return true;

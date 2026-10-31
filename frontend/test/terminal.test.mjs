@@ -9,6 +9,7 @@ import {
   isPanelToggle,
   openMode,
   terminalKeyAction,
+  terminalKeySequence,
   terminalTabShortcut,
   isNewShellShortcut,
   isNewWindowShortcut,
@@ -215,6 +216,17 @@ test('terminal keys: Ctrl+` toggles the panel; copy and paste follow the platfor
   assert.equal(terminalKeyAction(key('v', { metaKey: true }), true), 'paste');
   assert.equal(terminalKeyAction(key('c', { ctrlKey: true }), true), null);
   assert.equal(terminalKeyAction(key('x', { metaKey: true }), true), null);
+});
+
+test('Shift+Enter types ESC CR, a new line in agent prompts', () => {
+  const key = (k, mods = {}) => ({ key: k, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, isComposing: false, ...mods });
+  assert.equal(terminalKeySequence(key('Enter', { shiftKey: true })), '\x1b\r');
+  assert.equal(terminalKeySequence(key('Enter')), null);
+  for (const mod of ['ctrlKey', 'metaKey', 'altKey']) {
+    assert.equal(terminalKeySequence(key('Enter', { shiftKey: true, [mod]: true })), null, mod);
+  }
+  assert.equal(terminalKeySequence(key('Enter', { shiftKey: true, isComposing: true })), null, 'IME commit');
+  assert.equal(terminalKeySequence(key('A', { shiftKey: true })), null);
 });
 
 test('New shell shortcut: Cmd+T on macOS, Ctrl+Shift+T elsewhere', () => {

@@ -208,6 +208,21 @@ export function terminalKeyAction(
   return null;
 }
 
+/**
+ * What a key types in a panel terminal where xterm.js would type something
+ * else, or null. xterm.js types Shift+Enter as a bare CR, like Enter, so an
+ * agent would send the message. ESC CR (Alt+Enter) is what Claude Code's
+ * /terminal-setup binds it to in VS Code; Claude Code and OpenCode read it as
+ * a new line. Enter that commits IME composition is left alone.
+ */
+export function terminalKeySequence(
+  e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'isComposing'>,
+): string | null {
+  if (e.isComposing) return null;
+  if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) return '\x1b\r';
+  return null;
+}
+
 /** An xterm.js theme: colors and the ANSI palette. */
 export interface TerminalTheme {
   background: string;
