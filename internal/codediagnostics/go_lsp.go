@@ -187,7 +187,17 @@ func isExecutable(path string) bool {
 		return false
 	}
 	st, err := os.Stat(real)
-	return err == nil && st.Mode().IsRegular() && st.Mode()&0o111 != 0
+	if err != nil || !st.Mode().IsRegular() {
+		return false
+	}
+	// Windows has no execute permission bits (Go reports every regular file as
+	// 0666), so a directly runnable image is identified by its extension. Batch
+	// files are excluded: CreateProcess would run them through cmd.exe.
+	if runtime.GOOS == "windows" {
+		ext := strings.ToLower(filepath.Ext(real))
+		return ext == ".exe" || ext == ".com"
+	}
+	return st.Mode()&0o111 != 0
 }
 
 func firstExecutable(dirs []string, name string) string {
