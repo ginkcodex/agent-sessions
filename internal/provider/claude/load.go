@@ -16,6 +16,8 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/transcriptbuild"
+
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 const (
@@ -100,6 +102,7 @@ type block struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text"`
 	Thinking  string          `json:"thinking"`
+	Signature string          `json:"signature"`
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
 	Input     json.RawMessage `json:"input"`
@@ -225,9 +228,14 @@ func (l *loader) assistant(rec *rawRecord, lineNo int) {
 				cur.Parts = append(cur.Parts, model.Part{Kind: model.PartText, Text: b.Text})
 			}
 		case "thinking":
-			if b.Thinking != "" {
-				cur.Parts = append(cur.Parts, model.Part{Kind: model.PartReasoning, Text: b.Thinking})
+			if b.Thinking == "" {
+				continue
 			}
+			kind := model.PartReasoning
+			if isNarration(b.Signature) {
+				kind = model.PartText
+			}
+			cur.Parts = append(cur.Parts, model.Part{Kind: kind, Text: b.Thinking})
 		case "tool_use":
 			tc := &model.ToolCall{ID: b.ID, Name: b.Name, Input: b.Input, Status: model.ToolPending}
 			cur.Parts = append(cur.Parts, model.Part{Kind: model.PartTool, Tool: tc})
@@ -415,6 +423,59 @@ func decodeContent(raw json.RawMessage) (string, []block) {
 		return "", blocks
 	}
 	return "", nil
+}
+
+// narrationKind tags a thinking block that holds the prose the user saw
+// between tool calls, not the model's reasoning. Claude Code shows such
+// blocks as ordinary answers.
+const narrationKind = "narration"
+
+// signatureKindPath locates the block kind inside a decoded thinking
+// signature, as Claude Code reads it: field 2, then 1, then 8.
+var signatureKindPath = []protowire.Number{2, 1, 8}
+
+// isNarration reports whether a thinking block's signature tags it as
+// narration. Malformed or unknown signatures read as ordinary thinking.
+func isNarration(signature string) bool {
+	if signature == "" {
+		return false
+	}
+	b, err := base64.StdEncoding.DecodeString(signature)
+	if err != nil {
+		if b, err = base64.RawStdEncoding.DecodeString(signature); err != nil {
+			return false
+		}
+	}
+	for _, num := range signatureKindPath {
+		if b = protoBytesField(b, num); b == nil {
+			return false
+		}
+	}
+	return string(b) == narrationKind
+}
+
+// protoBytesField returns the first length-delimited field num of a
+// protobuf message, or nil.
+func protoBytesField(b []byte, num protowire.Number) []byte {
+	for len(b) > 0 {
+		n, typ, l := protowire.ConsumeTag(b)
+		if l < 0 {
+			return nil
+		}
+		b = b[l:]
+		if n == num && typ == protowire.BytesType {
+			v, l := protowire.ConsumeBytes(b)
+			if l < 0 {
+				return nil
+			}
+			return v
+		}
+		if l = protowire.ConsumeFieldValue(n, typ, b); l < 0 {
+			return nil
+		}
+		b = b[l:]
+	}
+	return nil
 }
 
 // contentBlocks returns the block array form of message content.

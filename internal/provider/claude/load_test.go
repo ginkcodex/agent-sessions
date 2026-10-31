@@ -48,6 +48,52 @@ func TestLoadGolden(t *testing.T) {
 	}
 }
 
+// Claude Code stores the prose it shows between tool calls as thinking
+// blocks whose signature names the block kind "narration".
+func TestLoadNarration(t *testing.T) {
+	t.Parallel()
+	tx := loadFixture(t, "narration")
+	if len(tx.Messages) != 2 {
+		t.Fatalf("messages = %d, want 2", len(tx.Messages))
+	}
+	parts := tx.Messages[1].Parts
+	want := []struct {
+		kind model.PartKind
+		text string
+	}{
+		{model.PartReasoning, "Plan the router change."},
+		{model.PartText, "I'll add this as task 14.\n\n"},
+		{model.PartReasoning, "Unsigned thinking."},
+		{model.PartTool, ""},
+	}
+	if len(parts) != len(want) {
+		t.Fatalf("parts = %d, want %d", len(parts), len(want))
+	}
+	for i, w := range want {
+		if parts[i].Kind != w.kind || parts[i].Text != w.text {
+			t.Errorf("part %d = %s %q, want %s %q", i, parts[i].Kind, parts[i].Text, w.kind, w.text)
+		}
+	}
+}
+
+func TestIsNarration(t *testing.T) {
+	t.Parallel()
+	for sig, want := range map[string]bool{
+		"": false,
+		// The prefix of a real signature, cut short: its outer field
+		// claims more bytes than remain.
+		"CAQSmAgKEQgTGAI4AUIJbmFycmF0aW9u": false,
+		"CAQSDQoLQgluYXJyYXRpb24aAnh5":     true,
+		"CAQSCwoJQgdzdW1tYXJ5":             false, // "summary"
+		"not base64!":                      false,
+		"EAE=":                             false, // no field 2
+	} {
+		if got := isNarration(sig); got != want {
+			t.Errorf("isNarration(%q) = %v, want %v", sig, got, want)
+		}
+	}
+}
+
 func TestLoadSplitAssistant(t *testing.T) {
 	t.Parallel()
 	tx := loadFixture(t, "split_assistant")
