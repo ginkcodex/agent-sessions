@@ -48,6 +48,44 @@ test('visibleTranscriptParts filters chat, activity and all display levels', () 
   assert.deepEqual(visibleTranscriptParts(meta, 'activity', true), meta.parts);
 });
 
+test('normalized task notifications remain visible, copyable and printable as assistant Markdown', () => {
+  const markdown = [
+    '**Summary**\n\nBuild completed',
+    '**Status**\n\ncompleted',
+    '**Result**\n\nAll tests passed.',
+    '**Note**\n\nNo further action needed.',
+    '**Task ID**\n\ntask-123',
+  ].join('\n\n');
+  const notification = {
+    id: 'task-notification', role: 'assistant', time: '', isMeta: false,
+    parts: [{ kind: 'text', text: markdown }],
+  };
+
+  for (const mode of ['chat', 'activity', 'all']) {
+    assert.deepEqual(visibleTranscriptParts(notification, mode), notification.parts, mode);
+  }
+  assert.equal(messageMarkdown(notification), markdown);
+  assert.equal(messageText(notification), markdown);
+
+  const jobs = [];
+  setPrintEditor((job) => jobs.push(job));
+  try {
+    printMessage({
+      sessionRef: { agent: 'claude', id: 'session' },
+      title: 'Task notification',
+      parts: visibleTranscriptParts(notification, 'chat'),
+    });
+    assert.deepEqual(jobs, [{
+      sessionRef: { agent: 'claude', id: 'session' },
+      title: 'Task notification',
+      parts: notification.parts,
+    }]);
+    assert.deepEqual(printMarkdown(jobs[0].parts), { markdown, attachments: [] });
+  } finally {
+    setPrintEditor(null);
+  }
+});
+
 test('messageMarkdown copies what Chat level shows', () => {
   const assistant = {
     id: 'a', role: 'assistant', time: '',

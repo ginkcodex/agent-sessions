@@ -1,0 +1,6 @@
+{"type":"user","timestamp":"2026-11-01T10:00:00Z","message":{"role":"user","content":"Review setup wrapper safety"}}
+{"type":"assistant","timestamp":"2026-11-01T10:00:01Z","message":{"id":"parent","role":"assistant","content":[{"type":"text","text":"Review started."}]}}
+{"type":"queue-operation","operation":"enqueue","content":"<task-notification><task-id>agent-123</task-id><status>completed</status><summary>Agent finished</summary></task-notification>"}
+{"type":"user","timestamp":"2026-11-01T10:01:00Z","origin":{"kind":"task-notification","producer":"session-task"},"promptSource":"system","message":{"role":"user","content":"<task-notification>\n<task-id>agent-123</task-id>\n<status>completed</status>\n<summary>Agent \"Review setup wrapper safety\" finished</summary>\n<result>No defects found.</result>\n<note>This task may notify again.</note>\n<usage><subagent_tokens>100</subagent_tokens><tool_uses>2</tool_uses><duration_ms>5000</duration_ms></usage>\n</task-notification>"}}
+{"type":"user","timestamp":"2026-11-01T10:02:00Z","isMeta":true,"message":{"role":"user","content":[{"type":"text","text":"<task-notification><task-id>agent-123</task-id><status>completed</status><summary>Agent finished again</summary></task-notification>"}]}}
+{"type":"user","timestamp":"2026-11-01T10:03:00Z","message":{"role":"user","content":"Thanks, what is next?"}}

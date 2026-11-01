@@ -288,6 +288,29 @@ func (l *loader) user(rec *rawRecord, start int64, lineNo int) {
 		}
 	}
 
+	// Harness task completions are stored as user records, but are assistant
+	// activity. Only normalize text-only records; mixed prompts stay untouched.
+	notificationText := text
+	textOnly := true
+	for _, b := range blocks {
+		if b.Type != "text" {
+			textOnly = false
+			break
+		}
+	}
+	if notificationText == "" && textOnly {
+		notificationText = joinTextBlocks(blocks)
+	}
+	if formatted, ok := taskNotificationText(notificationText); textOnly && ok {
+		l.store.Append(model.Message{
+			Role:        model.RoleAssistant,
+			Time:        parseTime(rec.Timestamp),
+			Parts:       []model.Part{{Kind: model.PartText, Text: formatted}},
+			IsSidechain: rec.IsSidechain,
+		})
+		return
+	}
+
 	metaText := rec.IsMeta
 	var parts []model.Part
 	if text != "" {

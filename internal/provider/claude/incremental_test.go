@@ -27,7 +27,7 @@ func write(t *testing.T, path string, data []byte) {
 }
 
 func TestIncrementalFixtureBoundaries(t *testing.T) {
-	for _, name := range []string{"basic", "split_assistant", "compaction", "meta", "partial_last_line", "unknown_types"} {
+	for _, name := range []string{"basic", "split_assistant", "compaction", "meta", "partial_last_line", "unknown_types", "task_notification"} {
 		t.Run(name, func(t *testing.T) {
 			data, err := os.ReadFile(filepath.Join("testdata", name+".jsonl"))
 			if err != nil {
