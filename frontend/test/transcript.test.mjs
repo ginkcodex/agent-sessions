@@ -51,19 +51,21 @@ test('visibleTranscriptParts filters chat, activity and all display levels', () 
 test('normalized task notifications remain visible, copyable and printable as assistant Markdown', () => {
   const markdown = [
     '**Summary**\n\nBuild completed',
-    '**Status**\n\ncompleted',
     '**Result**\n\nAll tests passed.',
     '**Note**\n\nNo further action needed.',
-    '**Task ID**\n\ntask-123',
   ].join('\n\n');
+  const report = { kind: 'text', text: markdown };
+  const details = { kind: 'notice', text: '**Status**\n\ncompleted\n\n**Task ID**\n\ntask-123\n\n**Tool use ID**\n\ncall-123\n\n**Output file**\n\n/tmp/task.output\n\n**Usage**\n\nTool uses: 19' };
   const notification = {
     id: 'task-notification', role: 'assistant', time: '', isMeta: false,
-    parts: [{ kind: 'text', text: markdown }],
+    parts: [report, details],
   };
 
-  for (const mode of ['chat', 'activity', 'all']) {
+  assert.deepEqual(visibleTranscriptParts(notification, 'chat'), [report]);
+  for (const mode of ['activity', 'all']) {
     assert.deepEqual(visibleTranscriptParts(notification, mode), notification.parts, mode);
   }
+  assert.deepEqual(visibleTranscriptParts(notification, 'chat', true), notification.parts);
   assert.equal(messageMarkdown(notification), markdown);
   assert.equal(messageText(notification), markdown);
 
@@ -78,7 +80,7 @@ test('normalized task notifications remain visible, copyable and printable as as
     assert.deepEqual(jobs, [{
       sessionRef: { agent: 'claude', id: 'session' },
       title: 'Task notification',
-      parts: notification.parts,
+      parts: [report],
     }]);
     assert.deepEqual(printMarkdown(jobs[0].parts), { markdown, attachments: [] });
   } finally {

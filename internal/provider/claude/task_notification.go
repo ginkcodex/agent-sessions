@@ -3,6 +3,8 @@ package claude
 import (
 	"html"
 	"strings"
+
+	"github.com/ginkcode/agent-sessions/internal/model"
 )
 
 // notificationFields reads the harness's XML-like envelope without interpreting
@@ -46,37 +48,45 @@ var taskUsageFields = map[string]bool{
 	"subagent_tokens": true, "tool_uses": true, "duration_ms": true,
 }
 
-// taskNotificationText recognizes only complete envelopes. Field values are
+// taskNotificationParts recognizes only complete envelopes. Field values are
 // entity-decoded once, after parsing, so escaped code cannot become delimiters.
-func taskNotificationText(text string) (string, bool) {
+// Report text stays visible in Chat; diagnostic notices are Activity/All only.
+func taskNotificationParts(text string) ([]model.Part, bool) {
 	const openTag, closeTag = "<task-notification>", "</task-notification>"
-	var notifications []string
+	var parts []model.Part
 	for s := strings.TrimSpace(text); s != ""; {
 		if !strings.HasPrefix(s, openTag) {
-			return "", false
+			return nil, false
 		}
 		s = s[len(openTag):]
 		end := strings.Index(s, closeTag)
 		if end < 0 || strings.Contains(s[:end], openTag) {
-			return "", false
+			return nil, false
 		}
 		fields, ok := notificationFields(s[:end], taskNotificationFields)
 		if !ok {
-			return "", false
+			return nil, false
 		}
 		var sections []string
 		for _, field := range []struct{ name, label string }{
-			{"summary", "Summary"}, {"status", "Status"}, {"result", "Result"}, {"note", "Note"},
+			{"summary", "Summary"}, {"result", "Result"}, {"note", "Note"},
 		} {
 			if value := fields[field.name]; value != "" {
 				sections = append(sections, "**"+field.label+"**\n\n"+html.UnescapeString(value))
 			}
 		}
-		if len(sections) == 0 {
-			return "", false
+		if len(sections) == 0 && fields["status"] == "" {
+			return nil, false
 		}
+		if len(sections) > 0 {
+			if len(parts) > 0 {
+				sections[0] = "---\n\n" + sections[0]
+			}
+			parts = append(parts, model.Part{Kind: model.PartText, Text: strings.Join(sections, "\n\n")})
+		}
+		sections = nil
 		for _, field := range []struct{ name, label string }{
-			{"task-id", "Task ID"}, {"tool-use-id", "Tool use ID"}, {"output-file", "Output file"},
+			{"status", "Status"}, {"task-id", "Task ID"}, {"tool-use-id", "Tool use ID"}, {"output-file", "Output file"},
 		} {
 			if value := fields[field.name]; value != "" {
 				sections = append(sections, "**"+field.label+"**\n\n"+html.UnescapeString(value))
@@ -85,7 +95,7 @@ func taskNotificationText(text string) (string, bool) {
 		if usage, exists := fields["usage"]; exists {
 			values, ok := notificationFields(usage, taskUsageFields)
 			if !ok {
-				return "", false
+				return nil, false
 			}
 			var details []string
 			for _, field := range []struct{ name, label string }{
@@ -99,8 +109,10 @@ func taskNotificationText(text string) (string, bool) {
 				sections = append(sections, "**Usage**\n\n"+strings.Join(details, " · "))
 			}
 		}
-		notifications = append(notifications, strings.Join(sections, "\n\n"))
+		if len(sections) > 0 {
+			parts = append(parts, model.Part{Kind: model.PartNotice, Text: strings.Join(sections, "\n\n")})
+		}
 		s = strings.TrimSpace(s[end+len(closeTag):])
 	}
-	return strings.Join(notifications, "\n\n---\n\n"), len(notifications) > 0
+	return parts, len(parts) > 0
 }

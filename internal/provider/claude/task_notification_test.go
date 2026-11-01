@@ -24,15 +24,21 @@ const completedNotification = `<task-notification>
 
 func TestTaskNotificationText(t *testing.T) {
 	t.Parallel()
-	got, ok := taskNotificationText("\n" + completedNotification + "\n")
+	parts, ok := taskNotificationParts("\n" + completedNotification + "\n")
 	if !ok {
 		t.Fatal("notification not recognized")
 	}
+	if len(parts) != 2 || parts[0].Kind != model.PartText || parts[1].Kind != model.PartNotice {
+		t.Fatalf("unexpected parts: %+v", parts)
+	}
+	got := parts[0].Text
+	wantChat := "**Summary**\n\nAgent \"Review setup wrapper safety\" finished\n\n**Result**\n\nReport delivered separately.\n\n```xml\n<Directory name=\"A & B\" />\n```\n\n**Note**\n\nThe same task-id may notify more than once."
+	if got != wantChat {
+		t.Fatalf("chat text = %q; want %q", got, wantChat)
+	}
+	got = parts[1].Text
 	for _, want := range []string{
-		"**Summary**\n\nAgent \"Review setup wrapper safety\" finished",
-		"**Status**\n\ncompleted", "**Result**\n\nReport delivered separately.",
-		"**Note**\n\nThe same task-id may notify more than once.",
-		"```xml\n<Directory name=\"A & B\" />\n```",
+		"**Status**\n\ncompleted",
 		"**Task ID**\n\nagent-123", "**Tool use ID**\n\ncall-123",
 		"**Output file**\n\n/tmp/tasks/agent-123.output",
 		"Subagent tokens: 35364 · Tool uses: 19 · Duration (ms): 145812",
@@ -51,27 +57,33 @@ func TestTaskNotificationVariants(t *testing.T) {
 	for _, status := range []string{"completed", "failed", "interrupted"} {
 		t.Run(status, func(t *testing.T) {
 			text := "<task-notification><status>" + status + "</status><summary>Background command finished</summary></task-notification>"
-			got, ok := taskNotificationText(text)
-			if !ok || !strings.Contains(got, "**Status**\n\n"+status) || strings.Contains(got, "**Result**") {
-				t.Fatalf("got %q, %v", got, ok)
+			got, ok := taskNotificationParts(text)
+			if !ok || len(got) != 2 || got[0].Text != "**Summary**\n\nBackground command finished" || got[1].Kind != model.PartNotice || got[1].Text != "**Status**\n\n"+status {
+				t.Fatalf("got %+v, %v", got, ok)
 			}
 		})
 	}
 	for _, body := range []string{
 		"<result>raw <tag> & text</result>",
+		"<note>Report delivered separately.</note>",
+		"<summary>Done</summary>",
 		"<result>&amp;lt;version&amp;gt;</result>",
 	} {
-		got, ok := taskNotificationText("<task-notification>" + body + "</task-notification>")
+		got, ok := taskNotificationParts("<task-notification>" + body + "</task-notification>")
 		if !ok {
 			t.Fatalf("not recognized: %s", body)
 		}
-		if strings.Contains(body, "&amp;lt;") && !strings.Contains(got, "&lt;version&gt;") {
-			t.Fatalf("entities decoded more than once: %q", got)
+		if strings.Contains(body, "&amp;lt;") && !strings.Contains(got[0].Text, "&lt;version&gt;") {
+			t.Fatalf("entities decoded more than once: %+v", got)
 		}
 	}
-	got, ok := taskNotificationText(completedNotification + "\n" + completedNotification)
-	if !ok || strings.Count(got, "**Summary**") != 2 {
-		t.Fatalf("repeated notifications lost: %q, %v", got, ok)
+	statusOnly, ok := taskNotificationParts("<task-notification><status>failed</status></task-notification>")
+	if !ok || len(statusOnly) != 1 || statusOnly[0].Kind != model.PartNotice {
+		t.Fatalf("status-only notification: %+v, %v", statusOnly, ok)
+	}
+	got, ok := taskNotificationParts(completedNotification + "\n" + completedNotification)
+	if !ok || len(got) != 4 || !strings.Contains(got[0].Text, "**Summary**") || !strings.HasPrefix(got[2].Text, "---\n\n**Summary**") {
+		t.Fatalf("repeated notifications lost: %+v, %v", got, ok)
 	}
 }
 
@@ -89,8 +101,8 @@ func TestTaskNotificationFallback(t *testing.T) {
 		"<task-notification><result>missing end</task-notification>",
 		"<task-notification><summary>done</summary><usage><new>1</new></usage></task-notification>",
 	} {
-		if got, ok := taskNotificationText(text); ok || got != "" {
-			t.Errorf("unexpected normalization of %q: %q", text, got)
+		if got, ok := taskNotificationParts(text); ok || got != nil {
+			t.Errorf("unexpected normalization of %q: %+v", text, got)
 		}
 	}
 }

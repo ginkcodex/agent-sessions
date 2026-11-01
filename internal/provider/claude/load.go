@@ -301,11 +301,11 @@ func (l *loader) user(rec *rawRecord, start int64, lineNo int) {
 	if notificationText == "" && textOnly {
 		notificationText = joinTextBlocks(blocks)
 	}
-	if formatted, ok := taskNotificationText(notificationText); textOnly && ok {
+	if parts, ok := taskNotificationParts(notificationText); textOnly && ok {
 		l.store.Append(model.Message{
 			Role:        model.RoleAssistant,
 			Time:        parseTime(rec.Timestamp),
-			Parts:       []model.Part{{Kind: model.PartText, Text: formatted}},
+			Parts:       parts,
 			IsSidechain: rec.IsSidechain,
 		})
 		return
