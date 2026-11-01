@@ -22,6 +22,7 @@
   import { messageFileRecovery } from '../../messageFileOpen';
   import { installTerminalColorScheme } from '../../terminalColorScheme';
   import { installTerminalClipboard } from '../../terminalClipboard';
+  import { terminalReplacementText } from '../../terminalTextInput';
   import { files } from '../../stores/files.svelte';
   import { link } from '../../stores/link.svelte';
   import { epoch, isStaleReply } from '../../link';
@@ -97,6 +98,15 @@
       }),
     );
     t.attachCustomKeyEventHandler((event) => {
+      // Third-party macOS Vietnamese input tools send replacement strings as
+      // synthetic keys. Send the complete text once, before xterm truncates it
+      // to the keypress charCode; cancel native insertion to avoid duplicates.
+      const replacement = isMac ? terminalReplacementText(event) : null;
+      if (replacement !== null) {
+        event.preventDefault();
+        if (event.type === 'keydown') t.input(replacement, true);
+        return false;
+      }
       const action = terminalKeyAction(event, isMac);
       // The pane's capture listener opens find and stops the shortcut.
       if (action === 'find') return false;
