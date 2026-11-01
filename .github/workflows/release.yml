@@ -158,12 +158,14 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
-      - name: Build .msi
+      - name: Build .msi and bundled setup.exe
         run: make package-windows VERSION=${{ needs.version.outputs.version }}
       - uses: actions/upload-artifact@v7
         with:
           name: windows-amd64
-          path: dist/*.msi
+          path: |
+            dist/*.msi
+            dist/*_setup.exe
           if-no-files-found: error
 
   remote-servers:

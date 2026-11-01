@@ -45,8 +45,12 @@ jobs:
           gcc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined \
             packaging/windows/appcompat-ca-test.c -o /tmp/appcompat-ca-test
           /tmp/appcompat-ca-test
-      - name: Go tests
+      - name: Go tests (including Windows setup state machine)
         run: go test -race ./...
+      - name: Cross-build bundled Windows setup (fixture only; do not run)
+        run: |
+          printf 'CI compile fixture, not an MSI\n' > "$RUNNER_TEMP/setup-fixture.msi"
+          bash packaging/windows/build-setup.sh "$RUNNER_TEMP/setup-fixture.msi" "$RUNNER_TEMP/setup-fixture.exe" 0.0.0
       - name: Frontend type check and unit tests
         working-directory: frontend
         run: |
@@ -82,10 +86,11 @@ jobs:
           npm run check
           npm test
           npm run build
-      - name: Build Windows CLI and desktop
+      - name: Build Windows CLI, desktop and setup (do not run setup)
         run: |
           go build -trimpath -o build/bin/agent-sessions-cli.exe ./cmd/agent-sessions-cli
           go build -tags desktop,production -trimpath -ldflags "-H windowsgui" -o build/bin/agent-sessions.exe ./cmd/agent-sessions
+          CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui" -o build/bin/agent-sessions-setup.exe ./packaging/windows/setup
 
   # The macOS terminal launcher (AppleScript, .app detection, zsh) is only
   # exercised for real here.

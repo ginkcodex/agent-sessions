@@ -205,11 +205,19 @@ Releases on GitHub provide:
 - **macOS**: a universal `.dmg`. The app is not notarized, so the first
   launch needs right-click → Open.
 - **Linux**: `.deb` and `.rpm` for amd64 and arm64. They need WebKitGTK 4.1.
-- **Windows**: an amd64 `.msi`. It is not code-signed, so SmartScreen shows
-  "Windows protected your PC" on first run: choose More info → Run anyway.
-  It installs for the current user in `%LOCALAPPDATA%\Programs\Agent
-  Sessions` without an admin prompt, and needs the WebView2 Runtime, which
-  Windows 11 includes.
+- **Windows**: download the amd64 `*_setup.exe` for normal installs and
+  updates. Close Agent Sessions first, then run setup as your normal user.
+  It is not code-signed, so SmartScreen may show "Windows protected your PC":
+  choose More info → Run anyway. It installs for the current user in
+  `%LOCALAPPDATA%\Programs\Agent Sessions` without an admin prompt, and needs
+  the WebView2 Runtime, which Windows 11 includes. The `.msi` is also available
+  for manual installation/recovery; see [Windows setup](packaging/windows/README.md).
+
+Windows setup removes an existing installation in a **separate transaction**
+(before installing the bundled MSI); an already-absent installation is fine.
+If installation then fails, the old version may no longer be installed: setup
+keeps its MSI and logs under `%LOCALAPPDATA%\ginkcode\Agent Sessions\Setup`
+for retry/recovery. It does not promise rollback to the previous version.
 
 Every package includes the remote servers. The CLI is not packaged; build it
 with `make cli`.
@@ -271,7 +279,7 @@ To regenerate the local icons and filename mappings, run
 
 Pushing a `v<version>` tag runs `.github/workflows/release.yml`: it tests,
 then builds a universal macOS `.dmg`, Linux `.deb`/`.rpm` packages (amd64
-and arm64) and a Windows amd64 `.msi`, and publishes them as the GitHub
+and arm64) and Windows amd64 `*_setup.exe` and `.msi` files, and publishes them as the GitHub
 Release for that tag. The tag must match `info.productVersion` in
 `wails.json`. Tags with a suffix (`v0.2.0-beta.1`) publish as pre-releases.
 
@@ -286,4 +294,8 @@ make untag                 # delete a local tag created by mistake
 Local equivalents write to `dist/`: `make package-linux` (needs `gcc`,
 `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`), `make package-macos` (macOS
 with the Wails CLI) and `make package-windows` (Linux with the Wails CLI,
-`jq` and `wixl`).
+`jq`, `python3`, `wixl` and `gcc-mingw-w64-x86-64`). The Windows target
+also builds the bundled setup wrapper; `make windows-setup MSI=/path/to/file.msi`
+wraps an existing MSI without rebuilding the app. See the
+[Windows packaging notes](packaging/windows/README.md) for version/output options
+and recovery details.

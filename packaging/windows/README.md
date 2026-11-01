@@ -1,8 +1,69 @@
-# Windows MSI packaging
+# Windows setup and MSI packaging
 
-`make package-windows` cross-compiles the desktop app and builds a per-user MSI
-with wixl. In addition to the existing Wails/Go/Node tools, install `wixl`
-(0.102 or newer), `jq`, `python3`, and `gcc-mingw-w64-x86-64`.
+## Install, update, and recover
+
+For normal installs and updates, download `agent-sessions_<version>_windows_amd64_setup.exe`
+from the release. Close Agent Sessions (including other running copies) before
+starting setup, and run it as your normal Windows user, not as administrator.
+The unsigned download may trigger SmartScreen; choose **More info → Run anyway**
+only for a release you trust. Setup is per-user and requires the WebView2 Runtime
+(included with Windows 11).
+
+Setup validates its bundled MSI, then removes the existing per-user installation
+in a **separate Windows Installer transaction** before installing the new MSI.
+An already-absent product is accepted, but a removal failure stops the update.
+This is deliberately not an atomic MSI major upgrade: if removal succeeds and
+installation subsequently fails, the previous version may no longer be installed.
+Do not assume it will be restored automatically. Setup does not forcibly kill a
+running app; close it first and address any Windows Installer file-in-use prompts.
+
+Each attempt keeps the extracted `payload.msi` and diagnostic logs in a unique
+run directory beneath `%LOCALAPPDATA%\ginkcode\Agent Sessions\Setup`, on both
+success and failure. Use the location reported by setup to find the exact run.
+On failure, retain that directory, fix the reported cause, and retry setup or
+manually install the retained MSI. You can also download the release's `.msi`
+for manual installation/recovery. To capture a manual installation log:
+
+```powershell
+msiexec.exe /i "C:\path\to\agent-sessions_<version>_windows_amd64.msi" /L*v "$env:TEMP\agent-sessions-install.log"
+```
+
+The standalone MSI remains a supported manual fallback with its own normal
+Windows Installer upgrade behavior; it does not perform the wrapper's separate
+removal flow. Both artifacts install in `%LOCALAPPDATA%\Programs\Agent Sessions`.
+Neither setup nor the MSI is code-signed.
+
+## Build
+
+`make package-windows` cross-compiles the desktop app, builds a per-user MSI
+with wixl, and wraps that exact MSI in `*_setup.exe` in `dist/`. In addition to
+the existing Wails/Go/Node tools, install `wixl` (0.102 or newer), `jq`, `python3`,
+and `gcc-mingw-w64-x86-64` (including `x86_64-w64-mingw32-windres`).
+
+To wrap an existing MSI without rebuilding the app:
+
+```sh
+make windows-setup MSI=/path/to/agent-sessions.msi VERSION=0.9.36 \
+  SETUP_OUT=dist/agent-sessions_0.9.36_windows_amd64_setup.exe
+# Equivalent script interface:
+bash packaging/windows/build-setup.sh /path/to/agent-sessions.msi /path/to/setup.exe 0.9.36
+```
+
+The script stages the root `go.mod`/`go.sum`, non-test setup sources, embedded MSI,
+SHA-256/version metadata and an explicit `asInvoker` manifest in a temporary
+module tree. It cross-compiles a Windows amd64 GUI executable with CGO disabled
+and cleans staging on exit; no payload or generated metadata is left in the
+repository. `GO` and `WINDRES` can override the build tools. The expected MSI
+version is the numeric `major.minor.patch` after stripping a leading `v` and any
+release suffix; it must match the supplied MSI's `ProductVersion`. Setup checks
+that match at runtime before removal, so building requires no host `msiinfo` tool.
+
+Release publication includes both the MSI and setup executable, and `SHA256SUMS`
+covers each artifact. Root `go test ./...` includes the platform-neutral setup
+state-machine tests. CI also builds the Windows adapters natively and a staged,
+bundled wrapper using a non-MSI fixture on Linux; it never executes setup or
+installs/uninstalls a product. These compile checks do not replace the isolated
+Windows transaction tests below.
 
 ## Fullscreen compatibility default
 
@@ -31,6 +92,14 @@ snapshot, so old uninstall cleanup cannot remove the new installation's setting.
 Concurrent changes are detected where possible rather than blindly overwritten.
 
 ## Validation
+
+Before shipping the wrapper, use an isolated Windows account/VM and test fresh
+installation, an already-absent product, same-version reinstall, upgrade, removal
+failure, install failure after successful removal, and a reboot-required result.
+Confirm malformed/wrong-version payloads stop before removal, log/recovery paths
+remain available, and retrying the retained MSI works. Test with the app closed
+and with file-in-use prompts, and confirm setup does not request elevation.
+Never execute an installer fixture against a live installation.
 
 The portable tokenizer/snapshot tests need only a native C compiler:
 

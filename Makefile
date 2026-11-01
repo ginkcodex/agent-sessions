@@ -12,7 +12,7 @@ NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
 APPICON := frontend/assets/Icon-universal.png
 
 .PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps package-linux package-macos package-windows \
-	remote-servers conpty version tags set-version tag untag release help check-app-icons app-icon
+	remote-servers conpty windows-setup version tags set-version tag untag release help check-app-icons app-icon
 
 # Headless servers the desktop app deploys over SSH. CGO stays off: these
 # binaries have no GUI. Cross targets need a Go toolchain that can produce
@@ -208,7 +208,13 @@ package-macos: check-app-icons
 	# servers watching this repo would follow it.
 	rm -rf build/dmg
 
-# Windows amd64 .msi in dist/, cross-compiled on Linux. Requires the Wails
+# Wrap an existing MSI without rebuilding the desktop app or modifying sources.
+MSI ?= dist/agent-sessions_$(VERSION)_windows_amd64.msi
+SETUP_OUT ?= dist/agent-sessions_$(VERSION)_windows_amd64_setup.exe
+windows-setup:
+	GO="$(GO)" bash packaging/windows/build-setup.sh "$(MSI)" "$(SETUP_OUT)" "$(VERSION)"
+
+# Windows amd64 .msi and _setup.exe in dist/, cross-compiled on Linux. Requires the Wails
 # CLI, jq, python3, x86_64-w64-mingw32-gcc and wixl (apt install
 # gcc-mingw-w64-x86-64 wixl, 0.102 or later for
 # AllowSameVersionUpgrades). The package is described in
@@ -250,6 +256,7 @@ package-windows: check-app-icons
 		-D ConptyDir="$(abspath $(CONPTY_DIR))" \
 		-D IconFile="$$root/build/windows/icon.ico" -D AppCompatDll="$$root/build/appcompat-ca.dll" \
 		packaging/windows/agent-sessions.wxs
+	$(MAKE) windows-setup MSI="dist/agent-sessions_$(VERSION)_windows_amd64.msi"
 
 # Release tags (see make help). Pushing v<VERSION> runs
 # .github/workflows/release.yml, which refuses a tag that does not match
@@ -313,7 +320,8 @@ help:
 	@printf '\nPackaging (writes dist/)\n'
 	@printf '  %-22s %s\n' 'package-linux' '.deb and .rpm for ARCH (default: host)'
 	@printf '  %-22s %s\n' 'package-macos' 'Universal .dmg (macOS only)'
-	@printf '  %-22s %s\n' 'package-windows' 'amd64 .msi (needs wixl, jq, python3)'
+	@printf '  %-22s %s\n' 'package-windows' 'amd64 .msi + _setup.exe (needs wixl, jq, python3)'
+	@printf '  %-22s %s\n' 'windows-setup MSI=...' 'Wrap an existing MSI (optional SETUP_OUT=...)'
 	@printf '\nReleases (current: v$(VERSION))\n'
 	@printf '  %-22s %s\n' 'version' 'Show the version and whether its tag exists'
 	@printf '  %-22s %s\n' 'tags' 'List release tags, newest first'
