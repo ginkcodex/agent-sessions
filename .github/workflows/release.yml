@@ -59,6 +59,11 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
+      - name: Windows installer compatibility unit tests
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined \
+            packaging/windows/appcompat-ca-test.c -o /tmp/appcompat-ca-test
+          /tmp/appcompat-ca-test
       - name: Go tests
         run: go test -race ./...
       - name: Frontend type check and unit tests
@@ -146,10 +151,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install wixl
+      - name: Install Windows packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends wixl
+          sudo apt-get install -y --no-install-recommends wixl gcc-mingw-w64-x86-64
       - run: npm ci
         working-directory: frontend
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}

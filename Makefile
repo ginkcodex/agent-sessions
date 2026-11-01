@@ -209,7 +209,8 @@ package-macos: check-app-icons
 	rm -rf build/dmg
 
 # Windows amd64 .msi in dist/, cross-compiled on Linux. Requires the Wails
-# CLI, jq, python3 and wixl (apt install wixl, 0.102 or later for
+# CLI, jq, python3, x86_64-w64-mingw32-gcc and wixl (apt install
+# gcc-mingw-w64-x86-64 wixl, 0.102 or later for
 # AllowSameVersionUpgrades). The package is described in
 # packaging/windows/agent-sessions.wxs; build/windows is regenerated each run
 # so the icon and version resources follow the current sources. The package
@@ -218,6 +219,8 @@ package-windows: check-app-icons
 	@for tool in jq wixl python3; do \
 		command -v $$tool >/dev/null 2>&1 || { echo "$$tool not found: install it (apt install $$tool)" >&2; exit 1; }; \
 	done
+	@command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 || \
+		{ echo "x86_64-w64-mingw32-gcc not found: apt install gcc-mingw-w64-x86-64" >&2; exit 1; }
 	cd frontend && npm run build
 	$(MAKE) remote-servers
 	$(MAKE) conpty
@@ -236,6 +239,8 @@ package-windows: check-app-icons
 		"$$backup" > wails.json; \
 	$(WAILS) build -platform windows/amd64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath -ldflags "$(LDFLAGS)"
 	mkdir -p dist
+	x86_64-w64-mingw32-gcc -std=c11 -Wall -Wextra -Werror -O2 -shared \
+		-o build/appcompat-ca.dll packaging/windows/appcompat-ca.c -lmsi -ladvapi32
 	@set -e; \
 	root=$$(pwd); \
 	version='$(VERSION)'; \
@@ -243,7 +248,8 @@ package-windows: check-app-icons
 	wixl -a x64 -o dist/agent-sessions_$(VERSION)_windows_amd64.msi \
 		-D Version="$${version%%-*}" -D BinDir="$$root/build/bin" -D RemoteDir="$$root/build/remote" \
 		-D ConptyDir="$(abspath $(CONPTY_DIR))" \
-		-D IconFile="$$root/build/windows/icon.ico" packaging/windows/agent-sessions.wxs
+		-D IconFile="$$root/build/windows/icon.ico" -D AppCompatDll="$$root/build/appcompat-ca.dll" \
+		packaging/windows/agent-sessions.wxs
 
 # Release tags (see make help). Pushing v<VERSION> runs
 # .github/workflows/release.yml, which refuses a tag that does not match
