@@ -34,6 +34,17 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
+      - name: Windows installer compatibility DLL build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64
+          x86_64-w64-mingw32-gcc -std=c11 -Wall -Wextra -Werror -O2 -shared \
+            -o /tmp/appcompat-ca.dll packaging/windows/appcompat-ca.c -lmsi -ladvapi32
+      - name: Windows installer compatibility unit tests
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined \
+            packaging/windows/appcompat-ca-test.c -o /tmp/appcompat-ca-test
+          /tmp/appcompat-ca-test
       - name: Go tests
         run: go test -race ./...
       - name: Frontend type check and unit tests

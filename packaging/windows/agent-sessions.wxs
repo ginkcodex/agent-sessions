@@ -7,6 +7,7 @@
     RemoteDir  directory holding the gzipped headless servers
     ConptyDir  directory holding the ConPTY from `make conpty`
     IconFile   the app icon (.ico)
+    AppCompatDll installer-only compatibility custom actions (.dll)
 
   Per-user install in %LOCALAPPDATA%\Programs\Agent Sessions: no UAC prompt,
   and the app only reads the current user's sessions anyway. Per-user
@@ -27,6 +28,30 @@
          must be allowed to replace the same version. -->
     <MajorUpgrade AllowSameVersionUpgrades="yes"
                   DowngradeErrorMessage="A newer version of Agent Sessions is already installed."/>
+
+    <!-- The compatibility value is shared with the user's other settings.
+         Read/modify/write in impersonated, rollback-aware actions instead of
+         letting MSI own (and delete) the entire Layers value. Old-product
+         removal finishes before preparing the new installation's snapshot. -->
+    <Binary Id="AppCompatActions" SourceFile="$(var.AppCompatDll)"/>
+    <CustomAction Id="SetAppCompatPath" Property="AppCompatPath"
+                  Value="[INSTALLDIR]agent-sessions.exe"/>
+    <CustomAction Id="SetAppCompatRemove" Property="AppCompatRemove" Value="1"/>
+    <CustomAction Id="PrepareAppCompat" BinaryKey="AppCompatActions" DllEntry="PrepareAppCompat"
+                  Execute="immediate" Return="check"/>
+    <CustomAction Id="RollbackAppCompat" BinaryKey="AppCompatActions" DllEntry="RollbackAppCompat"
+                  Execute="rollback" Impersonate="yes" Return="check"/>
+    <CustomAction Id="ApplyAppCompat" BinaryKey="AppCompatActions" DllEntry="ApplyAppCompat"
+                  Execute="deferred" Impersonate="yes" Return="check"/>
+    <InstallExecuteSequence>
+      <!-- wixl 0.103/0.106 do not implement MajorUpgrade.Schedule. -->
+      <RemoveExistingProducts After="InstallInitialize"/>
+      <Custom Action="SetAppCompatPath" After="RemoveExistingProducts">NOT Installed OR REMOVE="ALL"</Custom>
+      <Custom Action="SetAppCompatRemove" After="SetAppCompatPath">REMOVE="ALL"</Custom>
+      <Custom Action="PrepareAppCompat" After="SetAppCompatRemove">NOT Installed OR REMOVE="ALL"</Custom>
+      <Custom Action="RollbackAppCompat" After="PrepareAppCompat">NOT Installed OR REMOVE="ALL"</Custom>
+      <Custom Action="ApplyAppCompat" After="RollbackAppCompat">NOT Installed OR REMOVE="ALL"</Custom>
+    </InstallExecuteSequence>
 
     <!-- The app renders in WebView2. Windows 11 ships it and Windows 10 gets
          it with Edge; an MSI cannot easily run its bootstrapper, so refuse
