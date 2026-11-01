@@ -43,6 +43,61 @@ test('fullscreen prefers native Wails window APIs and toggles both ways', async 
   }
 });
 
+test('fullscreen awaits the app binding and suppresses overlapping requests', async () => {
+  const previous = globalThis.window;
+  const calls = [];
+  let complete;
+  globalThis.window = {
+    go: { app: { App: { ToggleFullscreen: () => {
+      calls.push('binding');
+      return new Promise(resolve => { complete = resolve; });
+    } } } },
+    runtime: { WindowIsFullscreen: () => { throw new Error('legacy path used'); } },
+  };
+  try {
+    let finished = false;
+    const first = toggleFullscreen().then(() => { finished = true; });
+    await toggleFullscreen();
+    assert.deepEqual(calls, ['binding']);
+    assert.equal(finished, false);
+    complete();
+    await first;
+    const next = toggleFullscreen();
+    assert.deepEqual(calls, ['binding', 'binding']);
+    complete();
+    await next;
+  } finally {
+    if (previous === undefined) delete globalThis.window;
+    else globalThis.window = previous;
+  }
+});
+
+test('binding failures release the guard without toggling through another path', async () => {
+  const previous = globalThis.window;
+  let calls = 0;
+  let fallbackCalls = 0;
+  globalThis.window = {
+    go: { app: { App: { ToggleFullscreen: async () => { calls++; throw new Error('native failure'); } } } },
+    runtime: { WindowIsFullscreen: async () => { fallbackCalls++; return false; }, WindowFullscreen() {}, WindowUnfullscreen() {} },
+  };
+  try {
+    await assert.rejects(toggleFullscreen(), /native failure/);
+    await assert.rejects(toggleFullscreen(), /native failure/);
+    assert.equal(calls, 2);
+    assert.equal(fallbackCalls, 0);
+  } finally {
+    if (previous === undefined) delete globalThis.window;
+    else globalThis.window = previous;
+  }
+});
+
+test('session pane suppresses only its container outline while retaining keyboard focus', () => {
+  const pane = readFileSync(new URL('../src/lib/components/sessionlist/SessionList.svelte', import.meta.url), 'utf8');
+  assert.match(pane, /class="session-list-pane"[\s\S]*?tabindex="-1"/);
+  assert.match(pane, /\.session-list-pane\s*\{[^}]*outline:\s*none;/);
+  assert.doesNotMatch(pane, /\.session-list-pane\s+[^\s{}][^{}]*\{[^}]*outline:\s*none;/);
+});
+
 test('fullscreen falls back to browser APIs and recovers from failures', async () => {
   const oldWindow = globalThis.window;
   const oldDocument = globalThis.document;

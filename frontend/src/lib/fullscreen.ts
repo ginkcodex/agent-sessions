@@ -42,8 +42,11 @@ export async function toggleFullscreen(): Promise<void> {
   if (toggling) return;
   toggling = true;
   try {
+    const app = window.go?.app?.App as { ToggleFullscreen?: () => Promise<void> } | undefined;
     const runtime = window.runtime;
-    if (runtime?.WindowIsFullscreen && runtime.WindowFullscreen && runtime.WindowUnfullscreen) {
+    if (app?.ToggleFullscreen) {
+      await app.ToggleFullscreen();
+    } else if (runtime?.WindowIsFullscreen && runtime.WindowFullscreen && runtime.WindowUnfullscreen) {
       if (await runtime.WindowIsFullscreen()) runtime.WindowUnfullscreen();
       else runtime.WindowFullscreen();
     } else if (document.fullscreenElement) {

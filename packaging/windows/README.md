@@ -15,7 +15,21 @@ An already-absent product is accepted, but a removal failure stops the update.
 This is deliberately not an atomic MSI major upgrade: if removal succeeds and
 installation subsequently fails, the previous version may no longer be installed.
 Do not assume it will be restored automatically. Setup does not forcibly kill a
-running app; close it first and address any Windows Installer file-in-use prompts.
+running app; close it first, along with CLI/terminal processes using installed files.
+
+Setup uses a classic native Windows wizard: an app-branded blue sidebar, white
+content area and Back/Next/Cancel navigation. Next checks the package; **Install**
+is the explicit consent to remove the old installation and install a fresh copy.
+Back from that confirmation page does not repeat preparation. If the app is
+running, the wizard offers Retry/Cancel without terminating it. During preparation
+and active installer operations, cancellation and closing are disabled; wait for
+the next prompt or result. The final page provides selectable diagnostic details.
+
+The wrapper runs Windows Installer with `/quiet`, displaying its own indeterminate
+progress rather than a second MSI window. MSI error and file-in-use dialogs are
+suppressed: failures and restart requirements appear on the result page, with the
+verbose log location. Locked files may require a restart or cause an error.
+A restart-required removal stops before installation; rerun setup after restarting.
 
 Each attempt keeps the extracted `payload.msi` and diagnostic logs in a unique
 run directory beneath `%LOCALAPPDATA%\ginkcode\Agent Sessions\Setup`, on both
@@ -50,7 +64,8 @@ bash packaging/windows/build-setup.sh /path/to/agent-sessions.msi /path/to/setup
 ```
 
 The script stages the root `go.mod`/`go.sum`, non-test setup sources, embedded MSI,
-SHA-256/version metadata and an explicit `asInvoker` manifest in a temporary
+SHA-256/version metadata, the checked-in `setup/setup.ico` (derived from
+`frontend/assets/Icon-universal.png`), and an explicit `asInvoker` manifest in a temporary
 module tree. It cross-compiles a Windows amd64 GUI executable with CGO disabled
 and cleans staging on exit; no payload or generated metadata is left in the
 repository. `GO` and `WINDRES` can override the build tools. The expected MSI
@@ -98,7 +113,12 @@ installation, an already-absent product, same-version reinstall, upgrade, remova
 failure, install failure after successful removal, and a reboot-required result.
 Confirm malformed/wrong-version payloads stop before removal, log/recovery paths
 remain available, and retrying the retained MSI works. Test with the app closed
-and with file-in-use prompts, and confirm setup does not request elevation.
+and with locked installed files under quiet mode, and confirm setup does not request
+elevation. Check the wizard at 100%, 150% and 200% scaling, including moving between
+monitors, high contrast, keyboard-only navigation, and copyable long recovery paths.
+Double-clicking Next must not consent to Install. Back must not start another
+worker. Close/Escape/Alt+F4 must not abandon an active operation. Confirm no extra
+MSI window appears and all failure/restart states remain readable.
 Never execute an installer fixture against a live installation.
 
 The portable tokenizer/snapshot tests need only a native C compiler:

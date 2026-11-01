@@ -258,7 +258,7 @@ func TestVersionsAndGUIDs(t *testing.T) {
 }
 
 func TestInstallerArguments(t *testing.T) {
-	want := []string{"/i", `C:\recovery dir\payload.msi`, "/passive", "/norestart", "/L*v", `C:\recovery dir\install.log`, "REBOOT=ReallySuppress", "MSIRESTARTMANAGERCONTROL=DisableShutdown", "MSIDISABLERMRESTART=1"}
+	want := []string{"/i", `C:\recovery dir\payload.msi`, "/quiet", "/norestart", "/L*v", `C:\recovery dir\install.log`, "REBOOT=ReallySuppress", "MSIRESTARTMANAGERCONTROL=DisableShutdown", "MSIDISABLERMRESTART=1"}
 	if got := installerArgs("/i", want[1], want[5]); !reflect.DeepEqual(got, want) {
 		t.Fatal(got)
 	}

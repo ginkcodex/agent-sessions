@@ -72,6 +72,7 @@ type App struct {
 	conn              *connection
 	transportOverride remote.ArtifactTransport
 	fileClose         fileCloseGuard
+	fullscreen        fullscreenController
 	searches          fileSearches
 	gitSyncs          fileSearches // fetch/pull/push in progress, by sync ID
 

@@ -58,32 +58,27 @@ func setupMain() int {
 		return 1
 	}
 	p := &windowsPlatform{sid: sid, systemInstaller: installer}
-	out := runSetup(p)
+	out, err := runWizard(func(ui wizardView) outcome {
+		out := runSetup(&guidedPlatform{platform: p, ui: ui})
+		// Prepare may create the recovery directory before returning an error.
+		out.Payload.Directory = p.directory
+		p.Trace(finishText(out))
+		return out
+	})
 	if p.log != nil {
 		defer p.log.Close()
 	}
-	text := fmt.Sprintf("%s\n\nOperation: %s\nWindows Installer status: %d", out.Message, out.Operation, out.Status)
-	if p.directory != "" {
-		text += "\n\nLogs and recovery MSI (retained):\n" + p.directory
-		if !out.Success {
-			text += "\n\nIf the old app was removed, resolve the error (and restart Windows if requested), then rerun setup or manually install payload.msi from this directory. Settings and session data have not been deleted by setup."
+	if err != nil {
+		text := "Setup wizard error: " + err.Error()
+		if p.directory != "" {
+			text += "\n\nCheck the retained logs and recovery MSI before retrying:\n" + p.directory
+		} else {
+			text += "\n\nNo installation was started."
 		}
+		dialog(text, 0x10)
+		return 1
 	}
-	p.Trace(text)
-	flags := uintptr(0x10)
-	if out.Success {
-		flags = 0x40
-	} else if out.Status == 1602 || out.Status == 3010 || out.Status == 1641 {
-		flags = 0x30
-	}
-	dialog(text, flags)
-	if out.Success {
-		return int(out.Status)
-	}
-	if out.Status != 0 {
-		return int(out.Status)
-	}
-	return 1
+	return exitCode(out)
 }
 
 func currentIdentity() (string, error) {
@@ -206,10 +201,11 @@ func (p *windowsPlatform) Prerequisite() error {
 	return fmt.Errorf("Agent Sessions needs the Microsoft Edge WebView2 Runtime. Install it from https://go.microsoft.com/fwlink/p/?LinkId=2124703 and rerun setup; nothing has been uninstalled")
 }
 func (p *windowsPlatform) Discover() ([]product, error) { return installedProducts() }
-func (p *windowsPlatform) Confirm(text string) bool     { return dialog(text, 0x01|0x30|0x100) == 1 }
-func (p *windowsPlatform) RetryClose() bool {
-	return dialog("Close Agent Sessions normally before continuing. Setup will not terminate it.\n\nClick Retry after closing every Agent Sessions window, or Cancel to stop setup.", 0x05|0x30|0x100) == 4
-}
+
+// Consent is supplied by guidedPlatform. Fail closed if the raw adapter is
+// accidentally passed directly to runSetup without a wizard.
+func (p *windowsPlatform) Confirm(string) bool        { return false }
+func (p *windowsPlatform) RetryClose() bool           { return false }
 func (p *windowsPlatform) Running() (bool, error)     { return appRunning(p.sid) }
 func (p *windowsPlatform) LogPath(name string) string { return filepath.Join(p.directory, name) }
 func (p *windowsPlatform) Trace(message string) {

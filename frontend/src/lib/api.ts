@@ -314,6 +314,7 @@ interface WailsAppBinding {
   TranslateSelection(text: string, context: string): Promise<string>;
   SaveImage(req: SaveImageRequest): Promise<string>;
   PrintWindow(): Promise<void>;
+  ToggleFullscreen?(): Promise<void>;
   NewWindow(): Promise<void>;
   FocusNextWindow?(forward: boolean): Promise<void>;
   NotificationStatus(): Promise<NotificationStatus>;

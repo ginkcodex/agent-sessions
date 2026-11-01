@@ -111,7 +111,7 @@ func runSetup(p platform) outcome {
 			return fail("A newer version (" + product.Version + ") is installed. Setup will not downgrade or remove it.")
 		}
 	}
-	if !p.Confirm("Install Agent Sessions " + out.Payload.Version + "?\n\nSetup first uninstalls any existing Agent Sessions installation, then installs a fresh copy, even for the same version. Settings and session data are kept.\n\nIf the new installation fails, the old app cannot be restored automatically and the app may be absent. The recovery MSI and logs will be kept at:\n" + out.Payload.Directory + "\n\nContinue?") {
+	if !p.Confirm("Install Agent Sessions " + out.Payload.Version + "?\n\nSetup first uninstalls any existing Agent Sessions installation, then installs a fresh copy, even for the same version. Settings and session data are kept.\n\nIf the new installation fails, the old app cannot be restored automatically and the app may be absent. The recovery MSI and logs will be kept at:\n" + out.Payload.Directory + "\n\nClick Install to continue.") {
 		out.Status = 1602
 		return fail("Setup cancelled before removing anything.")
 	}

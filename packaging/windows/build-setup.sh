@@ -51,6 +51,7 @@ for source in "$source_dir"/*.go; do
     cp -- "$source" "$bundle_dir/"
 done
 cp -- "$msi" "$bundle_dir/payload.msi"
+cp -- "$source_dir/setup.ico" "$bundle_dir/setup.ico"
 cat > "$bundle_dir/setup.manifest" <<'MANIFEST'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
@@ -60,9 +61,19 @@ cat > "$bundle_dir/setup.manifest" <<'MANIFEST'
       <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
     </requestedPrivileges></security>
   </trustInfo>
+  <dependency><dependentAssembly>
+    <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
+  </dependentAssembly></dependency>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3"><windowsSettings>
+    <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+    <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, PerMonitor</dpiAwareness>
+  </windowsSettings></application>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1"><application>
+    <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+  </application></compatibility>
 </assembly>
 MANIFEST
-printf '1 24 "setup.manifest"\n' > "$bundle_dir/setup.rc"
+printf '1 24 "setup.manifest"\n2 ICON "setup.ico"\n' > "$bundle_dir/setup.rc"
 (cd -- "$bundle_dir" && "$windres" -O coff -F pe-x86-64 -i setup.rc -o rsrc_windows_amd64.syso)
 if command -v sha256sum >/dev/null 2>&1; then
     digest=$(sha256sum "$bundle_dir/payload.msi")

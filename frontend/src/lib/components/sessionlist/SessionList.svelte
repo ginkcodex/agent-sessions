@@ -295,6 +295,7 @@
 
 <style>
   .session-list-pane {
+    outline: none;
     display: flex;
     flex-direction: column;
     width: 100%;
