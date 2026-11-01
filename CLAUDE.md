@@ -1,5 +1,12 @@
 # Notes for Claude
 
+## Git attribution
+
+When creating commits, do not add `Co-Authored-By` trailers or any other
+AI/agent attribution to commit messages. Likewise, do not add AI/agent
+attribution to pull request descriptions. Preserve this rule for all new
+changes, including amended or rewritten commits.
+
 ## Windows test builds
 
 Development runs in WSL2 on Windows. When the user asks for a Windows test
