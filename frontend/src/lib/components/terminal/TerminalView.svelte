@@ -22,7 +22,7 @@
   import { messageFileRecovery } from '../../messageFileOpen';
   import { installTerminalColorScheme } from '../../terminalColorScheme';
   import { installTerminalClipboard } from '../../terminalClipboard';
-  import { terminalReplacementText } from '../../terminalTextInput';
+  import { installTerminalCompositionText, terminalReplacementText } from '../../terminalTextInput';
   import { files } from '../../stores/files.svelte';
   import { link } from '../../stores/link.svelte';
   import { epoch, isStaleReply } from '../../link';
@@ -78,6 +78,7 @@
       fontFamily: font,
       fontSize: 13,
       cursorBlink: true,
+      cursorStyle: 'bar',
       scrollback: 5000,
       // Find marks its matches with decorations, which are proposed API.
       allowProposedApi: true,
@@ -97,7 +98,9 @@
         void api.openURL(uri);
       }),
     );
+    let compositionText: ReturnType<typeof installTerminalCompositionText> | undefined;
     t.attachCustomKeyEventHandler((event) => {
+      if (compositionText && !compositionText.key(event)) return false;
       // Third-party macOS Vietnamese input tools send replacement strings as
       // synthetic keys. Send the complete text once, before xterm truncates it
       // to the keypress charCode; cancel native insertion to avoid duplicates.
@@ -135,6 +138,10 @@
       return true;
     });
     t.open(host);
+    // Other engines retain xterm's native composition handling.
+    if (/Linux/.test(navigator.userAgent) && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium/.test(navigator.userAgent)) {
+      compositionText = installTerminalCompositionText(t.textarea, (text) => t.input(text, true));
+    }
     term = t;
     fit = f;
     search = s;
@@ -202,6 +209,7 @@
       observer.disconnect();
       offDragEnd();
       input.dispose();
+      compositionText?.dispose();
       scheme.dispose();
       colorScheme = null;
       clipboard.dispose();
@@ -458,6 +466,18 @@
      element inside it, which stops at the last whole row. */
   .xterm-host :global(.xterm .xterm-viewport) {
     background-color: var(--bg-primary);
+  }
+
+  /* Native-terminal style preedit: normal theme colors with an underline,
+     not xterm's default white-on-black block. Keep its positioning and font
+     metrics untouched so the IME candidate window still follows the cursor. */
+  .xterm-host :global(.xterm .composition-view) {
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    text-decoration-skip-ink: none;
   }
 
   /* Over the terminal's top right corner, as the file viewer's find bar is. */
