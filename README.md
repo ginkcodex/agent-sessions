@@ -1,301 +1,412 @@
-# agent-sessions
+<p align="center">
+  <img src="frontend/assets/Icon-universal.png" alt="Agent Sessions icon" width="112" height="112">
+</p>
 
-A desktop app to find, read and manage the sessions that agentic coding tools
-leave on disk: **Claude Code**, **Codex CLI** and **OpenCode** (CLI and
-Desktop). It reads each tool's own files, needs no account or server, and
-changes nothing unless you turn session management on.
+<h1 align="center">Agent Sessions</h1>
 
-It runs on **Linux**, **macOS** and **Windows**, and can browse sessions on
-other machines over SSH or in WSL distributions.
+<p align="center">
+  <strong>One desktop workspace for your coding-agent sessions.</strong><br>
+  Find conversations, follow the work, and pick up where you left off.<br>
+  Claude Code · Codex CLI · OpenCode
+</p>
 
-- [SPEC.md](SPEC.md): product specification
-- [TASKS.md](TASKS.md): task breakdown per milestone
-- [docs/formats.md](docs/formats.md): verified on-disk session formats
-- [docs/plan/](docs/plan/README.md): per-task implementation plans
+<p align="center">
+  <a href="https://github.com/ginkcodex/agent-sessions/releases/latest"><img src="https://img.shields.io/github/v/release/ginkcodex/agent-sessions?label=download" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Windows, macOS and Linux">
+</p>
 
-## Features
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#what-you-can-do">Features</a> ·
+  <a href="#get-started">Get started</a> ·
+  <a href="#remote-hosts-and-wsl">SSH &amp; WSL</a> ·
+  <a href="#build-from-source">Build from source</a>
+</p>
 
-**Browse**
+---
 
-- One list for every agent's sessions, grouped by directory then agent, by
-  agent then directory, or flat. Filter by agent, directory and time.
-- A cache index makes startup fast; watchers pick up new and changed sessions
-  as the agents write them. Several running copies of the app and remote clients share the
-  index.
-- Full-text search across all transcripts (press `/`), jumping to the
-  matching message.
+**Agent Sessions is a local-first desktop app for browsing and working with the
+sessions your coding agents already save.** It reads their native histories into
+one searchable interface, displays rich transcripts, and lets you resume work in
+the original agent or hand context to a different one.
 
-**Read**
+It also brings the surrounding workflow into the same window: an interactive
+terminal, project files, a lightweight editor, and Git tools—on your computer,
+in a Windows WSL distribution, or on an SSH host.
 
-- Transcripts with Markdown, tool calls, patches, reasoning, compactions and
-  links to subagent transcripts.
-- Three display levels: **Chat** (just the conversation), **Activity** and
-  **All**. Settings chooses the default.
-- The session header shows the directory, Git branch, created and updated
-  times, token counts and cost.
-- Right-click a message to copy it as Markdown, or to translate it through an
-  OpenAI-compatible API of your choice (Vietnamese by default). The
-  translation replaces the text in place, with a toggle back to the original.
-- Select text inside a message and right-click it to copy or translate just the
-  selection. The translation opens beside the selection, and the message is not
-  changed. To make a short selection clear, the sentence around it is sent to the
-  translation API as context.
-
-**Continue**
-
-- Resume a session in its own agent: copy the resume command, or open it in a
-  terminal. Linux supports GNOME Terminal, Ptyxis, GNOME Console, Konsole,
-  Xfce Terminal, Ghostty, kitty, WezTerm, Alacritty, foot and XTerm; macOS
-  supports Terminal, iTerm2 and Ghostty; Windows uses PowerShell (in Windows
-  Terminal when that is the default).
-- **Continue in another agent**: a handoff turns a session into a prompt for
-  a different agent, with a size budget, optional reasoning and secret
-  redaction. It is delivered as a file the new agent reads, then waits for
-  you.
-
-**Built-in terminal**
-
-- The maximize button at the top right of the terminal panel expands it to
-  fill the app window; the same button restores the docked size and position.
-  Tabs, scrollback and running sessions are kept. Hiding the panel or closing
-  its last tab returns it to the docked size.
-
-**Terminal file links**
-
-- In the built-in terminal, Cmd+click (macOS) or Ctrl+click (Linux/Windows)
-  a file path to open it in Go to File. This includes extensionless names
-  such as `Makefile` and paths in Git status output.
-- Files must be inside a project already known to the session catalog. Select
-  and connect to the terminal's host before opening its files.
-- Built-in bash, zsh, fish and PowerShell shells report their working directory
-  at each prompt, including after `cd`, without editing your shell configuration
-  files. The same POSIX integration applies to SSH and WSL shells.
-- Links in scrollback retain the directory associated with their output, so
-  changing directories does not redirect old links to the new project.
-  Unsupported shells fall back to their starting directory unless they emit
-  OSC 7 directory notifications themselves. Commands that change directories
-  and print paths before the next prompt can still require absolute paths.
-
-**Files in session messages**
-
-- Click Markdown file links or inline-code paths such as `src/main.ts:42` in
-  message text or reasoning to open them in Go to File. Relative paths use the
-  session's working directory; absolute POSIX and Windows paths are supported.
-- Locations such as `:42:5` and `#L10-L20` reveal source lines. Existing unsaved
-  drafts are retained. Files must exist within a project known on the selected
-  host; unsupported or unavailable paths report an error instead of opening an
-  external application. Web links keep their usual behavior.
-
-**Edit files**
-
-- Right-click a directory in Go to File and choose **Add File…** (local) or
-  **Upload File…** (remote) to browse for a file on your computer and copy it
-  into that directory. Click the project directory name in the dialog header
-  to add a file at the project root. Existing files are never overwritten.
-- Choose **New File…** or **New Folder…** from a directory's context menu to
-  create an empty file or a folder locally or remotely. A new file opens in its
-  own tab. Right-click empty space in the file tree (or click the project name
-  in the header) for project-root actions. Empty folders appear in the tree
-  too.
-- Right-click a file or directory in the Go to File tree and choose **Rename…**
-  to change its name, locally or remotely. Enter a name, not a path; renaming
-  stays in the same parent directory and never overwrites an existing item.
-- Choose **Delete…** from a file or directory's context menu to permanently
-  delete it, locally or remotely. Confirmation warns about directory contents
-  and affected unsaved drafts. Deleted items are not moved to Trash.
-- In Go to File, press **Edit** on a text file to make small changes without
-  leaving the app. **Save** writes the file and returns to the viewer;
-  **Discard** reverts all changes (after asking) and returns to the viewer.
-  Cmd+S / Ctrl+S saves and keeps editing. There is no autosave. Unsaved tabs
-  show a dot. A save that fails or conflicts with a change on disk keeps the
-  editor open and shows the error.
-- Drafts survive switching tabs or directories, hiding the dialog and
-  reconnecting to the same host, including undo history. They live only in
-  memory: closing a tab, switching hosts or quitting asks to Save, Discard or
-  Cancel, but a crash or forced quit loses them.
-- Saves check that the file has not changed since it was opened. If it has,
-  your draft is kept and you choose to reload or to overwrite (asked twice).
-  A save interrupted by a dropped connection is never resent; after reconnecting
-  the app reads the file to tell whether it was written.
-- The file's encoding details are kept: UTF-8 BOM, LF or CRLF line endings and
-  the final newline. Saving rewrites the existing file in place, so its
-  permissions and hard links are preserved; a crash or full disk in the middle
-  of a save can leave the file partly written. If a save fails partway, the app
-  rereads the file and keeps your draft until you save or discard it.
-- Files stay read-only when they are larger than 500 KB, binary or not UTF-8,
-  have mixed line endings, are reached through a symbolic link, or are in
-  protected places such as `.git`, credential files and the agents' own data
-  directories.
-- Remote hosts must run a server version that supports saving; older servers
-  stay view-only.
-
-**Share**
-
-- Export a session as a `.agent-session.zip` bundle. *Complete* bundles keep
-  the native files; *share-safe* bundles drop them and redact secrets (private
-  keys, known token prefixes, JWTs, `KEY=` assignments, home paths). Redaction
-  is best-effort, and the dialog shows what it found.
-- Open a bundle to read it and continue it in any agent.
-
-**Manage** (off by default)
-
-- Delete sessions after a preview of every file involved. Claude Code sessions
-  go to the system Trash (Linux, macOS) or Recycle Bin (Windows). Codex and
-  OpenCode sessions are deleted permanently through their own CLIs, which
-  needs a second opt-in. Live sessions cannot be deleted.
-
-**Remote hosts**
-
-- Pick an SSH alias from `~/.ssh/config`, or type one, and the app browses
-  that machine as if it were local. It uploads a small headless server
-  (`agent-sessions-cli serve`) to the host, checks it against `SHA256SUMS`,
-  and talks to it over the ssh session. Remote hosts can run Linux or macOS on
-  amd64 or arm64.
-- On Windows, WSL distributions are listed separately and reached through
-  `wsl.exe`, with no ssh needed.
-- Each host can have its own environment overrides (⚙ in the host menu), for
-  example data roots that differ from the defaults.
-- On Linux and macOS, ssh password and passphrase prompts appear in the app.
-  On Windows, ssh must authenticate without prompts (keys or an agent).
-
-**Look and feel**
-
-- Light, dark and system themes; times in UTC or the local time zone.
-- `Ctrl+,` (`⌘,` on macOS) opens Settings; `/` opens search; `Esc` closes
-  dialogs.
-
-## Where data lives
-
-The app reads each agent's default location, and honours `CLAUDE_CONFIG_DIR`,
-`CODEX_HOME` and `XDG_DATA_HOME`:
-
-| Agent       | Default location         |
-|-------------|--------------------------|
-| Claude Code | `~/.claude`              |
-| Codex CLI   | `~/.codex`               |
-| OpenCode    | `~/.local/share/opencode` |
-
-Its own files:
-
-| Platform | Settings (`config.toml`)                       | Cache                                 |
-|----------|------------------------------------------------|---------------------------------------|
-| Linux    | `~/.config/agent-sessions`                     | `~/.cache/agent-sessions`             |
-| macOS    | `~/Library/Application Support/agent-sessions` | `~/Library/Caches/agent-sessions`     |
-| Windows  | `%APPDATA%\agent-sessions`                     | `%LOCALAPPDATA%\agent-sessions\cache` |
-
-`config.toml` holds the `[manage]`, `[terminal]` and `[translate]` settings.
-It is written `0600`, as it may hold the translation API key, which the app
-never shows again once saved. The cache holds transcript text and is written
-`0600` too.
-
-## Privacy
-
-Credential files (`.credentials.json`, `auth.json`, OpenCode account tables)
-are never read. There is no telemetry and no listening port. The network is
-used only for:
-
-- ssh to hosts you pick, through your own `ssh`;
-- translation, which sends the message you translate, or a selection plus its
-  surrounding sentence, to the endpoint you set up. Nothing is sent until you configure it and choose Translate.
+**No Agent Sessions account or central server is required.** Browsing does not
+modify your agents' session histories. Editing, running commands, importing,
+renaming, and deleting are explicit actions. This app is a companion to your
+coding agents, not a replacement model service or a subscription to them.
 
 ## Install
 
-Releases on GitHub provide:
+Download an installer from **[the latest GitHub release](https://github.com/ginkcodex/agent-sessions/releases/latest)**.
+Expand **Assets** on the release page if the downloads are hidden.
 
-- **macOS**: a universal `.dmg`. The app is not notarized, so the first
-  launch needs right-click → Open.
-- **Linux**: `.deb` and `.rpm` for amd64 and arm64. They need WebKitGTK 4.1.
-- **Windows**: download the amd64 `*_setup.exe` for normal installs and
-  updates. Close Agent Sessions first, then run setup as your normal user.
-  It is not code-signed, so SmartScreen may show "Windows protected your PC":
-  choose More info → Run anyway. It installs for the current user in
-  `%LOCALAPPDATA%\Programs\Agent Sessions` without an admin prompt, and needs
-  the WebView2 Runtime, which Windows 11 includes. The `.msi` is also available
-  for manual installation/recovery; see [Windows setup](packaging/windows/README.md).
+| Platform | Architecture | Download |
+| --- | --- | --- |
+| **Windows** | x64 / amd64 | `agent-sessions_<version>_windows_amd64_setup.exe` |
+| **macOS** | Apple silicon + Intel | `agent-sessions_<version>_macos_universal.dmg` |
+| **Debian / Ubuntu** | amd64 or arm64 | `agent-sessions_<version>_<arch>.deb` |
+| **Fedora / RPM-based Linux** | x86_64 or aarch64 | `agent-sessions-<version>-1.<arch>.rpm` |
 
-Windows setup removes an existing installation in a **separate transaction**
-(before installing the bundled MSI); an already-absent installation is fine.
-If installation then fails, the old version may no longer be installed: setup
-keeps its MSI and logs under `%LOCALAPPDATA%\ginkcode\Agent Sessions\Setup`
-for retry/recovery. It does not promise rollback to the previous version.
+On Linux, `uname -m` reports `x86_64` for amd64 or `aarch64` for arm64.
+Choose the matching package. Native Windows ARM64 installers are not currently
+published.
 
-Every package includes the remote servers. The CLI is not packaged; build it
-with `make cli`.
+### Windows
+
+1. Download the **`_setup.exe`** installer. Use it for both new installations
+   and updates.
+2. Close Agent Sessions and any processes using its installed files.
+3. Run setup **as your normal Windows user**, not as administrator, and follow
+   the wizard.
+4. Open **Agent Sessions** from the Start menu.
+
+The app installs for the current user in
+`%LOCALAPPDATA%\Programs\Agent Sessions`, without an admin prompt. It requires
+[Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/),
+which Windows 11 includes.
+
+The installer is **not code-signed**. If SmartScreen shows “Windows protected
+your PC,” choose **More info → Run anyway** only after verifying that you trust
+the download.
+
+> **Updating:** setup removes the old installation before installing the new
+> one. If the new installation fails, the old version is not automatically
+> restored. Setup retains its MSI and logs under
+> `%LOCALAPPDATA%\ginkcode\Agent Sessions\Setup` for recovery. A standalone
+> `.msi` is also available. See [Windows setup and recovery](packaging/windows/README.md).
+
+### macOS
+
+1. Download and open the **universal `.dmg`**.
+2. Drag **Agent Sessions** into **Applications**.
+3. Open it from Applications.
+
+The same download supports **Apple silicon and Intel Macs**. The app is ad-hoc
+signed, **not notarized**. If macOS blocks the first launch, try right-clicking
+the app and choosing **Open**. Depending on your macOS version, you may need to
+attempt a launch first, then use **System Settings → Privacy & Security → Open
+Anyway**. Only approve a download you trust.
+
+### Linux
+
+Download the package for your distribution and architecture, then run the
+appropriate command from the directory containing it. Replace the example
+filename with the file you downloaded.
+
+**Debian / Ubuntu**
+
+```sh
+sudo apt install ./agent-sessions_<version>_amd64.deb
+```
+
+**Fedora**
+
+```sh
+sudo dnf install ./agent-sessions-<version>-1.x86_64.rpm
+```
+
+The packages declare their **GTK 3** and **WebKitGTK 4.1** runtime dependencies;
+your package manager installs them from your distribution's repositories.
+A distribution providing these libraries is required. Linux release builds use
+Ubuntu 22.04 as their build baseline.
+
+Launch **Agent Sessions** from your applications menu, or run:
+
+```sh
+agent-sessions
+```
+
+### Verify a download
+
+Each release includes `SHA256SUMS`. Download it alongside your installer and
+compare the installer's checksum with its entry in that file:
+
+```sh
+# Linux
+sha256sum <downloaded-file>
+
+# macOS
+shasum -a 256 <downloaded-file>
+```
+
+```powershell
+# Windows PowerShell
+Get-FileHash .\<downloaded-file> -Algorithm SHA256
+```
+
+Desktop packages include the headless servers used for SSH and WSL connections;
+you do not need to install the desktop app on each remote host.
+
+## Get started
+
+1. **Run a supported coding agent at least once.** Agent Sessions discovers
+   existing histories from Claude Code, Codex CLI, and OpenCode. No import is
+   needed for sessions in their normal data directories.
+2. **Open Agent Sessions and choose a host.** Use your local computer, select
+   a WSL distribution on Windows, or connect to an SSH host.
+3. **Find your work.** Browse by project or agent, filter the list, or press
+   `/` to search transcript text.
+4. **Read or continue.** Open a transcript, resume it in the built-in terminal,
+   or create a handoff for another agent. You can also open a workspace and
+   start a fresh session.
+
+Resuming or starting an agent requires that agent to be installed and configured
+on the selected host. Agent Sessions does not supply agent accounts, API credits,
+or subscriptions.
+
+## What you can do
+
+### Find and understand past work
+
+- **One session catalog** for Claude Code, Codex CLI, and OpenCode histories
+  (including OpenCode CLI and Desktop).
+- Group by directory, by agent, or use a flat list; filter by agent, directory,
+  and time.
+- **Full-text transcript search** with jumps to matching messages.
+- Cached indexing and file watchers keep the list up to date as agents work.
+- Read Markdown, tool calls and results, patches, reasoning, compactions, and
+  linked subagent transcripts.
+- Switch between **Chat**, **Activity**, and **All** detail levels. Inspect
+  working directories, Git branches, timestamps, and available token/cost data.
+
+### Continue in the right agent
+
+- Resume a session using its agent's native command, copy that command, or
+  launch it in a supported external terminal on local/WSL hosts.
+- Run agents and shells in the **built-in tabbed terminal**, locally or over
+  SSH/WSL. Maximize the panel without losing tabs or scrollback.
+- Start fresh sessions in an existing project or an explicitly opened workspace.
+- **Continue in another agent** with a generated handoff document: choose a
+  context budget, include reasoning if needed, and optionally redact secrets.
+  This passes context to the new agent; it does not convert one agent's native
+  session format into another's.
+- Rename sessions in the supported agents' native stores.
+
+### Work with project files and Git
+
+- Open project files from **Go to File**, transcript links, or terminal paths.
+  Links such as `src/main.ts:42` can reveal the referenced line.
+- Browse local and remote trees; create, upload, rename, or delete files and
+  folders. Search and replace project text.
+- Make focused edits with explicit save, unsaved-draft indicators, and
+  on-disk conflict checks.
+- Review Git diffs and history; stage/unstage, discard changes, commit/amend,
+  and create or switch branches. Fetch, fast-forward pull, and non-force push
+  are available in the project UI.
+- Enable project-approved code checks and language-tool features such as
+  diagnostics, hover, and definition/reference navigation. Support depends on
+  the language, platform, and available tools; this is a lightweight workbench,
+  not a full IDE.
+
+> **Editing limits:** binary, non-UTF-8, mixed-line-ending, symlinked, protected,
+> and larger-than-500-KB files stay read-only. Drafts live in memory, not in a
+> recovery file; a crash or forced quit loses them. Saves write in place and
+> are not crash-atomic. File deletion is permanent, not a move to Trash.
+
+### Share, restore, and manage sessions
+
+- Export **`.agent-session.zip`** bundles. **Complete** bundles retain native
+  files; **share-safe** bundles omit native files and redact recognized secrets
+  and home paths.
+- Open a bundle to read it or prepare a handoff. Complete bundles can also be
+  restored into supported agents' stores with a preview of affected files.
+- Enable session deletion separately in Settings. A preview shows the files
+  involved, and live sessions cannot be deleted.
+- Claude Code session deletion uses Trash on Linux/macOS or Recycle Bin on
+  Windows. Codex and OpenCode deletion is permanent through their CLIs and
+  requires an additional opt-in.
+
+**Redaction is best-effort, not a guarantee.** Always review a bundle or handoff
+before sharing it.
+
+### Make it comfortable
+
+- Light, dark, and system themes; local or UTC timestamps.
+- Optional message or selected-text translation through an OpenAI-compatible
+  endpoint you configure. Selected-text translation includes the surrounding
+  sentence as context.
+- `Ctrl+,` (`⌘,` on macOS) opens Settings; `/` opens transcript search;
+  `Esc` closes dialogs.
+
+## Remote hosts and WSL
+
+**SSH:** select an alias from `~/.ssh/config` or enter a host. The app uses your
+system `ssh`, deploys a bundled headless server, verifies its archive against
+`SHA256SUMS`, and communicates over the SSH session. Remote hosts can run
+**Linux or macOS, on amd64 or arm64**. No public application server or inbound
+application port is required on the remote host.
+
+**WSL:** on Windows, distributions appear as separate hosts and are accessed
+through `wsl.exe`; SSH setup is not required.
+
+- Browse sessions, use the terminal, and work with project files on the
+  selected host.
+- Configure environment overrides per host for nonstandard agent data roots.
+- On Linux/macOS, SSH password and passphrase prompts appear in the app.
+  On Windows, SSH must authenticate without prompts, using keys or an agent.
+- Save and start/stop **SSH local port forwards** to reach remote development
+  services through `127.0.0.1`. This feature is for SSH hosts, not WSL targets.
+
+Remote access is not automatic synchronization: histories remain on their
+original hosts unless you explicitly export or restore them.
+
+## Privacy and data
+
+Session browsing runs locally against files on the selected host. There is
+**no telemetry** and no Agent Sessions cloud account. Agent authentication
+files such as `.credentials.json`, `auth.json`, and OpenCode account tables
+are not read for session discovery.
+
+Network activity can include SSH connections and Git operations you request,
+optional translation, and language-tool/dependency downloads for enabled code
+features. Agents and commands you run in terminals have their own network and
+privacy behavior. A loopback listener coordinates app windows; explicitly
+started SSH port forwards also listen locally.
+
+**Translation sends the chosen message or selection and its context to your
+configured endpoint.** It is not required for browsing. Code tools run with
+your user permissions, **not in a sandbox**; approved checks may execute project
+code, including Rust build scripts or procedural macros.
+
+### Agent data locations
+
+| Agent | Default location | Override |
+| --- | --- | --- |
+| Claude Code | `~/.claude` | `CLAUDE_CONFIG_DIR` |
+| Codex CLI | `~/.codex` | `CODEX_HOME` |
+| OpenCode | `~/.local/share/opencode` | `XDG_DATA_HOME` (base directory) |
+
+### Application data locations
+
+| Platform | Settings directory (`config.toml`) | Cache directory |
+| --- | --- | --- |
+| Linux | `~/.config/agent-sessions` | `~/.cache/agent-sessions` |
+| macOS | `~/Library/Application Support/agent-sessions` | `~/Library/Caches/agent-sessions` |
+| Windows | `%APPDATA%\agent-sessions` | `%LOCALAPPDATA%\agent-sessions\cache` |
+
+The cache contains transcript text. Configuration can contain your translation
+API key; treat both configuration and cache as sensitive. The app requests
+owner-only (`0600`) file permissions where supported.
 
 ## CLI
 
-`agent-sessions-cli` inspects sessions without the GUI:
+A headless CLI is available for inspecting sessions and preparing handoffs or
+bundles without the desktop UI. Linux/macOS releases publish compressed
+`agent-sessions-cli-<os>-<arch>.gz` binaries, also used as remote servers.
+The desktop installer does not install a standalone CLI on your `PATH`.
+You can build one with `make cli`.
 
 ```sh
-agent-sessions-cli scan [--agent claude-code] [--json] [--all]   # table of sessions
-agent-sessions-cli show <agent> <id> [--json] [--meta]           # one transcript
-agent-sessions-cli handoff <agent> <id> --target <agent> [--budget compact|detailed|full|unlimited|N] [--redact]
-agent-sessions-cli export <agent> <id> [--profile complete|share-safe] [--redact] -o <file>
-agent-sessions-cli inspect <bundle> [--json]
-agent-sessions-cli detect                                        # which agents are installed
+agent-sessions-cli scan --json
+agent-sessions-cli show claude-code <session-id>
+agent-sessions-cli handoff claude-code <session-id> --target codex --budget detailed --redact
+agent-sessions-cli export claude-code <session-id> --profile share-safe -o session.agent-session.zip
+agent-sessions-cli inspect session.agent-session.zip --json
+agent-sessions-cli detect
 agent-sessions-cli version
 ```
 
-Agents are `claude-code`, `codex` and `opencode`. `serve` and `transfer` are
-used by the desktop app on remote hosts.
+Agent identifiers are `claude-code`, `codex`, and `opencode`. Run
+`agent-sessions-cli` without arguments to print command syntax. `serve` and
+`transfer` support desktop remote operations.
 
-## Build
+## Build from source
 
-Requires Go 1.26+ and Node.js for the frontend. The desktop app also needs
-the [Wails v2 CLI](https://wails.io) (`go install
-github.com/wailsapp/wails/v2/cmd/wails@v2.17.0`), and on Linux `gcc`,
-`libgtk-3-dev` and `libwebkit2gtk-4.1-dev`.
-
-`go install` puts `wails` in `$(go env GOPATH)/bin`, usually `~/go/bin`. If
-that folder is not on your `PATH`, the build stops with `wails: command not
-found`. Add it to `PATH` in your shell profile, or pass the path to make:
-`make package-macos WAILS=$HOME/go/bin/wails`.
+The application uses **Go, Wails v2, and Svelte**. Use the Go version specified
+in [`go.mod`](go.mod) (currently **1.26.8**) or newer, **Node.js 22** (the CI
+version), npm, and Make.
 
 ```sh
-make test            # go test -race ./...
-make lint            # golangci-lint (via go tool)
-make fmt             # gofumpt + golangci-lint fmt
-make cli             # build bin/agent-sessions-cli
-make dev             # run the desktop app with live reload
-make app             # build the desktop app
-make remote-servers  # build the remote servers into build/remote
-make help            # every target
+git clone https://github.com/ginkcodex/agent-sessions.git
+cd agent-sessions
+npm ci --prefix frontend
+
+# Headless CLI; no Wails or desktop libraries required.
+make cli
+./bin/agent-sessions-cli version
 ```
 
-Frontend checks run from `frontend/`: `npm test`, `npm run check` and
-`npm run build`.
+For desktop development, install the Wails CLI and add it to your `PATH`:
+
+```sh
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
+
+On **Debian/Ubuntu**, install the desktop build dependencies, then run or build:
+
+```sh
+sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+make dev             # Desktop app with live reload
+make app             # Desktop binary in build/bin/
+```
+
+The `dev` and `app` Make targets check Linux GTK/WebKit dependencies. For
+platform-specific distributable packages, use the targets below; macOS
+packaging must run on macOS with its native build tools, while Windows packaging
+is cross-built on Linux.
+
+| Target | Output / requirements |
+| --- | --- |
+| `make package-linux` | `.deb` and `.rpm` in `dist/`; Linux desktop build dependencies |
+| `make package-macos` | Universal `.dmg` in `dist/`; macOS and Wails CLI |
+| `make package-windows` | x64 setup `.exe` and `.msi` in `dist/`; Linux, Wails CLI, `jq`, `python3`, `wixl`, and `gcc-mingw-w64-x86-64` |
+| `make remote-servers` | Headless server archives in `build/remote/` |
+| `make conpty` | Windows terminal runtime in `build/conpty/` |
+
+Run `make help` for all targets. If `wails` is not on your `PATH`, pass its
+location explicitly, for example `make package-macos WAILS=$HOME/go/bin/wails`.
+See [Windows packaging notes](packaging/windows/README.md) for installer build
+options and recovery details.
+
+### Checks
+
+```sh
+make test                       # Go tests with the race detector
+make lint                       # golangci-lint via go tool
+make fmt                        # gofumpt + golangci-lint fmt
+npm --prefix frontend test
+npm --prefix frontend run check
+npm --prefix frontend run build
+```
+
+## Documentation and development
+
+- [Session formats](docs/formats.md) — on-disk formats used by the readers.
+- [Product specification](SPEC.md) — design background; some original scope
+  notes predate the current terminal and editing features.
+- [Task breakdown](TASKS.md) and [implementation plans](docs/plan/README.md).
+- [Windows setup and packaging](packaging/windows/README.md).
+- [Report a bug or request a feature](https://github.com/ginkcodex/agent-sessions/issues).
+
+<details>
+<summary><strong>Release workflow</strong></summary>
+
+Pushing a `v<version>` tag runs [the release workflow](.github/workflows/release.yml):
+tests, universal macOS packaging, Linux amd64/arm64 packaging, Windows amd64
+packaging, and GitHub Release publication with checksums. The tag must match
+`info.productVersion` in `wails.json`. Suffixed tags publish as pre-releases.
+
+```sh
+make version               # Current version and whether its tag exists
+make tags                  # Release tags, newest first
+make set-version V=0.2.0   # Update wails.json and commit
+make release               # Tag HEAD and push the tag
+make untag                 # Delete a local tag created by mistake
+```
+
+</details>
 
 ### File icon credits
 
 Go to File uses [vscode-icons](https://github.com/vscode-icons/vscode-icons)
-v13.0.0, copyright the vscode-icons contributors. The icons are copied unchanged
-and licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/);
-branded icons remain subject to their owners' licences. See
-[`frontend/public/file-icons/LICENSE.md`](frontend/public/file-icons/LICENSE.md).
-To regenerate the local icons and filename mappings, run
+v13.0.0, copyright the vscode-icons contributors. Icons are copied unchanged
+under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); branded
+icons remain subject to their owners' licences. See the
+[local license](frontend/public/file-icons/LICENSE.md).
+To regenerate the icons and filename mappings, run
 `node scripts/file-icons.mjs` from `frontend/` (requires `unzip` and network access).
-
-## Release
-
-Pushing a `v<version>` tag runs `.github/workflows/release.yml`: it tests,
-then builds a universal macOS `.dmg`, Linux `.deb`/`.rpm` packages (amd64
-and arm64) and Windows amd64 `*_setup.exe` and `.msi` files, and publishes them as the GitHub
-Release for that tag. The tag must match `info.productVersion` in
-`wails.json`. Tags with a suffix (`v0.2.0-beta.1`) publish as pre-releases.
-
-```sh
-make version               # current version and whether its tag exists
-make tags                  # release tags, newest first
-make set-version V=0.2.0   # bump wails.json and commit it
-make release               # tag HEAD as v<version> and push the tag
-make untag                 # delete a local tag created by mistake
-```
-
-Local equivalents write to `dist/`: `make package-linux` (needs `gcc`,
-`libgtk-3-dev` and `libwebkit2gtk-4.1-dev`), `make package-macos` (macOS
-with the Wails CLI) and `make package-windows` (Linux with the Wails CLI,
-`jq`, `python3`, `wixl` and `gcc-mingw-w64-x86-64`). The Windows target
-also builds the bundled setup wrapper; `make windows-setup MSI=/path/to/file.msi`
-wraps an existing MSI without rebuilding the app. See the
-[Windows packaging notes](packaging/windows/README.md) for version/output options
-and recovery details.
