@@ -7,16 +7,27 @@
   import { terminals } from '../../stores/terminals.svelte';
   import { link } from '../../stores/link.svelte';
   import AttentionDot from '../common/AttentionDot.svelte';
+  import { sessionRename } from '../../stores/sessionRename.svelte';
 
   interface Props {
     session: SessionMeta;
     isSelected: boolean;
     onSelect: (session: SessionMeta) => void;
+    /** Asks the list to open the session menu at viewport coordinates. The
+     * list renders it: virtual-list items are transformed and contained, which
+     * would clip a fixed-position menu drawn inside the row. */
+    onMenu?: (session: SessionMeta, x: number, y: number) => void;
   }
 
-  let { session, isSelected, onSelect }: Props = $props();
+  let { session, isSelected, onSelect, onMenu }: Props = $props();
 
   let showCountTooltip = $state(false);
+  function openMenu(event: MouseEvent) {
+    if (!onMenu) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onMenu(session, event.clientX, event.clientY);
+  }
 
   let messageTotal = $derived(session.counts.user + session.counts.assistant);
   let displayTitle = $derived(session.title || session.firstPrompt || '(untitled)');
@@ -56,7 +67,15 @@
   tabindex="0"
   aria-selected={isSelected}
   onclick={handleClick}
+  oncontextmenu={openMenu}
   onkeydown={(e) => {
+    if (e.key === 'F2') { e.preventDefault(); e.stopPropagation(); sessionRename.open(session); return; }
+    if (onMenu && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
+      e.preventDefault(); e.stopPropagation();
+      const rect = e.currentTarget.getBoundingClientRect();
+      onMenu(session, rect.left + 12, rect.top + 24);
+      return;
+    }
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       handleClick();

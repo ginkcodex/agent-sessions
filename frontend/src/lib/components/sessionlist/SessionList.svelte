@@ -14,6 +14,22 @@
   import Dropdown from '../common/Dropdown.svelte';
   import { terminals } from '../../stores/terminals.svelte';
   import { link } from '../../stores/link.svelte';
+  import ContextMenu, { type ContextMenuItem } from '../common/ContextMenu.svelte';
+  import { sessionRename } from '../../stores/sessionRename.svelte';
+
+  // Rendered outside VirtualList: its transformed, contained items would become
+  // the containing block of a fixed-position menu and clip it.
+  let sessionMenu = $state<{ session: SessionMeta; x: number; y: number } | null>(null);
+  function openSessionMenu(session: SessionMeta, x: number, y: number) {
+    sessionMenu = { session, x, y };
+  }
+  // ContextMenu closes (clearing sessionMenu) before running an action, so each
+  // action must capture its session here rather than read sessionMenu later.
+  function sessionMenuItems(session: SessionMeta): ContextMenuItem[] {
+    return [
+      { label: 'Rename session…', disabled: link.stale || link.locked || sessionRename.busy, onSelect: () => sessionRename.open(session) },
+    ];
+  }
 
   import { nodeDirectory } from '../../tree';
   import { workspaces } from '../../stores/workspaces.svelte';
@@ -298,9 +314,14 @@
             isSelected={appState.selectedSessionRef?.agent === session.ref.agent &&
               appState.selectedSessionRef?.id === session.ref.id}
             onSelect={handleSelectSession}
+            onMenu={openSessionMenu}
           />
         {/snippet}
       </VirtualList>
+    {/if}
+    {#if sessionMenu}
+      <ContextMenu x={sessionMenu.x} y={sessionMenu.y} ariaLabel="Session actions"
+        items={sessionMenuItems(sessionMenu.session)} onClose={() => (sessionMenu = null)} />
     {/if}
   </div>
 </div>

@@ -34,6 +34,7 @@ type checkpoint struct {
 	LastAssistantID string            `json:"lastAssistantId"`
 	PendingUsage    model.TokenUsage  `json:"pendingUsage"`
 	AITitle         string            `json:"aiTitle"`
+	CustomTitle     string            `json:"customTitle,omitempty"`
 	Summary         string            `json:"summary"`
 
 	FirstUserSeen         bool   `json:"firstUserSeen,omitempty"`
@@ -52,7 +53,7 @@ type checkpoint struct {
 
 // checkpointVersion 4 normalizes Windows CWDs in their own style; 5 adds
 // Turn. A full rescan replaces metadata cached by earlier versions.
-const checkpointVersion = 5
+const checkpointVersion = 6 // Native custom-title precedence requires a full rescan.
 
 var ignoredRecordTypes = map[string]bool{
 	"attachment": true, "last-prompt": true, "mode": true,
@@ -159,6 +160,10 @@ func (c *checkpoint) consume(line []byte, d *provider.Diagnostics) {
 			}
 			return true
 		})
+	case "custom-title":
+		if title := gjson.GetBytes(line, "customTitle").String(); title != "" {
+			c.CustomTitle = title
+		}
 	case "ai-title":
 		if title := gjson.GetBytes(line, "aiTitle").String(); title != "" {
 			c.AITitle = title
@@ -302,6 +307,8 @@ func (c *checkpoint) finalize(fileModTime time.Time) model.SessionMeta {
 		meta.UpdatedAt = fileModTime.UTC()
 	}
 	switch {
+	case c.CustomTitle != "":
+		meta.Title = c.CustomTitle
 	case c.AITitle != "":
 		meta.Title = c.AITitle
 	case c.SubagentDescription != "":

@@ -20,7 +20,7 @@ import (
 var threadColumns = []string{
 	"id", "rollout_path", "cwd", "title", "first_user_message", "preview",
 	"model", "tokens_used", "archived", "git_branch", "cli_version",
-	"created_at_ms", "updated_at_ms", "created_at", "updated_at",
+	"created_at_ms", "updated_at_ms", "created_at", "updated_at", "name",
 }
 
 type indexedThread struct {
@@ -98,10 +98,10 @@ func (p *Provider) loadIndex(ctx context.Context, path string) (threadIndex, err
 		return index, fmt.Errorf("query threads in %q: %w", path, err)
 	}
 	for rows.Next() {
-		var id, rollout, cwd, title, first, preview, modelName, branch, version sql.NullString
+		var id, rollout, cwd, title, first, preview, modelName, branch, version, nativeName sql.NullString
 		var tokens, archived, createdMs, updatedMs, createdSec, updatedSec sql.NullInt64
 		err = rows.Scan(&id, &rollout, &cwd, &title, &first, &preview, &modelName,
-			&tokens, &archived, &branch, &version, &createdMs, &updatedMs, &createdSec, &updatedSec)
+			&tokens, &archived, &branch, &version, &createdMs, &updatedMs, &createdSec, &updatedSec, &nativeName)
 		if err != nil {
 			break
 		}
@@ -116,6 +116,11 @@ func (p *Provider) loadIndex(ctx context.Context, path string) (threadIndex, err
 			Model:        modelName.String,
 			GitBranch:    branch.String,
 			AgentVersion: version.String,
+		}
+		// Current native thread/name/set persists the explicit name separately
+		// from the generated title (migration 0041_threads_name.sql).
+		if nativeName.Valid && nativeName.String != "" {
+			meta.Title = nativeName.String
 		}
 		if meta.FirstPrompt == "" {
 			meta.FirstPrompt = model.TruncateRunes(model.OneLine(preview.String), 300)

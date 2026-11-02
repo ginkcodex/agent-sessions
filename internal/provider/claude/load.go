@@ -189,7 +189,7 @@ func (l *loader) record(line []byte, start int64, lineNo int) {
 		l.system(&rec)
 	case "attachment":
 		l.attachment(&rec)
-	case "ai-title", "summary", "last-prompt", "mode", "cost-state",
+	case "custom-title", "ai-title", "summary", "last-prompt", "mode", "cost-state",
 		"queue-operation", "atis-latch":
 		// Bookkeeping handled by the scan aggregator.
 	default:

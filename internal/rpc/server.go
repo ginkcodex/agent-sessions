@@ -356,6 +356,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 
 	s.mu.Lock()
 	_, caps.AgentSettings = s.backend.(engine.AgentSettingsBackend)
+	_, caps.RenameSession = s.backend.(engine.RenameSessionBackend)
 	_, caps.DiscoveryStatus = s.backend.(engine.DiscoveryBackend)
 	_, caps.TranscriptDelta = s.backend.(engine.TranscriptDeltaBackend)
 	_, caps.ProjectSnapshot = s.backend.(engine.ProjectSnapshotBackend)
@@ -699,6 +700,17 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
 		}
 		return backend.PrepareFileDownload(ctx, p.Dir, p.Path, p.Token)
+
+	case "renameSession":
+		b, ok := backend.(engine.RenameSessionBackend)
+		if !ok {
+			return nil, engine.ErrUnsupportedAction
+		}
+		var p RenameSessionParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return nil, b.RenameSession(ctx, p.Ref, p.Title)
 
 	case "getAgentSettings", "setAgentSettings":
 		b, ok := backend.(engine.AgentSettingsBackend)

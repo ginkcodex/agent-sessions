@@ -917,6 +917,8 @@ export interface ReplaceResult {
 }
 
 export interface HostCapabilities {
+  /** Native persisted session rename; absent on older hosts. */
+  renameSession?: boolean;
   /** Optional retained, unverified project paths hint. */
   projectSnapshot?: boolean;
   /** Absent on older servers; discovery readiness is then unknown. */

@@ -251,6 +251,7 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   setManageEnabled(enabled: boolean): Promise<ManageSettings>;
   setAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
   setPrunePromptHistory(prune: boolean): Promise<ManageSettings>;
+  renameSession(ref: SessionRef, title: string): Promise<void>;
   previewDelete(refs: SessionRef[]): Promise<DeletePreview>;
   deleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult>;
   buildHandoff(req: HandoffRequest): Promise<HandoffPreview>;
@@ -405,6 +406,7 @@ interface WailsAppBinding {
   SetManageEnabled(enabled: boolean): Promise<ManageSettings>;
   SetAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
   SetPrunePromptHistory(prune: boolean): Promise<ManageSettings>;
+  RenameSession?(ref: SessionRef, title: string): Promise<void>;
   PreviewDelete(refs: SessionRef[]): Promise<DeletePreview>;
   DeleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult>;
   BuildHandoff(req: HandoffRequest): Promise<HandoffPreview>;
@@ -1247,6 +1249,15 @@ class WailsBackendAPI implements BackendAPI {
   async setPrunePromptHistory(prune: boolean): Promise<ManageSettings> {
     try {
       return await this.binding.SetPrunePromptHistory(prune);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async renameSession(ref: SessionRef, title: string): Promise<void> {
+    try {
+      if (!this.binding.RenameSession) throw new Error('This app does not support native session renaming. Update the app to rename sessions.');
+      await this.binding.RenameSession(ref, title);
     } catch (e) {
       throw normalizeError(e);
     }

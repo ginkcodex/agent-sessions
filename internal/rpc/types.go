@@ -53,6 +53,7 @@ type Notification struct {
 
 // Capabilities indicates the features supported on the remote host.
 type Capabilities struct {
+	RenameSession   bool `json:"renameSession,omitempty"`
 	AgentSettings   bool `json:"agentSettings,omitempty"`
 	DiscoveryStatus bool `json:"discoveryStatus,omitempty"`
 	GitDiff         bool `json:"gitDiff,omitempty"`

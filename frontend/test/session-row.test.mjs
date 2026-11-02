@@ -8,6 +8,7 @@ const component = await loadServerComponent(url, [
   ["'../../date'", JSON.stringify(new URL('../src/lib/date.ts', import.meta.url).href)],
   ["import CountTooltip from './CountTooltip.svelte';", 'const CountTooltip = () => {};'],
   ["import AttentionDot from '../common/AttentionDot.svelte';", 'const AttentionDot = () => {};'],
+  ["import { sessionRename } from '../../stores/sessionRename.svelte';", 'const sessionRename = { busy: false };'],
   ...['manage', 'preferences', 'terminals', 'link'].map(name => [
     `import { ${name} } from '../../stores/${name}.svelte';`, fixtureStore(name),
   ]),

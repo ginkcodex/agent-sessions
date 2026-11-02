@@ -195,6 +195,8 @@ const list = await loadServerComponent(new URL('../src/lib/components/sessionlis
   ["import EmptyState from '../common/EmptyState.svelte';", 'const EmptyState = globalThis.__discoveryEmptyComponent;'],
   ["import ErrorState from '../common/ErrorState.svelte';", 'const ErrorState = () => {};'],
   ["import Dropdown from '../common/Dropdown.svelte';", 'const Dropdown = () => {};'],
+  ["import ContextMenu from '../common/ContextMenu.svelte';", 'const ContextMenu = () => {};'],
+  ["import { sessionRename } from '../../stores/sessionRename.svelte';", 'const sessionRename = { busy: false };'],
 ]);
 async function panes(s, { unavailable = false, rows = false, filter = {}, age = 'any', reloading = false } = {}) {
   const fixture = {

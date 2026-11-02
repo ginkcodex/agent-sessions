@@ -20,6 +20,7 @@
   import ImportDialog from './lib/components/common/ImportDialog.svelte';
   import ImportDirectoryDialog from './lib/components/common/ImportDirectoryDialog.svelte';
   import OpenWorkspaceDialog from './lib/components/common/OpenWorkspaceDialog.svelte';
+  import RenameSessionDialog from './lib/components/common/RenameSessionDialog.svelte';
   import { workspaces } from './lib/stores/workspaces.svelte';
   import { agentSettings } from './lib/stores/agentSettings.svelte';
   import { nodeDirectory } from './lib/tree';
@@ -590,6 +591,7 @@
   <ImportDialog />
   <ImportDirectoryDialog />
   <OpenWorkspaceDialog />
+  <RenameSessionDialog />
   <MediaViewer />
   <PrintDialog />
   <PrintSheet />

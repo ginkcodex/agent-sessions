@@ -675,6 +675,10 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     };
   }
 
+  async renameSession(_ref: SessionRef, _title: string): Promise<void> {
+    throw new Error('Native session renaming is unavailable in the browser mock. Use the desktop app.');
+  }
+
   async copyResumeCommand(ref: SessionRef): Promise<string> {
     const meta = await this.getSessionMeta(ref);
     if (ref.agent === 'codex') {
