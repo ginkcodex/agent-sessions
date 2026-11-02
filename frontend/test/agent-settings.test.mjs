@@ -37,9 +37,11 @@ test('agent selection defaults to all, prevents disabling the last and saves can
   store.toggle('claude-code', true);
   assert.deepEqual(store.selected, ['claude-code', 'opencode']);
   assert.equal(store.dirty, true);
+  assert.deepEqual(store.enabledAgents.map(a => a.id), supported.map(a => a.id), 'unsaved drafts do not change filter buttons');
   await store.save();
   assert.deepEqual(f.calls, [['claude-code', 'opencode']]);
   assert.equal(store.settings.restartRequired, true);
+  assert.deepEqual(store.enabledAgents.map(a => a.id), ['claude-code', 'opencode'], 'saved filters update before restart');
   assert.equal(store.dirty, false);
   assert.deepEqual(store.activeAgents.map(a => a.id), supported.map(a => a.id), 'restart-pending selections do not hide currently active agents');
 });
@@ -109,7 +111,7 @@ test('native agent settings API forwards the selection and reports unsupported o
   }
 });
 
-test('agent summary offers only active agents, including future provider labels', async () => {
+test('agent summary offers only saved enabled agents, including future provider labels', async () => {
   const summaryURL = new URL('../src/lib/components/sidebar/AgentSummary.svelte', import.meta.url);
   const summary = await loadServerComponent(summaryURL, [
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
@@ -117,7 +119,7 @@ test('agent summary offers only active agents, including future provider labels'
   ]);
   const html = await renderWithFixture(summary, {
     appState: { agentCounts: { codex: 8, kiro: 2 }, filter: {} },
-    agentSettings: { activeAgents: [{ id: 'codex', label: 'Codex' }, { id: 'kiro', label: 'Kiro' }] },
+    agentSettings: { enabledAgents: [{ id: 'codex', label: 'Codex' }, { id: 'kiro', label: 'Kiro' }], activeAgents: supported.map(a => ({ id: a.id, label: a.name })) },
   });
   assert.match(html, /Codex sessions \(8\)/);
   assert.match(html, /Kiro sessions \(2\)/);

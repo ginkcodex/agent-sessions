@@ -92,7 +92,7 @@
   </div>
 
   <div class="row-middle">
-    <span class="title-text" title={displayTitle}>
+    <span class="title-text" class:subagent={Boolean(session.parentId)} title={displayTitle}>
       {displayTitle}
     </span>
   </div>
@@ -234,6 +234,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     width: 100%;
+  }
+
+  .title-text.subagent {
+    font-style: italic;
+    color: var(--text-muted);
   }
 
   .row-bottom {

@@ -3,6 +3,13 @@
 
   import { agentSettings } from '../../stores/agentSettings.svelte';
 
+  $effect(() => {
+    const agent = appState.filter.agent;
+    if (agent && !agentSettings.enabledAgents.some(a => a.id === agent)) {
+      void appState.setFilter({ agent: undefined });
+    }
+  });
+
   function toggleAgentFilter(agent: string) {
     if (appState.filter.agent === agent) {
       appState.setFilter({ agent: undefined });
@@ -14,7 +21,7 @@
 
 <div class="agent-summary" aria-label="Session summary by agent">
   <div class="summary-chips">
-    {#each agentSettings.activeAgents as agent (agent.id)}
+    {#each agentSettings.enabledAgents as agent (agent.id)}
       <button
         type="button"
         class="chip agent-{agent.id}"
