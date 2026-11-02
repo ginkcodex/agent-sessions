@@ -12,6 +12,8 @@
   import { manage } from '../../stores/manage.svelte';
   import { AGE_FILTERS, filterSessionsByAge, isAgeFilter } from '../../manage';
   import Dropdown from '../common/Dropdown.svelte';
+  import { terminals } from '../../stores/terminals.svelte';
+  import { link } from '../../stores/link.svelte';
 
   const AGE_OPTIONS = AGE_FILTERS.map((f) => ({ value: f.id, label: f.label }));
 
@@ -81,6 +83,7 @@
   }
 
   function handleSelectSession(session: SessionMeta) {
+    if (!session.cwdMissing) terminals.selectDirectory(session.cwd, link.dataHost ?? '');
     appState.selectSession(session.ref, 'push');
   }
 

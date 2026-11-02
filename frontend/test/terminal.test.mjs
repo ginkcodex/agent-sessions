@@ -629,6 +629,69 @@ test('TerminalsStore tracks cwd independently for active and inactive tabs', asy
   });
 });
 
+test('workspace activation is wired to directory, session and transcript interactions without stealing focus', () => {
+  const source = path => readFileSync(new URL(`../src/lib/components/${path}.svelte`, import.meta.url), 'utf8');
+  assert.match(source('sidebar/GroupTree'), /const cwd = nodeDirectory\(appState\.groups, node\.key\);\s*if \(cwd\) terminals\.selectDirectory\(cwd, link\.dataHost \?\? ''\)/);
+  assert.match(source('sessionlist/SessionList'), /function handleSelectSession\(session: SessionMeta\) \{\s*if \(!session\.cwdMissing\) terminals\.selectDirectory\(session\.cwd, link\.dataHost \?\? ''\)/);
+  const transcript = source('transcript/TranscriptView');
+  assert.match(transcript, /onpointerdown=\{activateWorkspaceTerminal\}/);
+  assert.match(transcript, /onfocusin=\{\(event\) => \{ activateWorkspaceTerminal\(\); focusedLink = browserLinkDestination/);
+  assert.match(source('terminal/TerminalView'), /if \(focus && terminals\.focusOnActivation\) t\.focus\(\)/);
+});
+
+test('workspace activation picks the first running matching tab in display order without opening the panel', async () => {
+  await withTerminals(async ({ store }) => {
+    const first = await store.newShell('/a');
+    const other = await store.newShell('/b');
+    const second = await store.newShell('/a');
+    store.setCwd(first.id, '/elsewhere');
+    store.setOpen(false);
+    assert.equal(store.selectDirectory('/a', ''), true);
+    assert.equal(store.active, first.id, 'launch directory identifies the workspace');
+    assert.equal(store.open, false);
+    assert.equal(store.focusOnActivation, false, 'workspace navigation preserves content focus');
+    store.select(first.id);
+    assert.equal(store.focusOnActivation, true, 'explicit terminal selection restores typing focus');
+    store.moveGroup(store.groups[2].id, 0);
+    store.selectDirectory('/a', '');
+    assert.equal(store.active, second.id, 'first follows reordered tabs');
+    second.host = 'remote';
+    store.selectDirectory('/a', '');
+    assert.equal(store.active, first.id, 'same path on another host does not match');
+    first.status = 'exited';
+    assert.equal(store.selectDirectory('/a', ''), false);
+    assert.equal(store.selectDirectory('', ''), false);
+    assert.equal(store.selectDirectory('/missing', ''), false);
+    assert.equal(store.active, first.id, 'no match leaves the active tab alone');
+    store.selectDirectory('/b', '');
+    assert.equal(store.active, other.id);
+  });
+});
+
+test('workspace matching normalizes Windows paths and trailing separators without folding POSIX case', async () => {
+  await withTerminals(async ({ store }) => {
+    const windows = await store.newShell('C:\\Users\\Gink\\project');
+    const posix = await store.newShell('/Project');
+    assert.equal(store.selectDirectory('c:/users/gink/project/', ''), true);
+    assert.equal(store.active, windows.id);
+    assert.equal(store.selectDirectory('/project', ''), false);
+    assert.equal(store.selectDirectory('/Project/', ''), true);
+    assert.equal(store.active, posix.id);
+  });
+});
+
+test('workspace activation selects matching split panes', async () => {
+  await withTerminals(async ({ store }) => {
+    const first = await store.newShell('/a');
+    store.setCwd(first.id, '/nested');
+    const split = await store.split(first.id);
+    await store.newShell('/b');
+    assert.equal(store.selectDirectory('/nested', ''), true);
+    assert.equal(store.active, split.id);
+    assert.equal(store.groups.find(g => g.panes.includes(split.id)).focus, split.id);
+  });
+});
+
 test('TerminalsStore selects a tab by its position while the panel shows', async () => {
   await withTerminals(async ({ store }) => {
     const first = await store.newShell('/a');

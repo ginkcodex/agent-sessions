@@ -12,6 +12,20 @@ export function nodeKind(node: GroupNode): GroupNodeKind {
   return 'session';
 }
 
+/** The workspace of a tree row, inherited by agents and topics under a directory. */
+export function nodeDirectory(groups: GroupNode[], key: string): string | undefined {
+  function walk(nodes: GroupNode[], inherited?: string): string | undefined {
+    for (const node of nodes) {
+      const cwd = node.cwdMissing ? undefined : node.cwd || inherited;
+      if (node.key === key) return cwd;
+      const found = walk(node.children ?? [], cwd);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+  return walk(groups);
+}
+
 /**
  * The last name in a directory label such as ~/Workspaces/app or
  * C:\Users\me\app, for showing above the whole path. Labels without a

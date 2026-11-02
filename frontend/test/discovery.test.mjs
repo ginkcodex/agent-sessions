@@ -170,6 +170,8 @@ test('connection event wins over an older connection snapshot', async () => {
 const emptyComponent = await loadServerComponent(new URL('../src/lib/components/common/EmptyState.svelte', import.meta.url), []);
 globalThis.__discoveryEmptyComponent = emptyComponent.default;
 const common = [
+  ["import { terminals } from '../../stores/terminals.svelte';", 'const terminals = {};'],
+  ["import { link } from '../../stores/link.svelte';", 'const link = {};'],
   ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
   ["import { discovery } from '../../stores/discovery.svelte';", fixtureStore('discovery')],
   ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],

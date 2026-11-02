@@ -32,6 +32,11 @@
   import ErrorState from '../common/ErrorState.svelte';
   import DeleteConfirmDialog from '../common/DeleteConfirmDialog.svelte';
 
+  function activateWorkspaceTerminal() {
+    const session = appState.selectedSessionMeta;
+    if (session && !session.cwdMissing) terminals.selectDirectory(session.cwd, link.dataHost ?? '');
+  }
+
   const fileOpener = createTerminalFileOpener({
     link: () => link,
     epoch,
@@ -660,7 +665,8 @@
   onmouseover={(event) => hoveredLink = browserLinkDestination(event.target, event.currentTarget)}
   onmouseout={(event) => hoveredLink = browserLinkDestination(event.relatedTarget, event.currentTarget)}
   onmouseleave={() => hoveredLink = ''}
-  onfocusin={(event) => focusedLink = browserLinkDestination(event.target, event.currentTarget)}
+  onpointerdown={activateWorkspaceTerminal}
+  onfocusin={(event) => { activateWorkspaceTerminal(); focusedLink = browserLinkDestination(event.target, event.currentTarget); }}
   onfocusout={(event) => focusedLink = browserLinkDestination(event.relatedTarget, event.currentTarget)}
 >
   {#if !appState.selectedSessionRef}

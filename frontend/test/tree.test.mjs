@@ -5,6 +5,7 @@ import {
   defaultCollapsedKeys,
   isCollapsed,
   nodeKind,
+  nodeDirectory,
   directoryName,
   pruneKeys,
   sessionToSelect,
@@ -20,6 +21,20 @@ import {
   saveCollapsedKeys,
 } from '../src/lib/tree.ts';
 import { WINDOWS_DIRS, fixtureStore, loadServerComponent, renderWithFixture } from './helpers.mjs';
+
+test('tree rows inherit their directory through agent, topic and subagent nodes', () => {
+  const groups = [{ key: 'dir', kind: 'directory', cwd: '/project', children: [
+    { key: 'agent', kind: 'agent', children: [
+      { key: 'topic', kind: 'session', children: [{ key: 'subagent', kind: 'session' }] },
+    ] },
+    { key: 'missing', kind: 'directory', cwd: '/gone', cwdMissing: true, children: [{ key: 'missing-topic' }] },
+  ] }, { key: 'global-agent', kind: 'agent', children: [
+    { key: 'other-dir', kind: 'directory', cwd: '/other', children: [{ key: 'other-topic' }] },
+  ] }];
+  for (const key of ['dir', 'agent', 'topic', 'subagent']) assert.equal(nodeDirectory(groups, key), '/project');
+  assert.equal(nodeDirectory(groups, 'other-topic'), '/other');
+  for (const key of ['missing', 'missing-topic', 'global-agent', 'unknown']) assert.equal(nodeDirectory(groups, key), undefined);
+});
 
 test('directoryName takes the last name of a directory label', () => {
   assert.equal(directoryName('~/Workspaces/app'), 'app');
@@ -287,7 +302,9 @@ async function renderGroupTree(filter) {
     ["'../../discovery'", JSON.stringify(new URL('../src/lib/discovery.ts', import.meta.url).href)],
     ["import { manage } from '../../stores/manage.svelte';", 'const manage = {};'],
     ["import { filterSessionsByAge, refsEqual } from '../../manage';", 'const filterSessionsByAge = () => [];const refsEqual = (a, b) => a === b;'],
-    ["import { nodeToHighlight, sessionToSelect } from '../../tree';", 'const nodeToHighlight = () => null;const sessionToSelect = () => null;'],
+    ["import { nodeDirectory, nodeToHighlight, sessionToSelect } from '../../tree';", 'const nodeDirectory = () => undefined;const nodeToHighlight = () => null;const sessionToSelect = () => null;'],
+    ["import { terminals } from '../../stores/terminals.svelte';", 'const terminals = {};'],
+    ["import { link } from '../../stores/link.svelte';", 'const link = {};'],
     ["import GroupNodeItem from './GroupNodeItem.svelte';", 'const GroupNodeItem = () => {};'],
   ]);
   return renderWithFixture(groupTreeModule, {

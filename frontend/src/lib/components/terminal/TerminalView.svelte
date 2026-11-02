@@ -201,7 +201,7 @@
       resize();
     });
     resize();
-    if (active) t.focus();
+    if (active && terminals.focusOnActivation) t.focus();
 
     return () => {
       processSize?.dispose();
@@ -299,9 +299,10 @@
     void terminals.maximized;
     if (!active || !term || !terminals.open) return;
     const t = term;
+    const focus = terminals.focusOnActivation;
     const frame = requestAnimationFrame(() => {
       resize();
-      t.focus();
+      if (focus && terminals.focusOnActivation) t.focus();
     });
     return () => cancelAnimationFrame(frame);
   });

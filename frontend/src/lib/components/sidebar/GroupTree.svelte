@@ -5,7 +5,9 @@
   import { catalogNotice, emptyCatalogState, discoveryProblem } from '../../discovery';
   import { manage } from '../../stores/manage.svelte';
   import { filterSessionsByAge, refsEqual } from '../../manage';
-  import { nodeToHighlight, sessionToSelect } from '../../tree';
+  import { nodeDirectory, nodeToHighlight, sessionToSelect } from '../../tree';
+  import { terminals } from '../../stores/terminals.svelte';
+  import { link } from '../../stores/link.svelte';
   import GroupNodeItem from './GroupNodeItem.svelte';
 
   // Selecting a group also selects the first session shown in the list
@@ -13,6 +15,8 @@
   async function handleSelect(node: GroupNode) {
     // The clicked row shows as selected at once, before its session opens.
     clicked = node.key;
+    const cwd = nodeDirectory(appState.groups, node.key);
+    if (cwd) terminals.selectDirectory(cwd, link.dataHost ?? '');
     try {
       await appState.selectGroup(node.key, 'push');
       // A later click superseded this one while sessions were loading.

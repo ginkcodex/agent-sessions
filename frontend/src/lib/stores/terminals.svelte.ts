@@ -130,6 +130,8 @@ export class TerminalsStore {
   groups = $state<TerminalGroup[]>([]);
   /** The focused pane; its group is the one shown. */
   active = $state<string | null>(null);
+  /** Workspace navigation changes the visible tab without taking typing focus. */
+  focusOnActivation = $state(true);
   open = $state(false);
   maximized = $state(false);
   height = $state(PANEL_HEIGHT.default);
@@ -382,6 +384,7 @@ export class TerminalsStore {
 
   /** Focuses a pane, which shows its group. */
   private focusPane(id: string): void {
+    this.focusOnActivation = true;
     this.active = id;
     const group = this.groupOf(id);
     if (group && group.focus !== id) this.groups = this.groups.map((g) => (g.id === group.id ? { ...g, focus: id } : g));
@@ -572,6 +575,28 @@ export class TerminalsStore {
   cancelClose(): void {
     this.confirming = null;
     this.closeQueue = [];
+  }
+
+  /** Selects the first tab belonging to a workspace, without opening the panel or taking DOM focus. */
+  selectDirectory(dir: string, host: string): boolean {
+    if (!dir) return false;
+    const directoryKey = (path: string) => {
+      const windows = /^[a-z]:[\\/]|^\\\\/i.test(path);
+      const normalized = windows ? path.replace(/\\/g, '/').toLowerCase() : path;
+      return normalized.replace(/\/+$/, '') || '/';
+    };
+    const key = directoryKey(dir);
+    // Follow the visible tab order (which users can rearrange), then pane order.
+    // Use the launch directory: a shell's `cd` does not change its workspace.
+    for (const group of this.groups) {
+      const tab = group.panes.map(id => this.tabs.find(t => t.id === id))
+        .find(t => t?.status === 'running' && t.host === host && t.dir && directoryKey(t.dir) === key);
+      if (!tab) continue;
+      this.select(tab.id);
+      this.focusOnActivation = false;
+      return true;
+    }
+    return false;
   }
 
   /** Focuses a pane, showing its tab. */
