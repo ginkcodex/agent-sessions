@@ -577,7 +577,7 @@ export class TerminalsStore {
     this.closeQueue = [];
   }
 
-  /** Selects the first tab belonging to a workspace, without opening the panel or taking DOM focus. */
+  /** Keeps a matching active pane, otherwise selects the first workspace tab without opening the panel or taking DOM focus. */
   selectDirectory(dir: string, host: string): boolean {
     if (!dir) return false;
     const directoryKey = (path: string) => {
@@ -586,11 +586,16 @@ export class TerminalsStore {
       return normalized.replace(/\/+$/, '') || '/';
     };
     const key = directoryKey(dir);
+    const matches = (tab: PanelTab | undefined) => tab?.status === 'running' && tab.host === host && !!tab.dir && directoryKey(tab.dir) === key;
+    if (matches(this.activeTab)) {
+      this.focusOnActivation = false;
+      return true;
+    }
     // Follow the visible tab order (which users can rearrange), then pane order.
     // Use the launch directory: a shell's `cd` does not change its workspace.
     for (const group of this.groups) {
       const tab = group.panes.map(id => this.tabs.find(t => t.id === id))
-        .find(t => t?.status === 'running' && t.host === host && t.dir && directoryKey(t.dir) === key);
+        .find(matches);
       if (!tab) continue;
       this.select(tab.id);
       this.focusOnActivation = false;

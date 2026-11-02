@@ -646,6 +646,10 @@ test('workspace activation picks the first running matching tab in display order
     const second = await store.newShell('/a');
     store.setCwd(first.id, '/elsewhere');
     store.setOpen(false);
+    assert.equal(store.selectDirectory('/a/', ''), true);
+    assert.equal(store.active, second.id, 'keeps the matching active tab instead of selecting the first');
+    assert.equal(store.focusOnActivation, false);
+    store.select(other.id);
     assert.equal(store.selectDirectory('/a', ''), true);
     assert.equal(store.active, first.id, 'launch directory identifies the workspace');
     assert.equal(store.open, false);
@@ -653,6 +657,9 @@ test('workspace activation picks the first running matching tab in display order
     store.select(first.id);
     assert.equal(store.focusOnActivation, true, 'explicit terminal selection restores typing focus');
     store.moveGroup(store.groups[2].id, 0);
+    store.selectDirectory('/a', '');
+    assert.equal(store.active, first.id, 'reordering does not replace a matching active tab');
+    store.select(other.id);
     store.selectDirectory('/a', '');
     assert.equal(store.active, second.id, 'first follows reordered tabs');
     second.host = 'remote';
