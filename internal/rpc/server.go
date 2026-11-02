@@ -355,6 +355,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 	}
 
 	s.mu.Lock()
+	_, caps.AgentSettings = s.backend.(engine.AgentSettingsBackend)
 	_, caps.DiscoveryStatus = s.backend.(engine.DiscoveryBackend)
 	_, caps.TranscriptDelta = s.backend.(engine.TranscriptDeltaBackend)
 	_, caps.ProjectSnapshot = s.backend.(engine.ProjectSnapshotBackend)
@@ -699,6 +700,19 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.PrepareFileDownload(ctx, p.Dir, p.Path, p.Token)
 
+	case "getAgentSettings", "setAgentSettings":
+		b, ok := backend.(engine.AgentSettingsBackend)
+		if !ok {
+			return nil, engine.ErrUnsupportedAction
+		}
+		if req.Method == "getAgentSettings" {
+			return b.GetAgentSettings(ctx)
+		}
+		var p SetAgentSettingsParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return b.SetAgentSettings(ctx, p.Agents)
 	case "getSettings":
 		return backend.GetSettings(ctx)
 

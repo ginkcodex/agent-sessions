@@ -20,9 +20,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/manage"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
-	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
-	"github.com/ginkcode/agent-sessions/internal/provider/all"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 	"github.com/ginkcode/agent-sessions/internal/scan"
 	"github.com/ginkcode/agent-sessions/internal/term"
@@ -88,23 +86,13 @@ type App struct {
 // NewApp creates a new App service instance with default providers.
 func NewApp() *App {
 	roots, _ := paths.Default()
-	var provs provider.Set
-	if roots.Claude != "" || roots.Codex != "" || roots.OpenCodeData != "" {
-		provs = all.Providers(roots, pathutil.NewGitResolver())
-	}
-	catalog := scan.NewCatalog()
-	svc := NewService(catalog, provs)
-	runner := &scan.Runner{
-		Providers: provs,
-		Catalog:   catalog,
-	}
 	eng := engine.NewEngine(
 		engine.WithRoots(roots),
-		engine.WithService(svc),
-		engine.WithRunner(runner),
 		engine.WithCacheEnabled(true),
 		engine.WithLocalLiveCodeDiagnostics(),
 	)
+	svc := eng.Service()
+	runner := &scan.Runner{Providers: svc.Providers(), Catalog: svc.Catalog()}
 	return &App{
 		localEngine:  eng,
 		backend:      eng,

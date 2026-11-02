@@ -1,7 +1,8 @@
 <script lang="ts">
   import DialogCloseButton from './DialogCloseButton.svelte';
   import { importer } from '../../stores/importer.svelte';
-  import { BUDGET_PRESETS, ALL_AGENTS } from '../../portable';
+  import { BUDGET_PRESETS } from '../../portable';
+  import { agentSettings } from '../../stores/agentSettings.svelte';
   import { formatBytes, formatTokens } from '../../format';
   import AgentIcon from './AgentIcon.svelte';
   import RemoteCommandNote from './RemoteCommandNote.svelte';
@@ -10,6 +11,13 @@
   import { launcher } from '../../stores/launcher.svelte';
 
   let previewTab = $state<'prompt' | 'full'>('prompt');
+
+  $effect(() => {
+    const agents = agentSettings.activeAgents;
+    if (importer.dialogOpen && agents.length && !agents.some(a => a.id === importer.target)) {
+      void importer.setTarget(agents[0].id);
+    }
+  });
 
   function handleClose() {
     importer.close();
@@ -282,7 +290,7 @@
             <section class="section-group">
               <span class="group-label">Target Agent</span>
               <div class="agent-buttons">
-                {#each ALL_AGENTS as agent (agent.id)}
+                {#each agentSettings.activeAgents as agent (agent.id)}
                   <button
                     type="button"
                     class="agent-select-btn"

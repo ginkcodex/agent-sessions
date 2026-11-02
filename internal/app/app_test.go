@@ -36,7 +36,7 @@ func TestOnStartupStoresContext(t *testing.T) {
 func TestOnStartupCacheFirstLoadsCatalog(t *testing.T) {
 	// 1. Seed a private cache DB with one session.
 	// NewAppWithService has no roots, so its index is the key of empty roots.
-	db, err := index.Open(t.Context(), t.TempDir(), index.RootsKey("", "", ""))
+	db, err := index.Open(t.Context(), t.TempDir(), index.RootsKey("", "", "", `agents-v1:["claude-code"]`))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

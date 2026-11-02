@@ -32,7 +32,7 @@ func TestPreparedRealEngineCatalogDuringStartup(t *testing.T) {
 	defer cancel()
 	root := t.TempDir()
 	roots := paths.Roots{Claude: filepath.Join(root, "generated"), Cache: filepath.Join(root, "cache"), Config: filepath.Join(root, "config")}
-	db, err := index.Open(ctx, roots.Cache, index.RootsKey(roots.Claude, "", ""))
+	db, err := index.Open(ctx, roots.Cache, index.RootsKey(roots.Claude, "", "", `agents-v1:["claude-code"]`))
 	if err != nil {
 		t.Fatal(err)
 	}

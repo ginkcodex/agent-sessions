@@ -39,6 +39,7 @@ test('the default agent is the last one started when it can start, else the firs
   assert.equal(defaultNewSessionAgent(choices, 'codex'), 'claude-code');
   const none = newSessionChoices(REPORT.map((s) => ({ ...s, installed: false })));
   assert.equal(defaultNewSessionAgent(none, 'codex'), 'codex', 'its launch then says what to install');
+  assert.equal(defaultNewSessionAgent(none.filter(c => c.agent === 'opencode'), 'codex'), 'opencode', 'a disabled remembered agent is never the shortcut target');
 });
 
 test('menu items start the chosen agent, explain missing agents and directories', () => {

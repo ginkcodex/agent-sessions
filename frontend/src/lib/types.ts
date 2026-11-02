@@ -1,5 +1,12 @@
 export type AgentID = 'claude-code' | 'codex' | 'opencode' | string;
 
+export interface AgentSettings {
+  supported: { id: string; name: string }[];
+  enabled: string[];
+  active: string[];
+  restartRequired: boolean;
+}
+
 export interface SessionRef {
   agent: AgentID;
   id: string;

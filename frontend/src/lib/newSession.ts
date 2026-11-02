@@ -30,7 +30,7 @@ export function newSessionChoices(report: AgentStatus[] | null | undefined): New
  */
 export function defaultNewSessionAgent(choices: NewSessionChoice[], preferred: AgentID): AgentID {
   const ok = choices.filter((c) => !c.missing);
-  return (ok.find((c) => c.agent === preferred) ?? ok[0])?.agent ?? preferred;
+  return (ok.find((c) => c.agent === preferred) ?? ok[0] ?? choices.find((c) => c.agent === preferred) ?? choices[0])?.agent ?? preferred;
 }
 
 /** "New Codex Session" menu items, one per agent; the first starts a group. */

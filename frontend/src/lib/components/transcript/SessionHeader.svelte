@@ -6,6 +6,7 @@
   import { handoff } from '../../stores/handoff.svelte';
   import { exporter } from '../../stores/export.svelte';
   import { ALL_AGENTS, copyToClipboard } from '../../portable';
+  import { agentSettings } from '../../stores/agentSettings.svelte';
   import { copyFailed } from '../../guidance';
   import { toast } from '../../stores/toast.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
@@ -358,7 +359,7 @@
         </button>
         {#if continueMenuOpen}
           <div class="action-dropdown-menu" role="menu">
-            {#each ALL_AGENTS as agent (agent.id)}
+            {#each agentSettings.activeAgents as agent (agent.id)}
               <button
                 type="button"
                 class="action-menu-item"

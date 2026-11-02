@@ -6,6 +6,7 @@ import type { PortForwardRequest, PortForwardState } from './portForward';
 import type { ManagedToolRequest, ManagedToolState } from './managedTools';
 import type { TerminalFileTarget } from './terminalFileOpen';
 import type {
+  AgentSettings,
   GroupMode,
   FilterOpts,
   SortOpts,
@@ -85,6 +86,8 @@ import { epoch, guardEpoch } from './link';
 export interface BackendAPI extends CodeDiagnosticsAPI {
   /** Optional on older App bindings. Remote provisioning currently fails closed. */
   managedTool?(request: ManagedToolRequest): Promise<ManagedToolState>;
+  getAgentSettings(): Promise<AgentSettings>;
+  setAgentSettings(agents: string[]): Promise<AgentSettings>;
   listWorkspaces(): Promise<string[]>;
   openWorkspace(dir: string): Promise<string>;
   removeWorkspace(dir: string): Promise<void>;
@@ -294,6 +297,8 @@ interface WailsAppBinding {
   CloseCodeDiagnosticDocument?: CodeDiagnosticsAPI['closeCodeDiagnosticDocument'];
   NavigateCode?: CodeDiagnosticsAPI['navigateCode'];
   ReadNavigationFile?: CodeDiagnosticsAPI['readNavigationFile'];
+  GetAgentSettings?(): Promise<AgentSettings>;
+  SetAgentSettings?(agents: string[]): Promise<AgentSettings>;
   ListWorkspaces(): Promise<string[]>;
   OpenWorkspace(dir: string): Promise<string>;
   RemoveWorkspace(dir: string): Promise<void>;
@@ -523,6 +528,22 @@ class WailsBackendAPI implements BackendAPI {
       throw new Error('Wails desktop backend runtime is not available');
     }
     return b as WailsAppBinding;
+  }
+
+  async getAgentSettings(): Promise<AgentSettings> {
+    try {
+      const b = this.binding;
+      if (!b.GetAgentSettings) throw new Error('This host does not support coding agent settings. Update its server to configure agents.');
+      return await b.GetAgentSettings();
+    } catch (e) { throw normalizeError(e); }
+  }
+
+  async setAgentSettings(agents: string[]): Promise<AgentSettings> {
+    try {
+      const b = this.binding;
+      if (!b.SetAgentSettings) throw new Error('This host does not support coding agent settings. Update its server to configure agents.');
+      return await b.SetAgentSettings(agents);
+    } catch (e) { throw normalizeError(e); }
   }
 
   async listWorkspaces(): Promise<string[]> {

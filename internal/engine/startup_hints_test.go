@@ -24,7 +24,7 @@ func TestStartupWriterHintsBeforeVerification(t *testing.T) {
 			defer cancel()
 			dir := t.TempDir()
 			roots := paths.Roots{Claude: filepath.Join(dir, "generated"), Cache: filepath.Join(dir, "cache")}
-			key := index.RootsKey(roots.Claude, "", "")
+			key := index.RootsKey(roots.Claude, "", "", `agents-v1:["claude-code"]`)
 			meta := model.SessionMeta{Ref: model.SessionRef{Agent: model.AgentClaude, ID: "cached"}, CWD: "/generated/work"}
 			if outcome != "missing" {
 				db, err := index.Open(ctx, roots.Cache, key)

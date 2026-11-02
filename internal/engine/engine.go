@@ -61,6 +61,8 @@ type Engine struct {
 	cacheEnabled     bool
 	cacheDirOverride string
 	roots            paths.Roots
+	rootsExplicit    bool
+	agentSettingsErr error
 	// writerOpen overrides verified opening in barrier/recovery tests only.
 	writerOpen func(context.Context, string, string) (*index.DB, []model.SessionMeta, error)
 
@@ -111,6 +113,7 @@ func WithCacheDir(dir string) Option {
 func WithRoots(roots paths.Roots) Option {
 	return func(e *Engine) {
 		e.roots = roots
+		e.rootsExplicit = true
 	}
 }
 
@@ -148,13 +151,13 @@ func NewEngine(opts ...Option) *Engine {
 
 	if e.svc == nil {
 		roots := e.roots
-		if roots.Claude == "" && roots.Codex == "" && roots.OpenCodeData == "" {
+		if !e.rootsExplicit && roots.Claude == "" && roots.Codex == "" && roots.OpenCodeData == "" {
 			roots, _ = paths.Default()
 			e.roots = roots
 		}
 		var provs provider.Set
-		if roots.Claude != "" || roots.Codex != "" || roots.OpenCodeData != "" {
-			provs = all.Providers(roots, pathutil.NewGitResolver())
+		if roots.Claude != "" || roots.Codex != "" || roots.OpenCodeData != "" || roots.Config != "" {
+			provs, e.agentSettingsErr = all.EnabledProviders(roots, pathutil.NewGitResolver())
 		}
 		catalog := scan.NewCatalog()
 		e.svc = NewService(catalog, provs)
@@ -216,6 +219,9 @@ func (e *Engine) Start(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	if e.agentSettingsErr != nil {
+		return e.agentSettingsErr
+	}
 	if e.started {
 		return nil
 	}

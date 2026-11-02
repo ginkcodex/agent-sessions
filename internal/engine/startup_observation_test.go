@@ -72,7 +72,7 @@ func TestStartupBaseline(t *testing.T) {
 				var lock *index.Lock
 				if mode == "warm_reader" {
 					var err error
-					lock, err = index.TryLock(roots.Cache, index.RootsKey(roots.Claude, roots.Codex, roots.OpenCodeData))
+					lock, err = index.TryLock(roots.Cache, NewEngine(WithRoots(roots)).indexKey())
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -230,7 +230,7 @@ func TestStartupPublicationQueryableDuringWatcherSetup(t *testing.T) {
 		t.Run(fmt.Sprint(reader), func(t *testing.T) {
 			dir := t.TempDir()
 			roots := paths.Roots{Claude: filepath.Join(dir, "generated"), Cache: filepath.Join(dir, "cache")}
-			key := index.RootsKey(roots.Claude, "", "")
+			key := index.RootsKey(roots.Claude, "", "", `agents-v1:["claude-code"]`)
 			db, err := index.Open(t.Context(), roots.Cache, key)
 			if err != nil {
 				t.Fatal(err)

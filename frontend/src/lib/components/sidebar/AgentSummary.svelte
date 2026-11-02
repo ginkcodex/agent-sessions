@@ -1,12 +1,7 @@
 <script lang="ts">
   import { appState } from '../../stores/appState.svelte';
 
-  // Catalog-wide totals: the selected group must not change these.
-  let counts = $derived({
-    claude: appState.agentCounts['claude-code'] ?? 0,
-    codex: appState.agentCounts['codex'] ?? 0,
-    opencode: appState.agentCounts['opencode'] ?? 0,
-  });
+  import { agentSettings } from '../../stores/agentSettings.svelte';
 
   function toggleAgentFilter(agent: string) {
     if (appState.filter.agent === agent) {
@@ -19,38 +14,18 @@
 
 <div class="agent-summary" aria-label="Session summary by agent">
   <div class="summary-chips">
-    <button
-      type="button"
-      class="chip agent-claude-code"
-      class:active={appState.filter.agent === 'claude-code'}
-      title="Filter Claude Code sessions ({counts.claude})"
-      onclick={() => toggleAgentFilter('claude-code')}
-    >
-      <span class="chip-name">Claude</span>
-      <span class="chip-count">{counts.claude}</span>
-    </button>
-
-    <button
-      type="button"
-      class="chip agent-codex"
-      class:active={appState.filter.agent === 'codex'}
-      title="Filter Codex sessions ({counts.codex})"
-      onclick={() => toggleAgentFilter('codex')}
-    >
-      <span class="chip-name">Codex</span>
-      <span class="chip-count">{counts.codex}</span>
-    </button>
-
-    <button
-      type="button"
-      class="chip agent-opencode"
-      class:active={appState.filter.agent === 'opencode'}
-      title="Filter OpenCode sessions ({counts.opencode})"
-      onclick={() => toggleAgentFilter('opencode')}
-    >
-      <span class="chip-name">OpenCode</span>
-      <span class="chip-count">{counts.opencode}</span>
-    </button>
+    {#each agentSettings.activeAgents as agent (agent.id)}
+      <button
+        type="button"
+        class="chip agent-{agent.id}"
+        class:active={appState.filter.agent === agent.id}
+        title="Filter {agent.label} sessions ({appState.agentCounts[agent.id] ?? 0})"
+        onclick={() => toggleAgentFilter(agent.id)}
+      >
+        <span class="chip-name">{agent.id === 'claude-code' ? 'Claude' : agent.label}</span>
+        <span class="chip-count">{appState.agentCounts[agent.id] ?? 0}</span>
+      </button>
+    {/each}
   </div>
 </div>
 

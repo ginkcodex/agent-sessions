@@ -73,6 +73,10 @@ async function importCompiled(filename, code, replacements) {
       replacements.push([module, JSON.stringify(new URL(`../src/lib/${file}.ts`, import.meta.url).href)]);
     }
   }
+  const agentSettings = "import { agentSettings } from '../../stores/agentSettings.svelte';";
+  if (code.includes(agentSettings) && !replacements.some(([from]) => from === agentSettings)) {
+    replacements.push([agentSettings, `const agentSettings = { get activeAgents() { return globalThis.__componentFixture?.agentSettings?.activeAgents ?? [{id:'claude-code',label:'Claude Code'},{id:'codex',label:'Codex'},{id:'opencode',label:'OpenCode'}]; } };`]);
+  }
   // The browser-only splitter renders as a bare separator.
   const splitter = "import Splitter from '../Splitter.svelte';";
   if (code.includes(splitter) && !replacements.some(([from]) => from === splitter)) {

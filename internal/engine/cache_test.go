@@ -19,7 +19,7 @@ import (
 // testRoots are the provider roots of sharedEngine; testKey names its index.
 var (
 	testRoots = paths.Roots{Claude: "/nonexistent/claude"}
-	testKey   = index.RootsKey(testRoots.Claude, testRoots.Codex, testRoots.OpenCodeData)
+	testKey   = index.RootsKey(testRoots.Claude, testRoots.Codex, testRoots.OpenCodeData, `agents-v1:["claude-code"]`)
 )
 
 func sharedEngine(t *testing.T, dir string, fake *providertest.Fake) *Engine {

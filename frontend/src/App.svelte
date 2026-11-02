@@ -21,6 +21,7 @@
   import ImportDirectoryDialog from './lib/components/common/ImportDirectoryDialog.svelte';
   import OpenWorkspaceDialog from './lib/components/common/OpenWorkspaceDialog.svelte';
   import { workspaces } from './lib/stores/workspaces.svelte';
+  import { agentSettings } from './lib/stores/agentSettings.svelte';
   import { nodeDirectory } from './lib/tree';
   import MediaViewer from './lib/components/common/MediaViewer.svelte';
   import PrintSheet from './lib/components/common/PrintSheet.svelte';
@@ -79,7 +80,10 @@
   $effect(() => {
     void link.dataHost;
     void link.phase;
-    if (!link.stale && !link.locked) void workspaces.refresh();
+    if (!link.stale && !link.locked) {
+      void workspaces.refresh();
+      void agentSettings.refresh();
+    }
   });
   // While the panel is hidden, its toggle shows the most urgent agent tab.
   let panelAttention = $derived(terminals.open ? null : mostUrgent(Object.values(terminals.attention)));

@@ -40,6 +40,7 @@ async function renderSettingsDialog(
       ["import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';", fixtureStore('codeDiagnostics')],
       ["import Dropdown from './Dropdown.svelte';", 'const Dropdown = globalThis.__dropdown;'],
       ["import TerminalFontSetting from './TerminalFontSetting.svelte';", 'const TerminalFontSetting = globalThis.__terminalFontSetting;'],
+      ["import CodingAgentsSettings from './CodingAgentsSettings.svelte';", 'const CodingAgentsSettings = () => {};'],
       ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
       ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
       ["import { terminals } from '../../stores/terminals.svelte';", fixtureStore('terminals')],
@@ -154,7 +155,7 @@ test('Settings lists its sections in a side navigation', async () => {
   const info = { terminal: true, chooseTerminal: true, shell: 'posix' };
   const html = await renderSettingsDialog({ info });
   const tabs = [...html.matchAll(/role="tab"[^>]*>([^<]+)<\/button>/g)].map((m) => m[1]);
-  assert.deepEqual(tabs, ['General', 'Translation', 'Terminal', 'Session management', 'Handoff files', 'Code checks']);
+  assert.deepEqual(tabs, ['General', 'Coding agents', 'Translation', 'Terminal', 'Session management', 'Handoff files', 'Code checks']);
   assert.match(html, /aria-selected="true"[^>]*>General</);
   assert.doesNotMatch(html, /Enable session management|Handoff files<\/h3>/);
 

@@ -20,7 +20,9 @@ import (
 )
 
 // rootsKey names the index the server's engine uses for roots.
-func rootsKey(r paths.Roots) string { return index.RootsKey(r.Claude, r.Codex, r.OpenCodeData) }
+func rootsKey(r paths.Roots) string {
+	return index.RootsKey(r.Claude, r.Codex, r.OpenCodeData, `agents-v1:["claude-code","codex","opencode"]`)
+}
 
 func fixedRoots(r paths.Roots) func() (paths.Roots, error) {
 	return func() (paths.Roots, error) { return r, nil }

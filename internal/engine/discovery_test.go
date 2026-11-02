@@ -76,7 +76,7 @@ func TestDiscoveryTerminalOutcomes(t *testing.T) {
 					}
 				}
 				if mode == "reader" {
-					lock, err := index.TryLock(roots.Cache, index.RootsKey(roots.Claude, "", ""))
+					lock, err := index.TryLock(roots.Cache, NewEngine(WithRoots(roots), WithService(NewService(scan.NewCatalog(), provs))).indexKey())
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -245,7 +245,7 @@ func (p *discoveryReleaseBarrier) Detect(ctx context.Context) (provider.Detectio
 func TestDiscoveryReaderPromotionSupersedesReaderAttempt(t *testing.T) {
 	root := t.TempDir()
 	roots := paths.Roots{Claude: filepath.Join(root, "generated"), Cache: filepath.Join(root, "cache")}
-	lock, err := index.TryLock(roots.Cache, index.RootsKey(roots.Claude, "", ""))
+	lock, err := index.TryLock(roots.Cache, index.RootsKey(roots.Claude, "", "", `agents-v1:["claude-code"]`))
 	if err != nil {
 		t.Fatal(err)
 	}

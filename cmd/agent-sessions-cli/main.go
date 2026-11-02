@@ -34,7 +34,12 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stderr, "resolve roots: %v\n", err)
 		os.Exit(1)
 	}
-	os.Exit(run(context.Background(), os.Args[1:], all.Providers(roots, pathutil.NewGitResolver()), os.Stdout, os.Stderr))
+	provs, err := all.EnabledProviders(roots, pathutil.NewGitResolver())
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "agent settings: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(run(context.Background(), os.Args[1:], provs, os.Stdout, os.Stderr))
 }
 
 // run returns 0 on success, 1 on an operational error, and 2 on invalid usage.

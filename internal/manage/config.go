@@ -118,8 +118,8 @@ func loadConfig(path string) (Config, error) {
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
 			continue
 		}
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			section := strings.TrimSpace(line[1 : len(line)-1])
+		if header := sectionHeader(line); header != "" {
+			section := header
 			inManage = (section == "manage")
 			continue
 		}
@@ -149,6 +149,16 @@ func loadConfig(path string) (Config, error) {
 		return cfg, fmt.Errorf("manage: parse config: %w", err)
 	}
 	return cfg, nil
+}
+
+// sectionHeader also recognizes headers with trailing TOML comments so a
+// manage update never rewrites another table's similarly named keys.
+func sectionHeader(line string) string {
+	line = strings.TrimSpace(strings.SplitN(line, "#", 2)[0])
+	if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+		return strings.TrimSpace(line[1 : len(line)-1])
+	}
+	return ""
 }
 
 func parseBool(s string) bool {
@@ -207,14 +217,14 @@ func updateManageSection(data []byte, cfg Config) []byte {
 			blanks++
 			continue
 		}
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+		if sectionHeader(trimmed) != "" {
 			if inManage {
 				// Leaving [manage] section; write any missing keys
 				writeMissing()
 				flushBlanks()
 				inManage = false
 			}
-			section := strings.TrimSpace(trimmed[1 : len(trimmed)-1])
+			section := sectionHeader(trimmed)
 			if section == "manage" {
 				inManage = true
 				manageSeen = true

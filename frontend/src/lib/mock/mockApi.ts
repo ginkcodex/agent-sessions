@@ -5,6 +5,7 @@ import { replaceInText } from '../searchReplace';
 import { searchTerms } from '../search';
 import { validatePortForward, type PortForwardRequest, type PortForwardState, type PortForwardRule } from '../portForward';
 import type {
+  AgentSettings,
   ReplaceRequest,
   ReplaceResult,
   GroupMode,
@@ -259,6 +260,28 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   /** Explicit registrations belong to the selected host, not the shared sample catalog. */
   private workspaces = new Map<string, Set<string>>();
+  private enabledAgents = new Map<string, string[]>();
+
+  async getAgentSettings(): Promise<AgentSettings> {
+    if (this.connState.phase !== 'local' && this.connState.phase !== 'connected') throw new Error('remote disconnected');
+    const supported = [
+      { id: 'claude-code', name: 'Claude Code' },
+      { id: 'codex', name: 'Codex' },
+      { id: 'opencode', name: 'OpenCode' },
+    ];
+    const active = supported.map(a => a.id);
+    const enabled = [...(this.enabledAgents.get(this.connState.host ?? '') ?? active)];
+    return { supported, enabled, active, restartRequired: JSON.stringify(enabled) !== JSON.stringify(active) };
+  }
+
+  async setAgentSettings(agents: string[]): Promise<AgentSettings> {
+    const settings = await this.getAgentSettings();
+    if (!agents.length || agents.some(id => !settings.supported.some(a => a.id === id))) {
+      throw new Error('Enable at least one supported coding agent.');
+    }
+    this.enabledAgents.set(this.connState.host ?? '', settings.supported.filter(a => agents.includes(a.id)).map(a => a.id));
+    return this.getAgentSettings();
+  }
 
   private registeredWorkspaces(): Set<string> {
     if (this.connState.phase !== 'local' && this.connState.phase !== 'connected') throw new Error('remote disconnected');

@@ -2,11 +2,13 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/provider/all"
 )
 
 // Several engines can share one cache dir: desktop apps and remote servers,
@@ -23,7 +25,8 @@ const defaultPromoteEvery = 5 * time.Second
 // indexKey names this engine's index by the provider roots it scans, so an
 // engine never reads or overwrites another set of roots' sessions.
 func (e *Engine) indexKey() string {
-	return index.RootsKey(e.roots.Claude, e.roots.Codex, e.roots.OpenCodeData)
+	ids, _ := json.Marshal(all.EffectiveIDs(e.svc.Providers()))
+	return index.RootsKey(e.roots.Claude, e.roots.Codex, e.roots.OpenCodeData, "agents-v1:"+string(ids))
 }
 
 // startCache starts the engine as writer or reader. It returns false when
