@@ -356,6 +356,8 @@ async function loadConnectionStore() {
     store('contentSearch', 'contentSearch'),
     ["import { fileActions } from './fileActions.svelte';", 'const fileActions = { changeHost: async (action) => { await action(); return true; } };'],
     store('link', 'link'),
+    ["import { terminals } from './terminals.svelte';", "const terminals = new Proxy({}, { get: (_, key) => (globalThis.__storeFixture.terminals ?? { tabs: [] })[key] });"],
+    store('filePrompt', 'filePrompt'),
   ]);
   return connectionStoreModule;
 }
@@ -377,6 +379,56 @@ async function withStoreFixture(api, fn) {
     delete globalThis.__storeFixture;
   }
 }
+
+test('host changes offer keep/close for previous-host terminals and cancel safely', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  for (const [previous, target] of [['', 'box'], ['box', 'other'], ['box', ''], ['', 'wsl:Ubuntu']]) {
+    for (const choice of ['keep', 'close', null]) {
+      const calls = [];
+      globalThis.__storeFixture = {
+        link: { dataHost: previous || undefined },
+        api: { connect: async host => calls.push(['connect', host]), disconnect: async () => calls.push(['disconnect']) },
+        terminals: { tabs: [{ id: 'old', host: previous }, { id: 'unrelated', host: 'elsewhere' }], close: (id, confirmed) => calls.push(['close', id, confirmed]) },
+        filePrompt: { ask: async (title, message, choices) => {
+          assert.match(message, /1 terminal tab/);
+          assert.match(message, /Closing ends any running processes/);
+          assert.equal(choices.find(c => c.value === 'close').danger, true);
+          calls.push(['prompt']);
+          return choice;
+        } },
+      };
+      try {
+        const store = new ConnectionStore();
+        if (target) await store.connect(target, {});
+        else await store.disconnect();
+        const expected = [['prompt']];
+        if (choice !== null) expected.push(target ? ['connect', target] : ['disconnect']);
+        if (choice === 'close') expected.push(['close', 'old', true]);
+        assert.deepEqual(calls, expected);
+      } finally { delete globalThis.__storeFixture; }
+    }
+  }
+});
+
+test('failed host changes keep previous terminals and same-host retries do not prompt', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  const calls = [];
+  globalThis.__storeFixture = {
+    link: { dataHost: 'box' },
+    api: { connect: async () => { throw new Error('connection failed'); } },
+    terminals: { tabs: [{ id: 'old', host: 'box' }], close: () => calls.push('close') },
+    filePrompt: { ask: async () => { calls.push('prompt'); return 'close'; } },
+  };
+  try {
+    const store = new ConnectionStore();
+    await store.connect('other', {});
+    assert.equal(store.error, 'connection failed');
+    assert.deepEqual(calls, ['prompt']);
+    calls.length = 0;
+    await store.connect('box', {});
+    assert.deepEqual(calls, []);
+  } finally { delete globalThis.__storeFixture; }
+});
 
 test('ConnectionStore lists WSL distributions and SSH hosts independently', async () => {
   const { ConnectionStore } = await loadConnectionStore();

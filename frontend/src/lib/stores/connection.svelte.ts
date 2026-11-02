@@ -25,6 +25,8 @@ import { files } from './files.svelte';
 import { contentSearch } from './contentSearch.svelte';
 import { fileActions } from './fileActions.svelte';
 import { link } from './link.svelte';
+import { terminals } from './terminals.svelte';
+import { filePrompt } from './filePrompt.svelte';
 
 // Local always has every capability; the backend reports none for it.
 const LOCAL_CAPABILITIES: HostCapabilities = {
@@ -172,6 +174,28 @@ export class ConnectionStore {
     }
   }
 
+  /** Ask only for explicit host changes, after resolving unsaved file edits. */
+  private async changeHost(target: string, action: () => Promise<void>): Promise<void> {
+    await fileActions.changeHost(async () => {
+      const previous = link.dataHost ?? '';
+      const ids = previous === target ? [] : terminals.tabs.filter(tab => tab.host === previous).map(tab => tab.id);
+      let close = false;
+      if (ids.length > 0) {
+        const name = previous ? hostLabel(previous) : 'Local';
+        const choice = await filePrompt.ask('Terminal tabs from previous host',
+          `${ids.length} terminal tab(s) belong to ${name}. Keep them open, or close them when switching hosts? Closing ends any running processes, including agents. Split panes count separately.`, [
+            { value: 'keep', label: 'Keep terminal tabs' },
+            { value: 'close', label: 'End and close terminal tabs', danger: true },
+          ]);
+        if (choice !== 'keep' && choice !== 'close') return;
+        close = choice === 'close';
+      }
+      // A failed connection must not destroy terminals from the previous host.
+      await action();
+      if (close) for (const id of ids) terminals.close(id, true);
+    });
+  }
+
   async connect(alias: string, envOverrides?: Record<string, string>): Promise<void> {
     this.error = undefined;
     try {
@@ -181,7 +205,7 @@ export class ConnectionStore {
         await api.connect(alias);
       };
       if (alias === link.dataHost) await connect();
-      else await fileActions.changeHost(connect);
+      else await this.changeHost(alias, connect);
     } catch (err: any) {
       // The host is open in another window, which was brought to the
       // front; this window stays where it was.
@@ -197,7 +221,7 @@ export class ConnectionStore {
   async disconnect(): Promise<void> {
     this.error = undefined;
     try {
-      await fileActions.changeHost(() => api.disconnect());
+      await this.changeHost('', () => api.disconnect());
     } catch (err: any) {
       this.error = err?.message || 'Failed to disconnect';
     }
