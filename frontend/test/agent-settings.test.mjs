@@ -37,11 +37,11 @@ test('agent selection defaults to all, prevents disabling the last and saves can
   store.toggle('claude-code', true);
   assert.deepEqual(store.selected, ['claude-code', 'opencode']);
   assert.equal(store.dirty, true);
-  assert.deepEqual(store.enabledAgents.map(a => a.id), supported.map(a => a.id), 'unsaved drafts do not change filter buttons');
+  assert.deepEqual(store.activeAgents.map(a => a.id), supported.map(a => a.id), 'unsaved drafts do not change filter buttons');
   await store.save();
   assert.deepEqual(f.calls, [['claude-code', 'opencode']]);
   assert.equal(store.settings.restartRequired, true);
-  assert.deepEqual(store.enabledAgents.map(a => a.id), ['claude-code', 'opencode'], 'saved filters update before restart');
+  assert.deepEqual(store.activeAgents.map(a => a.id), supported.map(a => a.id), 'saved filters stay synchronized with backend until restart');
   assert.equal(store.dirty, false);
   assert.deepEqual(store.activeAgents.map(a => a.id), supported.map(a => a.id), 'restart-pending selections do not hide currently active agents');
 });
@@ -92,6 +92,7 @@ test('native agent settings API forwards the selection and reports unsupported o
   const previous = globalThis.window;
   const calls = [];
   const App = {
+    RestartApp: async () => { calls.push('restart'); },
     GetAgentSettings: async () => defaults(),
     SetAgentSettings: async enabled => { calls.push(enabled); return { ...defaults(), enabled, restartRequired: true }; },
   };
@@ -101,6 +102,10 @@ test('native agent settings API forwards the selection and reports unsupported o
     assert.deepEqual(await api.getAgentSettings(), defaults());
     assert.deepEqual((await api.setAgentSettings(['codex'])).enabled, ['codex']);
     assert.deepEqual(calls, [['codex']]);
+    await api.restartApp();
+    assert.deepEqual(calls, [['codex'], 'restart']);
+    delete App.RestartApp;
+    await assert.rejects(api.restartApp(), /restart the app manually/);
     App.SetAgentSettings = async () => { throw 'host unavailable'; };
     await assert.rejects(api.setAgentSettings(['codex']), error => error instanceof Error && error.message === 'host unavailable');
     delete App.GetAgentSettings;
@@ -111,7 +116,7 @@ test('native agent settings API forwards the selection and reports unsupported o
   }
 });
 
-test('agent summary offers only saved enabled agents, including future provider labels', async () => {
+test('agent summary follows active agents until restart, including future provider labels', async () => {
   const summaryURL = new URL('../src/lib/components/sidebar/AgentSummary.svelte', import.meta.url);
   const summary = await loadServerComponent(summaryURL, [
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
@@ -119,7 +124,7 @@ test('agent summary offers only saved enabled agents, including future provider 
   ]);
   const html = await renderWithFixture(summary, {
     appState: { agentCounts: { codex: 8, kiro: 2 }, filter: {} },
-    agentSettings: { enabledAgents: [{ id: 'codex', label: 'Codex' }, { id: 'kiro', label: 'Kiro' }], activeAgents: supported.map(a => ({ id: a.id, label: a.name })) },
+    agentSettings: { activeAgents: [{ id: 'codex', label: 'Codex' }, { id: 'kiro', label: 'Kiro' }] },
   });
   assert.match(html, /Codex sessions \(8\)/);
   assert.match(html, /Kiro sessions \(2\)/);
@@ -128,10 +133,23 @@ test('agent summary offers only saved enabled agents, including future provider 
 
 const componentURL = new URL('../src/lib/components/common/CodingAgentsSettings.svelte', import.meta.url);
 const component = await loadServerComponent(componentURL, [
+  ["import { api } from '../../api';", 'const api = {};'],
+  ["import { epoch } from '../../link';", 'const epoch = () => 0;'],
+  ["import { filePrompt } from '../../stores/filePrompt.svelte';", 'const filePrompt = {};'],
+  ["import { fileActions } from '../../stores/fileActions.svelte';", 'const fileActions = {};'],
   ["import { agentSettings } from '../../stores/agentSettings.svelte';", fixtureStore('agentSettings')],
   ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
   ["'../../hosts'", JSON.stringify(new URL('../src/lib/hosts.ts', import.meta.url).href)],
 ]);
+
+test('remote agent settings offer Reconnect instead of restarting the local app', async () => {
+  const html = await renderWithFixture(component, {
+    agentSettings: { settings: { ...defaults(), restartRequired: true }, selected: ['codex'], dirty: false },
+    link: { dataHost: 'dev', stale: false, locked: false },
+  });
+  assert.match(html, />Reconnect<\/button>/);
+  assert.doesNotMatch(html, />Restart<\/button>/);
+});
 
 test('settings renders supported agent options, last-agent guard and restart guidance', async () => {
   const html = await renderWithFixture(component, {
@@ -141,6 +159,7 @@ test('settings renders supported agent options, last-agent guard and restart gui
   for (const agent of supported) assert.match(html, new RegExp(agent.name));
   assert.match(html, /At least one agent must stay enabled/);
   assert.match(html, /Restart the app/);
+  assert.match(html, />Restart<\/button>/);
   assert.match(html, /type="checkbox" checked="" disabled=""/);
   assert.match(html, /Session files are never deleted/);
 });

@@ -20,12 +20,6 @@ export class AgentSettingsStore {
     return this.settings.supported.filter(a => this.settings!.active.includes(a.id)).map(a => ({ id: a.id, label: a.name }));
   }
 
-  /** Saved selection for UI filters, including changes pending a restart. */
-  get enabledAgents(): { id: string; label: string }[] {
-    if (!this.settings || this.owner !== epoch()) return ALL_AGENTS;
-    return this.settings.supported.filter(a => this.settings!.enabled.includes(a.id)).map(a => ({ id: a.id, label: a.name }));
-  }
-
   get dirty(): boolean {
     return !!this.settings && JSON.stringify(this.selected) !== JSON.stringify(this.settings.enabled);
   }

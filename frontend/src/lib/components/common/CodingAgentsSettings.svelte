@@ -2,6 +2,37 @@
   import { agentSettings } from '../../stores/agentSettings.svelte';
   import { link } from '../../stores/link.svelte';
   import { hostLabel } from '../../hosts';
+  import { api } from '../../api';
+  import { epoch } from '../../link';
+  import { filePrompt } from '../../stores/filePrompt.svelte';
+  import { fileActions } from '../../stores/fileActions.svelte';
+
+  let applying = $state(false);
+  let applyError = $state('');
+
+  async function applyChanges() {
+    if (applying || agentSettings.dirty || link.stale || link.locked) return;
+    const owner = epoch();
+    const host = link.dataHost;
+    applying = true;
+    applyError = '';
+    try {
+      const choice = await filePrompt.ask(host ? 'Reconnect to apply coding agents?' : 'Restart to apply coding agents?',
+        host ? 'Reconnecting ends the current host connection. Running remote terminal processes may end.' : 'Restarting closes this window and ends its running terminal processes, including coding agents. Unsaved files will be checked before closing.',
+        [{ value: 'apply', label: host ? 'Reconnect' : 'Restart', danger: true }]);
+      if (choice !== 'apply' || owner !== epoch() || link.stale || link.locked) return;
+      if (host) {
+        await fileActions.changeHost(async () => {
+          await api.disconnect();
+          await api.connect(host);
+        });
+      } else {
+        if (!api.restartApp) throw new Error('Please restart the app manually to apply coding agents.');
+        await api.restartApp();
+      }
+    } catch (err) { applyError = err instanceof Error ? err.message : String(err); }
+    finally { applying = false; }
+  }
 
   $effect(() => {
     void link.dataHost;
@@ -31,7 +62,13 @@
     {#if agentSettings.settings.restartRequired}
       <p class="notice" role="status">Saved. {link.dataHost ? 'Reconnect to this host' : 'Restart the app'} to apply the enabled agents. Until then, the current agents remain active.</p>
     {/if}
-    <div class="actions"><button type="button" class="primary" disabled={!agentSettings.dirty || !agentSettings.selected.length || agentSettings.saving || link.stale || link.locked} onclick={() => void agentSettings.save()}>{agentSettings.saving ? 'Saving…' : 'Save'}</button></div>
+    <div class="actions">
+      {#if agentSettings.settings.restartRequired}
+        <button type="button" class="primary" disabled={applying || agentSettings.dirty || agentSettings.saving || link.stale || link.locked} onclick={() => void applyChanges()}>{applying ? 'Applying…' : link.dataHost ? 'Reconnect' : 'Restart'}</button>
+      {/if}
+      <button type="button" class="primary" disabled={!agentSettings.dirty || !agentSettings.selected.length || agentSettings.saving || applying || link.stale || link.locked} onclick={() => void agentSettings.save()}>{agentSettings.saving ? 'Saving…' : 'Save'}</button>
+    </div>
+    {#if applyError}<p class="error" role="alert">{applyError}</p>{/if}
   {/if}
   {#if agentSettings.error}
     <p class="error" role="alert">{agentSettings.error}</p>
@@ -45,7 +82,7 @@
   legend { font-size: 12px; font-weight: 600; margin-bottom: 10px; }
   label { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-size: 13px; }
   input { accent-color: var(--accent-color); }
-  .actions { display: flex; justify-content: flex-end; margin-top: 16px; }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
   button { padding: 7px 14px; border: 1px solid var(--accent-color); border-radius: 4px; cursor: pointer; }
   button.primary { background: var(--accent-color); color: white; }
   button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }

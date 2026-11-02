@@ -97,13 +97,14 @@
     const off = api.onEvent('files:close-request', (id: number) => {
       if (Number.isSafeInteger(id) && id > 0) void fileActions.nativeClose(id);
     });
+    const offCancelled = api.onEvent('files:close-cancelled', () => { fileActions.quitting = false; });
     const unload = (e: BeforeUnloadEvent) => {
       if (files.hasUnsaved) { e.preventDefault(); e.returnValue = ''; }
     };
     const focus = () => { if (files.open) gitHistory.focusRefresh(); };
     window.addEventListener('beforeunload', unload);
     window.addEventListener('focus', focus);
-    return () => { off(); window.removeEventListener('beforeunload', unload); window.removeEventListener('focus', focus); };
+    return () => { off(); offCancelled(); window.removeEventListener('beforeunload', unload); window.removeEventListener('focus', focus); };
   });
 
   let historyDiffOpen = $state(false);

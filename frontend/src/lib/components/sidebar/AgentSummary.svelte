@@ -5,7 +5,7 @@
 
   $effect(() => {
     const agent = appState.filter.agent;
-    if (agent && !agentSettings.enabledAgents.some(a => a.id === agent)) {
+    if (agent && !agentSettings.activeAgents.some(a => a.id === agent)) {
       void appState.setFilter({ agent: undefined });
     }
   });
@@ -21,7 +21,7 @@
 
 <div class="agent-summary" aria-label="Session summary by agent">
   <div class="summary-chips">
-    {#each agentSettings.enabledAgents as agent (agent.id)}
+    {#each agentSettings.activeAgents as agent (agent.id)}
       <button
         type="button"
         class="chip agent-{agent.id}"

@@ -124,6 +124,7 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    * the app has one window only (the browser mock).
    */
   newWindow?(): Promise<void>;
+  restartApp?(): Promise<void>;
   /**
    * Brings the app's next window to the front, or the previous one when
    * forward is false. Absent where the app has one window only.
@@ -329,6 +330,7 @@ interface WailsAppBinding {
   PrintWindow(): Promise<void>;
   ToggleFullscreen?(): Promise<void>;
   NewWindow(): Promise<void>;
+  RestartApp?(): Promise<void>;
   FocusNextWindow?(forward: boolean): Promise<void>;
   NotificationStatus(): Promise<NotificationStatus>;
   PrepareNotifications(): Promise<NotificationStatus>;
@@ -750,6 +752,14 @@ class WailsBackendAPI implements BackendAPI {
     } catch (e) {
       throw normalizeError(e);
     }
+  }
+
+  async restartApp(): Promise<void> {
+    try {
+      const b = this.binding;
+      if (!b.RestartApp) throw new Error('Restart is unavailable in this app version. Please restart the app manually.');
+      await b.RestartApp();
+    } catch (e) { throw normalizeError(e); }
   }
 
   async newWindow(): Promise<void> {
@@ -1566,6 +1576,7 @@ const UNGUARDED = new Set<string>([
   'printWindow',
   // A new window is another app on this computer.
   'newWindow',
+  'restartApp',
   'focusNextWindow',
   // Alerts are about panel tabs, which outlive a host switch.
   'notificationStatus',

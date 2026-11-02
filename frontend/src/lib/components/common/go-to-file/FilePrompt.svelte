@@ -51,7 +51,7 @@
 {/if}
 
 <style>
-  .file-prompt-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; background: #0008; padding: 24px; }
+  .file-prompt-backdrop { position: fixed; inset: 0; z-index: 1400; display: grid; place-items: center; background: #0008; padding: 24px; }
   .file-prompt { width: min(520px, 100%); background: var(--bg-primary); color: var(--text-primary); padding: 24px; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 16px 48px #0006; }
   h2 { margin: 0 0 12px; font-size: 1rem; }
   p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; font-size: .82rem; line-height: 1.5; }
