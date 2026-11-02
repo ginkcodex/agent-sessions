@@ -133,7 +133,6 @@ func buildSSHArgs(alias string, remoteCmd []string, opts SSHOptions, windows boo
 	}
 	args = append(args,
 		"-o", "BatchMode="+batch,
-		"-o", "ExitOnForwardFailure=yes",
 		"-o", fmt.Sprintf("ServerAliveInterval=%d", interval),
 		"-o", fmt.Sprintf("ServerAliveCountMax=%d", countMax),
 	)

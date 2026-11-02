@@ -61,6 +61,21 @@ func TestBuildSSHArgs_Basic(t *testing.T) {
 	}
 }
 
+func TestBuildSSHArgs_NoForwardFailureOption(t *testing.T) {
+	for _, windows := range []bool{false, true} {
+		for _, interactive := range []bool{false, true} {
+			opts := SSHOptions{ControlMaster: "no", Interactive: interactive, ForceTTY: interactive}
+			args, err := buildSSHArgs("server", nil, opts, windows)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(strings.ToLower(strings.Join(args, " ")), "exitonforwardfailure") {
+				t.Errorf("windows=%t interactive=%t: shell received forwarding-only option: %v", windows, interactive, args)
+			}
+		}
+	}
+}
+
 func TestBuildSSHArgs_FlagInjection(t *testing.T) {
 	malicious := []string{
 		"-oProxyCommand=evil",
