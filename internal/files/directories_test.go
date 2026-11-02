@@ -50,6 +50,38 @@ func TestListingIncludesEmptyDirectories(t *testing.T) {
 	}
 }
 
+func TestListingIncludesEmptyIgnoredDirectories(t *testing.T) {
+	root := listingTree(t, 0)
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("examples\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	const empty = "courses/02-database/examples"
+	const populated = "courses/01-backend/examples"
+	for _, path := range []string{empty, populated} {
+		if err := os.MkdirAll(filepath.Join(root, path), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, populated, "example.txt"), []byte("example"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := List(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{empty, populated} {
+		if !slices.Contains(out.IgnoredDirectories, path) {
+			t.Errorf("missing ignored folder %q: %v", path, out.IgnoredDirectories)
+		}
+		if slices.Contains(out.Directories, path) {
+			t.Errorf("ignored folder %q listed as ordinary", path)
+		}
+	}
+	if slices.Contains(out.Files, populated+"/example.txt") {
+		t.Error("ignored contents leaked into ordinary files")
+	}
+}
+
 func TestDirectoryListingCap(t *testing.T) {
 	root := t.TempDir()
 	// Test the walker directly so the cap is independent of installed git.

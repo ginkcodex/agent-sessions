@@ -281,7 +281,7 @@ func gitFiles(ctx context.Context, root string) ([]string, bool) {
 // of them. With --directory git reports an ignored folder as one "dir/"
 // entry without walking it.
 func gitIgnored(ctx context.Context, root string, limit int) (ignored, directories []string) {
-	out, ok := runGit(ctx, root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", "--no-empty-directory")
+	out, ok := runGit(ctx, root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
 	if !ok {
 		return nil, nil
 	}
