@@ -257,6 +257,66 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   translatedSelections: { text: string; context: string }[] = [];
   translateDelayMs = 400;
 
+  /** Explicit registrations belong to the selected host, not the shared sample catalog. */
+  private workspaces = new Map<string, Set<string>>();
+
+  private registeredWorkspaces(): Set<string> {
+    if (this.connState.phase !== 'local' && this.connState.phase !== 'connected') throw new Error('remote disconnected');
+    const host = this.connState.host ?? '';
+    let dirs = this.workspaces.get(host);
+    if (!dirs) this.workspaces.set(host, dirs = new Set());
+    return dirs;
+  }
+
+  private workspacePath(dir: string): string {
+    const path = dir.replace(/\\/g, '/');
+    if (path.includes('\0') || !/^(\/|[A-Za-z]:\/)/.test(path)) throw new Error('workspace directory must be absolute');
+    const root = /^[A-Za-z]:\//.test(path) ? path.slice(0, 3) : '/';
+    const parts: string[] = [];
+    for (const part of path.slice(root.length).split('/')) {
+      if (part === '..') parts.pop();
+      else if (part && part !== '.') parts.push(part);
+    }
+    return root + parts.join('/');
+  }
+
+  async listWorkspaces(): Promise<string[]> {
+    return [...this.registeredWorkspaces()].sort();
+  }
+
+  async openWorkspace(dir: string): Promise<string> {
+    const path = this.workspacePath(dir);
+    const dirs = this.registeredWorkspaces();
+    if (!dirs.has(path)) {
+      dirs.add(path);
+      this.emit('catalog:changed', { changed: [], removed: [], groupsDirty: true });
+    }
+    return path;
+  }
+
+  async removeWorkspace(dir: string): Promise<void> {
+    if (this.registeredWorkspaces().delete(this.workspacePath(dir))) {
+      this.emit('catalog:changed', { changed: [], removed: [], groupsDirty: true });
+    }
+  }
+
+  async browseWorkspace(path: string): Promise<{ path: string; parent: string; directories: string[] }> {
+    const registered = this.registeredWorkspaces();
+    path = this.workspacePath(path || '/home/haith');
+    const root = /^[A-Za-z]:\//.test(path) ? path.slice(0, 3) : '/';
+    const parent = path === root ? root : path.slice(0, Math.max(root.length, path.lastIndexOf('/')));
+    const known = new Set<string>(['/home/haith/Documents', '/home/haith/Downloads', '/home/haith/Workspaces/new-project']);
+    for (const dir of [...this.sessions.map(s => s.cwd), ...registered]) known.add(this.workspacePath(dir));
+    const directories = new Set<string>();
+    const prefix = path.endsWith('/') ? path : `${path}/`;
+    for (const dir of known) {
+      if (!dir.startsWith(prefix)) continue;
+      const child = dir.slice(prefix.length).split('/')[0];
+      if (child) directories.add(prefix + child);
+    }
+    return { path, parent, directories: [...directories].sort() };
+  }
+
   async listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]> {
     const filtered = this.filterSessions(this.sessions, filter);
     if (mode === 'flat') {
@@ -321,6 +381,9 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       list.push(s);
       byDir.set(s.cwd, list);
     }
+    for (const cwd of this.registeredWorkspaces()) {
+      if (!byDir.has(cwd)) byDir.set(cwd, []);
+    }
     const roots: GroupNode[] = [];
     for (const [cwd, dirSessions] of byDir) {
       const agentMap = new Map<string, SessionMeta[]>();
@@ -375,6 +438,16 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       if (targetRefs) {
         const refKeys = new Set(targetRefs.map((r) => `${r.agent}:${r.id}`));
         result = result.filter((s) => refKeys.has(`${s.ref.agent}:${s.ref.id}`));
+      } else {
+        const agents = ['claude-code', 'codex', 'opencode'];
+        for (const dir of this.registeredWorkspaces()) {
+          if (groupKey === `dir-agent:${dir}`) result = result.filter(s => s.cwd === dir);
+          for (const agent of agents) {
+            if (groupKey === `dir-agent:${dir}:${agent}` || groupKey === `agent-dir:${agent}:${dir}`) {
+              result = result.filter(s => s.cwd === dir && s.ref.agent === agent);
+            }
+          }
+        }
       }
     }
 
@@ -595,7 +668,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   private newSessionCommand(agent: AgentID, dir: string): string {
     const argv0 = ({ 'claude-code': 'claude', codex: 'codex', opencode: 'opencode' } as Record<string, string>)[agent];
     if (!argv0) throw new Error(`unknown provider: ${agent}`);
-    if (!dir || !this.sessions.some((s) => s.cwd === dir)) throw new Error(`unknown directory: ${dir}`);
+    if (!dir || (!this.sessions.some((s) => s.cwd === dir) && !this.registeredWorkspaces().has(dir))) throw new Error(`unknown directory: ${dir}`);
     if (this.missingAgents.has(agent)) throw new Error(`agent CLI not found: ${argv0} was not found on PATH or in its usual install locations. Install it, then try again`);
     return `cd '${dir}' && ${argv0}`;
   }

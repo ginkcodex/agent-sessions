@@ -19,6 +19,9 @@
   import ExportDialog from './lib/components/common/ExportDialog.svelte';
   import ImportDialog from './lib/components/common/ImportDialog.svelte';
   import ImportDirectoryDialog from './lib/components/common/ImportDirectoryDialog.svelte';
+  import OpenWorkspaceDialog from './lib/components/common/OpenWorkspaceDialog.svelte';
+  import { workspaces } from './lib/stores/workspaces.svelte';
+  import { nodeDirectory } from './lib/tree';
   import MediaViewer from './lib/components/common/MediaViewer.svelte';
   import PrintSheet from './lib/components/common/PrintSheet.svelte';
   import PrintDialog from './lib/components/common/PrintDialog.svelte';
@@ -72,7 +75,12 @@
   // host's sessions.
   let stale = $derived(link.stale || link.locked);
   // A new shell starts in the shown session's directory.
-  let shellCwd = $derived(appState.selectedSessionMeta?.cwd ?? '');
+  let shellCwd = $derived(appState.selectedSessionMeta?.cwd ?? nodeDirectory(appState.groups, appState.selectedGroupKey ?? '') ?? '');
+  $effect(() => {
+    void link.dataHost;
+    void link.phase;
+    if (!link.stale && !link.locked) void workspaces.refresh();
+  });
   // While the panel is hidden, its toggle shows the most urgent agent tab.
   let panelAttention = $derived(terminals.open ? null : mostUrgent(Object.values(terminals.attention)));
   let terminalButtonTitle = $derived.by(() => {
@@ -317,6 +325,9 @@
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.35-4.35" />
           </svg>
+        </button>
+        <button type="button" class="icon-button" title="Open workspace…" aria-label="Open workspace" disabled={stale} onclick={() => workspaces.show()}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
         </button>
         {#if canOpenWindow}
           <button
@@ -574,6 +585,7 @@
   <ExportDialog />
   <ImportDialog />
   <ImportDirectoryDialog />
+  <OpenWorkspaceDialog />
   <MediaViewer />
   <PrintDialog />
   <PrintSheet />

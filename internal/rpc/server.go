@@ -359,6 +359,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 	_, caps.TranscriptDelta = s.backend.(engine.TranscriptDeltaBackend)
 	_, caps.ProjectSnapshot = s.backend.(engine.ProjectSnapshotBackend)
 	_, caps.ListDirectory = s.backend.(engine.ListDirectoryBackend)
+	_, caps.Workspaces = s.backend.(engine.WorkspaceBackend)
 	_, caps.SessionSearch = s.backend.(engine.SessionSearchBackend)
 	_, historyBackend := s.backend.(engine.GitHistoryBackend)
 	caps.GitHistory = caps.GitHistory && historyBackend
@@ -561,6 +562,9 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
 		}
 		return backend.ListFiles(ctx, p.Dir)
+
+	case "listWorkspaces", "openWorkspace", "removeWorkspace", "browseWorkspace":
+		return dispatchWorkspace(ctx, backend, req)
 
 	case "listDirectory":
 		lister, ok := backend.(engine.ListDirectoryBackend)

@@ -55,13 +55,13 @@ function treeNode(key, kind, childCount = 0, childKind = 'session') {
   return { key, label: key, kind, sessionCount: childCount, children };
 }
 
-test('defaultCollapsedKeys opens top-level groups and closes the groups inside them', () => {
+test('defaultCollapsedKeys closes workspaces and nested groups but leaves top-level agents open', () => {
   assert.equal(defaultCollapsedKeys([]).size, 0);
 
   // By directory: each directory lists its agents, closed, however many.
   const small = { ...treeNode('small', 'directory'), children: [treeNode('small/claude', 'agent', 1)] };
   const big = { ...treeNode('big', 'directory'), children: [treeNode('big/claude', 'agent', 30), treeNode('big/codex', 'agent', 2)] };
-  assert.deepEqual([...defaultCollapsedKeys([small, big])].sort(), ['big/claude', 'big/codex', 'small/claude']);
+  assert.deepEqual([...defaultCollapsedKeys([small, big])].sort(), ['big', 'big/claude', 'big/codex', 'small', 'small/claude']);
 
   // By agent: each agent lists its directories, closed.
   const agent = { ...treeNode('claude', 'agent'), children: [treeNode('claude/be', 'directory', 18), treeNode('claude/tmp', 'directory', 1)] };
@@ -141,7 +141,7 @@ test('tree helpers treat Windows and UNC keys as opaque strings', () => {
   const root = { ...treeNode('dir-agent:C:\\', 'directory'), cwd: 'C:\\' };
   const tree = [drive, unc, root];
 
-  assert.deepEqual([...defaultCollapsedKeys(tree)], [`${driveKey}/0`]);
+  assert.deepEqual([...defaultCollapsedKeys(tree)], [driveKey, `${driveKey}/0`, unc.key]);
   assert.equal(isCollapsed(`${driveKey}/0`, new Set(), defaultCollapsedKeys(tree)), true);
   assert.equal(
     isCollapsed('dir-agent:\\\\fileserver\\share\\team-repo\\', new Set(['dir-agent:\\\\fileserver\\share\\team-repo\\']), new Set()),

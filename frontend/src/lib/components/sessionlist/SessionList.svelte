@@ -15,6 +15,13 @@
   import { terminals } from '../../stores/terminals.svelte';
   import { link } from '../../stores/link.svelte';
 
+  import { nodeDirectory } from '../../tree';
+  import { workspaces } from '../../stores/workspaces.svelte';
+  import WorkspaceStart from './WorkspaceStart.svelte';
+
+  let selectedWorkspace = $derived(nodeDirectory(appState.groups, appState.selectedGroupKey ?? ''));
+  let emptyWorkspace = $derived(selectedWorkspace && workspaces.directories.includes(selectedWorkspace) && appState.sessions.length === 0 && !appState.filter.query && !appState.filter.agent && !appState.filter.liveOnly && !appState.filter.archived && !appState.filter.hasSubagents);
+
   const AGE_OPTIONS = AGE_FILTERS.map((f) => ({ value: f.id, label: f.label }));
 
   const SORT_OPTIONS = [
@@ -254,7 +261,9 @@
         onRetry={() => appState.reload()}
       />
     {:else if visibleSessions.length === 0}
-      {#if emptyState === 'discovering'}
+      {#if emptyWorkspace && selectedWorkspace}
+        <WorkspaceStart cwd={selectedWorkspace} />
+      {:else if emptyState === 'discovering'}
         <div class="discovering" role="status">
           <EmptyState
             icon="⏳"

@@ -126,7 +126,11 @@ func (s *Service) ApplyReport(report scan.Report) {
 // ListGroups returns the grouped navigation tree for the filtered snapshot.
 func (s *Service) ListGroups(mode GroupMode, filter FilterOpts) ([]GroupNode, error) {
 	sessions := filterSessions(s.catalog.All(), filter)
-	return buildGroupNodes(sessions, mode), nil
+	nodes := buildGroupNodes(sessions, mode)
+	if mode != GroupModeAgentDir && mode != GroupModeFlat {
+		nodes = s.workspaceGroupNodes(nodes, filter)
+	}
+	return nodes, nil
 }
 
 // AgentCounts returns the number of sessions per agent across the whole
@@ -151,6 +155,9 @@ func (s *Service) ListSessions(groupKey string, filter FilterOpts, sortOpts Sort
 	}
 	refs, ok := groupSessionRefs(groupKey, sessions)
 	if !ok {
+		if strings.HasPrefix(groupKey, "dir:") && s.registeredWorkspace(strings.TrimPrefix(groupKey, "dir:")) {
+			return []model.SessionMeta{}, nil
+		}
 		return nil, fmt.Errorf("%w: %s", ErrUnknownGroup, groupKey)
 	}
 	byKey := make(map[string]model.SessionMeta, len(refs))
@@ -635,12 +642,14 @@ func sortSessions(sessions []model.SessionMeta, opts SortOpts) {
 	})
 }
 
-// knownDirectory reports whether dir is the directory, or repository root,
-// of a session in the catalog. The file viewer only opens those, so a caller
-// cannot browse arbitrary paths through it.
+// knownDirectory authorizes only explicit workspace roots and exact session
+// cwd/repository roots. Registering a root does not authorize other roots.
 func (s *Service) knownDirectory(dir string) bool {
 	if dir == "" {
 		return false
+	}
+	if s.registeredWorkspace(dir) {
+		return true
 	}
 	want := pathutil.Clean(dir)
 	for _, m := range s.catalog.All() {

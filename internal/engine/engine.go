@@ -171,6 +171,9 @@ func NewEngine(opts ...Option) *Engine {
 		}
 	}
 
+	if e.roots.Data != "" && e.svc.dataDir == "" {
+		e.svc.SetDataDir(e.roots.Data)
+	}
 	return e
 }
 

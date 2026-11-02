@@ -108,6 +108,8 @@ type Capabilities struct {
 	ProjectSnapshot bool `json:"projectSnapshot,omitempty"`
 	// ListDirectory reads one folder a listing does not look into.
 	ListDirectory bool `json:"listDirectory,omitempty"`
+	// Workspaces supports explicit host-side workspace registration and browsing.
+	Workspaces bool `json:"workspaces,omitempty"`
 	// SessionSearch supports searchSession. Set by the server when its
 	// backend implements engine.SessionSearchBackend.
 	SessionSearch bool `json:"sessionSearch,omitempty"`

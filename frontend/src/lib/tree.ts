@@ -39,16 +39,15 @@ export function directoryName(label: string): string {
 
 /**
  * Computes the set of keys that should start collapsed. The top-level
- * groups (directories, or agents) start open and list what's under them;
- * groups inside them (agents under a directory, directories under an agent)
- * and sessions with subagents start closed until the user opens them.
+ * workspaces start closed, while top-level agent groups stay open.
+ * Nested groups and sessions with subagents also start closed.
  */
 export function defaultCollapsedKeys(groups: GroupNode[]): Set<string> {
   const out = new Set<string>();
   const walk = (nodes: GroupNode[], nested: boolean) => {
     for (const node of nodes) {
       const children = node.children ?? [];
-      if (children.length > 0 && (nested || nodeKind(node) === 'session')) {
+      if (children.length > 0 && (nested || nodeKind(node) === 'session' || nodeKind(node) === 'directory')) {
         out.add(node.key);
       }
       walk(children, true);

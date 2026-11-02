@@ -85,6 +85,10 @@ import { epoch, guardEpoch } from './link';
 export interface BackendAPI extends CodeDiagnosticsAPI {
   /** Optional on older App bindings. Remote provisioning currently fails closed. */
   managedTool?(request: ManagedToolRequest): Promise<ManagedToolState>;
+  listWorkspaces(): Promise<string[]>;
+  openWorkspace(dir: string): Promise<string>;
+  removeWorkspace(dir: string): Promise<void>;
+  browseWorkspace(path: string): Promise<{ path: string; parent: string; directories: string[] }>;
   listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]>;
   listSessions(groupKey: string, filter?: FilterOpts, sort?: SortOpts): Promise<SessionMeta[]>;
   agentCounts(filter?: FilterOpts): Promise<Record<string, number>>;
@@ -290,6 +294,10 @@ interface WailsAppBinding {
   CloseCodeDiagnosticDocument?: CodeDiagnosticsAPI['closeCodeDiagnosticDocument'];
   NavigateCode?: CodeDiagnosticsAPI['navigateCode'];
   ReadNavigationFile?: CodeDiagnosticsAPI['readNavigationFile'];
+  ListWorkspaces(): Promise<string[]>;
+  OpenWorkspace(dir: string): Promise<string>;
+  RemoveWorkspace(dir: string): Promise<void>;
+  BrowseWorkspace(path: string): Promise<{ path: string; parent: string; directories: string[] }>;
   ListGroups(mode: string, filter: FilterOpts): Promise<GroupNode[]>;
   ListSessions(groupKey: string, filter: FilterOpts, sort: SortOpts): Promise<SessionMeta[]>;
   AgentCounts(filter: FilterOpts): Promise<Record<string, number>>;
@@ -515,6 +523,26 @@ class WailsBackendAPI implements BackendAPI {
       throw new Error('Wails desktop backend runtime is not available');
     }
     return b as WailsAppBinding;
+  }
+
+  async listWorkspaces(): Promise<string[]> {
+    try { return (await this.binding.ListWorkspaces()) || []; }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async openWorkspace(dir: string): Promise<string> {
+    try { return await this.binding.OpenWorkspace(dir); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async removeWorkspace(dir: string): Promise<void> {
+    try { await this.binding.RemoveWorkspace(dir); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async browseWorkspace(path: string): Promise<{ path: string; parent: string; directories: string[] }> {
+    try { return await this.binding.BrowseWorkspace(path); }
+    catch (e) { throw normalizeError(e); }
   }
 
   async listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]> {

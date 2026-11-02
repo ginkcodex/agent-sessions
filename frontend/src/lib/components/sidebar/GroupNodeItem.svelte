@@ -8,6 +8,7 @@
   import { files } from '../../stores/files.svelte';
   import { newSession } from '../../stores/newSession.svelte';
   import { newSessionMenuItems } from '../../newSession';
+  import { workspaces } from '../../stores/workspaces.svelte';
 
   interface Props {
     node: GroupNode;
@@ -59,6 +60,11 @@
       title: node.cwdMissing ? 'This directory no longer exists on disk' : undefined,
       onSelect: () => void importer.start(node.cwd),
     },
+    ...(workspaces.directories.includes(node.cwd ?? '') ? [{
+      label: 'Remove from workspace list',
+      onSelect: () => void workspaces.remove(node.cwd!),
+      title: 'Only removes the saved workspace. Files and session history are kept.',
+    }] : []),
     ...(newSession.available
       ? newSessionMenuItems(newSession.choices, (agent) => void newSession.start(agent, node.cwd!), {
           separator: true,

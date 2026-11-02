@@ -23,7 +23,7 @@
       if (appState.selectedGroupKey !== node.key) return;
       const visible = filterSessionsByAge(appState.sessions, manage.ageFilter);
       const ref = sessionToSelect(node, visible);
-      if (ref) await appState.selectSession(ref);
+      await appState.selectSession(ref);
     } finally {
       if (clicked === node.key) clicked = null;
     }
