@@ -12,7 +12,8 @@
 
   let { text, defaultExpanded = false, onFileLink }: Props = $props();
 
-  let renderedHtml = $derived(renderMarkdown(text, 'transcript'));
+  let expanded = $state(false);
+  let renderedHtml = $derived(defaultExpanded || expanded ? renderMarkdown(text, 'transcript') : '');
   let container = $state<HTMLDivElement>();
 
   $effect(() => {
@@ -21,7 +22,7 @@
   });
 </script>
 
-<details class="reasoning-block" open={defaultExpanded}>
+<details class="reasoning-block" open={defaultExpanded} ontoggle={(event) => expanded = event.currentTarget.open}>
   <summary class="reasoning-summary">
     <span class="reasoning-icon">🧠</span>
     <span class="reasoning-title">Thinking process…</span>

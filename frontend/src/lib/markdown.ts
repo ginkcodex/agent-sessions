@@ -123,7 +123,13 @@ function renderInline(text: string, fileLinks: FileLinkMode = false, links = tru
       i += link[0].length;
       continue;
     }
-    out += escapeHtml(source[i++]);
+    // Consume ordinary prose in one run instead of slicing, regex matching,
+    // and running five escaping replacements for every character. Only these
+    // characters can start a token handled above; escape the whole run once.
+    let end = i + 1;
+    while (end < source.length && !'`\\&['.includes(source[end])) end++;
+    out += escapeHtml(source.slice(i, end));
+    i = end;
   }
   return renderEmphasis(out).replace(/\u0000(\d+)\u0000/g, (_match, idx) => stashed[Number(idx)]);
 }

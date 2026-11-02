@@ -35,7 +35,11 @@
     }
   });
 
-  let highlightedInput = $derived(highlightCode(formattedInput, 'json'));
+  let inputExpanded = $state(false);
+  // Closed parameters need neither syntax highlighting nor a large hidden DOM.
+  // Search expansion renders synchronously, before the jump's landing tick.
+  let showInput = $derived(defaultExpanded || inputExpanded);
+  let highlightedInput = $derived(showInput ? highlightCode(formattedInput, 'json') : '');
 
   let displayOutput = $derived(fullOutput !== null ? fullOutput : (tool.output || ''));
   let fillsOutputBox = $derived(reachesLineCount(displayOutput, FULL_BOX_LINES, MAX_COLUMNS));
@@ -90,7 +94,7 @@
   </div>
 
   {#if formattedInput}
-    <details class="tool-section input-section" open={defaultExpanded}>
+    <details class="tool-section input-section" open={defaultExpanded} ontoggle={(event) => inputExpanded = event.currentTarget.open}>
       <summary class="section-summary">
         <span>Parameters</span>
         <button

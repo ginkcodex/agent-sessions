@@ -85,6 +85,15 @@ test('renderMarkdown converts markdown and strictly neutralizes XSS vectors', ()
   assert.ok(validLink.includes('target="_blank"'));
 });
 
+test('ordinary prose runs preserve adjacent inline tokens and HTML escaping', () => {
+  assert.equal(
+    renderMarkdown('Prose <tag> "quoted" before `code` &amp; [link](https://example.com) and **bold**.', 'transcript'),
+    '<p>Prose &lt;tag&gt; &quot;quoted&quot; before <code class="inline-code">code</code> &amp; <a href="https://example.com" target="_blank" rel="noopener noreferrer">link</a> and <strong>bold</strong>.</p>'
+  );
+  assert.equal(renderMarkdown('plain '.repeat(2000)), `<p>${'plain '.repeat(2000)}</p>`);
+  assert.equal(renderMarkdown('unmatched ` and [ and &unknown;'), '<p>unmatched ` and [ and &amp;unknown;</p>');
+});
+
 test('inline prose decodes entities once and protects escaped punctuation', () => {
   const cases = [
     ['&nbsp;&#160;&#xA0;', '<p>\u00a0\u00a0\u00a0</p>'],
