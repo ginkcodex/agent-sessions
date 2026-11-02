@@ -639,6 +639,26 @@ test('workspace activation is wired to directory, session and transcript interac
   assert.match(source('terminal/TerminalView'), /if \(focus && terminals\.focusOnActivation\) t\.focus\(\)/);
 });
 
+test('opening a shell restores typing focus after workspace navigation', async () => {
+  await withTerminals(async ({ store }) => {
+    await store.newShell('/work');
+    store.selectDirectory('/work', '');
+    assert.equal(store.focusOnActivation, false);
+    store.setOpen(false);
+
+    const shell = await store.newShell('/work');
+    assert.equal(store.active, shell.id);
+    assert.equal(store.open, true);
+    assert.equal(store.focusOnActivation, true, 'a new shell requests DOM focus, not just tab selection');
+
+    store.selectDirectory('/work', '');
+    assert.equal(store.focusOnActivation, false);
+    const split = await store.split(shell.id);
+    assert.equal(store.active, split.id);
+    assert.equal(store.focusOnActivation, true, 'a new split shell also requests typing focus');
+  });
+});
+
 test('workspace activation picks the first running matching tab in display order without opening the panel', async () => {
   await withTerminals(async ({ store }) => {
     const first = await store.newShell('/a');

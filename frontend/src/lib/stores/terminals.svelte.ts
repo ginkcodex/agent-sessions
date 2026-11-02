@@ -365,7 +365,7 @@ export class TerminalsStore {
     }
     this.tabs = [...this.tabs, tab];
     this.addPane(tab.id, place.after);
-    this.active = tab.id;
+    this.focusPane(tab.id);
     this.setOpen(true);
     return tab;
   }
