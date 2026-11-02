@@ -21,6 +21,11 @@ const viewer = await loadServerComponent(VIEWER_URL, [
   ["import { highlightFile, splitHighlightedLines, splitLines } from '../../../codeHighlight';",
     "const highlightFile = async () => ''; const splitHighlightedLines = (h) => h.split('\\n'); const splitLines = (t) => t.split('\\n');"],
   ["import { copyToClipboard } from '../../../portable';", 'const copyToClipboard = async () => true;'],
+  ["'../../../selectionTranslation'", lib('../../../selectionTranslation.ts')],
+  ["'../../../guidance'", lib('../../../guidance.ts')],
+  ["import { translateSettings } from '../../../stores/translate.svelte';", "const translateSettings = { configured: true, language: 'Vietnamese' };"],
+  ["import { manage } from '../../../stores/manage.svelte';", 'const manage = { openSettings() {} };'],
+  ["import SelectionTranslation from '../../transcript/SelectionTranslation.svelte';", `const SelectionTranslation = ${stub('data-selection-translation', '')};`],
   ["'../../../print'", lib('../../../print.ts')],
   ["'../../../fileFind'", lib('../../../fileFind.ts')],
   ["'../../../files'", lib('../../../files.ts')],
@@ -66,6 +71,19 @@ const viewer = await loadServerComponent(VIEWER_URL, [
     openFind() {}, closeFind() {}, stepMatch() {}, handleFindKey() {}, schedulePaint() {},
   });`],
 ]);
+
+test('Markdown preview reuses contextual selection translation without changing source menus', () => {
+  const source = readFileSync(VIEWER_URL, 'utf8');
+  assert.match(source, /class="markdown-preview"[^>]*oncontextmenu=\{openPreviewMenu\}/);
+  assert.match(source, /captureSelection\(event\.currentTarget as HTMLElement, window\.getSelection\(\)\)/);
+  assert.match(source, /return selected \? selectionMenuItems\(/);
+  // ContextMenu closes before invoking the action: callbacks must retain the selection.
+  assert.match(source, /\(\) => void copyPreviewSelection\(selected\.text\)/);
+  assert.match(source, /\(\) => \(previewTranslation = selected\)/);
+  assert.match(source, /range \? holdSelection\(range\)/);
+  assert.match(source, /<SelectionTranslation selection=\{previewTranslation\}/);
+  assert.match(source, /void files\.selected;\s*void showMarkdown;\s*void text;\s*void translateSettings\.language;\s*previewMenu = null;\s*previewTranslation = null;/);
+});
 
 test('print is offered only for readable Markdown outside editing', async () => {
   const label = 'aria-label="Print / Save as PDF"';

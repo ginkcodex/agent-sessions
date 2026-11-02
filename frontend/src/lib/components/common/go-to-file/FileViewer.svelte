@@ -42,6 +42,11 @@
   import { keyHandled } from '../../../fullscreen';
   import { createImagePreview } from './imagePreview.svelte';
   import { createFileFind } from './fileFind.svelte';
+  import { captureSelection, holdSelection, selectionMenuItems, type SelectedText } from '../../../selectionTranslation';
+  import { translateSettings } from '../../../stores/translate.svelte';
+  import { manage } from '../../../stores/manage.svelte';
+  import { copyFailed } from '../../../guidance';
+  import SelectionTranslation from '../../transcript/SelectionTranslation.svelte';
 
   let {
     tabs,
@@ -54,6 +59,53 @@
     presentationFontSize?: number;
     onCodeSettings?: () => void;
   } = $props();
+
+  let previewMenu = $state<{ x: number; y: number; selection: SelectedText } | null>(null);
+  let previewTranslation = $state<SelectedText | null>(null);
+
+  // Changing files, preview mode, content or language dismisses stale selections.
+  $effect(() => {
+    void files.selected;
+    void showMarkdown;
+    void text;
+    void translateSettings.language;
+    previewMenu = null;
+    previewTranslation = null;
+  });
+
+  let heldPreviewRange = $derived(previewMenu?.selection.range ?? previewTranslation?.range);
+  $effect(() => {
+    const range = heldPreviewRange;
+    return range ? holdSelection(range) : undefined;
+  });
+
+  function openPreviewMenu(event: MouseEvent) {
+    previewMenu = null;
+    previewTranslation = null;
+    const selected = captureSelection(event.currentTarget as HTMLElement, window.getSelection());
+    if (!selected) return;
+    event.preventDefault();
+    previewMenu = { x: event.clientX, y: event.clientY, selection: selected };
+  }
+
+  async function copyPreviewSelection(text: string) {
+    try {
+      if (!(await copyToClipboard(text))) throw new Error('The clipboard is not available.');
+      toast.show({ title: 'Selection copied', body: 'Copied the selected text.' });
+    } catch (err) {
+      toast.show(copyFailed('the selection', err));
+    }
+  }
+
+  let previewMenuItems = $derived.by(() => {
+    const selected = previewMenu?.selection;
+    return selected ? selectionMenuItems(
+      translateSettings.configured, translateSettings.language,
+      () => void copyPreviewSelection(selected.text),
+      () => (previewTranslation = selected),
+      () => manage.openSettings('translation'),
+    ) : [];
+  });
 
   let status = $derived(files.listing?.status);
   const lineSelections = new WeakMap<object, FileLineSelection>();
@@ -1332,7 +1384,8 @@
         }}
       >
         {#if showMarkdown}
-          <div class="markdown-preview" bind:this={find.previewEl} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14px'}>
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="markdown-preview" bind:this={find.previewEl} oncontextmenu={openPreviewMenu} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14px'}>
             <MarkdownDoc source={text} onFileLink={followFileLink} />
           </div>
         {:else if showSvg}
@@ -1349,6 +1402,13 @@
     {/if}
   {/if}
 </section>
+
+{#if previewMenu}
+  <ContextMenu x={previewMenu.x} y={previewMenu.y} items={previewMenuItems} ariaLabel="Selection actions" onClose={() => (previewMenu = null)} />
+{/if}
+{#if previewTranslation}
+  <SelectionTranslation selection={previewTranslation} language={translateSettings.language} onClose={() => (previewTranslation = null)} />
+{/if}
 
 <style>
   .markdown-preview {
