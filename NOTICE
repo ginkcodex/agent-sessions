@@ -1,0 +1,17 @@
+Agent Sessions
+
+Required Notice: Copyright © 2026 ginkcode (https://github.com/ginkcodex/agent-sessions)
+
+Except for third-party components and assets subject to their own licenses,
+Agent Sessions is licensed under the PolyForm Noncommercial License 1.0.0.
+See LICENSE or https://polyformproject.org/licenses/noncommercial/1.0.0.
+
+For a separate license permitting commercial use not covered by the public
+license, contact ginkcode at ginkcode@gmail.com.
+
+The software license does not grant trademark rights in the Agent Sessions
+name or logo. Third-party trademarks belong to their respective owners.
+
+Third-party components and assets retain their respective licenses and
+notices, including the vscode-icons assets in frontend/public/file-icons/
+and the Microsoft ConPTY runtime distributed with Windows packages.

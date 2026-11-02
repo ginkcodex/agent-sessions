@@ -401,6 +401,26 @@ make untag                 # Delete a local tag created by mistake
 
 </details>
 
+## License
+
+Copyright © 2026 ginkcode.
+
+Agent Sessions is **source-available** under the
+[PolyForm Noncommercial License 1.0.0](LICENSE), not an OSI-approved open-source
+license. The license permits noncommercial use, modification, and redistribution
+under its terms, including the permitted uses it defines for noncommercial
+organizations. It does not grant general commercial-use rights.
+
+For a separate license permitting commercial use not covered by these terms,
+contact **[ginkcode](mailto:ginkcode@gmail.com)**. Copyright ownership is retained
+by the respective copyright holders. The software license does not grant
+trademark rights in the **Agent Sessions** name or logo.
+
+Third-party code, dependencies, and assets remain under their own licenses;
+the project's license does not replace those terms. See [NOTICE](NOTICE) and
+the component-specific notices. When redistributing, include the license or
+its URL and preserve the required notices as specified in the license.
+
 ### File icon credits
 
 Go to File uses [vscode-icons](https://github.com/vscode-icons/vscode-icons)
