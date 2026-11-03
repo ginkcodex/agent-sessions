@@ -16,6 +16,8 @@
 </p>
 
 <p align="center">
+  <a href="https://agent-sessions.ginklab.cv">Website</a> ·
+  <a href="https://agent-sessions.ginklab.cv/guides/">User guides</a> ·
   <a href="#install">Install</a> ·
   <a href="#what-you-can-do">Features</a> ·
   <a href="#get-started">Get started</a> ·
