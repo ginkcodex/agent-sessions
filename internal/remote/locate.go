@@ -24,8 +24,9 @@ func LocateServer(targetOS, targetArch string) (string, error) {
 		candidates = append(candidates, filepath.Join(envDir, filename))
 	}
 
-	// 2. Dev tree. `wails dev` runs a binary outside the repo, so walk up
-	// from this source file to go.mod and look in build/remote.
+	// 2. Dev tree. `make dev` (`go run`) runs a binary from Go's build cache,
+	// outside the repo, so walk up from this source file to go.mod and look
+	// in build/remote.
 	if root := moduleRoot(); root != "" {
 		candidates = append(candidates, filepath.Join(root, "build", "remote", filename))
 	}
@@ -62,9 +63,9 @@ func LocateServer(targetOS, targetArch string) (string, error) {
 }
 
 // moduleRoot walks up from this source file to the directory containing go.mod.
-// `go run` and `wails dev` keep the source path, so a dev build finds
-// build/remote without an env override. A released binary has no source path
-// and returns "" (or a directory that simply has no bundle).
+// Builds without -trimpath, such as `go run` and `make dev`, keep the source
+// path, so a dev build finds build/remote without an env override. Release
+// builds use -trimpath, have no absolute source path and return "".
 func moduleRoot() string {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {

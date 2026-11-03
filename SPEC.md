@@ -43,30 +43,34 @@ coding tools (Claude Code, Codex CLI, OpenCode, …).
 
 | Layer | Choice | Why |
 |---|---|---|
-| App shell | **Wails v2** (Go ↔ WebView) | Native binary, Go backend, HTML/CSS frontend. Rich rendering (markdown, code highlighting, diffs) is much easier in a WebView than in Fyne/Gio. Uses WebKitGTK on Linux, WKWebView on macOS, so the same code runs on both. |
+| App shell | **Wails v3** (v3.1.0; Go ↔ WebView) | Native binary, Go backend, HTML/CSS frontend. Rich rendering (markdown, code highlighting, diffs) is much easier in a WebView than in Fyne/Gio. Uses WebKitGTK 6.0 (GTK 4) on Linux, WKWebView on macOS and WebView2 on Windows, so the same code runs on all three. |
 | Frontend | Svelte + TypeScript + Vite (alt: React) | Lightweight; good fit for virtualized lists. |
 | Markdown / code | `marked` + `shiki` (or `highlight.js`) | Transcripts are markdown-heavy. |
 | SQLite (read) | `modernc.org/sqlite` (pure Go) | No cgo/sqlite version coupling; open tool DBs with `mode=ro`. |
 | Own index/cache | SQLite + FTS5 at `$XDG_CACHE_HOME/agent-sessions/index-v<N>-<roots>.db` | Fast startup + full-text search; files named by schema and by a hash of the provider roots let different app versions, and processes scanning different roots, share a host safely. |
 | File watching | `fsnotify` | Live updates of active sessions. |
 
-**Linux build deps:** `gcc`, `pkg-config`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`
-(build with `-tags webkit2_41` on distros that ship only 4.1).
+**Linux build deps:** `gcc`, `pkg-config`, `libgtk-4-dev`, `libwebkitgtk-6.0-dev`
+(Fedora: `gtk4-devel`, `webkitgtk6.0-devel`). The desktop app needs Ubuntu
+24.04+, Debian 13+ or Fedora 40+; Ubuntu 22.04 and Debian 12 are no longer
+supported. Desktop builds are `go build -tags desktop,production`.
 
-> **Decision (2026-09-27): Wails v2.** v2 is the stable line; v3 is beta, and
-> moving from v2 to v3 later is a port rather than a version bump. To keep that
-> port cheap:
-> - Only `internal/app` and `cmd/agent-sessions` import Wails.
-> - The frontend reaches the backend through one thin `frontend/src/lib/api.ts`
->   wrapper around the generated bindings and events. Components never import
->   `wailsjs/*` directly.
+> **Current (2026-11-03): Wails v3.1.0.** See
+> [docs/wails-v3-upgrade.md](docs/wails-v3-upgrade.md) for the build, the
+> code boundaries and what has been verified.
+> - Only `cmd/agent-sessions` imports Wails. It adapts the Wails application
+>   to the `app.Desktop` callbacks, so `internal/app` stays toolkit-free.
+> - The `App` service is registered with `application.NewService` and called
+>   by full method name through `Call.ByName`; no generated bindings are used.
+> - `frontend/src/lib/desktopRuntime.ts` is the only importer of
+>   `@wailsio/runtime`. Components reach the backend through
+>   `frontend/src/lib/api.ts`.
+> - Each process owns one window; New Window starts another process.
 >
-> v2 specifics:
-> - Services are bound with `options.App{Bind: []interface{}{svc}}`, which
->   generates TypeScript into `frontend/wailsjs/go/...`.
-> - Go → UI events use `runtime.EventsEmit(ctx, name, data)`, with the `ctx`
->   captured in `OnStartup`.
-> - v2 supports a single window, which is enough for the three-pane layout.
+> **Historical decision (2026-09-27): Wails v2**, chosen while v3 was in beta,
+> with Linux on GTK 3 and WebKit2GTK 4.1. The thin `api.ts` wrapper and the
+> Wails-free `internal/app` kept the later port contained. The M1 plans and
+> task rows still describe that v2 scaffold.
 
 ---
 
@@ -74,7 +78,7 @@ coding tools (Claude Code, Codex CLI, OpenCode, …).
 
 ```
 cmd/
-  agent-sessions/        # Wails GUI entrypoint
+  agent-sessions/        # Wails v3 GUI entrypoint (`desktop` build tag)
   agent-sessions-cli/    # headless: `scan`, `show <id>`, `--json` (parser debugging, tests)
 internal/
   model/                 # unified Session / Message / Part types
@@ -85,7 +89,7 @@ internal/
   index/                 # cache DB, incremental rescan, FTS
   watch/                 # fsnotify → provider-specific invalidation
   paths/                 # per-OS default locations, env overrides
-  app/                   # Wails-bound service (the API the frontend calls)
+  app/                   # desktop service the frontend calls (no Wails import)
 frontend/
 testdata/<provider>/     # sanitized fixture sessions (golden tests)
 ```

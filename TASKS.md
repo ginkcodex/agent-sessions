@@ -3,8 +3,11 @@
 Derived from [SPEC.md](SPEC.md). Every task is scoped to be **≤ 4 h for a senior
 Go/TS developer**. Estimates include writing tests for the task.
 
-**Decided:** Wails **v2** (stable), using GTK3 + `webkit2gtk-4.1` on Linux.
-See SPEC §2.
+**Current:** Wails **v3.1.0**, using GTK 4 + WebKitGTK 6.0 on Linux
+(Ubuntu 24.04+, Debian 13+, Fedora 40+; Ubuntu 22.04 and Debian 12 dropped).
+See SPEC §2 and [the Wails v3 upgrade](docs/wails-v3-upgrade.md). The project
+started on Wails v2 with GTK3 + `webkit2gtk-4.1`; the M1 rows below keep that
+original wording as history.
 
 **Decided since the first draft:**
 - The frontend is Svelte 5 + TS.
@@ -259,6 +262,22 @@ gated on the M8-08 named-pipe credential channel.
 | M7 Remote over SSH | 20 | 65 | 1 | 0 | 19 |
 | M8 Windows support | 13 | 62 | 2 | 9 | 2 |
 | **Total** | **135** | **≈ 430 h** | **66** | **27** | **42** |
+
+## Follow-up — Wails v3 upgrade
+
+🟡 partial. Details and the full checklist are in
+[docs/wails-v3-upgrade.md](docs/wails-v3-upgrade.md).
+
+- **Done:** desktop on Wails v3.1.0 and `@wailsio/runtime` 3.1.0; plain
+  `go build -tags desktop,production`; Linux ported to GTK 4 / WebKitGTK 6.0
+  with a linkage check; packages, CI and release builds on Ubuntu 24.04;
+  Ubuntu 22.04 and Debian 12 dropped.
+- **Verified by the user on macOS:** fullscreen enter and exit, common
+  terminal actions, common window actions.
+- **Open (native manual gates, not yet run):** a real Linux GTK 4 desktop
+  session, clean-system `.deb`/`.rpm` installs, a real Windows machine and its
+  installers, the remaining macOS native features and the packaged `.dmg`,
+  and WSL/SSH deployment from a packaged build.
 
 ## Follow-up — Go to File code diagnostics (proposed)
 

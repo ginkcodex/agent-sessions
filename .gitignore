@@ -1,10 +1,11 @@
 bin/
-# build/ holds generated Wails and package output.
+# build/ holds build, generated resource and package output.
 build/*
 /dist/
 frontend/node_modules/
 frontend/dist/
-# Runtime glue `wails build` writes; the frontend does not import it.
+# Bindings Wails v2's `wails build` generated. The v3 app does not create or
+# import them; ignored so stale copies in old checkouts stay out of git.
 frontend/wailsjs/
 *.test
 /testdata/private/
