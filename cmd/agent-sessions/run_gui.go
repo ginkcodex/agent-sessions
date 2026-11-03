@@ -32,7 +32,6 @@ const filesDroppedEvent = "files:dropped"
 // desktop build tag so default builds and tests never need GTK or WebKit.
 func run() {
 	service := app.NewApp()
-	app.SetNativePrint(nativePrinter())
 	app.SetNativeTerminalFonts(nativeTerminalFonts)
 	hideSiriAffordance()
 

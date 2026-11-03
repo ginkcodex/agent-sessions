@@ -72,7 +72,7 @@ func newDesktop(desktop *application.App, window *application.WebviewWindow, not
 		Raise:        func(context.Context) { raise(window) },
 		// Close emits WindowClosing, so the close guard decides.
 		RequestClose: func(context.Context) { window.Close() },
-		Print:        func(context.Context) error { return window.Print() },
+		Print:        func(context.Context) error { return printWindow(window) },
 
 		Notifications: notifier,
 	}

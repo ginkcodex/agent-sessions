@@ -2,6 +2,8 @@
 
 package main
 
-// nativePrinter is nil off macOS: the WebView2 and WebKitGTK print dialogs
-// already offer the orientation, so Wails' WindowPrint is used as it is.
-func nativePrinter() func() error { return nil }
+import "github.com/wailsapp/wails/v3/pkg/application"
+
+// printWindow uses Wails' Print off macOS: the WebView2 and WebKitGTK print
+// dialogs already offer the orientation.
+func printWindow(window *application.WebviewWindow) error { return window.Print() }

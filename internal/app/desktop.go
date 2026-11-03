@@ -80,8 +80,7 @@ type Desktop struct {
 	Raise func(ctx context.Context)
 	// RequestClose asks the window to close as if the user closed it.
 	RequestClose func(ctx context.Context)
-	// Print opens the system print dialog for the window. SetNativePrint, when
-	// set, takes precedence.
+	// Print opens the system print dialog for the window.
 	Print func(ctx context.Context) error
 
 	Notifications Notifier

@@ -381,7 +381,7 @@ func TestDesktopDefaultsWithoutShell(t *testing.T) {
 		t.Fatalf("open dialog without desktop: %v", err)
 	}
 	a.ctx = context.Background()
-	if err := a.PrintWindow(); !errors.Is(err, ErrDesktopUnavailable) && nativePrint == nil {
+	if err := a.PrintWindow(); !errors.Is(err, ErrDesktopUnavailable) {
 		t.Fatalf("print without desktop: %v", err)
 	}
 	if err := a.ToggleFullscreen(); !errors.Is(err, ErrDesktopUnavailable) {
