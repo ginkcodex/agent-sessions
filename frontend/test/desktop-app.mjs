@@ -26,7 +26,8 @@ function completeRuntime(runtime) {
     Events: { On: () => () => {}, ...runtime.Events },
     Browser: { OpenURL: async () => {}, ...runtime.Browser },
     Window: { SetTitle: async () => {}, ...runtime.Window },
-    ...Object.fromEntries(Object.entries(runtime).filter(([k]) => !['Call', 'Events', 'Browser', 'Window'].includes(k))),
+    Clipboard: { SetText: async () => {}, Text: async () => '', ...runtime.Clipboard },
+    ...Object.fromEntries(Object.entries(runtime).filter(([k]) => !['Call', 'Events', 'Browser', 'Window', 'Clipboard'].includes(k))),
   };
 }
 

@@ -27,6 +27,7 @@ export type DesktopRuntime = {
   Events: Pick<typeof Wails.Events, 'On'>;
   Browser: Pick<typeof Wails.Browser, 'OpenURL'>;
   Window: Pick<typeof Wails.Window, 'SetTitle'>;
+  Clipboard: Pick<typeof Wails.Clipboard, 'SetText' | 'Text'>;
 };
 
 declare global {
@@ -133,4 +134,16 @@ export async function openDesktopURL(url: string): Promise<void> {
 export async function setDesktopTitle(title: string): Promise<void> {
   const rt = await loadDesktopRuntime();
   await rt.Window.SetTitle(title);
+}
+
+/** Puts text on the system clipboard through the desktop shell. */
+export async function setDesktopClipboardText(text: string): Promise<void> {
+  const rt = await loadDesktopRuntime();
+  await rt.Clipboard.SetText(text);
+}
+
+/** The system clipboard's text, read through the desktop shell. */
+export async function desktopClipboardText(): Promise<string> {
+  const rt = await loadDesktopRuntime();
+  return (await rt.Clipboard.Text()) || '';
 }

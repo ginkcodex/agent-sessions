@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { copyToClipboard } from '../src/lib/portable.ts';
+import { copyToClipboard, readClipboard } from '../src/lib/portable.ts';
+import { installDesktopRuntime } from './desktop-app.mjs';
 import { splitHighlightedLines, splitLines } from '../src/lib/codeHighlight.ts';
 import {
   buildFileTree,
@@ -122,17 +123,41 @@ test('copyToClipboard writes natively in the desktop app, falling back to the we
   const web = { writeText: async (t) => { written.push(['web', t]); } };
   const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   Object.defineProperty(globalThis, 'navigator', { value: { clipboard: web }, configurable: true });
+  let nativeFails = false;
+  const restore = installDesktopRuntime({ Clipboard: { SetText: async (t) => {
+    if (nativeFails) throw new Error('no clipboard');
+    written.push(['native', t]);
+  } } });
+  const quiet = console.error;
+  console.error = () => {};
   try {
-    globalThis.runtime = { ClipboardSetText: async (t) => { written.push(['native', t]); return true; } };
     assert.equal(await copyToClipboard('a'), true);
-    globalThis.runtime = { ClipboardSetText: async () => false };
+    nativeFails = true;
     assert.equal(await copyToClipboard('b'), true);
-    delete globalThis.runtime;
+    restore();
     web.writeText = async () => { throw new Error('NotAllowedError'); };
     assert.equal(await copyToClipboard('c'), false);
     assert.deepEqual(written, [['native', 'a'], ['web', 'b']]);
   } finally {
-    delete globalThis.runtime;
+    console.error = quiet;
+    restore();
+    if (saved) Object.defineProperty(globalThis, 'navigator', saved);
+    else delete globalThis.navigator;
+  }
+});
+
+test('readClipboard reads natively in the desktop app and from the web clipboard otherwise', async () => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { clipboard: { readText: async () => 'web text' } }, configurable: true,
+  });
+  const restore = installDesktopRuntime({ Clipboard: { Text: async () => 'native text' } });
+  try {
+    assert.equal(await readClipboard(), 'native text');
+    restore();
+    assert.equal(await readClipboard(), 'web text');
+  } finally {
+    restore();
     if (saved) Object.defineProperty(globalThis, 'navigator', saved);
     else delete globalThis.navigator;
   }

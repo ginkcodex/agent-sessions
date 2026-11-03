@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"slices"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ginkcode/agent-sessions/internal/index"
@@ -28,15 +28,20 @@ func TestOnStartupStoresContext(t *testing.T) {
 	type key struct{}
 	a := NewApp()
 	ctx := context.WithValue(t.Context(), key{}, "startup")
-	var emitted []string
-	OnStartup(a, ctx, Desktop{Emit: func(name string, _ any) { emitted = append(emitted, name) }})
+	// Startup can emit unrelated events from background engine goroutines.
+	var probes atomic.Int32
+	OnStartup(a, ctx, Desktop{Emit: func(name string, _ any) {
+		if name == "probe" {
+			probes.Add(1)
+		}
+	}})
 	t.Cleanup(func() { _ = Close(a) })
 	if a.ctx == nil || a.ctx.Value(key{}) != "startup" {
 		t.Error("OnStartup did not retain the runtime context")
 	}
 	a.desktopEvents.Emit("probe", nil)
-	if !slices.Contains(emitted, "probe") {
-		t.Errorf("injected emitter not used: %v", emitted)
+	if got := probes.Load(); got != 1 {
+		t.Errorf("injected emitter received %d probe events, want 1", got)
 	}
 }
 

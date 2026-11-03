@@ -1,3 +1,4 @@
+import { desktopClipboardText, isDesktop, setDesktopClipboardText } from './desktopRuntime';
 import type { AgentID, SessionRef } from './types';
 
 export interface BudgetPreset {
@@ -56,11 +57,13 @@ export function targetAgentsFor(sourceAgent?: string): AgentOption[] {
  * The browser build, and a failed native write, use the web clipboard.
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    const runtime = (globalThis as any).runtime;
-    if (runtime?.ClipboardSetText && (await runtime.ClipboardSetText(text))) return true;
-  } catch (err) {
-    console.error('Native clipboard write failed:', err);
+  if (isDesktop()) {
+    try {
+      await setDesktopClipboardText(text);
+      return true;
+    } catch (err) {
+      console.error('Native clipboard write failed:', err);
+    }
   }
   if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
     return false;
@@ -80,8 +83,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  */
 export async function readClipboard(): Promise<string> {
   try {
-    const runtime = (globalThis as any).runtime;
-    if (runtime?.ClipboardGetText) return (await runtime.ClipboardGetText()) || '';
+    if (isDesktop()) return await desktopClipboardText();
     if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
       return await navigator.clipboard.readText();
     }
