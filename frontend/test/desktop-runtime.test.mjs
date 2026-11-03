@@ -198,7 +198,7 @@ test('the terminal is a v3 drop target and the runtime is imported in one place'
     }
   };
   walk(src);
-  assert.deepEqual(importers, ['lib/desktopRuntime.ts']);
+  assert.deepEqual(importers, [join('lib', 'desktopRuntime.ts')]);
   assert.deepEqual(legacy, [], 'no Wails v2 globals remain');
   const runtime = readFileSync(new URL('../src/lib/desktopRuntime.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(runtime, /^import (?!type)[^\n]*@wailsio\/runtime/m, 'only a type import is static');
