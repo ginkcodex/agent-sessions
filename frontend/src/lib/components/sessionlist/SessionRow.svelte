@@ -19,11 +19,9 @@
      * list renders it: virtual-list items are transformed and contained, which
      * would clip a fixed-position menu drawn inside the row. */
     onMenu?: (session: SessionMeta, x: number, y: number) => void;
-    /** Shows the agent's mark; off while the list is filtered to one agent. */
-    showAgent?: boolean;
   }
 
-  let { session, isSelected, onSelect, onMenu, showAgent = true }: Props = $props();
+  let { session, isSelected, onSelect, onMenu }: Props = $props();
 
   let showCountTooltip = $state(false);
   function openMenu(event: MouseEvent) {
@@ -95,24 +93,20 @@
     {:else if session.live}
       <span class="live-dot" title="Active session"></span>
     {/if}
-    {#if showAgent || manage.settings.enabled}
-      <!-- The agent's mark; in manage mode its checkbox takes its place. -->
-      <span class="lead" class:checkable={manage.settings.enabled} class:checking={bulkSelected || selecting}>
-        {#if showAgent}
-          <AgentIcon agent={session.ref.agent} size={12} />
-        {/if}
-        {#if manage.settings.enabled}
-          <input
-            type="checkbox"
-            class="bulk-check"
-            checked={bulkSelected}
-            onclick={handleBulkToggle}
-            onkeydown={handleBulkKeydown}
-            aria-label="Select session {session.title || session.ref.id}"
-          />
-        {/if}
-      </span>
-    {/if}
+    <!-- The agent's mark; in manage mode its checkbox takes its place. -->
+    <span class="lead" class:checkable={manage.settings.enabled} class:checking={bulkSelected || selecting}>
+      <AgentIcon agent={session.ref.agent} size={12} />
+      {#if manage.settings.enabled}
+        <input
+          type="checkbox"
+          class="bulk-check"
+          checked={bulkSelected}
+          onclick={handleBulkToggle}
+          onkeydown={handleBulkKeydown}
+          aria-label="Select session {session.title || session.ref.id}"
+        />
+      {/if}
+    </span>
     {#if session.archived}
       <span class="archived-tag">Archived</span>
     {/if}

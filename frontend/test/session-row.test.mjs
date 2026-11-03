@@ -43,11 +43,10 @@ test('only subagent session titles are marked as subagents, even when selected',
   assert.doesNotMatch(source, /font-style:\s*italic/);
 });
 
-test('rows show the agent mark unless the list is filtered to one agent', async () => {
+test('rows always show the agent mark, even when the list is filtered to one agent', async () => {
   assert.match(await renderRow(undefined), /class="agent-icon[^"]*"[^>]*title="Claude Code"/);
-  const filtered = await renderRow(undefined, false, 'Session title', { showAgent: false });
-  assert.doesNotMatch(filtered, /agent-icon/);
-  assert.doesNotMatch(filtered, /class="lead/);
+  const list = readFileSync(new URL('../src/lib/components/sessionlist/SessionList.svelte', import.meta.url), 'utf8');
+  assert.doesNotMatch(list, /showAgent/, 'an agent filter does not hide the mark');
 });
 
 test('manage checkboxes stay quiet until a row is hovered or a session is picked', async () => {
