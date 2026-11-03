@@ -16,8 +16,8 @@ import (
 )
 
 // Every open window joins a ring in the claims dir so a shortcut can move
-// to the next one: each window is its own process, so the system's own
-// "next window of this app" (Cmd+` on macOS) never leaves the current one.
+// to the next one, in the order they opened, across every copy of the app
+// that is running.
 //
 // A member holds win-<id>.lock while it is open and writes win-<id>.json
 // next to it: where to reach it, as for a host claim, and when it joined,

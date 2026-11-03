@@ -196,7 +196,28 @@ func TestClaimsDir(t *testing.T) {
 	}
 }
 
-func TestNewWindowStartsAnotherCopy(t *testing.T) {
+func TestNewWindowOpensAWindowInThisProcess(t *testing.T) {
+	if err := (&App{}).NewWindow(); !errors.Is(err, ErrDesktopUnavailable) {
+		t.Fatalf("new window without a desktop: %v", err)
+	}
+
+	opened := 0
+	a := &App{ctx: withDesktop(context.Background(), Desktop{OpenWindow: func() error {
+		opened++
+		return nil
+	}})}
+	if err := a.NewWindow(); err != nil || opened != 1 {
+		t.Fatalf("NewWindow = %v, opened %d windows", err, opened)
+	}
+
+	failure := errors.New("no window")
+	a.ctx = withDesktop(context.Background(), Desktop{OpenWindow: func() error { return failure }})
+	if err := a.NewWindow(); !errors.Is(err, failure) {
+		t.Fatalf("failed new window: %v", err)
+	}
+}
+
+func TestStartAnotherCopyDropsTheAskpassSession(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses /bin/sh")
 	}
@@ -208,7 +229,7 @@ func TestNewWindowStartsAnotherCopy(t *testing.T) {
 	}
 	t.Setenv("AGENT_SESSIONS_ASKPASS_SOCK", "/tmp/sock")
 	t.Setenv("AS_NEW_WINDOW_KEEP", "1")
-	if err := (&App{}).NewWindow(); err != nil {
+	if err := startAnotherCopy(); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(3 * time.Second)
@@ -221,9 +242,9 @@ func TestNewWindowStartsAnotherCopy(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if !strings.Contains(env, "AS_NEW_WINDOW_KEEP=1") {
-		t.Fatalf("new window not started; env %q", env)
+		t.Fatalf("the new copy did not start; env %q", env)
 	}
 	if strings.Contains(env, "AGENT_SESSIONS_ASKPASS_") {
-		t.Fatal("new window inherited the askpass session")
+		t.Fatal("the new copy inherited the askpass session")
 	}
 }

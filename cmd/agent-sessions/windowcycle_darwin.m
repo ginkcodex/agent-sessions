@@ -10,10 +10,10 @@
 
 static id cycleMonitor;
 
-// Each window of the app is its own process, so AppKit's own Cmd+` only
-// cycles this process's one window and does nothing. A local monitor sees
-// the key before AppKit and the web view do: it takes Cmd+` (and
-// Cmd+Shift+` for the other direction) and passes every other key on.
+// AppKit's own Cmd+` only cycles the windows of this process, in its own
+// order. A local monitor sees the key before AppKit and the web view do: it
+// takes Cmd+` (and Cmd+Shift+` for the other direction) for the window ring
+// and passes every other key on.
 void hook_window_cycling(void) {
 	dispatch_async(dispatch_get_main_queue(), ^{
 		if (cycleMonitor != nil) {

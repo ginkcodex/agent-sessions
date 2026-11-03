@@ -133,3 +133,20 @@ func TestWindowsStartAfterCloseDoesNothing(t *testing.T) {
 		t.Fatal("a closed window's App started")
 	}
 }
+
+func TestWindowsNewWindowOpensThroughTheShell(t *testing.T) {
+	w := testWindows(t)
+	opened := 0
+	w.open = func() error {
+		opened++
+		w.Reserve()
+		return nil
+	}
+	_, a := startedApp(t, w, Desktop{})
+	if err := a.NewWindow(); err != nil {
+		t.Fatal(err)
+	}
+	if opened != 1 || w.lookup("window-2") == nil {
+		t.Fatalf("opened %d windows", opened)
+	}
+}

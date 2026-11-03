@@ -13,9 +13,10 @@ import "sync/atomic"
 var cycleWindow atomic.Pointer[func(forward bool)]
 
 // hookWindowCycling makes Cmd+` bring the app's next window to the front,
-// and Cmd+Shift+` the previous one, as in any macOS app. The windows are
-// separate processes, so the key is taken natively (windowcycle_darwin.m)
-// and passed to cycle.
+// and Cmd+Shift+` the previous one, as in any macOS app. The key is taken
+// natively (windowcycle_darwin.m) and passed to cycle, which moves through
+// the window ring: in the order the windows opened, and into another
+// running copy of the app too.
 func hookWindowCycling(cycle func(forward bool)) {
 	cycleWindow.Store(&cycle)
 	C.hook_window_cycling()
@@ -27,7 +28,7 @@ func goCycleWindow(forward C.int) {
 	if cycle == nil {
 		return
 	}
-	// Off the main thread: raising a window talks to the other process,
-	// which may be slow to answer.
+	// Off the main thread: raising a window may talk to another copy of the
+	// app, which may be slow to answer.
 	go (*cycle)(forward != 0)
 }

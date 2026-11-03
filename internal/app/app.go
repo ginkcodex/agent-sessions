@@ -228,7 +228,8 @@ func (a *App) onStartup(ctx context.Context) {
 	}
 }
 
-// newWindowCommand starts another copy of this app; tests replace it.
+// newWindowCommand is the command that starts another copy of this app, as
+// a restart does; tests replace it.
 var newWindowCommand = func() (*exec.Cmd, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -237,12 +238,15 @@ var newWindowCommand = func() (*exec.Cmd, error) {
 	return exec.Command(exe), nil
 }
 
-// NewWindow opens another window of the app. Each window is its own
-// process with its own connection, so windows can show different hosts;
-// a host is open in one window at a time (see hostClaims). On macOS this
-// also works where opening the app again would only focus this window.
+// NewWindow opens another window of the app, in this process. Each window
+// has an App and a connection of its own, so windows can show different
+// hosts; a host is open in one window at a time (see hostClaims).
 func (a *App) NewWindow() error {
-	if err := startAnotherCopy(); err != nil {
+	fn := desktopFrom(a.appCtx()).OpenWindow
+	if fn == nil {
+		return fmt.Errorf("open a new window: %w", ErrDesktopUnavailable)
+	}
+	if err := fn(); err != nil {
 		return fmt.Errorf("open a new window: %w", err)
 	}
 	return nil

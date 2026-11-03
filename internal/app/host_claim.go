@@ -21,10 +21,11 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/filelock"
 )
 
-// Each app window is its own process. A host is open in at most one of
-// them: the window connected to it, or connecting, holds the host's claim,
-// a file lock under the cache dir. Choosing that host in another window
-// brings the holder's window to the front instead of opening it twice.
+// Each app window has an App of its own, and another copy of the app may be
+// running too. A host is open in at most one window: the window connected
+// to it, or connecting, holds the host's claim, a file lock under the cache
+// dir. Choosing that host in another window brings the holder's window to
+// the front instead of opening it twice.
 //
 // Next to its lock the holder writes where to reach it: a loopback port and
 // a random token. The token keeps other local users, who can reach the
@@ -61,7 +62,7 @@ type claimInfo struct {
 
 type hostClaims struct {
 	dir string
-	// focus brings this process's window to the front.
+	// focus brings this App's window to the front.
 	focus func()
 
 	mu    sync.Mutex

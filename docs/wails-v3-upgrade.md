@@ -46,9 +46,10 @@ describe the v2 scaffold; they are kept as history.
 - **Events:** each App emits to its own window only
   (`WebviewWindow.DispatchWailsEvent`). Dropped files reach only Go in v3, so
   the shell re-emits them to the page as `files:dropped`.
-- **Window:** each window has its own `app.App` in `app.Windows`, created
-  and torn down with the window. New Window still starts another copy of the
-  app. The close guard runs on the window's closing hook. A quit or restart
+- **Window:** the app runs one process with any number of windows. Each
+  window has its own `app.App` in `app.Windows`, created and torn down with
+  the window, and New Window opens another one in the same process. The
+  close guard runs on the window's closing hook. A quit or restart
   first asks every window about its unsaved files without closing any
   (`internal/app/quit.go`); the app quits once all agree, and a restart
   starts the new copy only after every App has closed.
