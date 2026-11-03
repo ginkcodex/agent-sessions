@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,12 +20,20 @@ import (
 
 // testWindows is a registry whose Apps have no providers and keep their
 // caches and window claims in temporary directories.
+//
+// The directories are made before Shutdown is registered, so they are
+// removed after it: Windows cannot remove the lock files of a running App.
 func testWindows(t *testing.T) *Windows {
 	t.Helper()
+	root := t.TempDir()
+	var apps atomic.Uint64
 	w := NewWindows(nil, nil, nil)
 	w.newApp = func() *App {
 		a := NewAppWithService(NewService(scan.NewCatalog(), provider.Set{}))
-		a.cacheDirOverride = t.TempDir()
+		a.cacheDirOverride = filepath.Join(root, strconv.FormatUint(apps.Add(1), 10))
+		if err := os.MkdirAll(a.cacheDirOverride, 0o700); err != nil {
+			t.Error(err)
+		}
 		return a
 	}
 	t.Cleanup(w.Shutdown)
