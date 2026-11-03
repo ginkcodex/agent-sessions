@@ -12,9 +12,9 @@
 static id monitor;
 
 // WKWebView does not report the side buttons to the page as buttons 3 and
-// 4. A local monitor sees the app's events before any view does: it takes
-// the side buttons, moves back or forward on the release, and passes every
-// other event on.
+// 4. A local monitor sees the app's events, in every window, before any view
+// does: it takes the side buttons, moves the event's window back or forward
+// on the release, and passes every other event on.
 //
 // Logi Options+ (and three-finger trackpad swipes) deliver back and forward
 // as a horizontal swipe instead of a button, so those are taken too. As in
@@ -31,7 +31,7 @@ void hook_side_buttons(void) {
 				if (dx == 0) {
 					return event;
 				}
-				goMouseNavigate(dx < 0);
+				goMouseNavigate((void *)[event window], dx < 0);
 				return nil;
 			}
 			NSInteger button = [event buttonNumber];
@@ -39,9 +39,12 @@ void hook_side_buttons(void) {
 				return event;
 			}
 			if ([event type] == NSEventTypeOtherMouseUp) {
-				goMouseNavigate(button == BUTTON_FORWARD);
+				goMouseNavigate((void *)[event window], button == BUTTON_FORWARD);
 			}
 			return nil;
 		}] retain];
 	});
 }
+
+// Windows need nothing of their own: the monitor sees every window's events.
+void hook_window_side_buttons(void *window) {}

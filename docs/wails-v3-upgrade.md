@@ -51,7 +51,7 @@ describe the v2 scaffold; they are kept as history.
   app. The close guard runs on the window's closing hook, and a quit from the
   OS is turned into a guarded window close first.
 - **Linux native code:** the mouse side-button hook (`mousenav_linux.c`) uses
-  a capture-phase `GtkGestureClick` on the `WebKitWebView`, and font hinting is
+  a capture-phase `GtkGestureClick` on each window's `WebKitWebView`, and font hinting is
   turned off through GTK 4 settings (`fonts_linux.go`).
 
 ## Verification

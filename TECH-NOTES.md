@@ -87,8 +87,11 @@ different path. All paths end in the same navigation as Alt+←/→ and ⌘[ / �
 | Linux | WebKitGTK 6.0 (GTK 4) | Under WebKit2GTK (GTK 3, Wails v2): a **left** click (`button=0`, `buttons=0`, `which=0`) plus `auxclick`, identical for back and forward. Not re-checked under GTK 4. | GTK 4 hook in `cmd/agent-sessions/mousenav_linux.c` claims buttons 8/9 in the capture phase before WebKit sees them. Not yet tested on real hardware. |
 | macOS | WKWebView | Nothing usable | `NSEvent` local monitor in `cmd/agent-sessions/mousenav_darwin.m` |
 
-The native hooks emit the Wails event `nav:mouse` with `"back"` or
-`"forward"` (`mouseNavigateEvent` in `cmd/agent-sessions/mousenav.go`).
+The native hooks send the Wails event `nav:mouse` with `"back"` or
+`"forward"` (`mouseNavigateEvent` in `cmd/agent-sessions/mousenav.go`) to
+the window the button was pressed in, and only to that window. macOS has one
+monitor for every window; Linux hooks each window's web view once its page
+is ready.
 The frontend subscribes through `subscribeMouseNavigate` in
 `frontend/src/lib/api.ts`. The shared Go side is
 `cmd/agent-sessions/mousenav_native.go`.

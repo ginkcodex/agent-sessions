@@ -87,6 +87,11 @@ func (s *shell) openWindow() error {
 		})
 	})
 
+	// Linux hooks the mouse's side buttons per web view, once it exists.
+	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
+		hookWindowMouseNavigation(window)
+	})
+
 	w := shellWindow{name: name, window: window}
 	s.mu.Lock()
 	running := s.running
