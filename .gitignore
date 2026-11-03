@@ -9,3 +9,4 @@ frontend/wailsjs/
 *.test
 /testdata/private/
 .DS_Store
+/web/
