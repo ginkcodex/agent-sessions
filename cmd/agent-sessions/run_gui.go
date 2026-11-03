@@ -65,6 +65,12 @@ func run() {
 			return false
 		},
 		OnShutdown: func() { app.OnShutdown(service) },
+		Mac: application.MacOptions{
+			// Each process owns one window. After the close guard approves,
+			// terminate instead of leaving a windowless process in the Dock.
+			// This also completes Cmd+Q redirected through ShouldQuit above.
+			ApplicationShouldTerminateAfterLastWindowClosed: true,
+		},
 		Linux: application.LinuxOptions{
 			ProgramName: "agent-sessions",
 		},
