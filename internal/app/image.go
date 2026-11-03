@@ -5,8 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
-
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // maxImageBytes caps a saved image; a large diagram at 2x is a few MB.
@@ -58,12 +56,12 @@ func (a *App) SaveImage(req SaveImageRequest) (string, error) {
 	if a.saveDialogOverride != nil {
 		dest, err = a.saveDialogOverride(ctx, name)
 	} else {
-		dest, err = wruntime.SaveFileDialog(ctx, wruntime.SaveDialogOptions{
+		dest, err = saveFileDialog(ctx, SaveDialogOptions{
 			Title:            "Save Image",
 			DefaultDirectory: dialogDefaultDir(),
 			DefaultFilename:  name,
 			Filters: fileFilters(
-				wruntime.FileFilter{DisplayName: fmt.Sprintf("%s Images (*.%s)", label, ext), Pattern: "*." + ext},
+				FileFilter{DisplayName: fmt.Sprintf("%s Images (*.%s)", label, ext), Pattern: "*." + ext},
 			),
 		})
 	}

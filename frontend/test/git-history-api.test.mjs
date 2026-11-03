@@ -1,16 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAPI, GIT_HISTORY_UNSUPPORTED } from '../src/lib/api.ts';
+import { GIT_HISTORY_UNSUPPORTED } from '../src/lib/api.ts';
+import { desktopAPI, withDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
-async function withApp(App, fn) {
-  const previous = globalThis.window;
-  globalThis.window = { go: { app: { App } } };
-  try { await fn(); } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
-}
+const withApp = withDesktopApp;
 
 test('history forwards full target and pinned snapshot without host-path rewriting', async () => {
   const calls = [];
@@ -20,7 +14,7 @@ test('history forwards full target and pinned snapshot without host-path rewriti
   const diff = { ...commit, path: 'deleted/file.txt' };
   const App = Object.fromEntries(['GitHistoryRepositories', 'GitHistoryBranches', 'GitHistoryList', 'GitHistoryCommit', 'ReadGitHistoryDiff'].map(name => [name, async value => { calls.push([name, value]); return { marker: name }; }]));
   await withApp(App, async () => {
-    const api = createAPI();
+    const api = desktopAPI();
     for (const [method, value, binding] of [['gitHistoryRepositories', target.dir, 'GitHistoryRepositories'], ['gitHistoryBranches', target, 'GitHistoryBranches'], ['gitHistoryList', list, 'GitHistoryList'], ['gitHistoryCommit', commit, 'GitHistoryCommit'], ['readGitHistoryDiff', diff, 'ReadGitHistoryDiff']]) {
       assert.deepEqual(await api[method](value), { marker: binding });
       assert.deepEqual(calls.at(-1), [binding, value]);
@@ -30,7 +24,7 @@ test('history forwards full target and pinned snapshot without host-path rewriti
 
 test('old bindings report unsupported history independently from changes', async () => {
   await withApp({}, async () => {
-    const api = createAPI();
+    const api = desktopAPI();
     for (const method of ['gitHistoryRepositories', 'gitHistoryBranches', 'gitHistoryList', 'gitHistoryCommit', 'readGitHistoryDiff', 'gitHistoryRefAction', 'gitHistoryCompare', 'readGitHistoryCompareDiff']) {
       await assert.rejects(api[method]({}), e => e.message === GIT_HISTORY_UNSUPPORTED);
     }
@@ -48,7 +42,7 @@ test('ref actions and comparison preserve captured host and cancellation waits f
     GitHistoryCompare: async (...args) => { calls.push(args); return {}; },
     ReadGitHistoryCompareDiff: async (...args) => { calls.push(args); return {}; },
   }, async () => {
-    const api = createAPI(), controller = new AbortController();
+    const api = desktopAPI(), controller = new AbortController();
     let settled = false;
     const action = api.gitHistoryRefAction(req, controller.signal, 'ssh:original').then(() => { settled = true; });
     const id = calls[0][1];

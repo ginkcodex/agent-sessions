@@ -1,23 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAPI, GIT_SYNC_UNSUPPORTED, GitSyncError } from '../src/lib/api.ts';
+import { GIT_SYNC_UNSUPPORTED, GitSyncError } from '../src/lib/api.ts';
+import { desktopAPI, withDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
-async function withApp(App, fn) {
-  const previous = globalThis.window;
-  globalThis.window = { go: { app: { App } } };
-  try { await fn(); } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
-}
+const withApp = withDesktopApp;
 
 test('Git sync API forwards op, sync ID and host and decodes coded failures', async () => {
   const calls = [];
   const reply = { op: 'pull', summary: 'Fast-forwarded main to origin/main (2 commits).', status: { ok: true, branch: 'main', upstream: 'origin/main', ahead: 0, behind: 0 } };
   const App = { async GitSync(...args) { calls.push(args); return reply; }, async CancelGitSync() {} };
   await withApp(App, async () => {
-    const api = createAPI();
+    const api = desktopAPI();
     assert.deepEqual(await api.gitSync('/repo/sub', 'child', 'pull', 'box'), reply);
     await api.gitSync('/repo', '', 'push', undefined);
     assert.equal(calls.length, 2);
@@ -43,11 +37,11 @@ test('aborting a Git sync cancels its backend run by ID and waits for it to stop
   };
   await withApp(App, async () => {
     const controller = new AbortController();
-    const pending = createAPI().gitSync('/repo', '', 'push', 'box', controller.signal);
+    const pending = desktopAPI().gitSync('/repo', '', 'push', 'box', controller.signal);
     controller.abort();
     await assert.rejects(pending, e => e instanceof GitSyncError && e.code === 'canceled');
     assert.deepEqual(cancels, [App.id]);
-    await assert.rejects(createAPI().gitSync('/repo', '', 'push', 'box', controller.signal), e => e.code === 'canceled');
+    await assert.rejects(desktopAPI().gitSync('/repo', '', 'push', 'box', controller.signal), e => e.code === 'canceled');
     assert.equal(cancels.length, 1);
   });
 });
@@ -55,11 +49,11 @@ test('aborting a Git sync cancels its backend run by ID and waits for it to stop
 test('older bindings reject Git sync without starting it', async () => {
   let started = 0;
   await withApp({}, async () => {
-    await assert.rejects(createAPI().gitSync('/repo', '', 'fetch', ''), e => e instanceof GitSyncError && e.code === 'unsupported' && e.message === GIT_SYNC_UNSUPPORTED);
+    await assert.rejects(desktopAPI().gitSync('/repo', '', 'fetch', ''), e => e instanceof GitSyncError && e.code === 'unsupported' && e.message === GIT_SYNC_UNSUPPORTED);
   });
   // A binding that cannot cancel must not run an operation the caller expects to abort.
   await withApp({ async GitSync() { started++; } }, async () => {
-    await assert.rejects(createAPI().gitSync('/repo', '', 'fetch', '', new AbortController().signal), e => e.code === 'unsupported');
+    await assert.rejects(desktopAPI().gitSync('/repo', '', 'fetch', '', new AbortController().signal), e => e.code === 'unsupported');
   });
   assert.equal(started, 0);
 });

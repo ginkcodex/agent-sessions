@@ -55,6 +55,7 @@
   import { hasOpenModal, isEditableTarget } from './lib/search';
   import { navigationButton, navigationShortcut, type NavDirection } from './lib/navHistory';
   import { api, subscribeMouseNavigate } from './lib/api';
+  import { isDesktop } from './lib/desktopRuntime';
   import { formatVersion } from './lib/format';
   import { themeButtonTitle } from './lib/theme';
   import { hostLabel } from './lib/hosts';
@@ -132,7 +133,7 @@
     alerts.init();
     newSession.init();
     sessionLinks.init();
-    isWails = typeof window !== 'undefined' && Boolean((window as any).go?.app?.App);
+    isWails = isDesktop();
     api
       .appVersion()
       .then((v) => (appVersion = formatVersion(v)))

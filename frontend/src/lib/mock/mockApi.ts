@@ -2127,7 +2127,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       if (!files(e)) return;
       e.preventDefault();
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      if (!el || getComputedStyle(el).getPropertyValue('--wails-drop-target').trim() !== 'drop') return;
+      if (!el?.closest('[data-file-drop-target]')) return;
       callback(e.clientX, e.clientY, [...(e.dataTransfer?.files ?? [])].map((f) => `/mock/drops/${f.name}`));
     };
     window.addEventListener('dragover', over);

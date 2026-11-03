@@ -20,7 +20,7 @@ func TestRemoteDownloadFile(t *testing.T) {
 			transport := newFakeArtifactTransport()
 			stub := &stubRemoteBackend{transport: transport, exportArtifactData: []byte{0, 255, 42}}
 			a := setupRemoteApp(stub)
-			a.SetArtifactTransportOverride(transport)
+			a.setArtifactTransportOverride(transport)
 			dest := filepath.Join(t.TempDir(), "saved.bin")
 			a.saveDialogOverride = func(_ context.Context, name string) (string, error) {
 				if name != "file.bin" {

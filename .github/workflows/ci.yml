@@ -1,7 +1,8 @@
 # Runs on every branch push and pull request: tests and frontend type check on
-# Linux, Windows and macOS, and Linux and Windows desktop builds. Tag pushes
-# are left to release.yml,
-# which runs the checks before packaging (deb/rpm/dmg).
+# Linux, Windows and macOS, and desktop builds for all three. Tag pushes are
+# left to release.yml, which runs the checks before packaging (deb/rpm/dmg).
+# Desktop builds use the release tags (desktop,production; see GUI_TAGS in
+# the Makefile).
 name: CI
 
 on:
@@ -112,14 +113,21 @@ jobs:
         run: |
           go vet ./...
           go test -count=1 ./...
-      - name: Frontend type check and unit tests
+      - name: Frontend type check, tests and build
         working-directory: frontend
         run: |
           npm run check
           npm test
+          npm run build
+      # Compile check only; release.yml builds the universal bundle.
+      - name: Build macOS desktop binary
+        run: CGO_ENABLED=1 go build -tags desktop,production -trimpath -o build/bin/agent-sessions ./cmd/agent-sessions
 
+  # GTK 4 / WebKitGTK 6.0 need Ubuntu 24.04 or later. The same job
+  # cross-builds the Windows exe with its icon, manifest and version
+  # resources (make windows-app), which the native Windows job skips.
   linux-build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -130,11 +138,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install GTK and WebKitGTK headers
+      - name: Install GTK 4 and WebKitGTK 6.0 headers
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgtk-3-dev libwebkit2gtk-4.1-dev
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev
       - run: npm ci
         working-directory: frontend
       - name: Build desktop binary
         run: make gui-build
+      - name: Check GTK 4 / WebKitGTK 6.0 linkage
+        run: make check-gui-linkage
+      - name: Cross-build Windows desktop exe with resources
+        run: make windows-app WINDOWS_BUILD_DIR="$RUNNER_TEMP/windows-app"

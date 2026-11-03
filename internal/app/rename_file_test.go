@@ -18,7 +18,7 @@ func (s *stubRemoteBackend) RenameFile(_ context.Context, dir, path, name string
 func TestRenameFileHostRouting(t *testing.T) {
 	transport := newFakeArtifactTransport()
 	a := setupRemoteApp(&stubRemoteBackend{transport: transport})
-	a.SetArtifactTransportOverride(transport)
+	a.setArtifactTransportOverride(transport)
 	if err := a.RenameFile("/project", "folder/file", "new", ""); !errors.Is(err, ErrSaveHostChanged) {
 		t.Fatalf("wrong host: %v", err)
 	}

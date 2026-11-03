@@ -1,22 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAPI, GIT_CHANGES_UNSUPPORTED, GIT_WRITE_UNSUPPORTED } from '../src/lib/api.ts';
+import { GIT_CHANGES_UNSUPPORTED, GIT_WRITE_UNSUPPORTED } from '../src/lib/api.ts';
+import { desktopAPI, withDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
-async function withApp(App, fn) {
-  const previous = globalThis.window;
-  globalThis.window = { go: { app: { App } } };
-  try { await fn(); } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
-}
+const withApp = withDesktopApp;
 test('branch API forwards branch metadata and explicit switch intent with host/drafts', async () => {
   const calls = [];
   const reply = { branches: [{ name: 'main', current: true, remote: false, upstream: 'origin/main', commitTime: 1700000000 }], truncated: true };
   const App = { async GitBranches(...args) { calls.push(args); return reply; }, async GitSwitch(...args) { calls.push(args); } };
   await withApp(App, async () => {
-    const api = createAPI();
+    const api = desktopAPI();
     assert.deepEqual(await api.gitBranches('/repo/sub', 'child'), reply);
     const req = { name: 'origin/next', create: false, remote: true, draftPaths: ['draft'] };
     await api.gitSwitch('/repo', '', req, 'box');
@@ -28,7 +22,7 @@ test('branch API forwards branch metadata and explicit switch intent with host/d
 });
 test('older branch bindings reject clearly', async () => {
   await withApp({}, async () => {
-    const api = createAPI();
+    const api = desktopAPI();
     await assert.rejects(api.gitBranches('/repo', ''), e => e.message === GIT_CHANGES_UNSUPPORTED);
     await assert.rejects(api.gitSwitch('/repo', '', { name: 'main', create: false }), e => e.message === GIT_WRITE_UNSUPPORTED);
   });

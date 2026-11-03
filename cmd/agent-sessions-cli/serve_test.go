@@ -364,7 +364,7 @@ func TestDesktopDoesNotLinkTestHarness(t *testing.T) {
 	// gitignored build output, so on a fresh checkout (CI) the test has to
 	// satisfy the directive itself, with a placeholder it removes after.
 	restoreDist(t)
-	assertNoDeps(t, []string{"-tags", "webkit2_41,production", "../agent-sessions"},
+	assertNoDeps(t, []string{"-tags", "desktop", "../agent-sessions"},
 		"github.com/ginkcode/agent-sessions/internal/remote/sshtest")
 }
 

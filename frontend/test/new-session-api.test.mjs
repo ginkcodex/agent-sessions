@@ -1,35 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAPI } from '../src/lib/api.ts';
+import { desktopAPI, useDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
 test('new session API passes the agent and directory to native bindings', async () => {
-  const previous = globalThis.window;
   const calls = [];
   const tab = { id: 't1', label: 'Codex', host: '', kind: 'agent', dir: '/p', agent: 'codex', startedAt: 1 };
   const App = {
     PanelNewSession: async (...args) => { calls.push(['PanelNewSession', ...args]); return tab; },
     OpenNewSessionInTerminal: async (...args) => { calls.push(['OpenNewSessionInTerminal', ...args]); },
   };
-  globalThis.window = { go: { app: { App } } };
-  try {
-    const backend = createAPI();
-    assert.deepEqual(await backend.panelNewSession('codex', '/p', { cols: 80, rows: 24 }), tab);
-    await backend.openNewSessionInTerminal('opencode', '/p');
-    assert.deepEqual(calls, [
-      ['PanelNewSession', 'codex', '/p', { cols: 80, rows: 24 }],
-      ['OpenNewSessionInTerminal', 'opencode', '/p'],
-    ]);
-    App.PanelNewSession = async () => { throw 'unknown directory: /gone'; };
-    await assert.rejects(backend.panelNewSession('codex', '/gone', { cols: 80, rows: 24 }), /unknown directory/);
-  } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
+  useDesktopApp(App);
+  const backend = desktopAPI();
+  assert.deepEqual(await backend.panelNewSession('codex', '/p', { cols: 80, rows: 24 }), tab);
+  await backend.openNewSessionInTerminal('opencode', '/p');
+  assert.deepEqual(calls, [
+    ['PanelNewSession', 'codex', '/p', { cols: 80, rows: 24 }],
+    ['OpenNewSessionInTerminal', 'opencode', '/p'],
+  ]);
+  App.PanelNewSession = async () => { throw 'unknown directory: /gone'; };
+  await assert.rejects(backend.panelNewSession('codex', '/gone', { cols: 80, rows: 24 }), /unknown directory/);
 });
 
 test('workspace API forwards native arguments and normalizes errors', async () => {
-  const previous = globalThis.window;
   const calls = [];
   const listing = { path: '/p', parent: '/', directories: ['/p/src'] };
   const App = {
@@ -38,26 +31,21 @@ test('workspace API forwards native arguments and normalizes errors', async () =
     RemoveWorkspace: async dir => { calls.push(['remove', dir]); },
     BrowseWorkspace: async path => { calls.push(['browse', path]); return listing; },
   };
-  globalThis.window = { go: { app: { App } } };
-  try {
-    const backend = createAPI();
-    assert.deepEqual(await backend.listWorkspaces(), ['/p']);
-    assert.equal(await backend.openWorkspace('/p/'), '/p');
-    await backend.removeWorkspace('/p');
-    assert.deepEqual(await backend.browseWorkspace(''), listing);
-    assert.deepEqual(calls, [['open', '/p/'], ['remove', '/p'], ['browse', '']]);
-    for (const [native, method, args] of [
-      ['ListWorkspaces', 'listWorkspaces', []],
-      ['OpenWorkspace', 'openWorkspace', ['/p']],
-      ['RemoveWorkspace', 'removeWorkspace', ['/p']],
-      ['BrowseWorkspace', 'browseWorkspace', ['/p']],
-    ]) {
-      App[native] = async () => { throw 'workspace unavailable'; };
-      await assert.rejects(backend[method](...args), error => error instanceof Error && error.message === 'workspace unavailable');
-    }
-  } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
+  useDesktopApp(App);
+  const backend = desktopAPI();
+  assert.deepEqual(await backend.listWorkspaces(), ['/p']);
+  assert.equal(await backend.openWorkspace('/p/'), '/p');
+  await backend.removeWorkspace('/p');
+  assert.deepEqual(await backend.browseWorkspace(''), listing);
+  assert.deepEqual(calls, [['open', '/p/'], ['remove', '/p'], ['browse', '']]);
+  for (const [native, method, args] of [
+    ['ListWorkspaces', 'listWorkspaces', []],
+    ['OpenWorkspace', 'openWorkspace', ['/p']],
+    ['RemoveWorkspace', 'removeWorkspace', ['/p']],
+    ['BrowseWorkspace', 'browseWorkspace', ['/p']],
+  ]) {
+    App[native] = async () => { throw 'workspace unavailable'; };
+    await assert.rejects(backend[method](...args), error => error instanceof Error && error.message === 'workspace unavailable');
   }
 });
 

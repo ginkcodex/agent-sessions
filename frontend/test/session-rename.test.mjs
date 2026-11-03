@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule, fixtureStore, loadServerComponent, renderWithFixture } from './helpers.mjs';
-import { createAPI } from '../src/lib/api.ts';
+import { desktopAPI, useDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
 const { SessionRename } = await loadServerModule(new URL('../src/lib/stores/sessionRename.svelte.ts', import.meta.url), [
@@ -74,17 +74,15 @@ test('late mutation replies cannot close or refresh a different host dialog', as
 });
 
 test('native API forwards rename and normalizes failures; old bindings fail explicitly', async () => {
-  const previous = globalThis.window; const calls = [];
+  const calls = [];
   const App = { RenameSession: async (ref, title) => { calls.push([ref, title]); } };
-  globalThis.window = { go: { app: { App } } };
-  try {
-    const api = createAPI(); await api.renameSession(session.ref, 'New');
-    assert.deepEqual(calls, [[session.ref, 'New']]);
-    App.RenameSession = async () => { throw 'native failure'; };
-    await assert.rejects(api.renameSession(session.ref, 'New'), /native failure/);
-    delete App.RenameSession;
-    await assert.rejects(api.renameSession(session.ref, 'New'), /does not support native session renaming/);
-  } finally { if (previous === undefined) delete globalThis.window; else globalThis.window = previous; }
+  useDesktopApp(App);
+  const api = desktopAPI(); await api.renameSession(session.ref, 'New');
+  assert.deepEqual(calls, [[session.ref, 'New']]);
+  App.RenameSession = async () => { throw 'native failure'; };
+  await assert.rejects(api.renameSession(session.ref, 'New'), /native failure/);
+  delete App.RenameSession;
+  await assert.rejects(api.renameSession(session.ref, 'New'), /does not support native session renaming/);
   await assert.rejects(new MockBackendAPI().renameSession(session.ref, 'New'), /unavailable in the browser mock/);
 });
 

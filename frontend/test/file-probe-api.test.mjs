@@ -1,14 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAPI } from '../src/lib/api.ts';
+import { withDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
-async function withBinding(binding, fn) {
-  const previous = globalThis.window;
-  globalThis.window = { go: { app: { App: binding } } };
-  try { await fn(await createAPI()); }
-  finally { if (previous === undefined) delete globalThis.window; else globalThis.window = previous; }
-}
+const withBinding = withDesktopApp;
 
 test('R09 native probe preserves explicit present/absent/unknown states without inferring rename', async () => {
   let observations = [{ path: 'a', state: 'present', revision: 'sha256:first' }];

@@ -1,22 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAPI, GIT_DIFF_UNSUPPORTED } from '../src/lib/api.ts';
+import { GIT_DIFF_UNSUPPORTED } from '../src/lib/api.ts';
+import { desktopAPI, withDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
-async function withApp(App, fn) {
-  const previous = globalThis.window;
-  globalThis.window = { go: { app: { App } } };
-  try { await fn(); } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
-}
+const withApp = withDesktopApp;
 test('Git diff API forwards explicit basis and preserves readonly deleted content', async () => {
   const calls = [];
   const reply = { content: { path: 'deleted', text: '', size: 0, changes: [{ kind: 'deleted', start: 0, count: 0, removed: ['old'] }] }, basis: 'staged', deleted: true, readOnly: true };
   const App = { async ReadGitDiff(...args) { calls.push(args); return reply; } };
   await withApp(App, async () => {
-    const api = createAPI();
+    const api = desktopAPI();
     assert.deepEqual(await api.readGitDiff('/repo', 'child', 'child/deleted', 'staged'), reply);
     assert.deepEqual(calls, [['/repo', 'child', 'child/deleted', 'staged']]);
     App.ReadGitDiff = async () => { throw 'invalid Git diff basis'; };
@@ -25,7 +19,7 @@ test('Git diff API forwards explicit basis and preserves readonly deleted conten
 });
 test('older diff binding rejects instead of showing an incorrect basis', async () => {
   await withApp({}, async () => {
-    await assert.rejects(createAPI().readGitDiff('/repo', '', 'file', 'index'), e => e.message === GIT_DIFF_UNSUPPORTED);
+    await assert.rejects(desktopAPI().readGitDiff('/repo', '', 'file', 'index'), e => e.message === GIT_DIFF_UNSUPPORTED);
   });
 });
 test('mock staged diff cannot be saved and index reads keep working eligibility', async () => {

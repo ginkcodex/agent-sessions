@@ -1,16 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
-import { createAPI, GIT_CHANGES_UNSUPPORTED } from '../src/lib/api.ts';
+import { GIT_CHANGES_UNSUPPORTED } from '../src/lib/api.ts';
+import { desktopAPI, withDesktopApp } from './desktop-app.mjs';
 
-async function withApp(App, fn) {
-  const previous = globalThis.window;
-  globalThis.window = { go: { app: { App } } };
-  try { await fn(); } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
-}
+const withApp = withDesktopApp;
 
 test('Git status forwards project, preserves XY/origin/branch metadata and normalizes errors', async () => {
   const calls = [];
@@ -19,7 +13,7 @@ test('Git status forwards project, preserves XY/origin/branch metadata and norma
     entries: [{ path: 'new', originalPath: 'old', index: 'R', worktree: 'M', conflict: false }] };
   const App = { async GitStatus(...args) { calls.push(args); return reply; } };
   await withApp(App, async () => {
-    const api = createAPI();
+    const api = desktopAPI();
     assert.deepEqual(await api.gitStatus('/repo/sub', ''), reply);
     await api.gitStatus('/repo', 'child');
     assert.deepEqual(calls, [['/repo/sub', ''], ['/repo', 'child']]);
@@ -29,7 +23,7 @@ test('Git status forwards project, preserves XY/origin/branch metadata and norma
 });
 test('older app without Git status binding rejects clearly', async () => {
   await withApp({}, async () => {
-    await assert.rejects(createAPI().gitStatus('/repo', ''), (e) => e.message === GIT_CHANGES_UNSUPPORTED);
+    await assert.rejects(desktopAPI().gitStatus('/repo', ''), (e) => e.message === GIT_CHANGES_UNSUPPORTED);
   });
 });
 test('mock provides project-relative Git changes and advertises capability', async () => {

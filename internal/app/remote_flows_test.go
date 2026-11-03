@@ -290,7 +290,7 @@ func TestRemote_ExportBundle(t *testing.T) {
 		exportArtifactData: []byte("PK\x03\x04fake-zip-bundle-bytes"),
 	}
 	a := setupRemoteApp(stub)
-	a.SetArtifactTransportOverride(transport)
+	a.setArtifactTransportOverride(transport)
 
 	tmpDir := t.TempDir()
 	localDest := filepath.Join(tmpDir, "exported.agent-session.zip")
@@ -342,7 +342,7 @@ func TestRemote_OpenBundle(t *testing.T) {
 		},
 	}
 	a := setupRemoteApp(stub)
-	a.SetArtifactTransportOverride(transport)
+	a.setArtifactTransportOverride(transport)
 
 	tmpDir := t.TempDir()
 	localBundle := filepath.Join(tmpDir, "local.agent-session.zip")

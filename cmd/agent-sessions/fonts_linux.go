@@ -1,9 +1,9 @@
-//go:build linux && (webkit2_41 || desktop)
+//go:build linux && desktop
 
 package main
 
 /*
-#cgo pkg-config: gtk+-3.0
+#cgo pkg-config: gtk4
 #include <gtk/gtk.h>
 
 static gboolean disable_font_hinting(gpointer data) {
@@ -23,10 +23,10 @@ import "C"
 // disableFontHinting turns off glyph hinting for this process's web view.
 // WebKitGTK's Skia backend snaps hinted glyph advances to whole pixels, so
 // with the desktop's usual "slight" hinting the letter spacing goes uneven,
-// worse still when GTK3 renders at 2x for a fractional display scale and the
-// compositor shrinks the result. Unhinted text keeps the font's own spacing,
-// as GTK4 and browsers do. Safe from any goroutine: the change runs on the
-// GTK main loop, and WebKit re-renders when the setting changes.
+// especially with fractional display scaling. GTK4 still supports the
+// gtk-xft-hintstyle setting; unhinted text keeps the font's own spacing.
+// Safe from any goroutine: the change runs on the GTK main loop, and WebKit
+// re-renders when the setting changes.
 func disableFontHinting() {
 	C.schedule_disable_font_hinting()
 }

@@ -111,10 +111,11 @@ sudo apt install ./agent-sessions_<version>_amd64.deb
 sudo dnf install ./agent-sessions-<version>-1.x86_64.rpm
 ```
 
-The packages declare their **GTK 3** and **WebKitGTK 4.1** runtime dependencies;
+The packages declare their **GTK 4** and **WebKitGTK 6.0** runtime dependencies;
 your package manager installs them from your distribution's repositories.
-A distribution providing these libraries is required. Linux release builds use
-Ubuntu 22.04 as their build baseline.
+This requires **Ubuntu 24.04, Debian 13, Fedora 40** or a newer distribution
+that ships these libraries; Ubuntu 22.04 and Debian 12 are no longer supported.
+Linux release builds use Ubuntu 24.04 as their build baseline.
 
 Launch **Agent Sessions** from your applications menu, or run:
 
@@ -318,7 +319,7 @@ Agent identifiers are `claude-code`, `codex`, and `opencode`. Run
 
 ## Build from source
 
-The application uses **Go, Wails v2, and Svelte**. Use the Go version specified
+The application uses **Go, Wails v3, and Svelte**. Use the Go version specified
 in [`go.mod`](go.mod) (currently **1.26.8**) or newer, **Node.js 22** (the CI
 version), npm, and Make.
 
@@ -332,36 +333,37 @@ make cli
 ./bin/agent-sessions-cli version
 ```
 
-For desktop development, install the Wails CLI and add it to your `PATH`:
+Desktop builds are plain `go build -tags desktop,production`; no Wails CLI is
+needed. The packaging targets run the Wails v3 CLI for icon and Windows
+resource generation through `go run`, at the version `go.mod` pins.
+
+On **Ubuntu 24.04+ or Debian 13+**, install the desktop build dependencies
+(Fedora 40+: `gcc pkg-config gtk4-devel webkitgtk6.0-devel`), then run or build:
 
 ```sh
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
-export PATH="$(go env GOPATH)/bin:$PATH"
-```
-
-On **Debian/Ubuntu**, install the desktop build dependencies, then run or build:
-
-```sh
-sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
-make dev             # Desktop app with live reload
+sudo apt install build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+make dev             # Desktop app on the Vite dev server, with hot reload
 make app             # Desktop binary in build/bin/
 ```
 
-The `dev` and `app` Make targets check Linux GTK/WebKit dependencies. For
-platform-specific distributable packages, use the targets below; macOS
-packaging must run on macOS with its native build tools, while Windows packaging
-is cross-built on Linux.
+`make dev` starts Vite on port 5173 (`DEV_PORT=...` to change it) and runs the
+app without the `production` tag, pointed at Vite through
+`FRONTEND_DEVSERVER_URL`. The `dev` and `app` Make targets check the Linux
+GTK/WebKit dependencies. For platform-specific distributable packages, use the
+targets below; macOS packaging must run on macOS with its native build tools,
+while Windows packaging is cross-built on Linux.
 
 | Target | Output / requirements |
 | --- | --- |
 | `make package-linux` | `.deb` and `.rpm` in `dist/`; Linux desktop build dependencies |
-| `make package-macos` | Universal `.dmg` in `dist/`; macOS and Wails CLI |
-| `make package-windows` | x64 setup `.exe` and `.msi` in `dist/`; Linux, Wails CLI, `jq`, `python3`, `wixl`, and `gcc-mingw-w64-x86-64` |
+| `make package-macos` | Universal `.dmg` in `dist/`; macOS, Xcode command line tools, and `jq` |
+| `make package-windows` | x64 setup `.exe` and `.msi` in `dist/`; Linux, `jq`, `python3`, `wixl`, and `gcc-mingw-w64-x86-64` |
+| `make windows-app` | Windows `agent-sessions.exe` only, in `build/bin/`; Linux and `jq` |
 | `make remote-servers` | Headless server archives in `build/remote/` |
 | `make conpty` | Windows terminal runtime in `build/conpty/` |
 
-Run `make help` for all targets. If `wails` is not on your `PATH`, pass its
-location explicitly, for example `make package-macos WAILS=$HOME/go/bin/wails`.
+Run `make help` for all targets. To use an installed Wails v3 CLI instead of
+`go run`, pass it explicitly, for example `make package-macos WAILS3=wails3`.
 See [Windows packaging notes](packaging/windows/README.md) for installer build
 options and recovery details.
 

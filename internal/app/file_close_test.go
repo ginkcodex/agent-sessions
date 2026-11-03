@@ -78,7 +78,7 @@ func TestRestartAppCloseApproval(t *testing.T) {
 				a.fileClose.mu.Lock()
 				a.fileClose.mu.Unlock()
 				launches++
-				if !a.OnBeforeClose(context.Background()) {
+				if !OnBeforeClose(&a) {
 					t.Error("duplicate close passed during launch")
 				}
 				return nil, errors.New("test launch failure")
@@ -109,7 +109,7 @@ func TestRestartAppCloseApproval(t *testing.T) {
 				if quits != 2 || launches != 0 {
 					t.Fatal("approval must re-request Quit before spawning")
 				}
-				if !a.OnBeforeClose(context.Background()) {
+				if !OnBeforeClose(&a) {
 					t.Fatal("launch failure must prevent quitting")
 				}
 				if launches != 1 || reports != 1 {
@@ -124,7 +124,7 @@ func TestRestartAppCloseApproval(t *testing.T) {
 			// A later ordinary close must never retry a canceled/failed restart.
 			_, next := a.fileClose.request()
 			a.CompleteFileClose(next, true)
-			if a.OnBeforeClose(context.Background()) {
+			if OnBeforeClose(&a) {
 				t.Fatal("ordinary approved close prevented")
 			}
 			if launches != map[bool]int{false: 0, true: 1}[allow] {
@@ -152,10 +152,10 @@ func TestRestartAppApprovedLaunch(t *testing.T) {
 	if err := a.RestartApp(); err != nil {
 		t.Fatal(err)
 	}
-	if a.OnBeforeClose(context.Background()) || launches != 1 {
+	if OnBeforeClose(&a) || launches != 1 {
 		t.Fatal("approved restart should launch and allow close")
 	}
-	if !a.OnBeforeClose(context.Background()) || launches != 1 {
+	if !OnBeforeClose(&a) || launches != 1 {
 		t.Fatal("duplicate native close relaunched")
 	}
 }
@@ -175,10 +175,10 @@ func TestRestartAppStartFailure(t *testing.T) {
 	if err := a.RestartApp(); err != nil {
 		t.Fatal(err)
 	}
-	if !a.OnBeforeClose(context.Background()) || !reported {
+	if !OnBeforeClose(&a) || !reported {
 		t.Fatal("start failure must report an error and keep current app")
 	}
-	if a.OnBeforeClose(context.Background()) {
+	if OnBeforeClose(&a) {
 		t.Fatal("failed restart blocked a later ordinary close")
 	}
 }
@@ -210,4 +210,189 @@ func TestFileCloseGuardConcurrentRequests(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("emitted %d requests", count)
 	}
+}
+
+// fakeWindow models the desktop shell's close path: RequestClose (and an OS
+// quit routed to it) runs the window's closing hook, which calls OnBeforeClose
+// exactly once and closes unless it is cancelled.
+type fakeWindow struct {
+	a        *App
+	hooks    int
+	closed   int
+	events   []any
+	messages []MessageDialogOptions
+}
+
+func (w *fakeWindow) desktop() Desktop {
+	return Desktop{
+		Emit: func(name string, payload any) {
+			w.events = append(w.events, name, payload)
+		},
+		Message: func(_ context.Context, opts MessageDialogOptions) (string, error) {
+			w.messages = append(w.messages, opts)
+			return "", nil
+		},
+		RequestClose: func(context.Context) { w.close() },
+	}
+}
+
+// close is window.Close: the WindowClosing hook runs the guard once.
+func (w *fakeWindow) close() {
+	w.hooks++
+	if !OnBeforeClose(w.a) {
+		w.closed++
+	}
+}
+
+func newFakeWindow(t *testing.T) (*App, *fakeWindow) {
+	t.Helper()
+	a := &App{}
+	w := &fakeWindow{a: a}
+	a.ctx = withDesktop(context.Background(), w.desktop())
+	return a, w
+}
+
+func TestNativeCloseThroughDesktop(t *testing.T) {
+	a, w := newFakeWindow(t)
+	w.close()
+	if w.closed != 1 || len(w.events) != 0 {
+		t.Fatalf("unarmed close: closed=%d events=%v", w.closed, w.events)
+	}
+
+	a, w = newFakeWindow(t)
+	a.EnableFileEditing()
+	// An OS quit (ShouldQuit) is routed to window.Close, so it is the same
+	// single gesture as clicking the close button.
+	w.close()
+	if w.closed != 0 || len(w.events) != 2 || w.events[0] != "files:close-request" {
+		t.Fatalf("armed close must be cancelled with a request: closed=%d events=%v", w.closed, w.events)
+	}
+	id := w.events[1].(uint64)
+	w.close() // Duplicate gesture while the frontend decides.
+	if w.closed != 0 || len(w.events) != 2 {
+		t.Fatalf("duplicate close: closed=%d events=%v", w.closed, w.events)
+	}
+	a.CompleteFileClose(id+1, true) // Stale approval.
+	if w.hooks != 2 || w.closed != 0 {
+		t.Fatalf("stale approval closed the window: hooks=%d closed=%d", w.hooks, w.closed)
+	}
+	a.CompleteFileClose(id, true)
+	if w.hooks != 3 || w.closed != 1 {
+		t.Fatalf("approval must re-request a guarded close once: hooks=%d closed=%d", w.hooks, w.closed)
+	}
+	a.CompleteFileClose(id, true) // Replayed approval.
+	if w.hooks != 3 {
+		t.Fatalf("replayed approval requested another close: hooks=%d", w.hooks)
+	}
+	// The approval was consumed by exactly one closing hook.
+	w.close()
+	if w.closed != 1 || len(w.events) != 4 {
+		t.Fatalf("approval reused: closed=%d events=%v", w.closed, w.events)
+	}
+}
+
+func TestNativeCloseCancelled(t *testing.T) {
+	a, w := newFakeWindow(t)
+	a.EnableFileEditing()
+	w.close()
+	id := w.events[1].(uint64)
+	a.CompleteFileClose(id, false)
+	if w.hooks != 1 || w.closed != 0 {
+		t.Fatalf("cancel closed the window: hooks=%d closed=%d", w.hooks, w.closed)
+	}
+	if !a.EnableFileEditing() {
+		t.Fatal("cancel left editing blocked")
+	}
+}
+
+func TestRestartThroughDesktop(t *testing.T) {
+	oldCommand := newWindowCommand
+	t.Cleanup(func() { newWindowCommand = oldCommand })
+	launches := 0
+	newWindowCommand = func() (*exec.Cmd, error) {
+		launches++
+		return nil, errors.New("test launch failure")
+	}
+
+	a, w := newFakeWindow(t)
+	if err := a.RestartApp(); err != nil {
+		t.Fatal(err)
+	}
+	// Restart goes through window.Close, so the failed launch cancels it and
+	// the current process stays alive with an error dialog.
+	if w.hooks != 1 || w.closed != 0 || launches != 1 {
+		t.Fatalf("failed restart: hooks=%d closed=%d launches=%d", w.hooks, w.closed, launches)
+	}
+	if len(w.messages) != 1 || w.messages[0].Type != ErrorDialog || !strings.Contains(w.messages[0].Message, "test launch failure") {
+		t.Fatalf("restart error not reported: %+v", w.messages)
+	}
+	if len(w.events) != 2 || w.events[0] != "files:close-cancelled" {
+		t.Fatalf("restart failure events = %v", w.events)
+	}
+	// A later ordinary close is not a restart.
+	w.close()
+	if w.closed != 1 || launches != 1 {
+		t.Fatalf("ordinary close after failed restart: closed=%d launches=%d", w.closed, launches)
+	}
+}
+
+func TestRestartThroughDesktopWithDirtyFiles(t *testing.T) {
+	oldCommand := newWindowCommand
+	t.Cleanup(func() { newWindowCommand = oldCommand })
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	launches := 0
+	newWindowCommand = func() (*exec.Cmd, error) {
+		launches++
+		return exec.Command(exe, "-test.run=^$"), nil
+	}
+
+	a, w := newFakeWindow(t)
+	a.EnableFileEditing()
+	if err := a.RestartApp(); err != nil {
+		t.Fatal(err)
+	}
+	if w.hooks != 1 || w.closed != 0 || launches != 0 || len(w.events) != 2 {
+		t.Fatalf("restart must defer to the editors: hooks=%d closed=%d launches=%d events=%v", w.hooks, w.closed, launches, w.events)
+	}
+	a.CompleteFileClose(w.events[1].(uint64), true)
+	if w.hooks != 2 || w.closed != 1 || launches != 1 {
+		t.Fatalf("approved restart: hooks=%d closed=%d launches=%d", w.hooks, w.closed, launches)
+	}
+	// While the replacement is starting, more closes are rejected, not relaunched.
+	w.close()
+	if w.closed != 1 || launches != 1 {
+		t.Fatalf("duplicate close during restart: closed=%d launches=%d", w.closed, launches)
+	}
+}
+
+func TestDesktopDefaultsWithoutShell(t *testing.T) {
+	var a App
+	// No desktop: closing requests and events are no-ops, never panics.
+	if err := a.RestartApp(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := saveFileDialog(context.Background(), SaveDialogOptions{}); !errors.Is(err, ErrDesktopUnavailable) {
+		t.Fatalf("save dialog without desktop: %v", err)
+	}
+	if _, err := openFileDialog(context.Background(), OpenDialogOptions{}); !errors.Is(err, ErrDesktopUnavailable) {
+		t.Fatalf("open dialog without desktop: %v", err)
+	}
+	a.ctx = context.Background()
+	if err := a.PrintWindow(); !errors.Is(err, ErrDesktopUnavailable) && nativePrint == nil {
+		t.Fatalf("print without desktop: %v", err)
+	}
+	if err := a.ToggleFullscreen(); !errors.Is(err, ErrDesktopUnavailable) {
+		t.Fatalf("fullscreen without desktop: %v", err)
+	}
+	if _, err := openDirectoryDialog(a.ctx, OpenDialogOptions{}); !errors.Is(err, ErrDesktopUnavailable) {
+		t.Fatalf("directory dialog without desktop: %v", err)
+	}
+	if _, err := messageDialog(a.ctx, MessageDialogOptions{}); !errors.Is(err, ErrDesktopUnavailable) {
+		t.Fatalf("message dialog without desktop: %v", err)
+	}
+	raiseWindow(a.ctx)
+	emitterFrom(a.ctx).Emit("probe", nil)
 }

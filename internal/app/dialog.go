@@ -3,12 +3,10 @@ package app
 import (
 	"runtime"
 	"strings"
-
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // fileFilters adapts file dialog filters to the platform the app runs on.
-func fileFilters(filters ...wruntime.FileFilter) []wruntime.FileFilter {
+func fileFilters(filters ...FileFilter) []FileFilter {
 	return dialogFilters(runtime.GOOS, filters)
 }
 
@@ -16,11 +14,11 @@ func fileFilters(filters ...wruntime.FileFilter) []wruntime.FileFilter {
 // pattern there into a file type and aborts the app on any pattern without
 // one, such as "*.*" or "*.agent-session.zip". With nothing left the dialog
 // accepts every file. Other platforms take glob patterns as they are.
-func dialogFilters(goos string, filters []wruntime.FileFilter) []wruntime.FileFilter {
+func dialogFilters(goos string, filters []FileFilter) []FileFilter {
 	if goos != "darwin" {
 		return filters
 	}
-	var out []wruntime.FileFilter
+	var out []FileFilter
 	for _, f := range filters {
 		var keep []string
 		for _, p := range strings.Split(f.Pattern, ";") {
@@ -30,7 +28,7 @@ func dialogFilters(goos string, filters []wruntime.FileFilter) []wruntime.FileFi
 			}
 		}
 		if len(keep) > 0 {
-			out = append(out, wruntime.FileFilter{DisplayName: f.DisplayName, Pattern: strings.Join(keep, ";")})
+			out = append(out, FileFilter{DisplayName: f.DisplayName, Pattern: strings.Join(keep, ";")})
 		}
 	}
 	return out

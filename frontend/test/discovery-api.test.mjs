@@ -1,14 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAPI, subscribeDiscoveryStatus } from '../src/lib/api.ts';
+import { subscribeDiscoveryStatus } from '../src/lib/api.ts';
+import { withDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
-async function withBinding(binding, fn) {
-  const previous = globalThis.window;
-  globalThis.window = { go: { app: { App: binding } } };
-  try { await fn(createAPI()); }
-  finally { if (previous === undefined) delete globalThis.window; else globalThis.window = previous; }
-}
+const withBinding = withDesktopApp;
 
 test('discovery API preserves availability, status and route identity; offline errors remain errors', async () => {
   const reply = { available: true, host: 'box', generation: 3, status: {

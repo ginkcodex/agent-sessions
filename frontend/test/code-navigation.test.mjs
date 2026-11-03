@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixtureStore, loadServerModule } from './helpers.mjs';
-import { createAPI } from '../src/lib/api.ts';
+import { desktopAPI, useDesktopApp } from './desktop-app.mjs';
 import { LiveDocumentBridge } from '../src/lib/liveDocuments.ts';
 import { CODE_DIAGNOSTICS_EVENT, CodeDiagnosticsError, codeDiagnosticsError } from '../src/lib/codeDiagnostics.ts';
 import { externalLabel, externalReadFailure, navigationBlocker, navigationFailure } from '../src/lib/codeNavigation.ts';
@@ -25,21 +25,18 @@ const gopls = { providerId: 'gopls', availability: 'available', phase: 'idle', c
 const at = { line: 2, character: 5 };
 
 test('the Wails binding gets the exact arguments; an old binding is unsupported', async () => {
-  const previous = globalThis.window;
-  try {
-    const binding = {};
-    globalThis.window = { go: { app: { App: binding } } };
-    const api = createAPI();
-    await assert.rejects(api.navigateCode(context, 'd1', 3, 'definition', at, 'host'), e => e.code === 'unsupported');
-    let args;
-    binding.NavigateCode = async (...a) => { args = a; return { op: 'definition', documentId: 'd1', version: 3, locations: [] }; };
-    await api.navigateCode(context, 'd1', 3, 'definition', at, 'host');
-    assert.deepEqual(args, [context, 'd1', 3, 'definition', at, 'host']);
-    for (const code of ['notRunning', 'staleVersion', 'timeout']) {
-      binding.NavigateCode = async () => { throw `${code}: something`; };
-      await assert.rejects(api.navigateCode(context, 'd1', 3, 'hover', at, 'host'), e => e.code === code);
-    }
-  } finally { globalThis.window = previous; }
+  const binding = {};
+  useDesktopApp(binding);
+  const api = desktopAPI();
+  await assert.rejects(api.navigateCode(context, 'd1', 3, 'definition', at, 'host'), e => e.code === 'unsupported');
+  let args;
+  binding.NavigateCode = async (...a) => { args = a; return { op: 'definition', documentId: 'd1', version: 3, locations: [] }; };
+  await api.navigateCode(context, 'd1', 3, 'definition', at, 'host');
+  assert.deepEqual(args, [context, 'd1', 3, 'definition', at, 'host']);
+  for (const code of ['notRunning', 'staleVersion', 'timeout']) {
+    binding.NavigateCode = async () => { throw `${code}: something`; };
+    await assert.rejects(api.navigateCode(context, 'd1', 3, 'hover', at, 'host'), e => e.code === code);
+  }
 });
 
 test('each reason navigation is unavailable says what is missing', () => {
@@ -215,19 +212,16 @@ test('an external file that cannot be read says what to do', () => {
 });
 
 test('the Wails binding reads a navigation file; an old binding is unsupported', async () => {
-  const previous = globalThis.window;
-  try {
-    const binding = {};
-    globalThis.window = { go: { app: { App: binding } } };
-    const api = createAPI();
-    await assert.rejects(api.readNavigationFile(context, '/x.go', 'host'), e => e.code === 'unsupported');
-    let args;
-    binding.ReadNavigationFile = async (...a) => { args = a; return { path: '/x.go', size: 1, text: 'x' }; };
-    assert.equal((await api.readNavigationFile(context, '/x.go', 'host')).text, 'x');
-    assert.deepEqual(args, [context, '/x.go', 'host']);
-    binding.ReadNavigationFile = async () => { throw 'notFound: This file was not opened by code navigation'; };
-    await assert.rejects(api.readNavigationFile(context, '/x.go', 'host'), e => e.code === 'notFound');
-  } finally { globalThis.window = previous; }
+  const binding = {};
+  useDesktopApp(binding);
+  const api = desktopAPI();
+  await assert.rejects(api.readNavigationFile(context, '/x.go', 'host'), e => e.code === 'unsupported');
+  let args;
+  binding.ReadNavigationFile = async (...a) => { args = a; return { path: '/x.go', size: 1, text: 'x' }; };
+  assert.equal((await api.readNavigationFile(context, '/x.go', 'host')).text, 'x');
+  assert.deepEqual(args, [context, '/x.go', 'host']);
+  binding.ReadNavigationFile = async () => { throw 'notFound: This file was not opened by code navigation'; };
+  await assert.rejects(api.readNavigationFile(context, '/x.go', 'host'), e => e.code === 'notFound');
 });
 
 test('the store reads only for its attachment and hands back view-only content', async () => {

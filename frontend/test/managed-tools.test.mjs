@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule, loadServerComponent, fixtureStore, renderWithFixture } from './helpers.mjs';
-import { createAPI } from '../src/lib/api.ts';
+import { desktopAPI, useDesktopApp } from './desktop-app.mjs';
 import { toolName, liveLanguages } from '../src/lib/codeCheckLabels.ts';
 import { MANAGED_TOOL_FOR_PROVIDER } from '../src/lib/managedTools.ts';
 const lib = name => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
@@ -219,16 +219,13 @@ test('completed installation rediscovers code checks once, without approving or 
   await store.hide();
 });
 test('Wails optional ManagedTool maps exact closed request, old App refuses', async () => {
-  const previous = globalThis.window;
-  try {
-    const binding = {}; globalThis.window = { go: { app: { App: binding } } };
-    const api = createAPI();
-    await assert.rejects(api.managedTool({ action: 'status', expectedHostId: 'h' }), e => e.code === 'unsupported');
-    let got;
-    binding.ManagedTool = async p => { got = p; return state('unavailable'); };
-    const p = { action: 'install', expectedHostId: 'h', token: 'once' };
-    await api.managedTool(p); assert.deepEqual(got, p);
-  } finally { globalThis.window = previous; }
+  const binding = {}; useDesktopApp(binding);
+  const api = desktopAPI();
+  await assert.rejects(api.managedTool({ action: 'status', expectedHostId: 'h' }), e => e.code === 'unsupported');
+  let got;
+  binding.ManagedTool = async p => { got = p; return state('unavailable'); };
+  const p = { action: 'install', expectedHostId: 'h', token: 'once' };
+  await api.managedTool(p); assert.deepEqual(got, p);
 });
 test('an install the host cannot do replaces its button with the reason on the checker row', async () => {
   const noGo = 'Go is not installed on this host; gopls is built with it. Install Go, then use Rediscover checkers.';

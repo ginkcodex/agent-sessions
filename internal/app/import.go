@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
@@ -24,12 +22,12 @@ type BundleHandoffRequest = engine.BundleHandoffRequest
 // OpenBundle opens a native file dialog to choose a session bundle and returns its summary.
 func (a *App) OpenBundle() (BundleSummary, error) {
 	ctx := a.appCtx()
-	path, err := wruntime.OpenFileDialog(ctx, wruntime.OpenDialogOptions{
+	path, err := openFileDialog(ctx, OpenDialogOptions{
 		Title:            "Open Session Bundle",
 		DefaultDirectory: dialogDefaultDir(),
 		Filters: fileFilters(
-			wruntime.FileFilter{DisplayName: "Agent Session Bundles (*.agent-session.zip, *.zip)", Pattern: "*.agent-session.zip;*.zip"},
-			wruntime.FileFilter{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+			FileFilter{DisplayName: "Agent Session Bundles (*.agent-session.zip, *.zip)", Pattern: "*.agent-session.zip;*.zip"},
+			FileFilter{DisplayName: "All Files (*.*)", Pattern: "*.*"},
 		),
 	})
 	if err != nil {
@@ -97,7 +95,7 @@ func (a *App) PickImportDirectory() (string, error) {
 	if r := a.route(); r.host != "" {
 		return "", fmt.Errorf("the folder dialog cannot browse %s; type the directory instead", r.host)
 	}
-	dir, err := wruntime.OpenDirectoryDialog(a.appCtx(), wruntime.OpenDialogOptions{
+	dir, err := openDirectoryDialog(a.appCtx(), OpenDialogOptions{
 		Title:                "Choose Directory to Import Into",
 		DefaultDirectory:     dialogDefaultDir(),
 		CanCreateDirectories: true,
@@ -138,12 +136,12 @@ func (a *App) SaveBundleHandoff(req BundleHandoffRequest) (string, error) {
 	if a.saveDialogOverride != nil {
 		dest, err = a.saveDialogOverride(ctx, filename)
 	} else {
-		dest, err = wruntime.SaveFileDialog(ctx, wruntime.SaveDialogOptions{
+		dest, err = saveFileDialog(ctx, SaveDialogOptions{
 			Title:            "Save Handoff Markdown",
 			DefaultDirectory: dialogDefaultDir(),
 			DefaultFilename:  filename,
 			Filters: fileFilters(
-				wruntime.FileFilter{DisplayName: "Markdown (*.md)", Pattern: "*.md"},
+				FileFilter{DisplayName: "Markdown (*.md)", Pattern: "*.md"},
 			),
 		})
 	}

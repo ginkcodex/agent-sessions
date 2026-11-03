@@ -1,3 +1,5 @@
+import { callApp, isDesktop } from './desktopRuntime';
+
 export function isFullscreenShortcut(
   e: Pick<KeyboardEvent, 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>,
   mac: boolean,
@@ -13,7 +15,7 @@ export function isFullscreenShortcut(
 // Cancel its default action, but do not stop propagation: dialogs and xterm
 // must still receive Escape. Browser fullscreen deliberately keeps its exit key.
 export function preventDesktopEscapeFullscreen(e: Pick<KeyboardEvent, 'key' | 'preventDefault'>): void {
-  if (e.key !== 'Escape' || !window.go?.app?.App) return;
+  if (e.key !== 'Escape' || !isDesktop()) return;
   const native = e.preventDefault;
   native.call(e);
   safeguarded.add(e);
@@ -42,13 +44,10 @@ export async function toggleFullscreen(): Promise<void> {
   if (toggling) return;
   toggling = true;
   try {
-    const app = window.go?.app?.App as { ToggleFullscreen?: () => Promise<void> } | undefined;
-    const runtime = window.runtime;
-    if (app?.ToggleFullscreen) {
-      await app.ToggleFullscreen();
-    } else if (runtime?.WindowIsFullscreen && runtime.WindowFullscreen && runtime.WindowUnfullscreen) {
-      if (await runtime.WindowIsFullscreen()) runtime.WindowUnfullscreen();
-      else runtime.WindowFullscreen();
+    if (isDesktop()) {
+      // The App binding also restores a maximised window. A failure is
+      // reported, not retried through another path.
+      await callApp('ToggleFullscreen');
     } else if (document.fullscreenElement) {
       await document.exitFullscreen();
     } else {

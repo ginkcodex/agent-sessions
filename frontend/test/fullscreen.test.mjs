@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { isFullscreenShortcut, toggleFullscreen, preventDesktopEscapeFullscreen, keyHandled } from '../src/lib/fullscreen.ts';
 import { terminalKeyAction } from '../src/lib/terminal.ts';
+import { flushRuntime, installDesktopRuntime } from './desktop-app.mjs';
 
 const key = { type: 'keydown', key: 'f', code: 'KeyF', metaKey: true, shiftKey: false, ctrlKey: true, altKey: false };
 
@@ -24,71 +25,63 @@ test('fullscreen shortcuts use Ctrl+Cmd+F on macOS and F11 elsewhere, including 
   assert.equal(terminalKeyAction(f11, false), 'app');
 });
 
-test('fullscreen prefers native Wails window APIs and toggles both ways', async () => {
-  const previous = globalThis.window;
+const APP = 'github.com/ginkcode/agent-sessions/internal/app.App';
+
+// A desktop runtime whose ToggleFullscreen call is answered by toggle.
+function desktopFullscreen(toggle) {
   const calls = [];
-  let full = false;
-  globalThis.window = { runtime: {
-    WindowIsFullscreen: async () => full,
-    WindowFullscreen: () => { full = true; calls.push('enter'); },
-    WindowUnfullscreen: () => { full = false; calls.push('exit'); },
-  } };
+  const restore = installDesktopRuntime({ Call: { ByName: (name, ...args) => { calls.push([name, ...args]); return toggle(); } } });
+  const oldDocument = globalThis.document;
+  globalThis.document = {
+    fullscreenElement: null,
+    documentElement: { requestFullscreen: async () => { throw new Error('browser fullscreen used'); } },
+  };
+  return {
+    calls,
+    restore() {
+      restore();
+      if (oldDocument === undefined) delete globalThis.document;
+      else globalThis.document = oldDocument;
+    },
+  };
+}
+
+test('desktop fullscreen calls the App binding by its full Go name', async () => {
+  const desktop = desktopFullscreen(async () => {});
   try {
     await toggleFullscreen();
     await toggleFullscreen();
-    assert.deepEqual(calls, ['enter', 'exit']);
-  } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
+    assert.deepEqual(desktop.calls, [[`${APP}.ToggleFullscreen`], [`${APP}.ToggleFullscreen`]]);
+  } finally { desktop.restore(); }
 });
 
 test('fullscreen awaits the app binding and suppresses overlapping requests', async () => {
-  const previous = globalThis.window;
-  const calls = [];
   let complete;
-  globalThis.window = {
-    go: { app: { App: { ToggleFullscreen: () => {
-      calls.push('binding');
-      return new Promise(resolve => { complete = resolve; });
-    } } } },
-    runtime: { WindowIsFullscreen: () => { throw new Error('legacy path used'); } },
-  };
+  const desktop = desktopFullscreen(() => new Promise(resolve => { complete = resolve; }));
   try {
     let finished = false;
     const first = toggleFullscreen().then(() => { finished = true; });
     await toggleFullscreen();
-    assert.deepEqual(calls, ['binding']);
+    await flushRuntime();
+    assert.equal(desktop.calls.length, 1);
     assert.equal(finished, false);
     complete();
     await first;
     const next = toggleFullscreen();
-    assert.deepEqual(calls, ['binding', 'binding']);
+    await flushRuntime();
+    assert.equal(desktop.calls.length, 2);
     complete();
     await next;
-  } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
+  } finally { desktop.restore(); }
 });
 
 test('binding failures release the guard without toggling through another path', async () => {
-  const previous = globalThis.window;
-  let calls = 0;
-  let fallbackCalls = 0;
-  globalThis.window = {
-    go: { app: { App: { ToggleFullscreen: async () => { calls++; throw new Error('native failure'); } } } },
-    runtime: { WindowIsFullscreen: async () => { fallbackCalls++; return false; }, WindowFullscreen() {}, WindowUnfullscreen() {} },
-  };
+  const desktop = desktopFullscreen(async () => { throw new Error('native failure'); });
   try {
     await assert.rejects(toggleFullscreen(), /native failure/);
     await assert.rejects(toggleFullscreen(), /native failure/);
-    assert.equal(calls, 2);
-    assert.equal(fallbackCalls, 0);
-  } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
+    assert.equal(desktop.calls.length, 2);
+  } finally { desktop.restore(); }
 });
 
 test('session pane suppresses only its container outline while retaining keyboard focus', () => {
@@ -143,7 +136,7 @@ test('desktop Escape cancels WebKit fullscreen exit without swallowing the key',
     globalThis.window = {};
     preventDesktopEscapeFullscreen(escape);
     assert.equal(cancelled, 0, 'browser keeps its native Escape behavior');
-    globalThis.window = { go: { app: { App: {} } } };
+    globalThis.window = { __AGENT_SESSIONS_DESKTOP__: true };
     preventDesktopEscapeFullscreen(escape);
     assert.equal(cancelled, 1);
     preventDesktopEscapeFullscreen({ ...escape, key: 'Enter' });
@@ -163,7 +156,7 @@ test('the desktop Escape safeguard does not make Escape look already handled', (
     return e;
   };
   try {
-    globalThis.window = { go: { app: { App: {} } } };
+    globalThis.window = { __AGENT_SESSIONS_DESKTOP__: true };
     const fresh = event();
     preventDesktopEscapeFullscreen(fresh);
     assert.equal(fresh.defaultPrevented, true, 'WebKit fullscreen exit is still cancelled');

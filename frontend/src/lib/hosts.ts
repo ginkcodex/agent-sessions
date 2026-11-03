@@ -1,3 +1,5 @@
+import { isDesktop, setDesktopTitle } from './desktopRuntime';
+
 /** Hosts named "wsl:<distro>" are WSL distributions on this Windows computer. */
 const WSL_PREFIX = 'wsl:';
 
@@ -51,12 +53,9 @@ export function setTitleCount(count: number): void {
 function showTitle(): void {
   const title = countedTitle(baseTitle, needsCount);
   if (typeof document !== 'undefined') document.title = title;
-  if (typeof window === 'undefined') return;
-  try {
-    (window as any).runtime?.WindowSetTitle?.(title);
-  } catch {
-    // The title is cosmetic; a missing runtime changes nothing else.
-  }
+  if (!isDesktop()) return;
+  // The title is cosmetic; a missing runtime changes nothing else.
+  setDesktopTitle(title).catch(() => {});
 }
 
 /** The command that opens an interactive shell on host from this computer. */

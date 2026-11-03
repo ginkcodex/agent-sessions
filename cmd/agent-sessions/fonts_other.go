@@ -1,4 +1,4 @@
-//go:build !linux && (webkit2_41 || desktop)
+//go:build !linux && desktop
 
 package main
 

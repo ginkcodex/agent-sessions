@@ -23,6 +23,7 @@ import {
   renderedButtons,
   unescapeHTML,
 } from './helpers.mjs';
+import { flushRuntime, installDesktopRuntime } from './desktop-app.mjs';
 
 // Synthetic Windows OpenSSH failure: CRLF stderr wrapped in the probe error.
 const WINDOWS_SSH_ERROR =
@@ -489,9 +490,8 @@ test('ConnectionStore lists WSL distributions and SSH hosts independently', asyn
 test('ConnectionStore names the selected connection in the window title', async () => {
   const { ConnectionStore } = await loadConnectionStore();
   const titles = [];
-  const hadWindow = 'window' in globalThis;
   const hadDocument = 'document' in globalThis;
-  globalThis.window = { runtime: { WindowSetTitle: (t) => titles.push(t) } };
+  const restore = installDesktopRuntime({ Window: { SetTitle: async (t) => { titles.push(t); } } });
   globalThis.document = { title: '' };
   globalThis.__storeFixture = { api: {}, link: { seed() {}, update: () => false } };
   try {
@@ -503,6 +503,7 @@ test('ConnectionStore names the selected connection in the window title', async 
     store.applyState({ phase: 'reconnecting', host: 'plgl', generation: 1 });
     store.applyState({ phase: 'connecting', host: 'wsl:Ubuntu', generation: 2 });
     store.applyState({ phase: 'local', generation: 3 });
+    await flushRuntime();
     assert.deepEqual(titles, [
       'Local — Agent Sessions',
       'plgl — Agent Sessions',
@@ -512,16 +513,15 @@ test('ConnectionStore names the selected connection in the window title', async 
     assert.equal(document.title, 'Local — Agent Sessions');
   } finally {
     delete globalThis.__storeFixture;
-    if (!hadWindow) delete globalThis.window;
+    restore();
     if (!hadDocument) delete globalThis.document;
   }
 });
 
 test('ConnectionStore keeps local diagnostics capabilities only as the backend reports them', async () => {
   const { ConnectionStore } = await loadConnectionStore();
-  const hadWindow = 'window' in globalThis;
   const hadDocument = 'document' in globalThis;
-  globalThis.window = { runtime: { WindowSetTitle() {} } };
+  const restore = installDesktopRuntime({ Window: { SetTitle: async () => {} } });
   globalThis.document = { title: '' };
   globalThis.__storeFixture = { api: {}, link: { seed() {}, update: () => false } };
   try {
@@ -541,7 +541,7 @@ test('ConnectionStore keeps local diagnostics capabilities only as the backend r
     assert.ok(!store.capabilities.codeDiagnostics && !store.capabilities.liveCodeDiagnostics);
   } finally {
     delete globalThis.__storeFixture;
-    if (!hadWindow) delete globalThis.window;
+    restore();
     if (!hadDocument) delete globalThis.document;
   }
 });

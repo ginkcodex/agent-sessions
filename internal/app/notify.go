@@ -1,15 +1,12 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
-
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // notifyOpenEvent carries the tab of an agent alert the user clicked.
@@ -30,9 +27,10 @@ type AgentNotification struct {
 	Body  string `json:"body"`
 }
 
-// notifier is what agent alerts need from the desktop's notifications;
-// tests replace it.
-type notifier interface {
+// Notifier is what agent alerts need from the desktop's notifications: the
+// notification center on macOS, D-Bus on Linux and toasts on Windows. The
+// desktop shell provides it in Desktop.Notifications; tests replace it.
+type Notifier interface {
 	Available() bool
 	Initialize() error
 	Authorized() (bool, error)
@@ -45,35 +43,10 @@ type notifier interface {
 	Cleanup()
 }
 
-// wailsNotifier sends notifications through the Wails runtime: the
-// notification center on macOS, D-Bus on Linux and toasts on Windows.
-type wailsNotifier struct{ ctx context.Context }
-
-func (w wailsNotifier) Available() bool   { return wruntime.IsNotificationAvailable(w.ctx) }
-func (w wailsNotifier) Initialize() error { return wruntime.InitializeNotifications(w.ctx) }
-func (w wailsNotifier) Authorized() (bool, error) {
-	return wruntime.CheckNotificationAuthorization(w.ctx)
-}
-func (w wailsNotifier) RequestAuthorization() (bool, error) {
-	return wruntime.RequestNotificationAuthorization(w.ctx)
-}
-func (w wailsNotifier) Send(id, title, body string) error {
-	return wruntime.SendNotification(w.ctx, wruntime.NotificationOptions{ID: id, Title: title, Body: body})
-}
-func (w wailsNotifier) Remove(id string) error { return wruntime.RemoveNotification(w.ctx, id) }
-func (w wailsNotifier) Cleanup()               { wruntime.CleanupNotifications(w.ctx) }
-func (w wailsNotifier) OnClick(fn func(id string)) {
-	wruntime.OnNotificationResponse(w.ctx, func(result wruntime.NotificationResult) {
-		if result.Error == nil {
-			fn(result.Response.ID)
-		}
-	})
-}
-
 // notifications sets up the desktop's notifications once, on first use.
 type notifications struct {
 	mu     sync.Mutex
-	n      notifier
+	n      Notifier
 	ready  bool
 	status NotificationStatus
 	// asked is set once authorization was requested.
@@ -100,7 +73,7 @@ func (a *App) notifications() *notifications {
 	a.notifyOnce.Do(func() {
 		n := a.notifierOverride
 		if n == nil && a.ctx != nil {
-			n = wailsNotifier{ctx: a.ctx}
+			n = desktopFrom(a.ctx).Notifications
 		}
 		a.notify = &notifications{n: n}
 	})
@@ -224,7 +197,7 @@ func (a *App) notificationClicked(id string) {
 	} else if a.ctx != nil {
 		raiseWindow(a.ctx)
 	}
-	if a.wailsEvents != nil {
-		a.wailsEvents.Emit(notifyOpenEvent, map[string]string{"id": tab})
+	if a.desktopEvents != nil {
+		a.desktopEvents.Emit(notifyOpenEvent, map[string]string{"id": tab})
 	}
 }

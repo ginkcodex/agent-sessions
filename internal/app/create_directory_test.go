@@ -25,7 +25,7 @@ func (s *stubRemoteBackend) CreateFile(_ context.Context, dir, path, name string
 func TestCreateDirectoryHostRouting(t *testing.T) {
 	transport := newFakeArtifactTransport()
 	a := setupRemoteApp(&stubRemoteBackend{transport: transport})
-	a.SetArtifactTransportOverride(transport)
+	a.setArtifactTransportOverride(transport)
 	if err := a.CreateDirectory("/project", "folder/file", "new", ""); !errors.Is(err, ErrSaveHostChanged) {
 		t.Fatalf("wrong host: %v", err)
 	}

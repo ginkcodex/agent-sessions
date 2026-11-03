@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixtureStore, loadServerModule } from './helpers.mjs';
-import { createAPI } from '../src/lib/api.ts';
+import { desktopAPI, useDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 import { bumpEpoch } from '../src/lib/link.ts';
 import { readFile } from 'node:fs/promises';
@@ -174,15 +174,12 @@ test('Go to File context menu offers Delete only for non-root items through the 
 });
 
 test('native DeleteFile forwards captured host and normalizes errors', async () => {
-  const previous = globalThis.window;
   const calls = [];
-  globalThis.window = { go: { app: { App: { DeleteFile: async (...args) => { calls.push(args); } } } } };
-  try {
-    await createAPI().deleteFile('/repo', 'src/a', 'remote');
-    assert.deepEqual(calls, [['/repo', 'src/a', 'remote']]);
-    globalThis.window.go.app.App.DeleteFile = async () => { throw 'permission denied'; };
-    await assert.rejects(createAPI().deleteFile('/repo', 'a', ''), /permission denied/);
-  } finally { globalThis.window = previous; }
+  const App = useDesktopApp({ DeleteFile: async (...args) => { calls.push(args); } });
+  await desktopAPI().deleteFile('/repo', 'src/a', 'remote');
+  assert.deepEqual(calls, [['/repo', 'src/a', 'remote']]);
+  App.DeleteFile = async () => { throw 'permission denied'; };
+  await assert.rejects(desktopAPI().deleteFile('/repo', 'a', ''), /permission denied/);
 });
 
 test('mock deletion removes recursive listings and ignored descendants with prefix boundaries', async () => {

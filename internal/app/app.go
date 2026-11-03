@@ -26,10 +26,11 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/term"
 	"github.com/ginkcode/agent-sessions/internal/translate"
 	"github.com/ginkcode/agent-sessions/internal/version"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// App is the desktop application service exposed to the Wails frontend.
+// App is the desktop application service bound to the frontend. Every exported
+// method is callable from JS; keep helpers and lifecycle hooks unexported or
+// package-level (see desktop.go).
 type App struct {
 	ctx              context.Context
 	localEngine      *engine.Engine
@@ -66,7 +67,7 @@ type App struct {
 	translator *translate.Client
 
 	events            *catalogBus
-	wailsEvents       engine.Emitter
+	desktopEvents     engine.Emitter
 	conn              *connection
 	transportOverride remote.ArtifactTransport
 	fileClose         fileCloseGuard
@@ -79,7 +80,7 @@ type App struct {
 	// window in tests.
 	notifyOnce       sync.Once
 	notify           *notifications
-	notifierOverride notifier
+	notifierOverride Notifier
 	notifyRaise      func()
 }
 
@@ -180,21 +181,21 @@ func (a *App) localBackend() engine.Backend {
 	return a.localEngine
 }
 
-// SetArtifactTransportOverride sets an artifact transport override (used in tests).
-func (a *App) SetArtifactTransportOverride(t remote.ArtifactTransport) {
+// setArtifactTransportOverride sets an artifact transport override (used in tests).
+func (a *App) setArtifactTransportOverride(t remote.ArtifactTransport) {
 	a.transportOverride = t
 }
 
-// OnStartup is invoked by Wails when the runtime is ready.
-// It starts the local engine and sets up desktop event routing.
-func (a *App) OnStartup(ctx context.Context) {
+// onStartup starts the local engine and sets up desktop event routing. ctx
+// carries the injected Desktop (see OnStartup).
+func (a *App) onStartup(ctx context.Context) {
 	a.ctx = ctx
-	wailsEmitter := NewWailsEmitter(ctx)
-	a.wailsEvents = wailsEmitter
+	emitter := emitterFrom(ctx)
+	a.desktopEvents = emitter
 	a.ensureConn()
-	a.conn.setEmitter(wailsEmitter)
+	a.conn.setEmitter(emitter)
 	if a.terminals == nil {
-		a.terminals = term.NewManager(wailsEmitter)
+		a.terminals = term.NewManager(emitter)
 	}
 	a.conn.setBusy(a.terminals.Running)
 	if dir := a.claimsDir(); dir != "" {
@@ -204,7 +205,7 @@ func (a *App) OnStartup(ctx context.Context) {
 		// window shortcut; everything else works.
 		_ = claims.joinRing()
 	}
-	a.events = newCatalogBus(ctx)
+	a.events = engine.NewCatalogBus(emitter)
 
 	a.localEngine = engine.NewEngine(
 		engine.WithRoots(a.roots),
@@ -214,7 +215,7 @@ func (a *App) OnStartup(ctx context.Context) {
 		engine.WithCacheDir(a.cacheDirOverride),
 		engine.WithManage(a.manageOverride),
 		localLiveOption(a.localLive),
-		engine.WithEmitter(localOnlyEmitter(wailsEmitter, a.conn)),
+		engine.WithEmitter(localOnlyEmitter(emitter, a.conn)),
 	)
 	a.backendMu.Lock()
 	a.backend = a.localEngine
@@ -291,24 +292,6 @@ func (a *App) claimsDir() string {
 	return filepath.Join(dir, "windows")
 }
 
-// raiseWindow brings this app window to the front, restoring it when
-// minimized. Each platform needs a different call: on Linux only
-// WindowUnminimise presents the window, and on Windows it would also
-// restore a maximized window to its normal size.
-func raiseWindow(ctx context.Context) {
-	switch runtime.GOOS {
-	case "linux":
-		wruntime.WindowUnminimise(ctx)
-	case "darwin":
-		if wruntime.WindowIsMinimised(ctx) {
-			wruntime.WindowUnminimise(ctx)
-		}
-		wruntime.WindowShow(ctx)
-	default:
-		wruntime.WindowShow(ctx)
-	}
-}
-
 // Scan triggers a scan across all providers and updates the service state.
 func (a *App) Scan() error {
 	ctx := a.appCtx()
@@ -323,14 +306,14 @@ func (a *App) Scan() error {
 	return nil
 }
 
-// OnShutdown is invoked by Wails when the desktop application is terminating.
-func (a *App) OnShutdown(ctx context.Context) {
+// onShutdown runs when the desktop application is terminating.
+func (a *App) onShutdown() {
 	a.closeNotifications()
-	_ = a.Close()
+	_ = a.close()
 }
 
-// Close gracefully terminates background scans, watchers, indexers, and the database.
-func (a *App) Close() error {
+// close gracefully terminates background scans, watchers, indexers, and the database.
+func (a *App) close() error {
 	// Terminals end first: an SSH tab shares the connection's ssh master.
 	if a.terminals != nil {
 		a.terminals.CloseAll()

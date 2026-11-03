@@ -1,16 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAPI, GIT_WRITE_UNSUPPORTED } from '../src/lib/api.ts';
+import { GIT_WRITE_UNSUPPORTED } from '../src/lib/api.ts';
+import { desktopAPI, withDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
-async function withApp(App, fn) {
-  const previous = globalThis.window;
-  globalThis.window = { go: { app: { App } } };
-  try { await fn(); } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
-}
+const withApp = withDesktopApp;
 test('Git writes forward paths, requests and original host with normalized errors', async () => {
   const calls = [];
   const App = Object.fromEntries(['Stage', 'Unstage', 'Discard', 'Commit'].map(name =>
@@ -18,7 +12,7 @@ test('Git writes forward paths, requests and original host with normalized error
   const discard = { paths: ['file'], draftPaths: ['draft'] };
   const commit = { message: 'message\nbody', amend: true, stageAll: true };
   await withApp(App, async () => {
-    const api = createAPI();
+    const api = desktopAPI();
     await api.gitStage('/repo', 'child', ['literal[1]'], 'box');
     await api.gitUnstage('/repo', '', [], undefined);
     await api.gitDiscard('/repo', '', discard, 'box');
@@ -33,7 +27,7 @@ test('Git writes forward paths, requests and original host with normalized error
 });
 test('older bindings reject Git writes clearly', async () => {
   await withApp({}, async () => {
-    const api = createAPI();
+    const api = desktopAPI();
     for (const call of [() => api.gitStage('/repo', '', []), () => api.gitUnstage('/repo', '', []),
       () => api.gitDiscard('/repo', '', { paths: [] }), () => api.gitCommit('/repo', '', { message: 'x', amend: false, stageAll: false })]) {
       await assert.rejects(call(), e => e.message === GIT_WRITE_UNSUPPORTED);

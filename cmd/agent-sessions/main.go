@@ -1,16 +1,14 @@
-// Command agent-sessions is the Wails v2 desktop application entrypoint.
+// Command agent-sessions is the Wails v3 desktop application entrypoint.
 //
-// The GUI build is gated behind a build tag so that plain `go build ./...`
-// and `go test -race ./...` never require the GTK or WebKitGTK development
-// headers: `webkit2_41` on Linux (it also selects WebKitGTK 4.1), `desktop`
-// on macOS:
+// The GUI build is gated behind the `desktop` build tag so that plain
+// `go build ./...` and `go test -race ./...` never require the GTK or
+// WebKitGTK development headers:
 //
-//	wails build -tags webkit2_41 -clean   # or: make app
-//	wails dev -tags webkit2_41            # or: make dev
-//	wails build -tags desktop -platform darwin/universal   # macOS
+//	make gui-build    # or: go build -tags desktop,production ./cmd/agent-sessions
+//	make dev          # Vite plus a -tags desktop build (devtools on)
 //
-// System build dependencies on Linux: libgtk-3-dev, libwebkit2gtk-4.1-dev
-// (verify with: pkg-config --exists webkit2gtk-4.1 gtk+-3.0).
+// System build dependencies on Linux: libgtk-4-dev, libwebkitgtk-6.0-dev
+// (verify with: pkg-config --exists gtk4 webkitgtk-6.0).
 package main
 
 import (
@@ -24,7 +22,7 @@ import (
 
 // init applies the WebKitGTK DMA-BUF renderer workaround before any GTK
 // initialization. On some Linux drivers (NVIDIA and certain Mesa versions)
-// WebKitGTK 4.1 fails to allocate DMA-BUF textures and renders a blank or
+// WebKitGTK fails to allocate DMA-BUF textures and renders a blank or
 // black window. Disabling the DMABUF renderer falls back to shared-memory
 // rendering at a small performance cost. The user may opt out by exporting
 // the variable explicitly.

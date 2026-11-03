@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Info.plist of the macOS app bundle; see `make package-macos`, which
+     fills the @PLACEHOLDERS@ from wails.json's info, VERSION and MACOS_MIN.
+     CFBundleIdentifier is the one Wails v2 builds used: changing it would
+     reset the Apple Events and notification permissions users granted. -->
+<plist version="1.0">
+    <dict>
+        <key>CFBundlePackageType</key>
+        <string>APPL</string>
+        <key>CFBundleName</key>
+        <string>@PRODUCT_NAME@</string>
+        <key>CFBundleExecutable</key>
+        <string>agent-sessions</string>
+        <key>CFBundleIdentifier</key>
+        <string>com.wails.agent-sessions</string>
+        <key>CFBundleVersion</key>
+        <string>@VERSION@</string>
+        <key>CFBundleGetInfoString</key>
+        <string>@COMMENTS@</string>
+        <key>CFBundleShortVersionString</key>
+        <string>@VERSION@</string>
+        <key>CFBundleIconFile</key>
+        <string>iconfile</string>
+        <key>LSMinimumSystemVersion</key>
+        <string>@MACOS_MIN@</string>
+        <key>NSHighResolutionCapable</key>
+        <string>true</string>
+        <key>NSHumanReadableCopyright</key>
+        <string>@COPYRIGHT@</string>
+        <key>NSAppleEventsUsageDescription</key>
+        <string>Agent Sessions opens your terminal app to resume a session or continue it in another agent.</string>
+    </dict>
+</plist>

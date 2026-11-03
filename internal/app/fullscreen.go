@@ -3,14 +3,13 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"runtime"
 	"sync"
-
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // fullscreenOperations is the small part of the desktop runtime needed to
-// toggle fullscreen. Keeping it explicit lets the controller run without Wails.
+// toggle fullscreen. Keeping it explicit lets the controller run without a window.
 type fullscreenOperations struct {
 	isFullscreen func(context.Context) bool
 	isMaximised  func(context.Context) bool
@@ -28,13 +27,18 @@ type fullscreenController struct {
 // ToggleFullscreen toggles this window's fullscreen state. On Windows, leaving
 // fullscreen restores a window that was maximised before entering fullscreen.
 func (a *App) ToggleFullscreen() error {
+	d := desktopFrom(a.ctx)
+	if a.ctx != nil && (d.IsFullscreen == nil || d.IsMaximised == nil || d.Fullscreen == nil ||
+		d.Unfullscreen == nil || d.Unmaximise == nil || d.Maximise == nil) {
+		return fmt.Errorf("fullscreen: %w", ErrDesktopUnavailable)
+	}
 	return a.fullscreen.toggle(a.ctx, runtime.GOOS, fullscreenOperations{
-		isFullscreen: wruntime.WindowIsFullscreen,
-		isMaximised:  wruntime.WindowIsMaximised,
-		fullscreen:   wruntime.WindowFullscreen,
-		unfullscreen: wruntime.WindowUnfullscreen,
-		unmaximise:   wruntime.WindowUnmaximise,
-		maximise:     wruntime.WindowMaximise,
+		isFullscreen: d.IsFullscreen,
+		isMaximised:  d.IsMaximised,
+		fullscreen:   d.Fullscreen,
+		unfullscreen: d.Unfullscreen,
+		unmaximise:   d.Unmaximise,
+		maximise:     d.Maximise,
 	})
 }
 
@@ -42,7 +46,7 @@ func (c *fullscreenController) toggle(ctx context.Context, goos string, ops full
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Do not use appCtx's background fallback: Wails needs the startup context.
+	// Do not use appCtx's background fallback: the window is not ready before startup.
 	if ctx == nil {
 		return errors.New("fullscreen: the window is not ready")
 	}
@@ -54,7 +58,7 @@ func (c *fullscreenController) toggle(ctx context.Context, goos string, ops full
 
 	ops.unfullscreen(ctx)
 	if goos == "windows" && c.restoreMaximised {
-		// Wails may still consider the window maximised after unfullscreen.
+		// The window may still consider the window maximised after unfullscreen.
 		// Clear that state first so maximising actually restores its bounds.
 		ops.unmaximise(ctx)
 		ops.maximise(ctx)

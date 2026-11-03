@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTerminalFileOpener, terminalFileHostReady } from '../src/lib/terminalFileOpen.ts';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
-import { createAPI } from '../src/lib/api.ts';
+import { desktopAPI, useDesktopApp } from './desktop-app.mjs';
 
 const local = { phase: 'local', stale: false, locked: false };
 function setup() {
@@ -92,19 +92,13 @@ test('location callback runs only after successful kept-file opening', async () 
 });
 
 test('terminal resolver passes cwd and path through native bindings', async () => {
-  const previous = globalThis.window;
   const calls = [];
-  globalThis.window = { go: { app: { App: { async ResolveTerminalFile(...args) {
+  useDesktopApp({ async ResolveTerminalFile(...args) {
     calls.push(args);
     return { dir: '/repo', path: 'Makefile' };
-  } } } } };
-  try {
-    assert.deepEqual(await createAPI().resolveTerminalFile('/repo/sub', '../Makefile'), { dir: '/repo', path: 'Makefile' });
-    assert.deepEqual(calls, [['/repo/sub', '../Makefile']]);
-  } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
+  } });
+  assert.deepEqual(await desktopAPI().resolveTerminalFile('/repo/sub', '../Makefile'), { dir: '/repo', path: 'Makefile' });
+  assert.deepEqual(calls, [['/repo/sub', '../Makefile']]);
   const mock = new MockBackendAPI();
   assert.deepEqual(await mock.resolveTerminalFile('/repo', 'Makefile'), { dir: '/repo', path: 'Makefile' });
   await assert.rejects(mock.resolveTerminalFile('/repo', 'missing'), /File not found/);

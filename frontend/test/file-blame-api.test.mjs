@@ -1,20 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
-import { createAPI, BLAME_UNSUPPORTED } from '../src/lib/api.ts';
+import { BLAME_UNSUPPORTED } from '../src/lib/api.ts';
+import { desktopAPI, withDesktopApp } from './desktop-app.mjs';
 import { guardEpoch, StaleReplyError } from '../src/lib/link.ts';
 
-function withWailsApp(App, fn) {
-  const hadWindow = 'window' in globalThis;
-  const previous = globalThis.window;
-  globalThis.window = { go: { app: { App } } };
-  return Promise.resolve()
-    .then(fn)
-    .finally(() => {
-      if (hadWindow) globalThis.window = previous;
-      else delete globalThis.window;
-    });
-}
+const withWailsApp = withDesktopApp;
 
 test('mock blames committed lines deterministically with full metadata', async () => {
   const api = new MockBackendAPI();
@@ -62,7 +53,7 @@ test('Wails blameFile forwards arguments and normalizes errors', async () => {
   const reply = { line: 2, commit: 'a'.repeat(40), author: 'A', authorTime: 1, summary: 's', uncommitted: false };
   const App = { async BlameFile(...args) { calls.push(args); return reply; } };
   await withWailsApp(App, async () => {
-    const backend = createAPI();
+    const backend = desktopAPI();
     assert.ok(!(backend instanceof MockBackendAPI));
     assert.deepEqual(await backend.blameFile('/repo', 'a/b.go', 2), reply);
     assert.deepEqual(calls, [['/repo', 'a/b.go', 2]]);
@@ -76,7 +67,7 @@ test('Wails blameFile forwards arguments and normalizes errors', async () => {
 
 test('Wails blameFile rejects clearly on an older backend without the binding', async () => {
   await withWailsApp({}, async () => {
-    const backend = createAPI();
+    const backend = desktopAPI();
     await assert.rejects(
       backend.blameFile('/repo', 'a.go', 1),
       (err) => err instanceof Error && err.message === BLAME_UNSUPPORTED,

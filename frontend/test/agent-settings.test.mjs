@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule, loadServerComponent, fixtureStore, renderWithFixture } from './helpers.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
-import { createAPI } from '../src/lib/api.ts';
+import { desktopAPI, useDesktopApp } from './desktop-app.mjs';
 
 const url = new URL('../src/lib/stores/agentSettings.svelte.ts', import.meta.url);
 const { AgentSettingsStore } = await loadServerModule(url, [
@@ -89,31 +89,25 @@ test('mock settings validate nonempty supported IDs and retain the active subset
 });
 
 test('native agent settings API forwards the selection and reports unsupported older bindings', async () => {
-  const previous = globalThis.window;
   const calls = [];
   const App = {
     RestartApp: async () => { calls.push('restart'); },
     GetAgentSettings: async () => defaults(),
     SetAgentSettings: async enabled => { calls.push(enabled); return { ...defaults(), enabled, restartRequired: true }; },
   };
-  globalThis.window = { go: { app: { App } } };
-  try {
-    const api = createAPI();
-    assert.deepEqual(await api.getAgentSettings(), defaults());
-    assert.deepEqual((await api.setAgentSettings(['codex'])).enabled, ['codex']);
-    assert.deepEqual(calls, [['codex']]);
-    await api.restartApp();
-    assert.deepEqual(calls, [['codex'], 'restart']);
-    delete App.RestartApp;
-    await assert.rejects(api.restartApp(), /restart the app manually/);
-    App.SetAgentSettings = async () => { throw 'host unavailable'; };
-    await assert.rejects(api.setAgentSettings(['codex']), error => error instanceof Error && error.message === 'host unavailable');
-    delete App.GetAgentSettings;
-    await assert.rejects(api.getAgentSettings(), /does not support coding agent settings/);
-  } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
-  }
+  useDesktopApp(App);
+  const api = desktopAPI();
+  assert.deepEqual(await api.getAgentSettings(), defaults());
+  assert.deepEqual((await api.setAgentSettings(['codex'])).enabled, ['codex']);
+  assert.deepEqual(calls, [['codex']]);
+  await api.restartApp();
+  assert.deepEqual(calls, [['codex'], 'restart']);
+  delete App.RestartApp;
+  await assert.rejects(api.restartApp(), /restart the app manually/);
+  App.SetAgentSettings = async () => { throw 'host unavailable'; };
+  await assert.rejects(api.setAgentSettings(['codex']), error => error instanceof Error && error.message === 'host unavailable');
+  delete App.GetAgentSettings;
+  await assert.rejects(api.getAgentSettings(), /does not support coding agent settings/);
 });
 
 test('agent summary follows active agents until restart, including future provider labels', async () => {

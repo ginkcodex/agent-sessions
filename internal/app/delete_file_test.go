@@ -18,7 +18,7 @@ func (s *stubRemoteBackend) DeleteFile(_ context.Context, dir, path string) erro
 func TestDeleteFileHostRouting(t *testing.T) {
 	transport := newFakeArtifactTransport()
 	a := setupRemoteApp(&stubRemoteBackend{transport: transport})
-	a.SetArtifactTransportOverride(transport)
+	a.setArtifactTransportOverride(transport)
 	if err := a.DeleteFile("/project", "folder/file", ""); !errors.Is(err, ErrSaveHostChanged) {
 		t.Fatalf("wrong host: %v", err)
 	}

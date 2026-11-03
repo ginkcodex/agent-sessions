@@ -370,7 +370,7 @@
      The panel hides the panes of tabs not shown. -->
 <div
   class="terminal-view"
-  style:--wails-drop-target={tab.status === 'running' ? 'drop' : undefined}
+  data-file-drop-target={tab.status === 'running' ? 'terminal' : undefined}
   oncontextmenu={openMenu}
   onkeydowncapture={handlePaneKeydown}
   role="presentation"
@@ -434,7 +434,7 @@
   }
 
   /* The runtime marks the drop target while files are dragged over it. */
-  .terminal-view:global(.wails-drop-target-active)::after {
+  .terminal-view:global(.file-drop-target-active)::after {
     content: '';
     position: absolute;
     inset: 4px;

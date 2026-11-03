@@ -1,4 +1,4 @@
-//go:build darwin && (webkit2_41 || desktop)
+//go:build darwin && desktop
 
 #import <Foundation/Foundation.h>
 #import <CoreText/CoreText.h>

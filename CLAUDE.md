@@ -27,8 +27,12 @@ Each folder holds:
   TUIs such as OpenCode.
 
 Build in a fresh `/tmp` folder so `build/bin` and `build/windows` stay
-untouched. The temporary `wails.json` edit mirrors `make package-windows`, and
-the trap restores the original.
+untouched. `make windows-app` is the same build `make package-windows` uses:
+it writes the icon, manifest, version info and `.syso` to
+`$WINDOWS_BUILD_DIR/windows` and the exe to `$WINDOWS_BUILD_DIR/bin`, and it
+does not edit any tracked file. While it compiles it keeps a copy of the
+`.syso` in `cmd/agent-sessions/`, so it refuses to run while another Windows
+build from this checkout is running.
 
 ```sh
 N=6   # next unused number
@@ -37,18 +41,9 @@ test ! -e "$B" && test ! -e "$W"
 V=$(sed -n 's/^ *"productVersion": *"\([^"]*\)".*/\1/p' wails.json)
 LDFLAGS="-s -w -X github.com/ginkcode/agent-sessions/internal/version.Version=$V"
 
-mkdir -p "$B/windows"
-cp frontend/assets/Icon-universal.png "$B/appicon.png"
-cp build/windows/icon.ico build/windows/info.json build/windows/wails.exe.manifest "$B/windows/"
-(cd frontend && npm run build)
+make windows-app WINDOWS_BUILD_DIR="$B"
 make remote-servers REMOTE_DIR="$B/remote"
 make conpty CONPTY_DIR="$B/conpty"
-
-backup=$(mktemp ./wails.json.release.XXXXXX); cp -p wails.json "$backup"
-trap 'mv "$backup" wails.json' EXIT
-jq --arg root "$PWD" --arg out "$B" \
-  '.projectdir = ($root + "/cmd/agent-sessions") | .["build:dir"] = $out' "$backup" > wails.json
-wails build -platform windows/amd64 -tags desktop -s -m -nosyncgomod -skipbindings -trimpath -ldflags "$LDFLAGS"
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$LDFLAGS" \
   -o "$B/bin/agent-sessions-cli.exe" ./cmd/agent-sessions-cli
 

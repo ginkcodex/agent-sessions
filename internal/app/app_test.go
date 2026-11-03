@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"slices"
 	"testing"
 
 	"github.com/ginkcode/agent-sessions/internal/index"
@@ -21,15 +23,20 @@ func TestPing(t *testing.T) {
 }
 
 func TestOnStartupStoresContext(t *testing.T) {
-	// OnStartup is invoked by the Wails runtime before any bound call; the
-	// service must retain the context for later runtime calls (clipboard,
-	// events, ...). Verified here with a plain background context.
+	// OnStartup runs before any bound call; the service must retain the
+	// startup context, with the injected desktop, for later runtime calls.
+	type key struct{}
 	a := NewApp()
-	ctx := t.Context()
-	a.OnStartup(ctx)
-	t.Cleanup(func() { _ = a.Close() })
-	if a.ctx != ctx {
+	ctx := context.WithValue(t.Context(), key{}, "startup")
+	var emitted []string
+	OnStartup(a, ctx, Desktop{Emit: func(name string, _ any) { emitted = append(emitted, name) }})
+	t.Cleanup(func() { _ = Close(a) })
+	if a.ctx == nil || a.ctx.Value(key{}) != "startup" {
 		t.Error("OnStartup did not retain the runtime context")
+	}
+	a.desktopEvents.Emit("probe", nil)
+	if !slices.Contains(emitted, "probe") {
+		t.Errorf("injected emitter not used: %v", emitted)
 	}
 }
 
@@ -66,9 +73,9 @@ func TestOnStartupCacheFirstLoadsCatalog(t *testing.T) {
 	a.cacheDirOverride = db.CacheDir()
 
 	// Cache-first startup must synchronously populate the catalog.
-	a.OnStartup(t.Context())
+	OnStartup(a, t.Context(), Desktop{})
 	// Release the index before TempDir cleanup; Windows cannot delete open files.
-	t.Cleanup(func() { _ = a.Close() })
+	t.Cleanup(func() { _ = Close(a) })
 
 	if m, ok := a.svc.Catalog().Get(model.SessionRef{Agent: model.AgentClaude, ID: "cached1"}); !ok || m.Title != "Cached Session" {
 		t.Errorf("expected cached1 in catalog after OnStartup, got %+v", m)

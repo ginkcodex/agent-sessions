@@ -15,7 +15,6 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // ResolveTerminalFile resolves a clicked terminal path on the selected host.
@@ -118,7 +117,7 @@ func (a *App) DownloadFile(dir, path string) (string, error) {
 	if a.saveDialogOverride != nil {
 		dest, err = a.saveDialogOverride(ctx, artifact.Name)
 	} else {
-		dest, err = wruntime.SaveFileDialog(ctx, wruntime.SaveDialogOptions{Title: "Download File", DefaultDirectory: dialogDefaultDir(), DefaultFilename: artifact.Name})
+		dest, err = saveFileDialog(ctx, SaveDialogOptions{Title: "Download File", DefaultDirectory: dialogDefaultDir(), DefaultFilename: artifact.Name})
 	}
 	if err != nil || dest == "" {
 		_ = r.transport.GetArtifact(ctx, token, true, discardWriter{})
@@ -167,7 +166,7 @@ func (a *App) AddFile(dir, path, host string) (bool, error) {
 	if a.openFileDialogOverride != nil {
 		source, err = a.openFileDialogOverride(ctx)
 	} else {
-		source, err = wruntime.OpenFileDialog(ctx, wruntime.OpenDialogOptions{Title: "Add File", DefaultDirectory: dialogDefaultDir()})
+		source, err = openFileDialog(ctx, OpenDialogOptions{Title: "Add File", DefaultDirectory: dialogDefaultDir()})
 	}
 	if err != nil || source == "" {
 		return false, err

@@ -1,18 +1,27 @@
 GO ?= go
-WAILS ?= wails
-WAILS_TAGS ?= webkit2_41
+# Desktop builds are plain `go build` with these tags. `desktop` selects the
+# Wails v3 entrypoint (cmd/agent-sessions/run_gui.go). `production` is Wails
+# v3's release switch: it turns off the web inspector, the debug logger and
+# the FRONTEND_DEVSERVER_URL dev-server proxy. `make dev` drops it.
+GUI_TAGS ?= desktop,production
+DEV_TAGS ?= desktop
+# The Wails v3 CLI, only used for `generate icons` and `generate syso`. By
+# default it runs at the version go.mod pins, so nothing needs installing.
+WAILS3_VERSION ?= $(shell $(GO) list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+WAILS3 ?= $(GO) run github.com/wailsapp/wails/v3/cmd/wails3@$(WAILS3_VERSION)
 # Release version: the single source is info.productVersion in wails.json.
 VERSION ?= $(shell sed -n 's/^ *"productVersion": *"\([^"]*\)".*/\1/p' wails.json)
 VERSION_PKG ?= github.com/ginkcode/agent-sessions/internal/version
 LDFLAGS ?= -s -w -X $(VERSION_PKG).Version=$(VERSION)
 ARCH ?= $(shell $(GO) env GOARCH)
 NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
-# One icon source for every platform. Wails reads build/appicon.png for the
-# macOS icns and the Windows ico.
+# One icon source for every platform. `wails3 generate icons` turns it into
+# the macOS .icns and the Windows .ico.
 APPICON := frontend/assets/Icon-universal.png
 
-.PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps package-linux package-macos package-windows \
-	remote-servers conpty windows-setup version tags set-version tag untag release help check-app-icons app-icon
+.PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps check-gui-linkage \
+	package-linux package-macos package-windows windows-app \
+	remote-servers conpty windows-setup version tags set-version tag untag release help check-app-icons
 
 # Headless servers the desktop app deploys over SSH. CGO stays off: these
 # binaries have no GUI. Cross targets need a Go toolchain that can produce
@@ -95,54 +104,73 @@ golden:
 
 build: cli
 
-# Linux desktop build requires a C compiler, libgtk-3-dev and
-# libwebkit2gtk-4.1-dev.
-# On Ubuntu: sudo apt install gcc libgtk-3-dev libwebkit2gtk-4.1-dev
-# This target checks them before invoking Wails, with an actionable hint.
-# Without a C compiler Go silently turns cgo off, and the Wails Linux
-# frontend then fails with "undefined: Frontend".
+# The Linux desktop build links GTK 4 and WebKitGTK 6.0 through cgo, so it
+# needs a C compiler and their development headers:
+#   sudo apt install gcc pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+# (Ubuntu 24.04+, Debian 13+; Fedora 40+: gtk4-devel webkitgtk6.0-devel).
+# macOS needs cgo too, for Cocoa/WebKit. Without a C compiler Go silently
+# turns cgo off and the Wails build fails with obscure undefined symbols, so
+# check first and print an actionable hint.
 check-gui-deps:
 	@[ "$$($(GO) env CGO_ENABLED)" = 1 ] || { \
-		printf '%s\n' 'cgo is off: the Linux desktop build needs a C compiler. Install gcc (or set CC).' >&2; \
+		printf '%s\n' 'cgo is off: the desktop build needs a C compiler. Install gcc (or set CC).' >&2; \
 		exit 1; \
 	}
-	@pkg-config --exists webkit2gtk-4.1 gtk+-3.0 || { \
-		printf '%s\n' 'Missing WebKitGTK 4.1/GTK 3 development headers. Install libgtk-3-dev libwebkit2gtk-4.1-dev.' >&2; \
+	@[ "$$($(GO) env GOOS)" != linux ] || pkg-config --exists gtk4 webkitgtk-6.0 || { \
+		printf '%s\n' 'Missing GTK 4/WebKitGTK 6.0 development headers. Install libgtk-4-dev libwebkitgtk-6.0-dev.' >&2; \
 		exit 1; \
 	}
 
-# Run the Svelte/Vite dev server and the Wails desktop window.
-# The Wails v2 CLI is required: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
+# Fail unless the Linux GUI binary links GTK 4 and WebKitGTK 6.0, and
+# neither GTK 3 nor WebKit2GTK. A stray gtk3 tag or old cgo flags would
+# otherwise produce a binary the .deb/.rpm dependencies do not cover.
+GUI_BIN ?= build/bin/agent-sessions
+check-gui-linkage:
+	@set -e; \
+	libs=$$(ldd "$(GUI_BIN)"); \
+	echo "$$libs" | grep -q 'libgtk-4\.so' && echo "$$libs" | grep -q 'libwebkitgtk-6\.0\.so' || { \
+		echo "$(GUI_BIN) does not link libgtk-4 and libwebkitgtk-6.0" >&2; exit 1; }; \
+	if echo "$$libs" | grep -Eq 'libgtk-3\.so|libwebkit2gtk-'; then \
+		echo "$(GUI_BIN) still links GTK 3 or WebKit2GTK:" >&2; \
+		echo "$$libs" | grep -E 'libgtk-3\.so|libwebkit2gtk-' >&2; exit 1; \
+	fi; \
+	echo "$(GUI_BIN) links GTK 4 and WebKitGTK 6.0 only"
+
+# Run the desktop app against the Vite dev server, with hot reload.
+# Contract: a Wails v3 build without the `production` tag serves its assets
+# from FRONTEND_DEVSERVER_URL when that is set (application.AssetFileServerFS
+# proxies to it) and waits up to 5s for it to answer. Release builds carry
+# `production`, which compiles that proxy out. frontend/dist must still exist
+# because go:embed needs it at compile time; it is only built when missing.
+# Vite runs on DEV_PORT (--strictPort: a busy port fails instead of moving).
+# The version is stamped like a release, or the remote-server handshake
+# would reject a "dev" build.
 # NOTE: do not launch in headless CI; use `make gui-build` for compile checks.
-dev: check-gui-deps app-icon
-	# Stamp the same version the deployed server reports, or the handshake
-	# rejects it (a plain `wails dev` would be version "dev").
-	$(WAILS) dev -tags $(WAILS_TAGS) -ldflags "$(LDFLAGS)"
+DEV_PORT ?= 5173
+dev: check-gui-deps
+	@test -f frontend/dist/index.html || { cd frontend && npm run build; }
+	@set -e; \
+	(cd frontend && exec ./node_modules/.bin/vite --port $(DEV_PORT) --strictPort) & vite=$$!; \
+	trap 'kill $$vite 2>/dev/null || true' EXIT; \
+	trap 'exit 130' HUP INT TERM; \
+	FRONTEND_DEVSERVER_URL=http://localhost:$(DEV_PORT) \
+		$(GO) run -tags "$(DEV_TAGS)" -ldflags "$(LDFLAGS)" ./cmd/agent-sessions
 
-# Compile a standalone desktop binary at build/bin/agent-sessions.
-app: check-gui-deps app-icon
-	$(WAILS) build -tags $(WAILS_TAGS) -clean -ldflags "$(LDFLAGS)"
-
-# Headless equivalent of the GUI compile (without invoking Wails CLI):
+# Compile the desktop binary at build/bin/agent-sessions with plain go build:
 # npm run build must run first so frontend/dist exists for go:embed.
-# The production tag is required at runtime: without it Wails' internal
-# app stub returns "will not build without the correct build tags".
 gui-build: check-gui-deps
 	cd frontend && npm run check && npm run build
-	$(GO) build -tags "$(WAILS_TAGS),production" -trimpath -ldflags "$(LDFLAGS)" -o build/bin/agent-sessions ./cmd/agent-sessions
+	$(GO) build -tags "$(GUI_TAGS)" -trimpath -ldflags "$(LDFLAGS)" -o build/bin/agent-sessions ./cmd/agent-sessions
 
-# Verify the icon source before packaging it. It stays 1024px so Wails can
-# generate every macOS/Windows representation from it.
+app: gui-build
+
+# Verify the icon source before packaging it. It stays 1024px so
+# `wails3 generate icons` can derive every macOS/Windows representation.
 check-app-icons:
 	@case "$$(file -b "$(APPICON)")" in \
 		'PNG image data, 1024 x 1024, '*'RGBA'*) ;; \
 		*) echo "$(APPICON) must be a 1024x1024 RGBA PNG" >&2; exit 1 ;; \
 	esac
-
-# Stage the icon where Wails looks for it.
-app-icon: check-app-icons
-	mkdir -p build
-	cp "$(APPICON)" build/appicon.png
 
 # Linux .deb and .rpm packages in dist/, wrapping the gui-build binary.
 # Runtime dependencies are declared in packaging/nfpm.yaml. The package ships
@@ -154,45 +182,48 @@ package-linux: check-app-icons gui-build
 	VERSION=$(VERSION) ARCH=$(ARCH) $(NFPM) pkg --config packaging/nfpm.yaml --packager deb --target dist/
 	VERSION=$(VERSION) ARCH=$(ARCH) $(NFPM) pkg --config packaging/nfpm.yaml --packager rpm --target dist/
 
-# Universal macOS app wrapped in a .dmg in dist/. Runs on macOS only and
-# requires the Wails CLI. The bundle is ad-hoc signed, not notarized.
+# Universal macOS app wrapped in a .dmg in dist/. Runs on macOS only (cgo,
+# lipo, plutil, codesign, hdiutil) and needs jq. Each architecture is a plain
+# go build; lipo joins them. The bundle is assembled from
+# packaging/macos/Info.plist.in, filled from wails.json's info, with an icon
+# from `wails3 generate icons`. It is ad-hoc signed, not notarized.
 # hdiutil intermittently fails with "Resource busy" on CI runners, so the
 # .dmg step retries once.
-package-macos: check-app-icons
+# Go 1.26 itself needs macOS 12, so that is the deployment target.
+MACOS_MIN ?= 12.0
+MACOS_APP := build/bin/Agent Sessions.app
+# Fills the Info.plist template's @PLACEHOLDERS@ with XML-escaped values.
+MACOS_PLIST_JQ = def x: gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;"); .info as $$i | $$tpl | gsub("@VERSION@"; $$version | x) | gsub("@MACOS_MIN@"; $$min | x) | gsub("@PRODUCT_NAME@"; $$i.productName | x) | gsub("@COMMENTS@"; $$i.comments | x) | gsub("@COPYRIGHT@"; $$i.copyright | x)
+package-macos: check-app-icons check-gui-deps
+	@command -v jq >/dev/null 2>&1 || { echo "jq not found: brew install jq" >&2; exit 1; }
 	cd frontend && npm run build
-	# wails.json keeps projectdir relative so the checked-in file is portable,
-	# but Wails resolves its relative -o path from projectdir and then checks
-	# that same path from the repository root. An absolute projectdir makes
-	# both operations use one path.
+	rm -rf build/darwin "$(MACOS_APP)" build/dmg
+	mkdir -p build/darwin "$(MACOS_APP)/Contents/MacOS" "$(MACOS_APP)/Contents/Resources"
 	@set -e; \
-	root=$$(pwd); \
-	backup=$$(mktemp ./wails.json.release.XXXXXX); \
-	cp -p wails.json "$$backup"; \
-	mkdir -p build; \
-	cp "$(APPICON)" build/appicon.png; \
-	trap 'mv "$$backup" wails.json' EXIT; \
-	jq --arg root "$$root" '.projectdir = ($$root + "/cmd/agent-sessions") | .["build:dir"] = ($$root + "/build")' \
-		"$$backup" > wails.json; \
-	$(WAILS) build -platform darwin/arm64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath -ldflags "$(LDFLAGS)"; \
-	mv build/bin/agent-sessions.app/Contents/MacOS/agent-sessions build/agent-sessions-arm64; \
-	$(WAILS) build -platform darwin/amd64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath -ldflags "$(LDFLAGS)"; \
-	mv build/bin/agent-sessions.app/Contents/MacOS/agent-sessions build/agent-sessions-amd64
-	lipo -create -output build/bin/agent-sessions.app/Contents/MacOS/agent-sessions \
-		build/agent-sessions-arm64 build/agent-sessions-amd64
-	rm -f build/agent-sessions-arm64 build/agent-sessions-amd64
-	rm -rf "build/bin/Agent Sessions.app" build/dmg
-	mv build/bin/agent-sessions.app "build/bin/Agent Sessions.app"
-	# Open in terminal drives Terminal, iTerm2 or Ghostty with Apple Events.
-	# Without a usage description macOS refuses them (-1743) instead of
-	# asking the user.
-	plutil -replace NSAppleEventsUsageDescription -string \
-		"Agent Sessions opens your terminal app to resume a session or continue it in another agent." \
-		"build/bin/Agent Sessions.app/Contents/Info.plist"
+	for arch in arm64 amd64; do \
+		echo "building darwin/$$arch"; \
+		CGO_ENABLED=1 GOOS=darwin GOARCH=$$arch MACOSX_DEPLOYMENT_TARGET=$(MACOS_MIN) \
+		CGO_CFLAGS="-O2 -mmacosx-version-min=$(MACOS_MIN)" CGO_LDFLAGS="-mmacosx-version-min=$(MACOS_MIN)" \
+			$(GO) build -tags "$(GUI_TAGS)" -trimpath -ldflags "$(LDFLAGS)" \
+			-o "build/darwin/agent-sessions-$$arch" ./cmd/agent-sessions; \
+	done
+	lipo -create -output "$(MACOS_APP)/Contents/MacOS/agent-sessions" \
+		build/darwin/agent-sessions-arm64 build/darwin/agent-sessions-amd64
+	$(WAILS3) generate icons -input "$(APPICON)" \
+		-macfilename "$(MACOS_APP)/Contents/Resources/iconfile.icns" -windowsfilename ""
+	# The template keeps v2's bundle identifier, so macOS keeps the Apple
+	# Events and notification permissions users already granted. It also
+	# carries NSAppleEventsUsageDescription: Open in terminal drives
+	# Terminal, iTerm2 or Ghostty with Apple Events, and without a usage
+	# description macOS refuses them (-1743) instead of asking the user.
+	jq -r --arg version '$(VERSION)' --arg min '$(MACOS_MIN)' --rawfile tpl packaging/macos/Info.plist.in \
+		'$(MACOS_PLIST_JQ)' wails.json > "$(MACOS_APP)/Contents/Info.plist"
+	plutil -lint "$(MACOS_APP)/Contents/Info.plist"
 	# Servers go in before codesign so the signature covers them.
-	$(MAKE) remote-servers REMOTE_DIR="build/bin/Agent Sessions.app/Contents/Resources/remote"
-	codesign --force --deep --sign - "build/bin/Agent Sessions.app"
+	$(MAKE) remote-servers REMOTE_DIR="$(MACOS_APP)/Contents/Resources/remote"
+	codesign --force --deep --sign - "$(MACOS_APP)"
 	mkdir -p build/dmg dist
-	cp -R "build/bin/Agent Sessions.app" build/dmg/
+	cp -R "$(MACOS_APP)" build/dmg/
 	ln -s /Applications build/dmg/Applications
 	# Leave room for filesystem overhead: 25% extra, with a 64 MiB minimum.
 	@set -e; \
@@ -214,36 +245,57 @@ SETUP_OUT ?= dist/agent-sessions_$(VERSION)_windows_amd64_setup.exe
 windows-setup:
 	GO="$(GO)" bash packaging/windows/build-setup.sh "$(MSI)" "$(SETUP_OUT)" "$(VERSION)"
 
-# Windows amd64 .msi and _setup.exe in dist/, cross-compiled on Linux. Requires the Wails
-# CLI, jq, python3, x86_64-w64-mingw32-gcc and wixl (apt install
+# The Windows amd64 desktop app at $(WINDOWS_BUILD_DIR)/bin/agent-sessions.exe,
+# cross-compiled without cgo (Wails v3 on Windows needs none). Needs jq.
+# $(WINDOWS_BUILD_DIR)/windows is regenerated each run so the resources
+# follow the current sources: icon.ico from `wails3 generate icons`, the
+# manifest from packaging/windows/agent-sessions.exe.manifest, info.json
+# from wails.json's info with VERSION, and the .syso `wails3 generate syso`
+# links from them. Go only links a .syso from the package directory, so the
+# build copies it to $(WINDOWS_SYSO) for its duration. The file is created
+# exclusively and removed on exit; if one is already there, another Windows
+# build is running or a killed one left it behind, and the build stops.
+WINDOWS_BUILD_DIR ?= build
+WINDOWS_SYSO := cmd/agent-sessions/zz_agent_sessions_resources_windows_amd64.syso
+windows-app: check-app-icons
+	@command -v jq >/dev/null 2>&1 || { echo "jq not found: install it (apt install jq)" >&2; exit 1; }
+	cd frontend && npm run build
+	@set -e; \
+	out='$(abspath $(WINDOWS_BUILD_DIR))'; res="$$out/windows"; syso='$(WINDOWS_SYSO)'; \
+	version='$(VERSION)'; \
+	rm -rf "$$res"; \
+	mkdir -p "$$res" "$$out/bin"; \
+	$(WAILS3) generate icons -input "$(APPICON)" -windowsfilename "$$res/icon.ico" -macfilename ""; \
+	sed "s/@VERSION@/$${version%%-*}.0/" packaging/windows/agent-sessions.exe.manifest > "$$res/agent-sessions.exe.manifest"; \
+	jq --arg v "$$version" '.info | {fixed: {file_version: $$v, product_version: $$v}, info: {"0000": {FileVersion: $$v, ProductVersion: $$v, CompanyName: .companyName, FileDescription: .productName, LegalCopyright: .copyright, ProductName: .productName, Comments: .comments}}}' \
+		wails.json > "$$res/info.json"; \
+	$(WAILS3) generate syso -arch amd64 -icon "$$res/icon.ico" -manifest "$$res/agent-sessions.exe.manifest" \
+		-info "$$res/info.json" -out "$$res/agent-sessions_windows_amd64.syso"; \
+	( set -C; cat "$$res/agent-sessions_windows_amd64.syso" > "$$syso" ) 2>/dev/null || { \
+		echo "$$syso already exists: another Windows build is running, or a killed one left it. Remove it and retry." >&2; \
+		exit 1; }; \
+	trap 'rm -f "$$syso"' EXIT; \
+	trap 'exit 130' HUP INT TERM; \
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build -tags "$(GUI_TAGS)" -trimpath \
+		-ldflags "$(LDFLAGS) -H windowsgui" -o "$$out/bin/agent-sessions.exe" ./cmd/agent-sessions; \
+	echo "built $$out/bin/agent-sessions.exe"
+
+# Windows amd64 .msi and _setup.exe in dist/, cross-compiled on Linux. Requires
+# jq, python3, x86_64-w64-mingw32-gcc and wixl (apt install
 # gcc-mingw-w64-x86-64 wixl, 0.102 or later for
-# AllowSameVersionUpgrades). The package is described in
-# packaging/windows/agent-sessions.wxs; build/windows is regenerated each run
-# so the icon and version resources follow the current sources. The package
-# is not code-signed, so SmartScreen warns on first run.
+# AllowSameVersionUpgrades). The app comes from windows-app, so the exe's
+# version resources and the package agree on VERSION. The package is
+# described in packaging/windows/agent-sessions.wxs. It is not code-signed,
+# so SmartScreen warns on first run.
 package-windows: check-app-icons
 	@for tool in jq wixl python3; do \
 		command -v $$tool >/dev/null 2>&1 || { echo "$$tool not found: install it (apt install $$tool)" >&2; exit 1; }; \
 	done
 	@command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 || \
 		{ echo "x86_64-w64-mingw32-gcc not found: apt install gcc-mingw-w64-x86-64" >&2; exit 1; }
-	cd frontend && npm run build
+	$(MAKE) windows-app WINDOWS_BUILD_DIR=build
 	$(MAKE) remote-servers
 	$(MAKE) conpty
-	# Same absolute projectdir as package-macos. The version is pinned to
-	# VERSION so the exe and the package agree.
-	@set -e; \
-	root=$$(pwd); \
-	backup=$$(mktemp ./wails.json.release.XXXXXX); \
-	cp -p wails.json "$$backup"; \
-	rm -rf build/windows; \
-	mkdir -p build; \
-	cp "$(APPICON)" build/appicon.png; \
-	trap 'mv "$$backup" wails.json' EXIT; \
-	jq --arg root "$$root" --arg version '$(VERSION)' \
-		'.projectdir = ($$root + "/cmd/agent-sessions") | .["build:dir"] = ($$root + "/build") | .info.productVersion = $$version' \
-		"$$backup" > wails.json; \
-	$(WAILS) build -platform windows/amd64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath -ldflags "$(LDFLAGS)"
 	mkdir -p dist
 	x86_64-w64-mingw32-gcc -std=c11 -Wall -Wextra -Werror -O2 -shared \
 		-o build/appcompat-ca.dll packaging/windows/appcompat-ca.c -lmsi -ladvapi32
@@ -319,13 +371,14 @@ help:
 	@printf '  %-22s %s\n' 'conpty' 'Fetch the ConPTY the Windows app ships'
 	@printf '  %-22s %s\n' 'fuzz-smoke' 'Fuzz the Claude record parser for 60s'
 	@printf '  %-22s %s\n' 'golden' 'Regenerate golden test files'
-	@printf '  %-22s %s\n' 'dev' 'Run the desktop app with live reload (Wails CLI)'
-	@printf '  %-22s %s\n' 'app' 'Build the desktop app with the Wails CLI'
-	@printf '  %-22s %s\n' 'gui-build' 'Build build/bin/agent-sessions without the Wails CLI'
+	@printf '  %-22s %s\n' 'dev' 'Run the desktop app against Vite with hot reload (DEV_PORT=5173)'
+	@printf '  %-22s %s\n' 'app / gui-build' 'Build build/bin/agent-sessions'
+	@printf '  %-22s %s\n' 'check-gui-linkage' 'Check the Linux app links GTK 4/WebKitGTK 6.0 only'
+	@printf '  %-22s %s\n' 'windows-app' 'Cross-build the Windows exe (WINDOWS_BUILD_DIR=build)'
 	@printf '  %-22s %s\n' 'clean' 'Remove build outputs'
 	@printf '\nPackaging (writes dist/)\n'
 	@printf '  %-22s %s\n' 'package-linux' '.deb and .rpm for ARCH (default: host)'
-	@printf '  %-22s %s\n' 'package-macos' 'Universal .dmg (macOS only)'
+	@printf '  %-22s %s\n' 'package-macos' 'Universal .dmg (macOS only, needs jq)'
 	@printf '  %-22s %s\n' 'package-windows' 'amd64 .msi + _setup.exe (needs wixl, jq, python3)'
 	@printf '  %-22s %s\n' 'windows-setup MSI=...' 'Wrap an existing MSI (optional SETUP_OUT=...)'
 	@printf '\nReleases (current: v$(VERSION))\n'
@@ -337,4 +390,4 @@ help:
 	@printf '  %-22s %s\n' 'release' 'Create the tag if needed and push it; CI publishes'
 
 clean:
-	rm -rf bin build/bin build/dmg build/remote dist frontend/dist
+	rm -rf bin build/bin build/darwin build/dmg build/remote build/windows dist frontend/dist "$(WINDOWS_SYSO)"

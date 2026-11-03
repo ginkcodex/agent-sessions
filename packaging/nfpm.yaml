@@ -35,13 +35,15 @@ contents:
     file_info:
       mode: 0644
 
-# Runtime libraries for the WebKitGTK 4.1 build (-tags webkit2_41).
+# Runtime libraries of the Wails v3 GTK 4 / WebKitGTK 6.0 build. They exist
+# on Ubuntu 24.04+, Debian 13+ and Fedora 40+; the binary is built on Ubuntu
+# 24.04, so its glibc floor matches.
 overrides:
   deb:
     depends:
-      - libgtk-3-0t64 | libgtk-3-0
-      - libwebkit2gtk-4.1-0
+      - libgtk-4-1
+      - libwebkitgtk-6.0-4
   rpm:
     depends:
-      - gtk3
-      - webkit2gtk4.1
+      - gtk4
+      - webkitgtk6.0

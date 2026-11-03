@@ -5,7 +5,7 @@ import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 import { canOpenTerminal } from '../src/lib/terminal.ts';
 import { wslDistro } from '../src/lib/hosts.ts';
 import { blockedReason, nextLink, resumeButtonTitle } from '../src/lib/link.ts';
-import { createAPI } from '../src/lib/api.ts';
+import { desktopAPI, useDesktopApp } from './desktop-app.mjs';
 import {
   loadRemoteCommandNote,
   renderHandoffDialog,
@@ -164,22 +164,15 @@ test('MockBackendAPI lists WSL distributions and opens a connected one in a term
 });
 
 test('Wails listWSLDistros reports no distributions on an older backend', async () => {
-  const hadWindow = 'window' in globalThis;
-  const previous = globalThis.window;
   const App = {};
-  globalThis.window = { go: { app: { App } } };
-  try {
-    const backend = createAPI();
-    assert.ok(!(backend instanceof MockBackendAPI));
-    assert.deepEqual(await backend.listWSLDistros(), [], 'binding missing');
-    App.ListWSLDistros = async () => null;
-    assert.deepEqual(await backend.listWSLDistros(), [], 'null list');
-    App.ListWSLDistros = async () => [{ name: 'Ubuntu', host: 'wsl:Ubuntu', default: true }];
-    assert.deepEqual(await backend.listWSLDistros(), [{ name: 'Ubuntu', host: 'wsl:Ubuntu', default: true }]);
-    App.ListWSLDistros = () => Promise.reject('wsl.exe failed');
-    await assert.rejects(backend.listWSLDistros(), (err) => err instanceof Error && err.message === 'wsl.exe failed');
-  } finally {
-    if (hadWindow) globalThis.window = previous;
-    else delete globalThis.window;
-  }
+  useDesktopApp(App);
+  const backend = desktopAPI();
+  assert.ok(!(backend instanceof MockBackendAPI));
+  assert.deepEqual(await backend.listWSLDistros(), [], 'binding missing');
+  App.ListWSLDistros = async () => null;
+  assert.deepEqual(await backend.listWSLDistros(), [], 'null list');
+  App.ListWSLDistros = async () => [{ name: 'Ubuntu', host: 'wsl:Ubuntu', default: true }];
+  assert.deepEqual(await backend.listWSLDistros(), [{ name: 'Ubuntu', host: 'wsl:Ubuntu', default: true }]);
+  App.ListWSLDistros = () => Promise.reject('wsl.exe failed');
+  await assert.rejects(backend.listWSLDistros(), (err) => err instanceof Error && err.message === 'wsl.exe failed');
 });

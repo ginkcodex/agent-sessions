@@ -1,19 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
-import { createAPI, REPLACE_FILES_UNSUPPORTED, SEARCH_FILES_UNSUPPORTED } from '../src/lib/api.ts';
+import { REPLACE_FILES_UNSUPPORTED, SEARCH_FILES_UNSUPPORTED } from '../src/lib/api.ts';
+import { desktopAPI, withDesktopApp } from './desktop-app.mjs';
 
-function withWailsApp(App, fn) {
-  const hadWindow = 'window' in globalThis;
-  const previous = globalThis.window;
-  globalThis.window = { go: { app: { App } } };
-  return Promise.resolve()
-    .then(fn)
-    .finally(() => {
-      if (hadWindow) globalThis.window = previous;
-      else delete globalThis.window;
-    });
-}
+const withWailsApp = withDesktopApp;
 
 test('Wails searchFiles forwards the query and search ID and normalizes errors', async () => {
   const calls = [];
@@ -23,7 +14,7 @@ test('Wails searchFiles forwards the query and search ID and normalizes errors',
     async CancelSearch(...args) { calls.push(['cancel', ...args]); },
   };
   await withWailsApp(App, async () => {
-    const backend = createAPI();
+    const backend = desktopAPI();
     assert.ok(!(backend instanceof MockBackendAPI));
     const query = { pattern: 'needle', regex: true, include: '*.go' };
     assert.deepEqual(await backend.searchFiles('/repo', query, 'pane'), reply);
@@ -39,7 +30,7 @@ test('Wails searchFiles forwards the query and search ID and normalizes errors',
 
 test('Wails searchFiles rejects clearly on an older backend without the binding', async () => {
   await withWailsApp({}, async () => {
-    const backend = createAPI();
+    const backend = desktopAPI();
     await assert.rejects(
       backend.searchFiles('/repo', { pattern: 'x' }, 'pane'),
       (err) => err instanceof Error && err.message === SEARCH_FILES_UNSUPPORTED,
@@ -95,16 +86,16 @@ test('Wails replaceInFiles forwards the request and host, and rejects clearly wi
   const reply = { files: [{ path: 'a.go', status: 'replaced', replaced: 1, revision: 'r2' }], replaced: 1 };
   const req = { query: { pattern: 'foo' }, replacement: 'bar', files: [{ path: 'a.go', expectedRevision: 'r1', matches: [{ line: 1, start: 0 }] }] };
   await withWailsApp({ async ReplaceInFiles(...args) { calls.push(args); return reply; } }, async () => {
-    const backend = createAPI();
+    const backend = desktopAPI();
     assert.deepEqual(await backend.replaceInFiles('/repo', req, 'box'), reply);
     assert.deepEqual(await backend.replaceInFiles('/repo', req, undefined), reply);
     assert.deepEqual(calls, [['/repo', req, 'box'], ['/repo', req, '']], 'Local is the empty host');
   });
   await withWailsApp({ ReplaceInFiles: () => Promise.reject('invalid replacement: unsupported text') }, async () => {
-    await assert.rejects(createAPI().replaceInFiles('/repo', req, ''), (err) => err instanceof Error && err.message.includes('invalid replacement'));
+    await assert.rejects(desktopAPI().replaceInFiles('/repo', req, ''), (err) => err instanceof Error && err.message.includes('invalid replacement'));
   });
   await withWailsApp({}, async () => {
-    await assert.rejects(createAPI().replaceInFiles('/repo', req, ''), (err) => err instanceof Error && err.message === REPLACE_FILES_UNSUPPORTED);
+    await assert.rejects(desktopAPI().replaceInFiles('/repo', req, ''), (err) => err instanceof Error && err.message === REPLACE_FILES_UNSUPPORTED);
   });
 });
 

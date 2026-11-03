@@ -22,7 +22,7 @@ func (s *stubRemoteBackend) CommitFileUpload(_ context.Context, dir, path, token
 func TestAddFileRemoteCleanupCancelAndHost(t *testing.T) {
 	transport := newFakeArtifactTransport()
 	a := setupRemoteApp(&stubRemoteBackend{transport: transport})
-	a.SetArtifactTransportOverride(transport)
+	a.setArtifactTransportOverride(transport)
 	source := filepath.Join(t.TempDir(), "source.bin")
 	os.WriteFile(source, []byte("payload"), 0600)
 	a.openFileDialogOverride = func(context.Context) (string, error) { return source, nil }

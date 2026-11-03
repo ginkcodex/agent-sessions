@@ -81,6 +81,8 @@ import type {
   AgentStatus,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
+import { createAppBinding } from './appBinding';
+import { isDesktop, onDesktopEvent, onDesktopFileDrop, openDesktopURL } from './desktopRuntime';
 import { epoch, guardEpoch } from './link';
 
 export interface BackendAPI extends CodeDiagnosticsAPI {
@@ -243,8 +245,8 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   appVersion(): Promise<string>;
   onEvent(name: string, callback: (...data: any[]) => void): () => void;
   /**
-   * Calls back with the paths of files dropped on an element styled
-   * `--wails-drop-target: drop`. One listener at a time.
+   * Calls back with the paths of files dropped on an element marked
+   * `data-file-drop-target`.
    */
   onFileDrop(callback: (x: number, y: number, paths: string[]) => void): () => void;
   getSettings(): Promise<ManageSettings>;
@@ -283,7 +285,8 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   getHostEnv(): Promise<Record<string, string>>;
 }
 
-interface WailsAppBinding {
+/** The Go App methods the desktop backend can call; see appBinding.ts. */
+export interface WailsAppBinding {
   ManagedTool?: (request: ManagedToolRequest) => Promise<ManagedToolState>;
   AttachCodeDiagnostics?: CodeDiagnosticsAPI['attachCodeDiagnostics'];
   DetachCodeDiagnostics?: CodeDiagnosticsAPI['detachCodeDiagnostics'];
@@ -459,6 +462,11 @@ function normalizeError(err: unknown): Error {
 }
 
 class WailsBackendAPI implements BackendAPI {
+  private readonly binding: WailsAppBinding;
+  constructor(binding: WailsAppBinding) {
+    this.binding = binding;
+  }
+
   private async diagnosticsCall<T>(call: (() => Promise<T>) | undefined): Promise<T> {
     if (!call) throw new CodeDiagnosticsError('unsupported', 'Code diagnostics are unavailable on this backend');
     try { return await call(); } catch (e) { throw codeDiagnosticsError(e); }
@@ -525,13 +533,6 @@ class WailsBackendAPI implements BackendAPI {
   readNavigationFile(c: CodeDiagnosticsContext, path: string, host: string): Promise<FileContent> {
     const b = this.binding;
     return this.diagnosticsCall(b.ReadNavigationFile && (() => b.ReadNavigationFile!(c, path, host)));
-  }
-  private get binding(): WailsAppBinding {
-    const b = (window as any).go?.app?.App;
-    if (!b) {
-      throw new Error('Wails desktop backend runtime is not available');
-    }
-    return b as WailsAppBinding;
   }
 
   async getAgentSettings(): Promise<AgentSettings> {
@@ -1506,41 +1507,42 @@ class WailsBackendAPI implements BackendAPI {
         return;
       }
     } catch {}
-    const runtime = (window as any).runtime;
-    if (runtime?.BrowserOpenURL) {
-      runtime.BrowserOpenURL(url);
+    try {
+      await openDesktopURL(url);
       return;
-    }
+    } catch {}
     if (typeof window !== 'undefined') {
       window.open(url, '_blank');
     }
   }
 
-  // EventsOn returns a per-listener canceller; EventsOff(name) would drop
-  // every listener registered for the event.
+  // Each subscription has its own canceller, so cancelling one leaves the
+  // other listeners for the event in place.
   onEvent(name: string, callback: (...data: any[]) => void): () => void {
-    const runtime = (window as any).runtime;
-    if (runtime?.EventsOn) {
-      const off = runtime.EventsOn(name, callback);
-      return typeof off === 'function' ? off : () => {};
-    }
-    return () => {};
+    return onDesktopEvent(name, (data) => callback(data));
   }
 
-  // The runtime keeps one drop listener and ignores later ones until
-  // OnFileDropOff.
+  // Files dropped on an element marked data-file-drop-target, re-emitted by
+  // the desktop shell from v3's FilesDropped window event.
   onFileDrop(callback: (x: number, y: number, paths: string[]) => void): () => void {
-    const runtime = (window as any).runtime;
-    if (!runtime?.OnFileDrop) return () => {};
-    runtime.OnFileDrop(callback, true);
-    return () => runtime.OnFileDropOff?.();
+    return onDesktopFileDrop(callback);
   }
 }
 
+/**
+ * The desktop backend over binding. createAPI passes the Call.ByName facade;
+ * tests pass a partial one to stand in for older backends.
+ */
+export function createDesktopAPI(binding: WailsAppBinding = createAppBinding()): BackendAPI {
+  return new WailsBackendAPI(binding);
+}
+
 export function createAPI(): BackendAPI {
-  // If running inside Wails desktop shell
-  if (typeof window !== 'undefined' && (window as any).go?.app?.App) {
-    return new WailsBackendAPI();
+  // The desktop shell marks the page before any module runs. A desktop app
+  // whose bridge is broken must fail visibly (see main.ts), never fall back
+  // to the mock.
+  if (isDesktop()) {
+    return createDesktopAPI();
   }
   // Otherwise browser / mock environment, where agent tabs take a moment
   // to answer, so their states can be seen.

@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/remote"
@@ -46,12 +44,12 @@ func (a *App) ExportBundle(req ExportRequest) (string, error) {
 	if a.saveDialogOverride != nil {
 		dest, err = a.saveDialogOverride(ctx, name)
 	} else {
-		dest, err = wruntime.SaveFileDialog(ctx, wruntime.SaveDialogOptions{
+		dest, err = saveFileDialog(ctx, SaveDialogOptions{
 			Title:            "Export Session",
 			DefaultDirectory: dialogDefaultDir(),
 			DefaultFilename:  name,
 			Filters: fileFilters(
-				wruntime.FileFilter{DisplayName: "Agent Session Bundles (*.agent-session.zip)", Pattern: "*.agent-session.zip"},
+				FileFilter{DisplayName: "Agent Session Bundles (*.agent-session.zip)", Pattern: "*.agent-session.zip"},
 			),
 		})
 	}

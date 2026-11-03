@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Once editing has been enabled, native close requests always go through the
@@ -26,12 +24,14 @@ type fileCloseGuard struct {
 	launching      bool
 }
 
-var quitApp = wruntime.Quit
+// quitApp asks the window to close through its guarded close path, so the
+// resulting closing hook runs OnBeforeClose; tests replace it.
+var quitApp = requestWindowClose
 
 var reportRestartError = func(ctx context.Context, err error) {
-	NewWailsEmitter(ctx).Emit("files:close-cancelled", nil)
-	_, _ = wruntime.MessageDialog(ctx, wruntime.MessageDialogOptions{
-		Type: wruntime.ErrorDialog, Title: "Restart failed", Message: err.Error(),
+	emitterFrom(ctx).Emit("files:close-cancelled", nil)
+	_, _ = messageDialog(ctx, MessageDialogOptions{
+		Type: ErrorDialog, Title: "Restart failed", Message: err.Error(),
 	})
 }
 
@@ -63,13 +63,13 @@ func (a *App) EnableFileEditing() bool {
 	return true
 }
 
-// OnBeforeClose never waits for the webview: on Windows this runs on the UI
-// thread. Instead it prevents the close and emits a request. Approval triggers
-// another Quit, whose hook consumes the one-shot authorization.
-func (a *App) OnBeforeClose(ctx context.Context) bool {
+// onBeforeClose never waits for the webview: it runs on the UI thread.
+// Instead it prevents the close and emits a request. Approval requests another
+// window close, whose hook consumes the one-shot authorization.
+func (a *App) onBeforeClose(ctx context.Context) bool {
 	prevent, id := a.fileClose.request()
 	if id != 0 {
-		NewWailsEmitter(ctx).Emit("files:close-request", id)
+		emitterFrom(ctx).Emit("files:close-request", id)
 	}
 	if prevent {
 		return true

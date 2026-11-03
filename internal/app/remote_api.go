@@ -127,7 +127,7 @@ func (a *App) ensureConn() {
 	a.backendMu.Lock()
 	defer a.backendMu.Unlock()
 	if a.conn == nil {
-		a.conn = newConnection(a.wailsEvents)
+		a.conn = newConnection(a.desktopEvents)
 	}
 	if a.conn.forwards == nil {
 		path, err := a.localConfigPath()

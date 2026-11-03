@@ -51,7 +51,7 @@ Neither setup nor the MSI is code-signed.
 
 `make package-windows` cross-compiles the desktop app, builds a per-user MSI
 with wixl, and wraps that exact MSI in `*_setup.exe` in `dist/`. In addition to
-the existing Wails/Go/Node tools, install `wixl` (0.102 or newer), `jq`, `python3`,
+the existing Go/Node tools, install `wixl` (0.102 or newer), `jq`, `python3`,
 and `gcc-mingw-w64-x86-64` (including `x86_64-w64-mingw32-windres`).
 
 To wrap an existing MSI without rebuilding the app:

@@ -8,8 +8,17 @@ import './style.css'
 import { mount } from 'svelte'
 import App from './App.svelte'
 import { api } from './lib/api'
+import { isDesktop, loadDesktopRuntime } from './lib/desktopRuntime'
 import { startLiveDocuments } from './lib/liveDocumentsWiring'
 import { setupDropGuard, setupLinkInterceptor } from './lib/navigation'
+import { showStartupError } from './lib/startupError'
+
+// The desktop app loads its runtime at once: it tells the shell the page is
+// ready and installs the file drop listeners. A broken bridge is shown, never
+// replaced by the browser demo's mock data.
+if (isDesktop()) {
+  loadDesktopRuntime().catch((err: unknown) => showStartupError(err));
+}
 
 setupLinkInterceptor(api);
 setupDropGuard();

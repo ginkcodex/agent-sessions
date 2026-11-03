@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fixtureStore, loadServerModule, loadServerComponent, renderWithFixture } from './helpers.mjs';
-import { createAPI } from '../src/lib/api.ts';
+import { desktopAPI, useDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 import { buildFileTree } from '../src/lib/files.ts';
 import { bumpEpoch } from '../src/lib/link.ts';
@@ -117,18 +117,15 @@ test('an unknown file creation outcome opens nothing', async () => {
 });
 
 test('native CreateDirectory binding forwards host and normalizes errors', async () => {
-  const previous = globalThis.window;
   const calls = [];
-  globalThis.window = { go: { app: { App: { CreateDirectory: async (...args) => { calls.push(args); } } } } };
-  try {
-    await createAPI().createDirectory('/repo', '', 'new', 'remote');
-    assert.deepEqual(calls, [['/repo', '', 'new', 'remote']]);
-    globalThis.window.go.app.App.CreateDirectory = async () => { throw 'exists'; };
-    await assert.rejects(createAPI().createDirectory('/repo', '', 'new', ''), /exists/);
-    globalThis.window.go.app.App.CreateFile = async (...args) => { calls.push(['file', ...args]); };
-    await createAPI().createFile('/repo', 'src', 'new.go', 'remote');
-    assert.deepEqual(calls.at(-1), ['file', '/repo', 'src', 'new.go', 'remote']);
-  } finally { globalThis.window = previous; }
+  const App = useDesktopApp({ CreateDirectory: async (...args) => { calls.push(args); } });
+  await desktopAPI().createDirectory('/repo', '', 'new', 'remote');
+  assert.deepEqual(calls, [['/repo', '', 'new', 'remote']]);
+  App.CreateDirectory = async () => { throw 'exists'; };
+  await assert.rejects(desktopAPI().createDirectory('/repo', '', 'new', ''), /exists/);
+  App.CreateFile = async (...args) => { calls.push(['file', ...args]); };
+  await desktopAPI().createFile('/repo', 'src', 'new.go', 'remote');
+  assert.deepEqual(calls.at(-1), ['file', '/repo', 'src', 'new.go', 'remote']);
 });
 
 test('mock New File lists an empty editable file and rejects collisions', async () => {

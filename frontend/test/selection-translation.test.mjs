@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { captureSelection, holdSelection, requestSelectionTranslation, selectionMenuItems, sentenceContext, MAX_SELECTION_CONTEXT } from '../src/lib/selectionTranslation.ts';
-import { createAPI } from '../src/lib/api.ts';
+import { desktopAPI, useDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 import { loadServerComponent } from './helpers.mjs';
 import { render } from 'svelte/server';
@@ -214,18 +214,15 @@ test('dismissed or superseded selection requests ignore late success and failure
 });
 
 test('the Wails binding receives selection and context separately and errors normalize', async () => {
-  const previous = globalThis.window;
-  try {
-    const binding = {};
-    globalThis.window = { go: { app: { App: binding } } };
-    const backend = createAPI();
-    let args;
-    binding.TranslateSelection = async (...a) => { args = a; return 'ngân hàng'; };
-    assert.equal(await backend.translateSelection('bank', 'The bank was closed.'), 'ngân hàng');
-    assert.deepEqual(args, ['bank', 'The bank was closed.']);
-    binding.TranslateSelection = async () => { throw 'translation context is too long'; };
-    await assert.rejects(backend.translateSelection('x', 'y'), /context is too long/);
-  } finally { globalThis.window = previous; }
+  const binding = {};
+  useDesktopApp(binding);
+  const backend = desktopAPI();
+  let args;
+  binding.TranslateSelection = async (...a) => { args = a; return 'ngân hàng'; };
+  assert.equal(await backend.translateSelection('bank', 'The bank was closed.'), 'ngân hàng');
+  assert.deepEqual(args, ['bank', 'The bank was closed.']);
+  binding.TranslateSelection = async () => { throw 'translation context is too long'; };
+  await assert.rejects(backend.translateSelection('x', 'y'), /context is too long/);
   assert.match(readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8'), /'translate',\n  'translateSelection',/);
 });
 

@@ -1,14 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAPI } from '../src/lib/api.ts';
+import { withDesktopApp } from './desktop-app.mjs';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
-async function withBinding(binding, fn) {
-  const previous = globalThis.window;
-  globalThis.window = { go: { app: { App: binding } } };
-  try { await fn(createAPI()); }
-  finally { if (previous === undefined) delete globalThis.window; else globalThis.window = previous; }
-}
+const withBinding = withDesktopApp;
 
 const req = { ref: { agent: 'claude', id: 's' }, baseRevision: 'e.1.2', haveOffset: 0, haveCount: 50, offset: -1, limit: 50 };
 

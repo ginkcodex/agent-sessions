@@ -105,7 +105,7 @@ func TestNotificationClickShowsItsTab(t *testing.T) {
 	a := &App{
 		notifierOverride: fake,
 		notifyRaise:      func() { raised++ },
-		wailsEvents: engine.EmitterFunc(func(name string, payload any) {
+		desktopEvents: engine.EmitterFunc(func(name string, payload any) {
 			if name == notifyOpenEvent {
 				events = append(events, payload)
 			}

@@ -344,7 +344,7 @@ func TestTerminalBindings(t *testing.T) {
 	if !slices.Equal(f.writes, []string{"t1:ls\r"}) || f.resizes[0] != [2]int{100, 30} || f.acks[0] != 42 || f.closed[0] != "t1" {
 		t.Errorf("fake = %+v", f)
 	}
-	if err := a.Close(); err != nil {
+	if err := Close(a); err != nil {
 		t.Fatal(err)
 	}
 	if f.closeAll != 1 {

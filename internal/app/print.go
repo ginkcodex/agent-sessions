@@ -2,16 +2,15 @@ package app
 
 import (
 	"errors"
-
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"fmt"
 )
 
-// nativePrint replaces Wails' WindowPrint where the desktop app prints
+// nativePrint replaces the desktop's Print where the desktop app prints
 // natively (macOS); nil elsewhere.
 var nativePrint func() error
 
 // SetNativePrint sets how PrintWindow opens the print dialog; nil uses
-// Wails' WindowPrint. It is a package function so Wails doesn't bind it.
+// Desktop.Print. It is a package function so it is not bound to JS.
 func SetNativePrint(fn func() error) {
 	nativePrint = fn
 }
@@ -26,6 +25,8 @@ func (a *App) PrintWindow() error {
 	if nativePrint != nil {
 		return nativePrint()
 	}
-	wruntime.WindowPrint(a.ctx)
-	return nil
+	if fn := desktopFrom(a.ctx).Print; fn != nil {
+		return fn(a.ctx)
+	}
+	return fmt.Errorf("print: %w", ErrDesktopUnavailable)
 }

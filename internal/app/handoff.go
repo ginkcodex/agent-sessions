@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/handoff"
 )
@@ -41,13 +39,13 @@ func (a *App) SaveHandoff(req HandoffRequest) (string, error) {
 	if a.saveDialogOverride != nil {
 		destPath, err = a.saveDialogOverride(ctx, defaultName)
 	} else {
-		destPath, err = wruntime.SaveFileDialog(ctx, wruntime.SaveDialogOptions{
+		destPath, err = saveFileDialog(ctx, SaveDialogOptions{
 			Title:            "Save Handoff Document",
 			DefaultDirectory: dialogDefaultDir(),
 			DefaultFilename:  defaultName,
 			Filters: fileFilters(
-				wruntime.FileFilter{DisplayName: "Markdown Files (*.md)", Pattern: "*.md"},
-				wruntime.FileFilter{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+				FileFilter{DisplayName: "Markdown Files (*.md)", Pattern: "*.md"},
+				FileFilter{DisplayName: "All Files (*.*)", Pattern: "*.*"},
 			),
 		})
 	}
