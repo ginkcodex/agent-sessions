@@ -6,7 +6,14 @@
 #   git tag v0.1.0 && git push origin v0.1.0
 #
 # Tags with a suffix (v1.2.0-beta.1) publish as pre-releases. Manual runs
-# (workflow_dispatch) build and upload artifacts only.
+# (workflow_dispatch) build, verify and upload artifacts only, on any ref:
+# the artifacts job adds the aggregate SHA256SUMS and the commit and run
+# they came from. Only a tag push publishes.
+#
+# Each packaging job inspects what it built with packaging/**/verify-*.sh.
+# Those checks are static apart from installing the .deb in a clean Ubuntu
+# container and running the host's own remote server with `version`; the
+# Windows packages are never installed or run here.
 name: Release
 
 on:
@@ -106,6 +113,22 @@ jobs:
         run: make package-linux VERSION=${{ needs.version.outputs.version }} ARCH=${{ matrix.arch }}
       - name: Check GTK 4 / WebKitGTK 6.0 linkage
         run: make check-gui-linkage
+      - name: Install package inspection tools
+        run: sudo apt-get install -y --no-install-recommends rpm libarchive-tools
+      - name: Verify remote servers
+        run: bash packaging/verify-remote-servers.sh --require-sums --run-host "$VERSION" build/remote
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+      - name: Verify .deb and .rpm metadata, dependencies and payload
+        run: |
+          bash packaging/linux/verify-packages.sh --binary build/bin/agent-sessions \
+            --remote-sums build/remote/SHA256SUMS dist "$VERSION" "$ARCH"
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+      - name: Install .deb in a clean Ubuntu 24.04 container
+        timeout-minutes: 20
+        run: bash packaging/linux/verify-deb-install.sh dist/*.deb ubuntu:24.04
       - uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.arch }}
@@ -136,6 +159,11 @@ jobs:
         # package-macos generates the bundle icns from MACOS_APPICON, the same
         # Icon Composer export embedded by frontend/icon_darwin.go.
         run: make package-macos VERSION=${{ needs.version.outputs.version }}
+      - name: Verify universal app, Info.plist, signature, .dmg and servers
+        timeout-minutes: 10
+        run: bash packaging/macos/verify-dmg.sh "dist/agent-sessions_${VERSION}_macos_universal.dmg" "$VERSION"
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
       - uses: actions/upload-artifact@v7
         with:
           name: macos-universal
@@ -162,11 +190,19 @@ jobs:
       - name: Install Windows packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends wixl gcc-mingw-w64-x86-64
+          sudo apt-get install -y --no-install-recommends wixl msitools gcc-mingw-w64-x86-64
       - run: npm ci
         working-directory: frontend
       - name: Build .msi and bundled setup.exe
         run: make package-windows VERSION=${{ needs.version.outputs.version }}
+      - name: Inspect .msi and setup.exe (static; nothing is installed or run)
+        run: |
+          bash packaging/windows/verify-packages.sh --binary build/bin/agent-sessions.exe \
+            --remote-sums build/remote/SHA256SUMS --conpty build/conpty \
+            "dist/agent-sessions_${VERSION}_windows_amd64.msi" \
+            "dist/agent-sessions_${VERSION}_windows_amd64_setup.exe" "$VERSION"
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
       - uses: actions/upload-artifact@v7
         with:
           name: windows-amd64
@@ -185,15 +221,72 @@ jobs:
           go-version-file: go.mod
       - name: Build headless server bundles
         run: make remote-servers VERSION=${{ needs.version.outputs.version }}
+      - name: Verify server bundles
+        run: bash packaging/verify-remote-servers.sh --require-sums --run-host "$VERSION" build/remote
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
       - uses: actions/upload-artifact@v7
         with:
           name: remote-servers
           path: build/remote/*
           if-no-files-found: error
 
+  # Manual runs: one artifact with the whole verified set, its aggregate
+  # SHA256SUMS and where it came from. Nothing is published.
+  artifacts:
+    if: github.event_name == 'workflow_dispatch'
+    needs: [version, linux, macos, windows, remote-servers]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: src
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Check the release set and write checksums
+        run: bash src/packaging/release-checksums.sh dist "$VERSION"
+      - name: Record provenance
+        id: provenance
+        run: |
+          sums=$(sha256sum dist/SHA256SUMS | cut -d' ' -f1)
+          jq -n --arg version "$VERSION" --arg sums "$sums" '{
+              version: $version,
+              repository: env.GITHUB_REPOSITORY,
+              ref: env.GITHUB_REF,
+              ref_type: env.GITHUB_REF_TYPE,
+              commit: env.GITHUB_SHA,
+              event: env.GITHUB_EVENT_NAME,
+              workflow: env.GITHUB_WORKFLOW_REF,
+              run_id: env.GITHUB_RUN_ID,
+              run_attempt: env.GITHUB_RUN_ATTEMPT,
+              run_url: "\(env.GITHUB_SERVER_URL)/\(env.GITHUB_REPOSITORY)/actions/runs/\(env.GITHUB_RUN_ID)",
+              actor: env.GITHUB_ACTOR,
+              sha256sums_sha256: $sums
+            }' > dist/provenance.json
+          cat dist/provenance.json
+          echo "name=agent-sessions-$VERSION-${GITHUB_SHA::12}-run$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Agent Sessions $VERSION (not published)"
+            echo
+            echo "Commit \`$GITHUB_SHA\` on \`$GITHUB_REF\`, run $GITHUB_RUN_ID attempt $GITHUB_RUN_ATTEMPT."
+            echo
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.provenance.outputs.name }}
+          path: dist/*
+          if-no-files-found: error
+
   release:
-    if: github.ref_type == 'tag'
-    needs: [linux, macos, windows, remote-servers]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: [version, linux, macos, windows, remote-servers]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -201,17 +294,21 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
+      # Sources for the check scripts only; the release is built from the
+      # artifacts above.
+      - uses: actions/checkout@v7
+        with:
+          path: src
       - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
-      - name: Write checksums
-        working-directory: dist
-        run: |
-          # The server directory already carries its own SHA256SUMS.
-          find . -name SHA256SUMS -delete
-          sha256sum -- * > SHA256SUMS
+      - name: Check the release set and write checksums
+        # The servers' own SHA256SUMS is verified, then replaced by one over
+        # every asset.
+        run: bash src/packaging/release-checksums.sh dist "$VERSION"
       - name: Publish release
         run: |
           # Versions with a suffix (1.2.0-beta.1) publish as pre-releases and
