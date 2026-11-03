@@ -6,7 +6,7 @@ import { EditorView, GutterMarker, closeHoverTooltips, drawSelection, hasHoverTo
 import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from '@codemirror/commands';
 import { LanguageDescription, indentOnInput, indentUnit } from '@codemirror/language';
 import { Decoration, type DecorationSet } from '@codemirror/view';
-import { loadFileHighlighter } from './codeHighlight';
+import { loadFileHighlighter, highlightFileWith } from './codeHighlight';
 import type { HLJSApi } from 'highlight.js';
 import { keyHandled } from './fullscreen';
 import type { FilePosition } from './filePosition';
@@ -133,9 +133,8 @@ const fitTooltips = tooltips({ tooltipSpace: view => view.scrollDOM.getBoundingC
 // Language extensions below still provide indentation and editing support.
 function fileHighlight(hljs: HLJSApi, path: string): Extension {
   const language = fileLanguage(path);
-  const lang = language && hljs.getLanguage(language) ? language : 'plaintext';
   function decorate(state: EditorState): DecorationSet {
-    const html = hljs.highlight(state.doc.toString(), { language: lang, ignoreIllegals: true }).value;
+    const html = highlightFileWith(hljs, state.doc.toString(), language ?? '');
     const marks = [];
     const open: { from: number; class: string }[] = [];
     let offset = 0;

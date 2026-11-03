@@ -5,6 +5,37 @@
  */
 
 import type { HLJSApi } from 'highlight.js';
+import { parser, GFM } from '@lezer/markdown';
+import { highlightTree, tagHighlighter, tags } from '@lezer/highlight';
+
+const markdownParser = parser.configure(GFM);
+const markdownStyles = tagHighlighter([
+  { tag: tags.heading, class: 'hljs-section' },
+  { tag: tags.emphasis, class: 'hljs-emphasis' },
+  { tag: tags.strong, class: 'hljs-strong' },
+  { tag: tags.monospace, class: 'hljs-code' },
+  { tag: tags.link, class: 'hljs-link' },
+  { tag: tags.url, class: 'hljs-string' },
+  { tag: tags.strikethrough, class: 'hljs-deletion' },
+]);
+const escapeSource = (text: string) => text.replace(/[&<>"']/g, ch => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[ch]!);
+
+/** CommonMark-aware coloring prevents filename underscores from leaking emphasis. */
+export function highlightFileWith(hljs: HLJSApi, code: string, language: string): string {
+  if (language === 'markdown') {
+    let html = '', position = 0;
+    highlightTree(markdownParser.parse(code), markdownStyles, (from, to, classes) => {
+      html += escapeSource(code.slice(position, from));
+      html += `<span class="${classes}">${escapeSource(code.slice(from, to))}</span>`;
+      position = to;
+    });
+    return html + escapeSource(code.slice(position));
+  }
+  const lang = language && hljs.getLanguage(language) ? language : 'plaintext';
+  return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+}
 
 let loading: Promise<HLJSApi> | null = null;
 
@@ -19,8 +50,7 @@ export function loadFileHighlighter(): Promise<HLJSApi> {
  */
 export async function highlightFile(code: string, language: string): Promise<string> {
   const hljs = await loadFileHighlighter();
-  const lang = language && hljs.getLanguage(language) ? language : 'plaintext';
-  return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+  return highlightFileWith(hljs, code, language);
 }
 
 const TAG = /<span class="([^"]*)">|<\/span>/g;

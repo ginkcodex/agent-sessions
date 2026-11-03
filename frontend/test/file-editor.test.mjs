@@ -523,6 +523,7 @@ test('editor uses viewer tokens for builtins, properties, entities and live edit
     ['a.py', 'python', 'print("<&😀") # comment'],
     ['a.json', 'json', '{"key": "<&😀", "n": true}'],
     ['a.css', 'css', '.item { color: red; }'],
+    ['a.md', 'markdown', '`agent-sessions_<version>_windows_amd64_setup.exe`\n\n**`_setup.exe`** installer.\n\nPlain text and *intentional italics*.'],
   ]) {
     const { editor, view } = mount({ path, text });
     const ranges = () => view.state.facet(EditorView.decorations).filter(x => typeof x !== 'function');
