@@ -444,6 +444,33 @@ func TestReleaseHostSkipsHostWithTerminals(t *testing.T) {
 	}
 }
 
+// Windows in one process each have their own ssh masters: leaving a host in
+// one stops only that window's master, never another's on the same host.
+func TestConnectionsHaveOwnControlPaths(t *testing.T) {
+	if !remote.SupportsSSHAskpass() {
+		t.Skip("ssh masters are off on this platform")
+	}
+	a, b := newConnection(nil), newConnection(nil)
+	t.Cleanup(a.Shutdown)
+	t.Cleanup(b.Shutdown)
+	pa, pb := a.sshOptions().ControlPath, b.sshOptions().ControlPath
+	if pa == "" || pb == "" || pa == pb {
+		t.Fatalf("control paths %q and %q, want two different paths", pa, pb)
+	}
+	var stopped []string
+	a.stopMaster = func(_ context.Context, _ string, opts remote.SSHOptions) error {
+		stopped = append(stopped, opts.ControlPath)
+		return nil
+	}
+	a.mu.Lock()
+	a.wantHost = "devbox"
+	a.mu.Unlock()
+	a.Disconnect()
+	if !slices.Equal(stopped, []string{pa}) {
+		t.Errorf("stopped masters at %q, want only %q", stopped, pa)
+	}
+}
+
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil

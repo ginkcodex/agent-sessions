@@ -144,6 +144,13 @@ func newConnection(emitter engine.Emitter) *connection {
 		c.opts.ControlMaster = "no"
 		return c
 	}
+	// This connection's masters are its own: another window, even in this
+	// process, never shares them, so leaving a host here cannot drop that
+	// window's sessions or terminals. Without a control dir ssh falls back
+	// to DefaultControlPath and reports the same error there.
+	if path, err := remote.NewControlPath(); err == nil {
+		c.opts.ControlPath = path
+	}
 	broker, err := remote.NewAskpassBroker(func(id, prompt string) {
 		c.emitAskpass(id, prompt)
 	})

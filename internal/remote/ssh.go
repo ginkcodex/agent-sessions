@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,24 +45,29 @@ const LoginShell = "$SHELL"
 // maxControlDirLen keeps ControlPath sockets bindable. sun_path holds 104
 // bytes on macOS (108 on Linux) including the NUL, and the ssh master first
 // binds "<ControlPath>.<16 random chars>" with ControlPath
-// "<dir>/cm-<process>-%C" (%C is 40 hex chars).
-const maxControlDirLen = 104 - 1 - len("/cm-") - processTagLen - len("-") - 40 - len(".0123456789abcdef")
+// "<dir>/cm-<tag>-%C" (%C is 40 hex chars).
+const maxControlDirLen = 104 - 1 - len("/cm-") - controlTagLen - len("-") - 40 - len(".0123456789abcdef")
 
-// processTagLen is the length of processTag in hex characters.
-const processTagLen = 8
+// controlTagLen is the length of a ControlPath tag in hex characters.
+const controlTagLen = 8
 
-// processTag names this process's ControlMaster sockets. Each app process,
-// such as each of several open windows, gets its own masters: closing one
-// window's connection then never drops another window's session or
-// terminals on the same host.
-var processTag = sync.OnceValue(func() string {
-	b := make([]byte, processTagLen/2)
+// controlTagSeq makes tags unique within a process when random bytes are
+// unavailable.
+var controlTagSeq atomic.Uint32
+
+// newControlTag returns a fresh random tag for ControlMaster socket names.
+func newControlTag() string {
+	b := make([]byte, controlTagLen/2)
 	if _, err := rand.Read(b); err != nil {
-		// Fall back to the pid: unique among running processes.
-		return fmt.Sprintf("%0*x", processTagLen, uint32(os.Getpid()))
+		// Fall back to the pid mixed with a counter.
+		return fmt.Sprintf("%0*x", controlTagLen, uint32(os.Getpid())^(controlTagSeq.Add(1)<<20))
 	}
 	return hex.EncodeToString(b)
-})
+}
+
+// processTag names the ControlMaster sockets of callers that have no
+// connection of their own (see DefaultControlPath).
+var processTag = sync.OnceValue(newControlTag)
 
 // ControlDir returns a private 0700 directory for ControlMaster sockets:
 // $XDG_RUNTIME_DIR/agent-sessions, else as-ssh-<uid> in the temp dir, else
@@ -90,15 +96,27 @@ func ControlDir() (string, error) {
 }
 
 // DefaultControlPath returns this process's %C socket path in the control
-// directory. Other processes, including other windows of the app, use
+// directory, used when SSHOptions.ControlPath is empty. Other processes use
 // their own sockets (see processTag).
 func DefaultControlPath() (string, error) {
+	return controlPath(processTag())
+}
+
+// NewControlPath returns a %C socket path in the control directory that no
+// other caller shares. Each app window's connection takes one, so closing
+// one window's connection never drops another window's session or
+// terminals on the same host, even when both windows run in one process.
+func NewControlPath() (string, error) {
+	return controlPath(newControlTag())
+}
+
+func controlPath(tag string) (string, error) {
 	dir, err := ControlDir()
 	if err != nil {
 		return "", err
 	}
 	// OpenSSH replaces %C with a 40-character SHA1 hash of (%l%h%p%r).
-	return filepath.Join(dir, "cm-"+processTag()+"-%C"), nil
+	return filepath.Join(dir, "cm-"+tag+"-%C"), nil
 }
 
 // BuildSSHArgs builds safe, argv-only arguments for the ssh client.

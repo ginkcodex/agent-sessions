@@ -238,8 +238,8 @@ func TestDefaultControlPath_PerProcess(t *testing.T) {
 		t.Fatalf("path changed within a process: %q, then %q", path, again)
 	}
 	tag := processTag()
-	if len(tag) != processTagLen {
-		t.Fatalf("tag %q, want %d characters", tag, processTagLen)
+	if len(tag) != controlTagLen {
+		t.Fatalf("tag %q, want %d characters", tag, controlTagLen)
 	}
 	if want := "cm-" + tag + "-%C"; filepath.Base(path) != want {
 		t.Fatalf("socket name = %q, want %q", filepath.Base(path), want)
@@ -259,6 +259,35 @@ func TestDefaultControlPath_PerProcess(t *testing.T) {
 	other, _, _ := strings.Cut(string(out), "\n")
 	if other == "" || other == path {
 		t.Fatalf("child process path = %q, parent %q", other, path)
+	}
+}
+
+// Each connection, such as each window's in one process, gets sockets of its
+// own, so closing one never drops another's master.
+func TestNewControlPath_Unique(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows ssh has no ControlMaster sockets")
+	}
+	dflt, err := DefaultControlPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{dflt: true}
+	for i := 0; i < 20; i++ {
+		path, err := NewControlPath()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if seen[path] {
+			t.Fatalf("control path %q repeated", path)
+		}
+		seen[path] = true
+		if filepath.Dir(path) != filepath.Dir(dflt) {
+			t.Fatalf("control path %q outside the control dir of %q", path, dflt)
+		}
+		if n := len(filepath.Base(path)); n != len(filepath.Base(dflt)) {
+			t.Fatalf("socket name %q is %d bytes, default name is %d", filepath.Base(path), n, len(filepath.Base(dflt)))
+		}
 	}
 }
 
