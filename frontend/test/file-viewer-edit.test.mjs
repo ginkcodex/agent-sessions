@@ -28,6 +28,7 @@ const viewer = await loadServerComponent(VIEWER_URL, [
   ["import SelectionTranslation from '../../transcript/SelectionTranslation.svelte';", `const SelectionTranslation = ${stub('data-selection-translation', '')};`],
   ["'../../../print'", lib('../../../print.ts')],
   ["'../../../fileFind'", lib('../../../fileFind.ts')],
+  ["'../../../linkPreview'", lib('../../../linkPreview.ts')],
   ["'../../../files'", lib('../../../files.ts')],
   ["import { toast } from '../../../stores/toast.svelte';", fixtureStore('toast')],
   ["import { markdownFileTarget } from '../../../fileActions';", 'const markdownFileTarget = () => null;'],

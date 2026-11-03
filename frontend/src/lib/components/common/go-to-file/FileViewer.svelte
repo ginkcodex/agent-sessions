@@ -22,6 +22,7 @@
   import type { GitStatus } from '../../../types';
   import { toast } from '../../../stores/toast.svelte';
   import { markdownFileTarget } from '../../../fileActions';
+  import { browserLinkDestination } from '../../../linkPreview';
   import { api } from '../../../api';
   import { epoch } from '../../../link';
   import { errorText } from '../../../manage';
@@ -384,6 +385,17 @@
   let language = $derived(files.selectedPath ? fileLanguage(files.selectedPath) : null);
   let previewKind = $derived(files.selectedPath ? filePreview(files.selectedPath) : null);
   let showMarkdown = $derived(previewOn && !editing && previewKind === 'markdown');
+  let hoveredPreviewLink = $state('');
+  let focusedPreviewLink = $state('');
+  $effect(() => {
+    void files.selected;
+    void files.dir;
+    void link.dataHost;
+    void text;
+    void showMarkdown;
+    hoveredPreviewLink = '';
+    focusedPreviewLink = '';
+  });
   let showSvg = $derived(previewOn && !editing && previewKind === 'svg');
   // Rendered rather than source: the source-only tools hide.
   let showPreview = $derived(showMarkdown || showSvg);
@@ -1393,7 +1405,13 @@
       >
         {#if showMarkdown}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="markdown-preview" bind:this={find.previewEl} oncontextmenu={openPreviewMenu} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14px'}>
+          <div class="markdown-preview" bind:this={find.previewEl} oncontextmenu={openPreviewMenu} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14px'}
+            onmouseover={(event) => hoveredPreviewLink = browserLinkDestination(event.target, event.currentTarget)}
+            onmouseout={(event) => hoveredPreviewLink = browserLinkDestination(event.relatedTarget, event.currentTarget)}
+            onmouseleave={() => hoveredPreviewLink = ''}
+            onfocusin={(event) => focusedPreviewLink = browserLinkDestination(event.target, event.currentTarget)}
+            onfocusout={(event) => focusedPreviewLink = browserLinkDestination(event.relatedTarget, event.currentTarget)}
+          >
             <MarkdownDoc source={text} onFileLink={followFileLink} loadImage={loadMarkdownImage} />
           </div>
         {:else if showSvg}
@@ -1406,6 +1424,9 @@
         {/key}
         {/if}
       </div>
+      {#if showMarkdown && (hoveredPreviewLink || focusedPreviewLink)}
+        <div class="link-preview" role="status">{hoveredPreviewLink || focusedPreviewLink}</div>
+      {/if}
       </div>
     {/if}
   {/if}
@@ -1419,6 +1440,27 @@
 {/if}
 
 <style>
+  .link-preview {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    max-width: calc(100% - 32px);
+    padding: 5px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    box-shadow: 0 2px 8px #0002;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+  }
+
   .markdown-preview {
     padding: 20px 28px;
     max-width: 1100px;
