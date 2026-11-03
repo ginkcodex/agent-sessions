@@ -18,7 +18,7 @@ NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
 # Windows/Linux use transparent artwork; macOS uses the Icon Composer tile.
 # Keep these sources in sync with frontend/icon*.go (the runtime icons).
 APPICON := frontend/assets/Icon-universal.png
-MACOS_APPICON := frontend/assets/Icon-iOS-Default-1024x1024@1x.png
+MACOS_APPICON := frontend/assets/Icon-macOS.png
 
 .PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps check-gui-linkage \
 	package-linux package-macos package-windows windows-app \
