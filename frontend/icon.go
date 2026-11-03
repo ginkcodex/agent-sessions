@@ -1,9 +1,10 @@
+//go:build !darwin
+
 package frontend
 
 import _ "embed"
 
-// AppIcon is the transparent window icon used outside macOS. The macOS app
-// bundle's icns is generated from the same image.
+// AppIcon is the transparent application icon used on Windows and Linux.
 //
 //go:embed assets/Icon-universal.png
 var AppIcon []byte

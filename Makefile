@@ -15,9 +15,10 @@ VERSION_PKG ?= github.com/ginkcode/agent-sessions/internal/version
 LDFLAGS ?= -s -w -X $(VERSION_PKG).Version=$(VERSION)
 ARCH ?= $(shell $(GO) env GOARCH)
 NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
-# One icon source for every platform. `wails3 generate icons` turns it into
-# the macOS .icns and the Windows .ico.
+# Windows/Linux use transparent artwork; macOS uses the Icon Composer tile.
+# Keep these sources in sync with frontend/icon*.go (the runtime icons).
 APPICON := frontend/assets/Icon-universal.png
+MACOS_APPICON := frontend/assets/Icon-iOS-Default-1024x1024@1x.png
 
 .PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps check-gui-linkage \
 	package-linux package-macos package-windows windows-app \
@@ -167,10 +168,12 @@ app: gui-build
 # Verify the icon source before packaging it. It stays 1024px so
 # `wails3 generate icons` can derive every macOS/Windows representation.
 check-app-icons:
-	@case "$$(file -b "$(APPICON)")" in \
-		'PNG image data, 1024 x 1024, '*'RGBA'*) ;; \
-		*) echo "$(APPICON) must be a 1024x1024 RGBA PNG" >&2; exit 1 ;; \
-	esac
+	@for icon in "$(APPICON)" "$(MACOS_APPICON)"; do \
+		case "$$(file -b "$$icon")" in \
+			'PNG image data, 1024 x 1024, '*'RGBA'*) ;; \
+			*) echo "$$icon must be a 1024x1024 RGBA PNG" >&2; exit 1 ;; \
+		esac; \
+	done
 
 # Linux .deb and .rpm packages in dist/, wrapping the gui-build binary.
 # Runtime dependencies are declared in packaging/nfpm.yaml. The package ships
@@ -209,7 +212,7 @@ package-macos: check-app-icons check-gui-deps
 	done
 	lipo -create -output "$(MACOS_APP)/Contents/MacOS/agent-sessions" \
 		build/darwin/agent-sessions-arm64 build/darwin/agent-sessions-amd64
-	$(WAILS3) generate icons -input "$(APPICON)" \
+	$(WAILS3) generate icons -input "$(MACOS_APPICON)" \
 		-macfilename "$(MACOS_APP)/Contents/Resources/iconfile.icns" -windowsfilename ""
 	# The template keeps v2's bundle identifier, so macOS keeps the Apple
 	# Events and notification permissions users already granted. It also
