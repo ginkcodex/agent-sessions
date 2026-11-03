@@ -7,8 +7,11 @@ GUI_TAGS ?= desktop,production
 DEV_TAGS ?= desktop
 # The Wails v3 CLI, only used for `generate icons` and `generate syso`. By
 # default it runs at the version go.mod pins, so nothing needs installing.
+# It is built without cgo: on Linux a cgo build links GTK 4 and WebKitGTK,
+# which the Windows packaging runner does not have, and these two commands
+# are pure Go.
 WAILS3_VERSION ?= $(shell $(GO) list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
-WAILS3 ?= $(GO) run github.com/wailsapp/wails/v3/cmd/wails3@$(WAILS3_VERSION)
+WAILS3 ?= CGO_ENABLED=0 $(GO) run github.com/wailsapp/wails/v3/cmd/wails3@$(WAILS3_VERSION)
 # Release version: the single source is info.productVersion in wails.json.
 VERSION ?= $(shell sed -n 's/^ *"productVersion": *"\([^"]*\)".*/\1/p' wails.json)
 VERSION_PKG ?= github.com/ginkcode/agent-sessions/internal/version
