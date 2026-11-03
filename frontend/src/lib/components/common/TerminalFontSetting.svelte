@@ -43,9 +43,12 @@
   label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 8px; }
   .font-row { display: flex; gap: 8px; }
   select { flex: 1; min-width: 0; }
-  select, button { padding: 7px 9px; border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); background: var(--bg-primary); font-size: 0.8rem; }
-  button { cursor: pointer; } button:disabled, select:disabled { opacity: 0.6; }
+  select, button { padding: 6px 10px; border: none; border-radius: var(--radius-sm); color: var(--text-primary); background: var(--btn-bg); font-size: 0.8rem; }
+  button { cursor: pointer; font-weight: 500; transition: background-color var(--dur-fast) var(--ease-out); }
+  button:hover:not(:disabled) { background: var(--btn-bg-hover); }
+  select:focus-visible, button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+  button:disabled, select:disabled { opacity: 0.6; }
   .hint, .error { font-size: 0.78rem; line-height: 1.5; margin: 8px 0; }
   .hint { color: var(--text-muted); } .error { color: var(--danger, #ef4444); }
-  .sample { padding: 12px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); font-size: 13px; line-height: 1.6; overflow-x: auto; white-space: nowrap; }
+  .sample { padding: 12px; border-radius: var(--radius-md); background: var(--bg-secondary); font-size: 13px; line-height: 1.6; overflow-x: auto; white-space: nowrap; }
 </style>

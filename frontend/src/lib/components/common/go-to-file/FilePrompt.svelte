@@ -51,12 +51,17 @@
 {/if}
 
 <style>
-  .file-prompt-backdrop { position: fixed; inset: 0; z-index: 1400; display: grid; place-items: center; background: #0008; padding: 24px; }
-  .file-prompt { width: min(520px, 100%); background: var(--bg-primary); color: var(--text-primary); padding: 24px; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 16px 48px #0006; }
-  h2 { margin: 0 0 12px; font-size: 1rem; }
-  p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; font-size: .82rem; line-height: 1.5; }
-  .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-  button { padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; background: var(--bg-secondary); font-size: .8rem; }
-  button:hover { background: var(--hover-bg); }
-  button.danger { color: #ef4444; }
+  .file-prompt-backdrop { position: fixed; inset: 0; z-index: 1400; display: grid; place-items: center; background: var(--scrim); padding: 24px; animation: -global-scrim-in var(--dur-med) var(--ease-out); }
+  .file-prompt { width: min(480px, 100%); box-sizing: border-box; background: var(--bg-primary); color: var(--text-primary); padding: 20px 22px 18px; border: 1px solid var(--dialog-border); border-radius: var(--radius-dialog); box-shadow: var(--shadow-dialog); animation: -global-dialog-in var(--dur-med) var(--ease-out); }
+  h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+  .file-prompt { outline: none; }
+  h2 { margin-bottom: 8px; }
+  p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+  button { height: 32px; padding: 0 14px; border: 0; border-radius: var(--radius-md); background: var(--btn-bg); color: var(--text-primary); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color var(--dur-fast) var(--ease-out); }
+  button:hover:not(:disabled) { background: var(--btn-bg-hover); }
+  button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.danger { background: var(--danger); color: white; }
+  button.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 85%, black); }
 </style>

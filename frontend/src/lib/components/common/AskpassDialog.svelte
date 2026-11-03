@@ -138,29 +138,28 @@
     position: fixed;
     inset: 0;
     z-index: 120;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--scrim);
     display: grid;
     place-items: center;
-    backdrop-filter: blur(2px);
+    animation: -global-scrim-in var(--dur-med) var(--ease-out);
   }
 
   .dialog {
     width: min(440px, 92vw);
     background: var(--bg-primary);
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--dialog-border);
+    border-radius: var(--radius-dialog);
+    box-shadow: var(--shadow-dialog);
     overflow: hidden;
+    animation: -global-dialog-in var(--dur-med) var(--ease-out);
   }
 
   .dialog-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 14px 18px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-color);
+    padding: 16px 14px 4px 20px;
   }
 
   .header-title-group {
@@ -176,7 +175,7 @@
 
   h2 {
     margin: 0;
-    font-size: 1rem;
+    font-size: 15px;
     font-weight: 600;
   }
 
@@ -186,12 +185,11 @@
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     padding: 2px 8px;
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
   }
 
   .dialog-body {
-    padding: 18px;
+    padding: 12px 20px 8px;
   }
 
   .prompt-text {
@@ -240,37 +238,40 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    padding: 12px 18px;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border-color);
+    padding: 12px 20px 18px;
   }
 
   .btn {
-    padding: 6px 14px;
+    height: 32px;
+    padding: 0 14px;
     font-size: 0.82rem;
     font-weight: 500;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     cursor: pointer;
-    border: 1px solid var(--border-color);
+    transition: background-color var(--dur-fast) var(--ease-out);
+  }
+
+  .btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
   }
 
   .btn-secondary {
-    background: var(--bg-tertiary);
+    background: var(--btn-bg);
     color: var(--text-primary);
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: var(--bg-hover);
+    background: var(--btn-bg-hover);
   }
 
   .btn-primary {
     background: var(--accent-color);
     color: white;
-    border-color: var(--accent-color);
   }
 
   .btn-primary:hover:not(:disabled) {
-    filter: brightness(1.1);
+    background: var(--accent-hover);
   }
 
   .btn:disabled {

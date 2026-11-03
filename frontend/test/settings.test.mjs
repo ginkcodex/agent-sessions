@@ -193,6 +193,18 @@ test('Settings reports code check logs and deletes them', async () => {
   assert.match(button(await checks({ codeCheckLogs: { dir: '/d', files: 1, bytes: 9 }, codeCheckLogsBusy: true })), /Deleting…/);
 });
 
+test('Settings › Code checks warns that native Windows hosts are less reliable', async () => {
+  const note = /role="note"[^>]*>[\s\S]*Limited on Windows\.[\s\S]*open the project through a WSL host/;
+  const windows = { info: { terminal: true, chooseTerminal: true, shell: 'powershell' }, copyShell: 'powershell' };
+  assert.match(await renderSettingsDialog(windows, undefined, { section: 'checks' }), note);
+  // WSL and SSH hosts copy POSIX commands even from Windows, and get no note.
+  const remote = { info: { terminal: true, chooseTerminal: true, shell: 'powershell' }, copyShell: 'posix' };
+  assert.doesNotMatch(await renderSettingsDialog(remote, undefined, { section: 'checks' }), /Limited on Windows/);
+  const mac = { info: { terminal: true, chooseTerminal: true, shell: 'posix' }, copyShell: 'posix' };
+  assert.doesNotMatch(await renderSettingsDialog(mac, undefined, { section: 'checks' }), /Limited on Windows/);
+  assert.doesNotMatch(await renderSettingsDialog(windows, undefined, { section: 'general' }), /Limited on Windows/);
+});
+
 test('Settings › Code checks: language switches with their saved state, then automatic downloads, then logs', async () => {
   const info = { terminal: true, chooseTerminal: true, shell: 'posix' };
   const render = (preferences) => renderSettingsDialog({ info }, preferences, { section: 'checks' });

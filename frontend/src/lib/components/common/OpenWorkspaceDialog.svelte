@@ -113,13 +113,13 @@
 {/if}
 
 <style>
-  .workspace-backdrop { position: fixed; inset: 0; z-index: 1010; display: grid; place-items: center; padding: 20px; background: rgb(8 12 20 / 0.5); backdrop-filter: blur(3px); animation: fade-in 140ms ease-out; }
+  .workspace-backdrop { position: fixed; inset: 0; z-index: 1010; display: grid; place-items: center; padding: 20px; background: var(--scrim); animation: -global-scrim-in var(--dur-med) var(--ease-out); }
   .workspace-dialog {
     display: flex; flex-direction: column; width: min(640px, 100%); max-height: 85vh; overflow: hidden;
-    border: 1px solid var(--border-color); border-radius: var(--radius-lg);
+    border: 1px solid var(--dialog-border); border-radius: var(--radius-dialog);
     background: var(--bg-primary); color: var(--text-primary);
-    box-shadow: 0 24px 60px rgb(0 0 0 / 0.28), 0 2px 8px rgb(0 0 0 / 0.12);
-    animation: pop-in 180ms cubic-bezier(.2, .9, .3, 1.15);
+    box-shadow: var(--shadow-dialog);
+    animation: -global-dialog-in var(--dur-med) var(--ease-out);
   }
   form { display: flex; flex-direction: column; min-height: 0; }
   p { margin: 0; }
@@ -132,11 +132,11 @@
   }
   .titles { flex: 1; min-width: 0; }
   .title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
-  h2 { margin: 0; font-size: 1.1rem; font-weight: 650; letter-spacing: -0.01em; }
-  .subtitle { margin-top: 4px; font-size: 0.78rem; line-height: 1.45; color: var(--text-muted); }
+  h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .subtitle { margin-top: 4px; font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
   .host-chip {
     display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px;
-    font-size: 0.68rem; font-weight: 600; color: var(--text-secondary); background: var(--bg-secondary); border: 1px solid var(--border-color);
+    font-size: 0.68rem; font-weight: 600; color: var(--text-secondary); background: var(--btn-bg);
   }
   .host-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--status-live, #16a34a); box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-live, #16a34a) 20%, transparent); }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -151,22 +151,21 @@
   input:disabled { opacity: .6; }
 
   button {
-    display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 16px;
-    border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-primary); color: var(--text-primary);
-    font-size: 0.8rem; font-weight: 500; white-space: nowrap; cursor: pointer;
-    box-shadow: var(--shadow-card); transition: background-color 120ms, border-color 120ms, box-shadow 120ms, transform 80ms;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 14px;
+    border: 0; border-radius: var(--radius-md); background: var(--btn-bg); color: var(--text-primary);
+    font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out), transform 80ms;
   }
-  button:hover:not(:disabled) { background: var(--hover-bg); }
+  button:hover:not(:disabled) { background: var(--btn-bg-hover); }
   button:active:not(:disabled) { transform: translateY(1px); }
   button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
   button:disabled { opacity: .5; cursor: default; }
-  button.primary { border-color: transparent; background: var(--accent-color); color: white; font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.15), 0 4px 12px color-mix(in srgb, var(--accent-color) 30%, transparent); }
+  button.primary { background: var(--accent-color); color: white; }
   button.primary:hover:not(:disabled) { background: var(--accent-hover); }
-  button.primary:disabled { box-shadow: none; }
 
-  .folders { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; }
-  .folder-heading { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); }
-  .folder-heading .up { padding: 5px 10px; font-size: 0.72rem; }
+  .folders { display: flex; flex-direction: column; min-height: 0; border-radius: var(--radius-md); background: var(--bg-secondary); overflow: hidden; }
+  .folder-heading { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--border-color); }
+  .folder-heading .up { min-height: 26px; padding: 0 10px; border-radius: var(--radius-sm); font-size: 0.72rem; }
   .current { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-secondary); }
   .folder-list { max-height: 280px; overflow: auto; padding: 6px; }
   .folder {
@@ -175,16 +174,13 @@
   }
   .folder .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .folder .chevron { flex-shrink: 0; color: var(--text-muted); opacity: 0; transform: translateX(-4px); transition: opacity 120ms, transform 120ms; }
-  .folder:hover:not(:disabled) { background: var(--active-bg); }
+  .folder:hover:not(:disabled) { background: var(--hover-bg); }
   .folder:hover:not(:disabled) .chevron, .folder:focus-visible .chevron { opacity: 1; transform: none; }
   .folder:active:not(:disabled) { transform: none; }
   .folder:focus-visible { outline-offset: -2px; }
   .empty { padding: 18px 10px; text-align: center; font-size: 0.75rem; color: var(--text-muted); }
 
-  footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--border-color); background: var(--bg-secondary); }
+  footer { display: flex; justify-content: flex-end; gap: 8px; padding: 4px 22px 20px; }
   .error { padding: 8px 12px; border-radius: var(--radius-md); font-size: 0.75rem; color: var(--danger, #cf222e); background: color-mix(in srgb, var(--danger, #cf222e) 10%, transparent); }
 
-  @keyframes fade-in { from { opacity: 0; } }
-  @keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(.97); } }
-  @media (prefers-reduced-motion: reduce) { .workspace-backdrop, .workspace-dialog { animation: none; } }
 </style>

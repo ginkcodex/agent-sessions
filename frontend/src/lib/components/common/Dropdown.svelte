@@ -174,6 +174,7 @@
   }
 
   .menu {
+    animation: -global-pop-in var(--dur-fast) var(--ease-out);
     position: absolute;
     top: calc(100% + 4px);
     left: 0;

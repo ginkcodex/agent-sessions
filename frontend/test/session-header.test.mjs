@@ -61,7 +61,9 @@ test('SessionHeader leaves Reveal and Delete to the session list', async () => {
   const html = await renderSessionHeader({ link: { dataHost: undefined }, launcher: { canOpen: true } });
   assert.doesNotMatch(html, />\s*Reveal\s*</);
   assert.doesNotMatch(html, /Delete…/);
-  assert.match(html, /Export/);
+  // Continue in and Export share one ⋯ menu; Resume is the only filled button.
+  assert.match(html, /class="action-btn icon-btn more-btn[^"]*"[^>]*aria-label="More actions"[^>]*aria-haspopup="menu"[^>]*aria-expanded="false"/);
+  assert.doesNotMatch(html, /continue-btn|export-btn/);
 });
 
 test('SessionHeader offers Find in session where the view handles it', async () => {

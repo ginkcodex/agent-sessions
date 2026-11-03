@@ -66,7 +66,7 @@
 </script>
 
 <div
-  class="session-row"
+  class="session-row agent-{session.ref.agent}"
   class:selected={isSelected}
   class:bulk-selected={bulkSelected}
   class:archived={session.archived}
@@ -176,15 +176,22 @@
     cursor: pointer;
     user-select: none;
     position: relative;
-    transition: background-color 0.1s ease;
+    transition: background-color var(--dur-fast) var(--ease-out);
+    /* The selection takes the agent's color: Claude orange, Codex green,
+       OpenCode blue. */
+    --row-agent: var(--accent-color);
   }
+
+  .session-row.agent-claude-code { --row-agent: var(--agent-claude); }
+  .session-row.agent-codex { --row-agent: var(--agent-codex); }
+  .session-row.agent-opencode { --row-agent: var(--agent-opencode); }
 
   .session-row:hover {
     background-color: var(--hover-bg);
   }
 
   .session-row.selected {
-    background-color: var(--active-bg);
+    background-color: color-mix(in srgb, var(--row-agent) 14%, transparent);
   }
 
   .session-row.bulk-selected:not(.selected) {

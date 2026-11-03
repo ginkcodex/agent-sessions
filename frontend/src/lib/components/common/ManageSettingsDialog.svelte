@@ -84,12 +84,12 @@
 {#if manage.settingsDialogOpen}
   <div class="backdrop" role="presentation">
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-      <header>
-        <h2 id="settings-title">Settings</h2>
-        <DialogCloseButton label="Close settings" onclick={close} />
-      </header>
+      <!-- A tinted sidebar holds the title and sections; the close button
+           floats over the panel's corner. -->
+      <DialogCloseButton class="settings-close" label="Close settings" onclick={close} />
       <div class="layout">
         <nav class="nav" aria-label="Settings sections">
+          <h2 id="settings-title">Settings</h2>
           <ul role="tablist" aria-orientation="vertical">
             {#each sections as s (s.id)}
               <li role="presentation">
@@ -395,6 +395,17 @@
               </div>
             </section>
           {:else if section === 'checks'}
+            {#if launcher.copyShell === 'powershell'}
+              <!-- Native Windows, not WSL or SSH: code checks are least tested here. -->
+              <div class="platform-note" role="note">
+                <Icon name="triangle-alert" size={14} />
+                <p>
+                  <strong>Limited on Windows.</strong> Code checks are built and tested mainly on macOS, Linux and WSL.
+                  On Windows itself, some language servers may fail to download or start, and some problems may not be reported.
+                  For the most reliable checks, open the project through a WSL host. If a check fails, its log under Logs shows what ran.
+                </p>
+              </div>
+            {/if}
             <section class="section languages">
               <h3>Languages</h3>
               <p class="hint">
@@ -458,40 +469,46 @@
           {/if}
         </div>
       </div>
-      <footer><button type="button" onclick={close}>Close</button></footer>
     </div>
   </div>
 {/if}
 
 <style>
   /* Above the file dialog, whose code checks open Settings › Code checks; below toasts. */
-  .backdrop { position: fixed; inset: 0; z-index: 1250; background: rgba(0,0,0,.5); display: grid; place-items: center; }
-  .dialog { width: min(760px, 94vw); height: min(560px, 85vh); display: flex; flex-direction: column; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,.3); overflow: hidden; }
-  header, footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--bg-secondary); flex: none; }
-  header { border-bottom: 1px solid var(--border-color); }
-  footer { border-top: 1px solid var(--border-color); justify-content: flex-end; }
-  h2 { margin: 0; font-size: 1rem; }
-  button { padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-tertiary); color: var(--text-primary); cursor: pointer; }
+  .backdrop { position: fixed; inset: 0; z-index: 1250; background: var(--scrim); display: grid; place-items: center; animation: -global-scrim-in var(--dur-med) var(--ease-out); }
+  .dialog { position: relative; width: min(780px, 94vw); height: min(580px, 85vh); display: flex; flex-direction: column; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--dialog-border); border-radius: var(--radius-dialog); box-shadow: var(--shadow-dialog); overflow: hidden; animation: -global-dialog-in var(--dur-med) var(--ease-out); }
+  .dialog > :global(.settings-close) { position: absolute; top: 12px; right: 12px; z-index: 1; }
+  h2 { margin: 0; padding: 6px 10px 14px; font-size: 15px; font-weight: 600; }
+  button { padding: 5px 12px; border-radius: var(--radius-sm); background: var(--btn-bg); color: var(--text-primary); font-weight: 500; transition: background-color var(--dur-fast) var(--ease-out); }
+  button:hover:not(:disabled) { background: var(--btn-bg-hover); }
+  button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
   button:disabled { opacity: .5; cursor: not-allowed; }
-  button.primary { background: var(--accent-color); border-color: var(--accent-color); color: #fff; }
+  button.primary { background: var(--accent-color); color: #fff; }
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); }
   .layout { flex: 1; min-height: 0; display: flex; }
-  .nav { flex: none; width: 180px; padding: 10px 8px; border-right: 1px solid var(--border-color); background: var(--bg-secondary); overflow-y: auto; }
+  .nav { flex: none; width: 190px; padding: 14px 10px; background: var(--bg-secondary); overflow-y: auto; }
   .nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-  .nav button { width: 100%; text-align: left; border: none; background: transparent; color: var(--text-secondary); font-size: .8rem; padding: 6px 10px; }
-  .nav button:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-  .nav button.active { background: var(--bg-tertiary); color: var(--accent-color); font-weight: 600; }
-  .body { flex: 1; min-width: 0; overflow-y: auto; padding: 16px 20px; font-size: .8rem; }
+  .nav button { width: 100%; text-align: left; background: transparent; color: var(--text-secondary); font-size: .8rem; padding: 7px 10px; }
+  .nav button:hover:not(.active) { background: var(--hover-bg); color: var(--text-primary); }
+  .nav button:focus-visible { outline-offset: -2px; }
+  .nav button.active { background: var(--active-bg); color: var(--accent-color); font-weight: 600; }
+  .body { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 28px 24px; font-size: .8rem; }
   .section > p:not(.hint):not(.error) { margin: 0 0 12px; line-height: 1.5; color: var(--text-secondary); }
   .setting { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-weight: 600; }
   .setting.disabled { opacity: .5; }
   .setting input { accent-color: var(--accent-color); }
   .body .hint { font-size: .75rem; color: var(--text-muted); }
   .body .error { color: #ef4444; }
-  .warning { padding: 12px; background: rgba(245,158,11,.1); border: 1px solid #f59e0b; border-radius: 4px; }
+  /* Clears the close button floating over the top-right corner. */
+  .platform-note { display: flex; gap: 10px; align-items: flex-start; margin: 0 30px 18px 0; padding: 10px 12px; border-radius: var(--radius-md); background: rgba(245,158,11,.1); color: var(--text-secondary); }
+  .platform-note :global(.icon) { flex: none; margin-top: 2px; color: #d97706; }
+  .platform-note p { margin: 0; line-height: 1.5; }
+  .platform-note strong { color: var(--text-primary); }
+  .warning { padding: 12px 14px; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.45); border-radius: var(--radius-md); }
   .warning p { margin: 6px 0; line-height: 1.5; }
   .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
-  .section + .section { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); }
-  h3 { margin: 0 0 6px; font-size: .85rem; }
+  .section + .section { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border-color); }
+  h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
   .section .hint, .section .error { margin: 0 0 10px; line-height: 1.5; }
   .open-mode { border: 0; margin: 0 0 6px; padding: 0; }
   .open-mode legend { padding: 0; margin-bottom: 6px; font-weight: 500; }
@@ -510,7 +527,8 @@
   .toggle-reveal-btn:hover { color: var(--text-primary); }
   .key-row { display: flex; align-items: center; gap: 8px; }
   .key-saved { flex: 1; color: var(--text-secondary); }
-  .link-btn { align-self: flex-start; padding: 0; border: none; background: none; color: var(--accent-color); font-size: .75rem; }
+  .link-btn, .link-btn:hover:not(:disabled) { align-self: flex-start; padding: 0; background: none; color: var(--accent-color); font-size: .75rem; }
+  .toggle-reveal-btn:hover:not(:disabled) { background: transparent; }
   .test-ok { color: var(--text-secondary); }
   .extensions { font-weight: 400; font-size: .75rem; color: var(--text-muted); }
 </style>

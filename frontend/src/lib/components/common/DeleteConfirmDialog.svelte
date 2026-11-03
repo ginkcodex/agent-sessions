@@ -315,32 +315,31 @@
   .dialog-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--scrim);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 100;
+    animation: -global-scrim-in var(--dur-med) var(--ease-out);
   }
 
   .dialog {
     background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
+    border: 1px solid var(--dialog-border);
+    border-radius: var(--radius-dialog);
     width: min(560px, 92vw);
     max-height: 80vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-dialog);
+    animation: -global-dialog-in var(--dur-med) var(--ease-out);
   }
 
   .dialog-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 16px 14px 4px 20px;
   }
 
   .header-title-container {
@@ -355,20 +354,19 @@
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     padding: 2px 6px;
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
   }
 
   .dialog-header h2 {
     margin: 0;
-    font-size: 0.95rem;
+    font-size: 15px;
     font-weight: 600;
   }
 
 
 
   .dialog-body {
-    padding: 16px;
+    padding: 12px 20px 8px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -384,7 +382,7 @@
   .warn-banner,
   .danger-banner {
     padding: 8px 12px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     font-size: 0.8rem;
     display: flex;
     flex-direction: column;
@@ -417,7 +415,7 @@
   .reversible-note {
     margin: 0;
     padding: 8px 12px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     background: rgba(16, 185, 129, 0.08);
     border: 1px solid rgba(16, 185, 129, 0.3);
     color: var(--status-live);
@@ -431,7 +429,7 @@
     max-height: 220px;
     overflow-y: auto;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
   }
 
   .preview-item {
@@ -552,39 +550,37 @@
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    padding: 12px 16px;
-    border-top: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    padding: 12px 20px 18px;
   }
 
   .btn {
-    height: 34px;
-    padding: 0 16px;
-    border-radius: var(--radius-sm);
+    height: 32px;
+    padding: 0 14px;
+    border-radius: var(--radius-md);
     font-size: 0.8rem;
     font-weight: 500;
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-color);
+    background: var(--btn-bg);
+    color: var(--text-primary);
     cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out);
   }
 
   .btn:hover:not(:disabled) {
-    color: var(--text-primary);
-    border-color: var(--text-muted);
+    background: var(--btn-bg-hover);
+  }
+
+  .btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
   }
 
   .danger-btn {
     background: var(--danger);
-    border-color: var(--danger);
     color: white;
   }
 
   .danger-btn:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--danger) 85%, black);
-    border-color: color-mix(in srgb, var(--danger) 85%, black);
-    color: white;
+    background: color-mix(in srgb, var(--danger) 88%, black);
   }
 
   .btn:disabled {

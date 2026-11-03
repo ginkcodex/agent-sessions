@@ -245,8 +245,8 @@
     justify-content: center;
     align-items: flex-start;
     padding-top: min(14vh, 110px);
-    background: rgba(8, 12, 20, 0.56);
-    backdrop-filter: blur(2px);
+    background: var(--scrim);
+    animation: -global-scrim-in var(--dur-med) var(--ease-out);
   }
 
   .search-dialog {
@@ -255,10 +255,11 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
+    border: 1px solid var(--dialog-border);
+    border-radius: var(--radius-dialog);
     background: var(--bg-primary);
-    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-dialog);
+    animation: -global-dialog-in var(--dur-med) var(--ease-out);
   }
 
   .search-header {
@@ -266,7 +267,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 0 12px 0 16px;
+    padding: 0 12px 0 18px;
     border-bottom: 1px solid var(--border-color);
     color: var(--text-muted);
   }
@@ -289,10 +290,8 @@
   kbd {
     min-width: 20px;
     padding: 2px 5px;
-    border: 1px solid var(--border-color);
-    border-bottom-width: 2px;
     border-radius: 4px;
-    background: var(--bg-tertiary);
+    background: var(--btn-bg);
     color: var(--text-muted);
     font-family: var(--font-mono);
     font-size: 0.68rem;
@@ -308,9 +307,8 @@
     align-items: center;
     gap: 5px;
     min-height: 30px;
-    padding: 5px 16px;
+    padding: 5px 18px;
     border-bottom: 1px solid var(--border-color);
-    background: var(--bg-secondary);
     color: var(--text-muted);
     font-size: 0.72rem;
   }
@@ -346,20 +344,18 @@
     width: 100%;
     display: flex;
     gap: 10px;
-    padding: 10px;
-    border: 1px solid transparent;
-    border-radius: 7px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
     color: inherit;
     text-align: left;
+    transition: background-color var(--dur-fast) var(--ease-out);
   }
 
-  .search-result:hover,
-  .search-result.active {
-    border-color: var(--border-color);
-    background: var(--hover-bg);
-  }
+  .search-result:hover { background: var(--hover-bg); }
 
-  .search-result.active { border-color: color-mix(in srgb, var(--accent-color) 55%, var(--border-color)); }
+  /* The keyboard's row takes the accent tint, so it stays clear of the
+     pointer's hover. */
+  .search-result.active { background: var(--active-bg); }
 
   .result-icon { flex: none; padding-top: 1px; }
   .result-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; }
@@ -385,7 +381,9 @@
 
   .result-state strong { color: var(--text-secondary); font-size: 0.9rem; }
   .result-state code { font-family: var(--font-mono); }
-  .result-state button { margin-top: 4px; font-size: inherit; padding: 5px 10px; border-radius: 5px; background: var(--accent-color); color: white; }
+  .result-state button { margin-top: 4px; font-size: inherit; font-weight: 500; height: 30px; padding: 0 14px; border-radius: var(--radius-md); background: var(--accent-color); color: white; transition: background-color var(--dur-fast) var(--ease-out); }
+  .result-state button:hover { background: var(--accent-hover); }
+  .result-state button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
   .error-state strong, .error-state span { color: #ef4444; }
 
   .search-footer {
@@ -394,9 +392,8 @@
     justify-content: flex-end;
     align-items: center;
     gap: 14px;
-    padding: 0 12px;
+    padding: 0 14px;
     border-top: 1px solid var(--border-color);
-    background: var(--bg-secondary);
     color: var(--text-muted);
     font-size: 0.68rem;
   }

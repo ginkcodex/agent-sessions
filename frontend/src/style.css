@@ -52,6 +52,19 @@
   --segment-thumb: #ffffff;
   --border-strong: rgba(15, 23, 42, 0.18);
   --code-bg: var(--bg-primary);
+  /* Motion: short and decelerating, so state changes feel immediate. */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur-med: 180ms;
+  /* Dialogs: one floating sheet over a dimmed app. Headers and footers
+     share the sheet's surface, set apart by space rather than fills. */
+  --scrim: rgba(15, 23, 42, 0.32);
+  --radius-dialog: 14px;
+  --dialog-border: rgba(15, 23, 42, 0.08);
+  --shadow-dialog: 0 24px 64px rgba(15, 23, 42, 0.2), 0 4px 14px rgba(15, 23, 42, 0.08);
+  /* Plain buttons are filled, not outlined. */
+  --btn-bg: rgba(15, 23, 42, 0.06);
+  --btn-bg-hover: rgba(15, 23, 42, 0.11);
   /* Bundled Inter and JetBrains Mono (imported in main.ts) look the same on
      every platform. The system fallbacks avoid Helvetica: fontconfig aliases
      it to Nimbus Sans, whose metrics sit text ~2.5px above center in every
@@ -96,6 +109,11 @@
     --segment-track: rgba(255, 255, 255, 0.06);
     --segment-thumb: #454544;
     --border-strong: rgba(255, 255, 255, 0.16);
+    --scrim: rgba(0, 0, 0, 0.5);
+    --dialog-border: rgba(255, 255, 255, 0.1);
+    --shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.55), 0 4px 14px rgba(0, 0, 0, 0.3);
+    --btn-bg: rgba(255, 255, 255, 0.08);
+    --btn-bg-hover: rgba(255, 255, 255, 0.13);
   }
 }
 
@@ -169,6 +187,48 @@ h1, h2, h3, h4 {
 @keyframes icon-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Menus and popovers open with a short fade and drop. Components use it as
+   -global-pop-in. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
+}
+
+/* Dialogs fade their scrim in and rise into place: -global-scrim-in on the
+   backdrop, -global-dialog-in on the sheet. */
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+/* Reduced motion: transitions and animations end at once. Spinners still
+   turn, slowly, since they say work is going on. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .icon.spin {
+    animation-duration: 2s !important;
+    animation-iteration-count: infinite !important;
   }
 }
 

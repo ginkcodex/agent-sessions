@@ -532,12 +532,14 @@
 </div>
 
 <style>
-  .reopen-history { flex-shrink: 0; background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 4px; padding: 5px 7px; cursor: pointer; font-size: 12px; }
-  .history-modes { display: flex; align-self: flex-start; width: calc(clamp(280px, 26%, 400px) - 20px); max-width: calc(100% - 20px); margin: 10px 10px 0; padding: 2px; border-radius: var(--radius-sm); background: var(--bg-tertiary); }
+  .reopen-history { flex-shrink: 0; background: var(--btn-bg); color: var(--text-primary); border: 0; border-radius: var(--radius-sm); padding: 5px 10px; cursor: pointer; font-size: 12px; font-weight: 500; transition: background-color var(--dur-fast) var(--ease-out); }
+  .reopen-history:hover { background: var(--btn-bg-hover); }
+  .reopen-history:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+  .history-modes { display: flex; align-self: flex-start; width: calc(clamp(280px, 26%, 400px) - 20px); max-width: calc(100% - 20px); margin: 10px 10px 0; padding: 2px; border-radius: var(--radius-sm); background: var(--segment-track); }
   .history-modes button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; background: transparent; color: var(--text-secondary); border: 0; border-radius: 4px; padding: 3px 6px; font-size: 0.75rem; font-weight: 500; white-space: nowrap; cursor: pointer; }
   .history-modes button:hover { color: var(--text-primary); }
   .history-modes button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
-  .history-modes button.active { background: var(--bg-primary); color: var(--accent-color); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+  .history-modes button.active { background: var(--segment-thumb); color: var(--accent-color); font-weight: 600; box-shadow: var(--shadow-thumb); }
   .mode-label { position: relative; }
   .change-badge { position: absolute; top: -0.45em; left: calc(100% - 2px); min-width: 1.4em; padding: 0 4px; border-radius: 999px; background: var(--count-badge-bg); color: var(--count-badge-text); font-size: 0.6rem; line-height: 1.4; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
   .dialog-backdrop[hidden] {
@@ -551,7 +553,8 @@
   .dialog-backdrop {
     position: fixed;
     inset: 0;
-    background-color: rgba(0, 0, 0, 0.55);
+    background-color: var(--scrim);
+    animation: -global-scrim-in var(--dur-med) var(--ease-out);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -561,9 +564,12 @@
 
   .dialog {
     background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--dialog-border);
+    border-radius: var(--radius-dialog);
+    box-shadow: var(--shadow-dialog);
+    /* Fades in without the rise: it fills the window, and its editors
+       measure their layout as they open. */
+    animation: -global-scrim-in var(--dur-med) var(--ease-out);
     /* Nearly the whole window: code needs the room. */
     width: 100%;
     height: 100%;
@@ -578,7 +584,6 @@
     gap: 10px;
     padding: 10px 14px 10px 18px;
     border-bottom: 1px solid var(--border-color);
-    background-color: var(--bg-secondary);
   }
 
   .dialog-header h2 {
@@ -601,8 +606,8 @@
   .host-pill {
     font-size: 0.72rem;
     padding: 2px 8px;
-    border-radius: 10px;
-    background: var(--bg-tertiary);
+    border-radius: 999px;
+    background: var(--btn-bg);
     color: var(--text-secondary);
   }
 
@@ -613,9 +618,15 @@
     flex-shrink: 0;
     width: 28px;
     height: 28px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out);
+  }
+
+  .lock-button:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
   }
 
   .lock-button:hover {
@@ -627,8 +638,6 @@
     color: var(--accent-color);
     background-color: var(--active-bg);
   }
-
-
 
   .body {
     flex: 1;

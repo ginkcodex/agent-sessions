@@ -146,19 +146,21 @@
   .dialog-backdrop {
     position: fixed;
     inset: 0;
-    background-color: rgba(0, 0, 0, 0.55);
+    background-color: var(--scrim);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1010;
     padding: 16px;
+    animation: -global-scrim-in var(--dur-med) var(--ease-out);
   }
 
   .dialog {
     background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--dialog-border);
+    border-radius: var(--radius-dialog);
+    box-shadow: var(--shadow-dialog);
+    animation: -global-dialog-in var(--dur-med) var(--ease-out);
     width: 100%;
     max-width: 560px;
     max-height: 80vh;
@@ -172,14 +174,12 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--border-color);
-    background-color: var(--bg-secondary);
+    padding: 16px 14px 4px 20px;
   }
 
   .dialog-header h2 {
     margin: 0;
-    font-size: 1.05rem;
+    font-size: 15px;
     font-weight: 600;
   }
 
@@ -192,7 +192,7 @@
   }
 
   .dialog-body {
-    padding: 14px 18px;
+    padding: 12px 20px 8px;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -233,8 +233,7 @@
     margin: 0;
     padding: 4px;
     overflow-y: auto;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background-color: var(--bg-secondary);
   }
 
@@ -266,25 +265,28 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    padding: 12px 18px;
-    border-top: 1px solid var(--border-color);
-    background-color: var(--bg-secondary);
+    padding: 12px 20px 18px;
   }
 
   .btn {
-    height: 34px;
-    padding: 0 16px;
+    height: 32px;
+    padding: 0 14px;
     font-size: 0.82rem;
     font-weight: 500;
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
-    background-color: var(--bg-primary);
+    border-radius: var(--radius-md);
+    background-color: var(--btn-bg);
     color: var(--text-primary);
     cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out);
   }
 
   .btn:hover:not(:disabled) {
-    background-color: var(--hover-bg);
+    background-color: var(--btn-bg-hover);
+  }
+
+  .btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
   }
 
   .btn:disabled {
@@ -294,12 +296,10 @@
 
   .primary-btn {
     background-color: var(--accent-color);
-    border-color: var(--accent-color);
     color: #fff;
   }
 
   .primary-btn:hover:not(:disabled) {
     background-color: var(--accent-hover);
-    border-color: var(--accent-hover);
   }
 </style>

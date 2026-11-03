@@ -91,11 +91,11 @@
   }
 
   let resumeMenuOpen = $state(false);
-  let continueMenuOpen = $state(false);
-  let exportMenuOpen = $state(false);
+  // Continue in and Export share one ⋯ menu, so Resume stays the one
+  // strong action in the toolbar.
+  let moreMenuOpen = $state(false);
   let resumeMenuRoot: HTMLDivElement | undefined = $state();
-  let continueMenuRoot: HTMLDivElement | undefined = $state();
-  let exportMenuRoot: HTMLDivElement | undefined = $state();
+  let moreMenuRoot: HTMLDivElement | undefined = $state();
 
   // The copy button shows a tick for a moment after copying the path.
   let cwdCopied = $state(false);
@@ -128,11 +128,8 @@
     if (resumeMenuOpen && resumeMenuRoot && !resumeMenuRoot.contains(target)) {
       resumeMenuOpen = false;
     }
-    if (continueMenuOpen && continueMenuRoot && !continueMenuRoot.contains(target)) {
-      continueMenuOpen = false;
-    }
-    if (exportMenuOpen && exportMenuRoot && !exportMenuRoot.contains(target)) {
-      exportMenuOpen = false;
+    if (moreMenuOpen && moreMenuRoot && !moreMenuRoot.contains(target)) {
+      moreMenuOpen = false;
     }
     if (newMenuOpen && newMenuRoot && !newMenuRoot.contains(target)) {
       newMenuOpen = false;
@@ -168,10 +165,10 @@
         <AgentIcon agent={meta.ref.agent} size={14} />
       </span>
       {#if meta.live}
-        <span class="live-badge">● LIVE</span>
+        <span class="live-badge"><span class="live-pulse" aria-hidden="true"></span>Live</span>
       {/if}
       {#if meta.archived}
-        <span class="archived-badge">ARCHIVED</span>
+        <span class="archived-badge">Archived</span>
       {/if}
       {#if meta.model}
         <span class="model-badge">{meta.model}</span>
@@ -218,8 +215,7 @@
             onclick={() => {
               resumeMenuOpen = !resumeMenuOpen;
               if (resumeMenuOpen) {
-                continueMenuOpen = false;
-                exportMenuOpen = false;
+                moreMenuOpen = false;
                 newMenuOpen = false;
               }
             }}
@@ -308,8 +304,7 @@
               newMenuOpen = !newMenuOpen;
               if (newMenuOpen) {
                 resumeMenuOpen = false;
-                continueMenuOpen = false;
-                exportMenuOpen = false;
+                moreMenuOpen = false;
                 void newSession.refresh();
               }
             }}
@@ -339,96 +334,10 @@
         </div>
       {/if}
 
-      <div class="menu-container" bind:this={continueMenuRoot}>
-        <button
-          type="button"
-          class="action-btn continue-btn"
-          class:active={continueMenuOpen}
-          title="Continue this session in another agent"
-          aria-haspopup="menu"
-          aria-expanded={continueMenuOpen}
-          onclick={() => {
-            continueMenuOpen = !continueMenuOpen;
-            if (continueMenuOpen) {
-              exportMenuOpen = false;
-              resumeMenuOpen = false;
-              newMenuOpen = false;
-            }
-          }}
-        >
-          Continue in <Icon name="chevron-down" size={13} strokeWidth={2.25} />
-        </button>
-        {#if continueMenuOpen}
-          <div class="action-dropdown-menu" role="menu">
-            {#each agentSettings.activeAgents as agent (agent.id)}
-              <button
-                type="button"
-                class="action-menu-item"
-                role="menuitem"
-                onclick={() => {
-                  continueMenuOpen = false;
-                  handoff.open(meta, agent.id);
-                }}
-              >
-                <AgentIcon agent={agent.id} size={14} />
-                <span>{agent.label}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <div class="menu-container" bind:this={exportMenuRoot}>
-        <button
-          type="button"
-          class="action-btn export-btn"
-          class:active={exportMenuOpen}
-          title="Export session bundle"
-          aria-haspopup="menu"
-          aria-expanded={exportMenuOpen}
-          onclick={() => {
-            exportMenuOpen = !exportMenuOpen;
-            if (exportMenuOpen) {
-              continueMenuOpen = false;
-              resumeMenuOpen = false;
-              newMenuOpen = false;
-            }
-          }}
-        >
-          Export <Icon name="chevron-down" size={13} strokeWidth={2.25} />
-        </button>
-        {#if exportMenuOpen}
-          <div class="action-dropdown-menu" role="menu">
-            <button
-              type="button"
-              class="action-menu-item"
-              role="menuitem"
-              onclick={() => {
-                exportMenuOpen = false;
-                exporter.open(meta, 'complete');
-              }}
-            >
-              <span>Complete (Restorable)…</span>
-            </button>
-            <button
-              type="button"
-              class="action-menu-item"
-              role="menuitem"
-              onclick={() => {
-                exportMenuOpen = false;
-                exporter.open(meta, 'share-safe');
-              }}
-            >
-              <span>Share-safe (Redacted)…</span>
-            </button>
-          </div>
-        {/if}
-      </div>
-
       {#if onFind}
         <button
           type="button"
-          class="action-btn find-btn"
+          class="action-btn find-btn icon-btn"
           class:active={findOpen}
           aria-pressed={findOpen}
           aria-label="Find in session"
@@ -438,6 +347,75 @@
           <span class="find-icon" aria-hidden="true"></span>
         </button>
       {/if}
+
+      <div class="menu-container" bind:this={moreMenuRoot}>
+        <button
+          type="button"
+          class="action-btn icon-btn more-btn"
+          class:active={moreMenuOpen}
+          title="Continue in another agent, or export"
+          aria-label="More actions"
+          aria-haspopup="menu"
+          aria-expanded={moreMenuOpen}
+          onclick={() => {
+            moreMenuOpen = !moreMenuOpen;
+            if (moreMenuOpen) {
+              resumeMenuOpen = false;
+              newMenuOpen = false;
+            }
+          }}
+        >
+          <Icon name="ellipsis" size={16} />
+        </button>
+        {#if moreMenuOpen}
+          <div class="action-dropdown-menu more-menu" role="menu">
+            <div class="menu-heading" role="presentation">Continue in</div>
+            {#each agentSettings.activeAgents as agent (agent.id)}
+              <button
+                type="button"
+                class="action-menu-item"
+                role="menuitem"
+                title="Continue this session in {agent.label}"
+                onclick={() => {
+                  moreMenuOpen = false;
+                  handoff.open(meta, agent.id);
+                }}
+              >
+                <AgentIcon agent={agent.id} size={14} />
+                <span>{agent.label}</span>
+              </button>
+            {/each}
+            <div class="menu-separator" role="separator"></div>
+            <div class="menu-heading" role="presentation">Export</div>
+            <button
+              type="button"
+              class="action-menu-item"
+              role="menuitem"
+              title="Export a bundle that can restore this session"
+              onclick={() => {
+                moreMenuOpen = false;
+                exporter.open(meta, 'complete');
+              }}
+            >
+              <Icon name="package" size={14} />
+              <span>Complete (Restorable)…</span>
+            </button>
+            <button
+              type="button"
+              class="action-menu-item"
+              role="menuitem"
+              title="Export a redacted bundle that is safe to share"
+              onclick={() => {
+                moreMenuOpen = false;
+                exporter.open(meta, 'share-safe');
+              }}
+            >
+              <Icon name="shield-check" size={14} />
+              <span>Share-safe (Redacted)…</span>
+            </button>
+          </div>
+        {/if}
+      </div>
 
       <div class="mode-switch" role="group" aria-label="Transcript display">
         {#each transcriptModes as option (option.value)}
@@ -611,15 +589,48 @@
     color: var(--agent-opencode);
   }
 
+  /* Live: a soft green pill whose dot breathes. */
   .live-badge {
-    font-size: 0.68rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 8px 1px 7px;
+    border-radius: 999px;
+    font-size: 0.66rem;
     font-weight: 600;
     color: var(--status-live);
+    background-color: color-mix(in srgb, var(--status-live) 13%, transparent);
+  }
+
+  .live-pulse {
+    position: relative;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: currentColor;
+  }
+
+  .live-pulse::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background-color: currentColor;
+    animation: live-ring 2s var(--ease-out) infinite;
+  }
+
+  @keyframes live-ring {
+    from { transform: scale(1); opacity: 0.6; }
+    to { transform: scale(2.6); opacity: 0; }
   }
 
   .archived-badge {
-    font-size: 0.68rem;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 500;
     color: var(--text-muted);
+    background-color: var(--segment-track);
   }
 
   .model-badge, .version-badge {
@@ -656,17 +667,25 @@
     background-color: transparent;
     color: var(--text-secondary);
     border: none;
-    transition: all 0.15s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-fast) var(--ease-out);
   }
 
   .action-btn:hover {
     color: var(--text-primary);
-    background-color: var(--bg-tertiary);
+    background-color: var(--hover-bg);
   }
 
+  .action-btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+  }
+
+  /* The one filled button in the toolbar. */
   .action-btn.resume-btn {
     background-color: var(--accent-color);
     color: white;
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--accent-color) 35%, transparent);
   }
 
   .action-btn.resume-btn:hover {
@@ -775,20 +794,23 @@
     box-shadow: var(--shadow-thumb);
   }
 
-  .action-btn.find-btn {
-    display: inline-flex;
-    align-items: center;
-    padding: 3px 6px;
-  }
-
-  .action-btn.find-btn:hover {
-    background-color: var(--hover-bg);
+  /* Square icon buttons: Find and the ⋯ menu. */
+  .action-btn.icon-btn {
+    justify-content: center;
+    width: 26px;
+    height: 24px;
+    padding: 0;
   }
 
   .action-btn.find-btn.active,
   .action-btn.find-btn.active:hover {
     background-color: var(--active-bg);
     color: var(--accent-color);
+  }
+
+  .action-btn.more-btn.active {
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
   }
 
   .find-icon {
@@ -799,18 +821,13 @@
     mask: url('../../../../assets/find.svg') center / contain no-repeat;
   }
 
-  .action-btn.continue-btn.active,
-  .action-btn.export-btn.active {
-    background-color: var(--bg-tertiary);
-    color: var(--text-primary);
-  }
-
   .menu-container {
     position: relative;
     display: inline-flex;
   }
 
   .action-dropdown-menu {
+    animation: -global-pop-in var(--dur-fast) var(--ease-out);
     position: absolute;
     top: calc(100% + 4px);
     right: 0;
@@ -846,6 +863,24 @@
   .action-menu-item:hover {
     background: var(--hover-bg);
     color: var(--text-primary);
+  }
+
+  .more-menu {
+    min-width: 220px;
+  }
+
+  .menu-heading {
+    padding: 6px 10px 2px;
+    font-size: 0.64rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+  }
+
+  .menu-separator {
+    height: 1px;
+    margin: 3px 6px;
+    background-color: var(--border-color);
   }
 
   .header-title-row {

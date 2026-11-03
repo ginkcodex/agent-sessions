@@ -36,7 +36,8 @@
   // Keep the menu inside the viewport, flipping it left or up near an edge.
   function place() {
     if (!menu) return;
-    const { width, height } = menu.getBoundingClientRect();
+    // Layout size: the opening animation scales the drawn box.
+    const { offsetWidth: width, offsetHeight: height } = menu;
     const maxLeft = window.innerWidth - width - MARGIN;
     const maxTop = window.innerHeight - height - MARGIN;
     left = Math.max(MARGIN, x > maxLeft ? Math.min(x - width, maxLeft) : x);
@@ -153,6 +154,7 @@
 
 <style>
   .context-menu {
+    animation: -global-pop-in var(--dur-fast) var(--ease-out);
     position: fixed;
     z-index: 120;
     min-width: 160px;

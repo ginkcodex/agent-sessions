@@ -162,11 +162,13 @@
 </div>
 
 <style>
+  /* One tinted surface, edged by its tone against the transcript; the
+     parameters and result are lighter wells inside it, lined up with the
+     header's text. */
   .tool-card {
     margin: 8px 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     background-color: var(--bg-secondary);
-    box-shadow: var(--shadow-card);
     overflow: hidden;
   }
 
@@ -174,9 +176,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px 10px;
-    background-color: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-color);
+    padding: 7px 10px;
   }
 
   .tool-id-group {
@@ -228,23 +228,18 @@
   }
 
   .tool-section {
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .tool-section:last-child {
-    border-bottom: none;
+    border-top: 1px solid var(--border-color);
   }
 
   .section-summary {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 4px 10px;
+    padding: 6px 10px;
     font-size: 11.52px;
     color: var(--text-secondary);
     font-weight: 500;
     cursor: pointer;
-    background: var(--bg-secondary);
     user-select: none;
   }
 
@@ -253,7 +248,9 @@
   }
 
   .code-wrapper {
-    padding: 6px 10px;
+    margin: 0 10px 8px;
+    padding: 8px;
+    border-radius: var(--radius-sm);
     background: var(--bg-primary);
     overflow-x: auto;
   }
@@ -265,8 +262,7 @@
   }
 
   .output-section {
-    padding: 8px 10px;
-    background: var(--bg-primary);
+    padding: 6px 10px 10px;
   }
 
   .output-header {
@@ -285,8 +281,8 @@
   .output-content {
     margin: 0;
     padding: 8px;
-    border-radius: 4px;
-    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
     font-family: var(--font-mono);
     font-size: 12px;
     line-height: 1.4;
@@ -358,6 +354,6 @@
 
   .tool-child-section {
     padding: 6px 10px;
-    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
   }
 </style>

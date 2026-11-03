@@ -127,24 +127,24 @@
 {/if}
 
 <style>
-  .backdrop { position: fixed; inset: 0; z-index: 1010; background: #0008; display: grid; place-items: center; padding: 20px; }
-  .dialog { width: min(760px, 95vw); max-height: 88vh; display: flex; flex-direction: column; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: 0 16px 40px #0005; }
-  header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
+  .backdrop { position: fixed; inset: 0; z-index: 1010; background: var(--scrim); display: grid; place-items: center; padding: 20px; animation: -global-scrim-in var(--dur-med) var(--ease-out); }
+  .dialog { width: min(760px, 95vw); max-height: 88vh; display: flex; flex-direction: column; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--dialog-border); border-radius: var(--radius-dialog); box-shadow: var(--shadow-dialog); animation: -global-dialog-in var(--dur-med) var(--ease-out); }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 16px 14px 4px 20px; }
   header > div { display: flex; align-items: center; gap: 12px; }
-  h2 { font-size: 1rem; margin: 0; } h3 { font-size: 0.9rem; margin: 0 0 14px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0; } h3 { font-size: 0.9rem; margin: 0 0 14px; }
   .host, .intro, .hint, small, .auto { color: var(--text-muted); }
-  .host { font-size: 0.8rem; } .content { padding: 20px; overflow-y: auto; }
+  .host { font-size: 0.8rem; } .content { padding: 12px 20px 20px; overflow-y: auto; }
   .intro { margin: 0 0 18px; font-size: 0.85rem; line-height: 1.5; }
   .empty { padding: 24px 12px; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
   .rules { display: grid; gap: 12px; }
-  .rule, form { padding: 16px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-secondary); }
+  .rule, form { padding: 16px; border-radius: var(--radius-md); background: var(--bg-secondary); }
   .rule-heading { display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 12px; }
   .status { color: var(--text-muted); } .status.active { color: var(--success-color, #16a34a); } .status.failed, .error { color: var(--danger, #ef4444); } .status.starting { color: var(--accent-color); }
   .route { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; } .route > div { min-width: 0; } code { font-family: var(--font-mono); overflow-wrap: anywhere; } .route code { font-size: 0.9rem; } small { display: block; margin-top: 5px; font-size: 0.72rem; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; } .spacer { flex: 1; }
-  button { cursor: pointer; border: 1px solid var(--border-color); border-radius: 4px; padding: 5px 9px; font-size: 0.75rem; color: var(--text-primary); background: var(--bg-primary); } button:hover:not(:disabled) { background: var(--hover-bg); } button:disabled { opacity: 0.45; cursor: default; }
-  .primary { background: var(--accent-color); color: white; border-color: var(--accent-color); } .primary:hover:not(:disabled) { filter: brightness(1.1); background: var(--accent-color); } .add, form { margin-top: 18px; }
+  button { cursor: pointer; border-radius: var(--radius-sm); padding: 6px 11px; font-size: 0.75rem; font-weight: 500; color: var(--text-primary); background: var(--btn-bg); transition: background-color var(--dur-fast) var(--ease-out); } button:hover:not(:disabled) { background: var(--btn-bg-hover); } button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; } button:disabled { opacity: 0.45; cursor: default; }
+  .primary { background: var(--accent-color); color: white; } .primary:hover:not(:disabled) { background: var(--accent-hover); } .add, form { margin-top: 18px; }
   .fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; } label { display: flex; flex-direction: column; gap: 6px; font-size: 0.75rem; } /* The form sits on the secondary tone, so its fields take the primary one. */ .text-field { width: 100%; background-color: var(--bg-primary); } .checkbox { flex-direction: row; align-items: center; margin-top: 14px; } .form-actions { justify-content: flex-end; }
-  .error, .notice, .hint { font-size: 0.78rem; line-height: 1.5; } .hint { margin-bottom: 0; margin-top: 20px; } .notice { padding: 10px; background: var(--bg-secondary); border-radius: 4px; }
+  .error, .notice, .hint { font-size: 0.78rem; line-height: 1.5; } .hint { margin-bottom: 0; margin-top: 20px; } .notice { padding: 10px 12px; background: var(--bg-secondary); border-radius: var(--radius-md); }
   @media (max-width: 560px) { .fields { grid-template-columns: 1fr; } header > div { flex-wrap: wrap; } }
 </style>

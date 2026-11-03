@@ -300,17 +300,6 @@
           {/each}
         </ul>
       </details>
-      <details>
-        <summary>Coverage details</summary>
-        <ul class="tech">
-          {#each checks.providers as provider (provider.providerId)}
-            <li class="mono">{provider.providerId}: {provider.availability} · {provider.phase} · {provider.freshness} · {provider.coverage.kind === 'savedProject' ? 'saved project files' : 'opened documents'} · roots: {provider.coverage.roots?.join(', ') || '(project root)'}{provider.coverage.partial ? ' · partial' : ''}{provider.truncated ? ' · truncated' : ''}
-              {#if provider.coverage.externalChanges === 'watching'} · watching saved project files on disk; updates after external changes (open drafts are not analyzed){/if}
-              {#if provider.coverage.externalChanges === 'unwatched'} · external changes unwatched; unopened-file coverage stale — reopen, refresh or rerun to reconcile saved context (not continuous sync){/if}
-            </li>
-          {/each}
-        </ul>
-      </details>
     {/if}
   {/if}
   {#if checks.project && checks.status === 'ready'}
@@ -319,7 +308,7 @@
       <p class="muted">Like Zed, each language server is looked up in the project first (node_modules/.bin, .venv), then on your login shell's PATH, then in this app's own install folder on {where}. {!checks.liveEnabled ? 'Live diagnostics are not available on this connection.' : liveText ? `Live diagnostics (experimental) use them for opened files only, after project approval: ${liveText}.` : ''}{languagesOn.length ? ` For ${languageList(languagesOn.map(l => l.name))}, a missing supported server that this project's files need is ${checks.autoInstall ? "downloaded into this app's folder automatically, at most once per app session" : "offered for download into this app's folder, for you to review"}.` : ''} Installing is separate from trusting this project: it never approves or starts a server. Revoking project approval also abandons a pending installation offer and cancels an owned installation.</p>
       {#if rustProject}<p class="muted">Rust live diagnostics and navigation require this app's pinned managed rust-analyzer on {where}; an unrelated installed server is not used for live analysis. Cargo workspaces must stay inside the opened folder. Review the listed preparation steps before approval: they may install an explicitly selected toolchain through existing rustup and fetch dependencies with <span class="mono">--locked</span>, never bootstrap rustup. Review missing Cargo.lock files separately. Check Project runs <span class="mono">cargo check --workspace --offline --locked --message-format=json</span> on saved files with default features and build-selected targets. Normal checks never silently download dependencies or change locks; live analysis covers opened .rs documents, including unsaved edits. Build scripts and procedural macros are not sandboxed.</p>{/if}
       {#if languagesOff.length}<p class="muted">{languageList(languagesOff)} {languagesOff.length === 1 ? 'is' : 'are'} off in Settings and {languagesOff.length === 1 ? 'gets' : 'get'} no code checks, navigation or downloads.</p>{/if}
-      <p class="muted">The opened folder does not need Git. Nested Python and JavaScript/TypeScript projects use their own configuration and environments; coverage roots are listed under Coverage details.</p>
+      <p class="muted">The opened folder does not need Git. Nested Python and JavaScript/TypeScript projects use their own configuration and environments.</p>
       <p class="muted">Languages and automatic downloads are chosen in <button type="button" class="link" onclick={() => manage.openSettings('checks')}>Settings › Code checks</button>.</p>
       {#if setupRows.length}
         <ul class="rows">
@@ -375,7 +364,6 @@
   :global(:root:not([data-theme='dark'])) .tone-ok { color: #1a7f37; }
   :global(:root:not([data-theme='dark'])) .tone-bad { color: #cf222e; }
   :global(:root:not([data-theme='dark'])) .tone-warn { color: #9a6700; }
-  .tech { margin: 4px 0; padding-left: 16px; }
   .toggle { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
   button { padding: 3px 8px; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px; }
   button:disabled { opacity: 0.5; cursor: default; }

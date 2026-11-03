@@ -146,8 +146,9 @@ test('checker rows use human names, status pills and consistent modes; technical
     assert.ok(html.includes(text), text);
   assert.doesNotMatch(html, /Checks run only when requested/, 'no generic on-request claim contradicting the watcher');
   assert.match(html, /checked automatically when they change on disk/);
-  const head = html.slice(0, html.indexOf('Coverage details'));
-  assert.doesNotMatch(head, /local:abc123|sha256:fp|roots:/);
+  assert.doesNotMatch(html, /Coverage details|roots:/, 'per-provider coverage dump is not shown');
+  const head = html.slice(0, html.indexOf('Technical details'));
+  assert.doesNotMatch(head, /local:abc123|sha256:fp/);
   assert.match(html.slice(html.indexOf('Technical details')), /local:abc123/);
   assert.match(html, /Setup not supported here: install it on the host yourself/);
   assert.doesNotMatch(html, /under Tools setup/, 'the install action is on the row, not in a collapsed section');

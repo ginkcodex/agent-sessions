@@ -83,10 +83,12 @@
   label { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-size: 13px; }
   input { accent-color: var(--accent-color); }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-  button { padding: 7px 14px; border: 1px solid var(--accent-color); border-radius: 4px; cursor: pointer; }
+  button { padding: 5px 12px; border-radius: var(--radius-sm); background: var(--btn-bg); color: var(--text-primary); font-weight: 500; cursor: pointer; transition: background-color var(--dur-fast) var(--ease-out); }
+  button:hover:not(:disabled) { background: var(--btn-bg-hover); }
+  button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
   button.primary { background: var(--accent-color); color: white; }
-  button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); }
   button:disabled { opacity: .5; cursor: default; }
   .error { color: var(--error-color, #cf222e); font-size: 12px; }
-  .notice { padding: 10px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; font-size: 12px; line-height: 1.5; }
+  .notice { padding: 10px 12px; background: var(--bg-secondary); border-radius: var(--radius-md); font-size: 12px; line-height: 1.5; }
 </style>
