@@ -56,7 +56,7 @@ func TestNotificationsAskOnceAndSend(t *testing.T) {
 	if err := a.Notify(AgentNotification{Tab: "t1", Title: "Codex finished", Body: "fix"}); err != nil {
 		t.Fatal(err)
 	}
-	id := notificationID("t1")
+	id := a.notificationID("t1")
 	if len(fake.sent) != 1 || fake.sent[0] != id+"|Codex finished|fix" {
 		t.Fatalf("sent %q", fake.sent)
 	}
@@ -112,7 +112,7 @@ func TestNotificationClickShowsItsTab(t *testing.T) {
 		}),
 	}
 	a.PrepareNotifications()
-	fake.click(notificationID("t7"))
+	fake.click(a.notificationID("t7"))
 	// Another window's notification, and an unrelated one, are not this window's.
 	fake.click("agent-sessions-1-t7")
 	fake.click("other")

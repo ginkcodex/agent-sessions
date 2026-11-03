@@ -44,6 +44,7 @@ func run() {
 	}
 
 	var window *application.WebviewWindow
+	var hub *app.NotificationHub
 	// closeApproved lets the app quit after the close guard has approved
 	// closing the only window. Before that, an OS quit becomes a window close
 	// so it goes through the same guard.
@@ -64,7 +65,10 @@ func run() {
 			go window.Close()
 			return false
 		},
-		OnShutdown: func() { app.OnShutdown(service) },
+		OnShutdown: func() {
+			app.OnShutdown(service)
+			hub.Close()
+		},
 		Mac: application.MacOptions{
 			// Each process owns one window. After the close guard approves,
 			// terminate instead of leaving a windowless process in the Dock.
@@ -76,6 +80,7 @@ func run() {
 		},
 	})
 
+	hub = newNotificationHub(desktop)
 	window = desktop.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:      "main",
 		Title:     "Agent Sessions",
@@ -124,7 +129,7 @@ func run() {
 		// GTK is initialized by now and the window exists.
 		disableFontHinting()
 		hookMouseNavigation(context.Background())
-		app.OnStartup(service, desktop.Context(), newDesktop(desktop, window))
+		app.OnStartup(service, desktop.Context(), newDesktop(desktop, window, hub.View()))
 		hookWindowCycling(func(forward bool) {
 			_ = service.FocusNextWindow(forward)
 		})

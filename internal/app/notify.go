@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // notifyOpenEvent carries the tab of an agent alert the user clicked.
@@ -47,25 +47,30 @@ type Notifier interface {
 type notifications struct {
 	mu     sync.Mutex
 	n      Notifier
+	prefix string // see notificationIDPrefix
 	ready  bool
 	status NotificationStatus
 	// asked is set once authorization was requested.
 	asked bool
 }
 
+// notifySeq numbers the Apps of this process for their notification IDs.
+var notifySeq atomic.Uint64
+
 // notificationIDPrefix starts the identifiers of this window's
-// notifications. Each window is its own process; one ignores clicks on
-// another's notifications.
-func notificationIDPrefix() string {
-	return "agent-sessions-" + strconv.Itoa(os.Getpid()) + "-"
+// notifications: the process and the window's App, whose tab IDs can
+// repeat another window's. A window ignores clicks on other windows'
+// notifications, whichever process they belong to.
+func (a *App) notificationIDPrefix() string {
+	return a.notifications().prefix
 }
 
 // notificationID names the notification of a tab; a tab has at most one.
-func notificationID(tab string) string { return notificationIDPrefix() + tab }
+func (a *App) notificationID(tab string) string { return a.notificationIDPrefix() + tab }
 
 // notificationTab is the tab a notification of this window is about.
-func notificationTab(id string) (string, bool) {
-	tab, ok := strings.CutPrefix(id, notificationIDPrefix())
+func (a *App) notificationTab(id string) (string, bool) {
+	tab, ok := strings.CutPrefix(id, a.notificationIDPrefix())
 	return tab, ok && tab != ""
 }
 
@@ -75,7 +80,10 @@ func (a *App) notifications() *notifications {
 		if n == nil && a.ctx != nil {
 			n = desktopFrom(a.ctx).Notifications
 		}
-		a.notify = &notifications{n: n}
+		a.notify = &notifications{
+			n:      n,
+			prefix: fmt.Sprintf("agent-sessions-%d-%d-", os.Getpid(), notifySeq.Add(1)),
+		}
 	})
 	return a.notify
 }
@@ -154,7 +162,7 @@ func (a *App) Notify(n AgentNotification) error {
 		return fmt.Errorf("notify: %s", status.Reason)
 	}
 	ns := a.notifications()
-	id := notificationID(n.Tab)
+	id := a.notificationID(n.Tab)
 	_ = ns.n.Remove(id)
 	if err := ns.n.Send(id, n.Title, n.Body); err != nil {
 		return fmt.Errorf("notify: %w", err)
@@ -171,7 +179,7 @@ func (a *App) ClearNotification(tab string) error {
 	if !ready || tab == "" {
 		return nil
 	}
-	return ns.n.Remove(notificationID(tab))
+	return ns.n.Remove(a.notificationID(tab))
 }
 
 // closeNotifications releases the notifications set up, at shutdown.
@@ -188,7 +196,7 @@ func (a *App) closeNotifications() {
 // notificationClicked brings the window forward and tells the frontend
 // which tab to show.
 func (a *App) notificationClicked(id string) {
-	tab, ok := notificationTab(id)
+	tab, ok := a.notificationTab(id)
 	if !ok {
 		return
 	}

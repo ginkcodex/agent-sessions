@@ -13,9 +13,15 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/app"
 )
 
-// newDesktop adapts the Wails v3 application and its one window to what
+// newNotificationHub shares the desktop's notifications, a process-wide
+// Wails service, among the windows.
+func newNotificationHub(desktop *application.App) *app.NotificationHub {
+	return app.NewNotificationHub(&desktopNotifier{service: notifications.New(), ctx: desktop.Context()})
+}
+
+// newDesktop adapts the Wails v3 application and one window to what
 // internal/app needs from the desktop.
-func newDesktop(desktop *application.App, window *application.WebviewWindow) app.Desktop {
+func newDesktop(desktop *application.App, window *application.WebviewWindow, notifier app.Notifier) app.Desktop {
 	return app.Desktop{
 		Emit: func(name string, payload any) { desktop.Event.Emit(name, payload) },
 
@@ -68,7 +74,7 @@ func newDesktop(desktop *application.App, window *application.WebviewWindow) app
 		RequestClose: func(context.Context) { window.Close() },
 		Print:        func(context.Context) error { return window.Print() },
 
-		Notifications: &desktopNotifier{service: notifications.New(), ctx: desktop.Context()},
+		Notifications: notifier,
 	}
 }
 
