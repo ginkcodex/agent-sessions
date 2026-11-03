@@ -70,6 +70,15 @@ Linux desktop binary on Ubuntu 24.04 and runs `make check-gui-linkage`, and
 cross-builds the Windows exe with its resources. These prove the builds link;
 they do not exercise the running app.
 
+The Release workflow (`.github/workflows/release.yml`) inspects each package
+it builds with `packaging/**/verify-*.sh`: the universal macOS app, its
+Info.plist, signature and `.dmg`; the `.deb`/`.rpm` metadata, dependencies
+and payload, plus a `.deb` install in a clean Ubuntu 24.04 container; the
+`.msi` and setup `.exe` contents (never installed or run); and the server
+bundles. A manual run on a branch uploads the whole set with an aggregate
+`SHA256SUMS` and a `provenance.json` naming the commit and run, and publishes
+nothing. Run 41617377140 on `482a6e6` passed all of these.
+
 During the port, the GTK 4 build was also launched under WSLg on Ubuntu and
 showed the local session catalog (checked through the accessibility tree, not
 by hand). That shows the app starts and the bridge works; it is not a test
