@@ -242,11 +242,19 @@ var newWindowCommand = func() (*exec.Cmd, error) {
 // a host is open in one window at a time (see hostClaims). On macOS this
 // also works where opening the app again would only focus this window.
 func (a *App) NewWindow() error {
+	if err := startAnotherCopy(); err != nil {
+		return fmt.Errorf("open a new window: %w", err)
+	}
+	return nil
+}
+
+// startAnotherCopy starts another copy of this app; tests replace it.
+var startAnotherCopy = func() error {
 	cmd, err := newWindowCommand()
 	if err != nil {
 		return err
 	}
-	// The new window must not inherit this one's askpass session.
+	// The new copy must not inherit this one's askpass session.
 	env := make([]string, 0, len(os.Environ()))
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, "AGENT_SESSIONS_ASKPASS_") {
@@ -254,10 +262,7 @@ func (a *App) NewWindow() error {
 		}
 	}
 	cmd.Env = env
-	if err := startDetached(cmd); err != nil {
-		return fmt.Errorf("open a new window: %w", err)
-	}
-	return nil
+	return startDetached(cmd)
 }
 
 // FocusNextWindow brings the app's next open window to the front, or the

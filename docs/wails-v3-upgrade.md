@@ -48,8 +48,10 @@ describe the v2 scaffold; they are kept as history.
   the shell re-emits them to the page as `files:dropped`.
 - **Window:** each window has its own `app.App` in `app.Windows`, created
   and torn down with the window. New Window still starts another copy of the
-  app. The close guard runs on the window's closing hook, and a quit from the
-  OS is turned into a guarded window close first.
+  app. The close guard runs on the window's closing hook. A quit or restart
+  first asks every window about its unsaved files without closing any
+  (`internal/app/quit.go`); the app quits once all agree, and a restart
+  starts the new copy only after every App has closed.
 - **Linux native code:** the mouse side-button hook (`mousenav_linux.c`) uses
   a capture-phase `GtkGestureClick` on each window's `WebKitWebView`, and font hinting is
   turned off through GTK 4 settings (`fonts_linux.go`).

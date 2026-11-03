@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 )
@@ -11,44 +10,39 @@ import (
 // frontend. Keeping this armed for the window lifetime avoids a first-keystroke
 // race between asynchronous dirty notifications and the native UI thread.
 // The frontend must freeze editor input while approving a close.
+//
+// A request either closes the window (the user closes it) or is held: an app
+// quit or restart asks every window first and closes none of them until all
+// have agreed (see Windows.ShouldQuit).
 type fileCloseGuard struct {
 	mu         sync.Mutex
 	armed      bool
 	sequence   uint64
 	pending    uint64
+	held       bool       // the pending request is part of a quit
+	answer     *closeWait // answered when the pending request completes
 	authorized bool
-	// Restart intent shares the close guard's mutex so a valid cancellation
-	// clears it atomically. launching also rejects duplicate native closes while
-	// starting the replacement, without holding the mutex across process launch.
-	restartPending bool
-	launching      bool
+}
+
+// closeWait is the frontend's answer to one close request.
+type closeWait struct {
+	done  chan struct{}
+	allow bool // set before done is closed
 }
 
 // quitApp asks the window to close through its guarded close path, so the
 // resulting closing hook runs OnBeforeClose; tests replace it.
 var quitApp = requestWindowClose
 
-var reportRestartError = func(ctx context.Context, err error) {
-	emitterFrom(ctx).Emit("files:close-cancelled", nil)
-	_, _ = messageDialog(ctx, MessageDialogOptions{
-		Type: ErrorDialog, Title: "Restart failed", Message: err.Error(),
-	})
-}
-
-// RestartApp requests a normal, guarded close before starting a replacement.
-// The caller must first warn that restarting ends this window's terminal tabs.
-// Success means the close was requested, not that it was approved or restarted.
+// RestartApp quits the app, asking every window about its unsaved files
+// first, and then starts it again with one window. The caller must first
+// warn that restarting ends the terminal tabs. Success means the restart was
+// requested, not that the windows agreed to it.
 func (a *App) RestartApp() error {
-	g := &a.fileClose
-	g.mu.Lock()
-	if g.restartPending || g.launching || g.pending != 0 || g.authorized {
-		g.mu.Unlock()
-		return errors.New("a close or restart is already in progress")
+	if fn := desktopFrom(a.ctx).Restart; fn != nil {
+		return fn()
 	}
-	g.restartPending = true
-	g.mu.Unlock()
-	quitApp(a.appCtx())
-	return nil
+	return fmt.Errorf("restart: %w", ErrDesktopUnavailable)
 }
 
 // EnableFileEditing must complete before the first editable document mounts.
@@ -56,7 +50,7 @@ func (a *App) RestartApp() error {
 func (a *App) EnableFileEditing() bool {
 	a.fileClose.mu.Lock()
 	defer a.fileClose.mu.Unlock()
-	if a.fileClose.pending != 0 || a.fileClose.authorized || a.fileClose.launching {
+	if a.fileClose.pending != 0 || a.fileClose.authorized {
 		return false
 	}
 	a.fileClose.armed = true
@@ -71,44 +65,42 @@ func (a *App) onBeforeClose(ctx context.Context) bool {
 	if id != 0 {
 		emitterFrom(ctx).Emit("files:close-request", id)
 	}
-	if prevent {
-		return true
-	}
-	return a.restartAfterApproval(ctx)
+	return prevent
 }
 
-// restartAfterApproval runs only after request has approved the native close.
-func (a *App) restartAfterApproval(ctx context.Context) bool {
-	g := &a.fileClose
-	g.mu.Lock()
-	if !g.restartPending {
-		g.mu.Unlock()
-		return false
+// approveQuit asks this window whether the app may quit, without closing
+// it. It waits for the frontend's answer, or until gone is closed: a closed
+// window has nothing left to lose. A window with a close request already
+// open answers that request instead. held reports that this window approved
+// and now waits for the quit: if the quit is called off, cancelQuit must
+// tell it.
+func (a *App) approveQuit(gone <-chan struct{}) (allow, held bool) {
+	ctx := a.appCtx()
+	id, answer := a.fileClose.requestHeld()
+	if answer == nil {
+		return true, false
 	}
-	g.restartPending = false
-	g.launching = true
-	g.mu.Unlock()
+	if id != 0 {
+		emitterFrom(ctx).Emit("files:close-request", id)
+	}
+	raiseWindow(ctx)
+	select {
+	case <-answer.done:
+		return answer.allow, id != 0 && answer.allow
+	case <-gone:
+		return true, false
+	}
+}
 
-	// NewWindow reuses the executable command, askpass environment filtering,
-	// and detached process handling. Never launch or show a dialog under mu.
-	err := a.NewWindow()
-	if err != nil {
-		reportRestartError(ctx, fmt.Errorf("restart the app: %w", err))
-		g.mu.Lock()
-		g.launching = false
-		g.mu.Unlock()
-		return true // Keep the current process alive if its replacement failed.
-	}
-	// Leave launching set until shutdown to reject duplicate native closes.
-	return false
+// cancelQuit tells the window that a quit it approved was called off, so
+// its editors thaw.
+func (a *App) cancelQuit() {
+	emitterFrom(a.appCtx()).Emit("files:close-cancelled", nil)
 }
 
 func (g *fileCloseGuard) request() (bool, uint64) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.launching {
-		return true, 0
-	}
 	if g.authorized {
 		g.authorized = false
 		return false, 0
@@ -119,11 +111,35 @@ func (g *fileCloseGuard) request() (bool, uint64) {
 	if g.pending != 0 {
 		return true, 0
 	}
-	g.sequence++
-	g.pending = g.sequence
-	return true, g.pending
+	return true, g.open(false)
 }
 
+// requestHeld opens a held request and returns its ID, or joins the pending
+// request with ID 0. A nil answer means the window may close as it is.
+func (g *fileCloseGuard) requestHeld() (uint64, *closeWait) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.armed || g.authorized {
+		return 0, nil
+	}
+	if g.pending != 0 {
+		return 0, g.answer
+	}
+	id := g.open(true)
+	return id, g.answer
+}
+
+// open starts a new request; g.mu is held.
+func (g *fileCloseGuard) open(held bool) uint64 {
+	g.sequence++
+	g.pending = g.sequence
+	g.held = held
+	g.answer = &closeWait{done: make(chan struct{})}
+	return g.pending
+}
+
+// complete answers the pending request. It reports whether the window must
+// now close: never for a held request, whose window closes with the app.
 func (g *fileCloseGuard) complete(id uint64, allow bool) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -131,8 +147,15 @@ func (g *fileCloseGuard) complete(id uint64, allow bool) bool {
 		return false
 	}
 	g.pending = 0
-	if !allow {
-		g.restartPending = false
+	held := g.held
+	g.held = false
+	if g.answer != nil {
+		g.answer.allow = allow
+		close(g.answer.done)
+		g.answer = nil
+	}
+	if held {
+		return false
 	}
 	g.authorized = allow
 	return allow

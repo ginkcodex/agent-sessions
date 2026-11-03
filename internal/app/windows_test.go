@@ -6,7 +6,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 )
 
 // eventLog records the events one window receives.
@@ -118,69 +117,6 @@ func TestWindowsShutdownReleasesEveryApp(t *testing.T) {
 	}
 	if err := hub.View().Initialize(); !errors.Is(err, errNotificationsClosed) {
 		t.Fatalf("hub after Shutdown: %v", err)
-	}
-}
-
-func TestWindowsShouldQuitClosesWindowsThroughTheirGuards(t *testing.T) {
-	w := testWindows(t)
-	if !w.ShouldQuit() {
-		t.Fatal("no windows: the app must quit")
-	}
-
-	// A window that has not started has nothing to guard.
-	w.Reserve()
-	if !w.ShouldQuit() {
-		t.Fatal("only an unstarted window: the app must quit")
-	}
-
-	closes := make(chan string, 4)
-	requests := make(chan uint64, 4)
-	var name string
-	name, _ = startedApp(t, w, Desktop{
-		Emit: func(event string, payload any) {
-			if event == "files:close-request" {
-				requests <- payload.(uint64)
-			}
-		},
-		RequestClose: func(context.Context) { closes <- name },
-	})
-	waitClose := func() {
-		t.Helper()
-		select {
-		case got := <-closes:
-			if got != name {
-				t.Fatalf("closed %s, want %s", got, name)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("the window was not asked to close")
-		}
-	}
-	if w.ShouldQuit() {
-		t.Fatal("an open window must close before the app quits")
-	}
-	waitClose()
-
-	// The window has files open for editing: its guard asks the page first
-	// and keeps the window open meanwhile.
-	app := w.lookup(name).app
-	app.EnableFileEditing()
-	if !w.BeforeClose(name) {
-		t.Fatal("an armed guard let the window close")
-	}
-	if w.ShouldQuit() {
-		t.Fatal("a window kept open by its guard let the app quit")
-	}
-	waitClose()
-
-	// The page approves: the guard closes the window again and lets it go,
-	// so the app may quit before the window is gone.
-	app.CompleteFileClose(<-requests, true)
-	waitClose()
-	if w.BeforeClose(name) {
-		t.Fatal("an approved close was kept open")
-	}
-	if !w.ShouldQuit() {
-		t.Fatal("every window approved: the app must quit")
 	}
 }
 

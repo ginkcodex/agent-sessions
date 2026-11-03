@@ -28,6 +28,7 @@ var ErrWindowClosed = errors.New("this window is closed")
 type Windows struct {
 	hub  *NotificationHub
 	open func() error // opens another window
+	quit func()       // quits the app through ShouldQuit
 	// newApp creates a window's App; tests replace it.
 	newApp func() *App
 
@@ -38,6 +39,9 @@ type Windows struct {
 
 	// closing counts window teardowns in progress; Shutdown waits for them.
 	closing sync.WaitGroup
+
+	quitMu   sync.Mutex
+	quitting quitState
 }
 
 type windowEntry struct {
@@ -50,6 +54,7 @@ type windowEntry struct {
 	desktop Desktop
 	cancel  context.CancelFunc
 	ready   chan struct{} // closed once the App has started
+	gone    chan struct{} // closed once the window is closed
 
 	// closeApproved is set when the close guard lets the window close, before
 	// the window is gone; the app may then quit without asking it again.
@@ -57,11 +62,13 @@ type windowEntry struct {
 }
 
 // NewWindows creates the registry. hub shares notifications among the
-// windows' Apps and open opens another window; either may be nil.
-func NewWindows(hub *NotificationHub, open func() error) *Windows {
+// windows' Apps, open opens another window and quit quits the app through
+// ShouldQuit; any may be nil.
+func NewWindows(hub *NotificationHub, open func() error, quit func()) *Windows {
 	return &Windows{
 		hub:     hub,
 		open:    open,
+		quit:    quit,
 		newApp:  NewApp,
 		entries: map[string]*windowEntry{},
 	}
@@ -79,6 +86,7 @@ func (w *Windows) Reserve() string {
 		name:  "window-" + strconv.FormatUint(w.next, 10),
 		app:   w.newApp(),
 		ready: make(chan struct{}),
+		gone:  make(chan struct{}),
 	}
 	w.entries[e.name] = e
 	w.order = append(w.order, e)
@@ -88,7 +96,7 @@ func (w *Windows) Reserve() string {
 // Start starts the App of a reserved window, which then gets the window's
 // own context: cancelled when the window closes, not when the app quits.
 // desktop is the window's adapter; Start adds the shared notifications and
-// New Window to it. Calls from the window wait until Start has returned.
+// New Window and Restart to it. Calls from the window wait until Start has returned.
 func (w *Windows) Start(name string, parent context.Context, desktop Desktop) {
 	e := w.lookup(name)
 	if e == nil {
@@ -110,6 +118,9 @@ func (w *Windows) Start(name string, parent context.Context, desktop Desktop) {
 	}
 	if desktop.OpenWindow == nil {
 		desktop.OpenWindow = w.open
+	}
+	if desktop.Restart == nil {
+		desktop.Restart = w.requestRestart
 	}
 
 	e.mu.Lock()
@@ -159,32 +170,6 @@ func (w *Windows) Closed(name string) {
 	}
 }
 
-// ShouldQuit reports whether the app may quit now. It runs on the UI thread
-// and never waits. When a window is still open, it asks that window to
-// close through its guard instead; the last window closing then quits the
-// app.
-func (w *Windows) ShouldQuit() bool {
-	w.mu.Lock()
-	var open []func(context.Context)
-	for _, e := range w.order {
-		if e.closeApproved.Load() {
-			continue
-		}
-		// A window whose App never started has nothing to guard.
-		if closeFn := e.requestClose(); closeFn != nil {
-			open = append(open, closeFn)
-		}
-	}
-	w.mu.Unlock()
-	if len(open) == 0 {
-		return true
-	}
-	for _, closeFn := range open {
-		go closeFn(context.Background())
-	}
-	return false
-}
-
 // FocusNextWindow brings the next app window to the front, after window
 // name in the ring of windows, across processes.
 func (w *Windows) FocusNextWindow(name string, forward bool) error {
@@ -227,6 +212,7 @@ func (w *Windows) Shutdown() {
 	if w.hub != nil {
 		w.hub.Close()
 	}
+	w.restartIfApproved()
 }
 
 // detach stops a window's calls and events and forgets the window. It
@@ -242,6 +228,7 @@ func (w *Windows) detach(e *windowEntry) (release func()) {
 	e.closed = true
 	started, cancel := e.started, e.cancel
 	e.mu.Unlock()
+	close(e.gone)
 
 	w.mu.Lock()
 	delete(w.entries, e.name)
@@ -281,17 +268,6 @@ func (e *windowEntry) isStarted() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.started
-}
-
-// requestClose is the started window's guarded close; nil when the window
-// has not started or is already closing.
-func (e *windowEntry) requestClose() func(context.Context) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if !e.started || e.closed || e.desktop.RequestClose == nil {
-		return nil
-	}
-	return e.desktop.RequestClose
 }
 
 // app returns the started App of window name, waiting for it to start.

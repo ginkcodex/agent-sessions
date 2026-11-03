@@ -43,7 +43,7 @@ func run() {
 
 	s := &shell{}
 	hub := newNotificationHub(func() context.Context { return s.desktop.Context() })
-	s.windows = app.NewWindows(hub, s.openWindow)
+	s.windows = app.NewWindows(hub, s.openWindow, func() { s.desktop.Quit() })
 	s.desktop = application.New(application.Options{
 		Name:        "Agent Sessions",
 		Description: "Browse and manage agentic coding tool sessions",
@@ -55,13 +55,13 @@ func run() {
 			Handler:    application.AssetFileServerFS(assets),
 			Middleware: injectDesktopMarker,
 		},
-		// An OS quit first closes the windows through their close guards.
+		// A quit first asks every window about its unsaved files; the
+		// windows agree, then the app quits again.
 		ShouldQuit: s.windows.ShouldQuit,
 		OnShutdown: s.windows.Shutdown,
 		Mac: application.MacOptions{
 			// Once the close guards let the last window close, terminate
-			// instead of leaving a windowless app in the Dock. This also
-			// completes a Cmd+Q redirected through ShouldQuit above.
+			// instead of leaving a windowless app in the Dock.
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 		Linux: application.LinuxOptions{

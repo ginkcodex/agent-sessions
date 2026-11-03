@@ -84,6 +84,8 @@ type Desktop struct {
 	Print func(ctx context.Context) error
 	// OpenWindow opens another app window in this process.
 	OpenWindow func() error
+	// Restart quits the app, once every window agrees, and starts it again.
+	Restart func() error
 
 	Notifications Notifier
 }

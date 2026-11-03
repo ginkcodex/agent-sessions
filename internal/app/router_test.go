@@ -18,7 +18,7 @@ import (
 // caches and window claims in temporary directories.
 func testWindows(t *testing.T) *Windows {
 	t.Helper()
-	w := NewWindows(nil, nil)
+	w := NewWindows(nil, nil, nil)
 	w.newApp = func() *App {
 		a := NewAppWithService(NewService(scan.NewCatalog(), provider.Set{}))
 		a.cacheDirOverride = t.TempDir()
