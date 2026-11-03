@@ -51,3 +51,27 @@ func TestFrontendBindingMatchesApp(t *testing.T) {
 			strings.Join(missing, ", "), strings.Join(extra, ", "))
 	}
 }
+
+// TestRouterIsTheOnlyBinding keeps the bound Router down to its one Call
+// method, and the frontend's ROUTER_CALL naming it.
+func TestRouterIsTheOnlyBinding(t *testing.T) {
+	typ := reflect.TypeFor[*Router]()
+	var methods []string
+	for i := range typ.NumMethod() {
+		methods = append(methods, typ.Method(i).Name)
+	}
+	if !slices.Equal(methods, []string{"Call"}) {
+		t.Fatalf("*Router methods = %v, want only Call: Wails binds every one", methods)
+	}
+
+	src, err := os.ReadFile(filepath.Join("..", "..", "frontend", "src", "lib", "desktopRuntime.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`export const ROUTER_CALL = '([^']+)'`).FindSubmatch(src)
+	elem := typ.Elem()
+	want := elem.PkgPath() + "." + elem.Name() + ".Call"
+	if m == nil || string(m[1]) != want {
+		t.Fatalf("ROUTER_CALL in desktopRuntime.ts = %q, want %q", m, want)
+	}
+}

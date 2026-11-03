@@ -6,12 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 import { createAPI } from '../src/lib/api.ts';
 import { APP_METHODS, createAppBinding } from '../src/lib/appBinding.ts';
-import { APP_SERVICE, DesktopBridgeError, FILES_DROPPED_EVENT, isDesktop } from '../src/lib/desktopRuntime.ts';
+import { DesktopBridgeError, ROUTER_CALL, callApp, FILES_DROPPED_EVENT, isDesktop } from '../src/lib/desktopRuntime.ts';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 import { showStartupError } from '../src/lib/startupError.ts';
 import { flushRuntime, installDesktopRuntime } from './desktop-app.mjs';
 
-const APP = 'github.com/ginkcode/agent-sessions/internal/app.App';
+const ROUTER = 'github.com/ginkcode/agent-sessions/internal/app.Router.Call';
 
 // A stand-in for @wailsio/runtime that records calls and dispatches events.
 function fakeRuntime(reply = async () => undefined) {
@@ -46,9 +46,9 @@ test('only the marker the shell injects selects the desktop backend', () => {
   assert.ok(createAPI() instanceof MockBackendAPI, 'no window: the browser demo keeps its mock');
 });
 
-test('desktop calls go through Call.ByName with the full Go method name', async () => {
-  assert.equal(APP_SERVICE, APP);
-  const rt = fakeRuntime(async (name) => (name.endsWith('.AppVersion') ? '1.2.3' : { root: '/repo', files: ['a.go'] }));
+test('desktop calls go through the router with the App method name and its arguments', async () => {
+  assert.equal(ROUTER_CALL, ROUTER);
+  const rt = fakeRuntime(async (_name, method) => (method === 'AppVersion' ? '1.2.3' : { root: '/repo', files: ['a.go'] }));
   const restore = installDesktopRuntime(rt);
   try {
     const api = createAPI();
@@ -56,10 +56,27 @@ test('desktop calls go through Call.ByName with the full Go method name', async 
     assert.deepEqual(await api.listFiles('/repo'), { root: '/repo', files: ['a.go'] });
     await api.terminalResize('t1', 80, 24);
     assert.deepEqual(rt.calls, [
-      [`${APP}.AppVersion`],
-      [`${APP}.ListFiles`, '/repo'],
-      [`${APP}.TerminalResize`, 't1', 80, 24],
+      [ROUTER, 'AppVersion', []],
+      [ROUTER, 'ListFiles', ['/repo']],
+      [ROUTER, 'TerminalResize', ['t1', 80, 24]],
     ]);
+  } finally { restore(); }
+});
+
+test('callApp always sends an argument list and passes results through', async () => {
+  const rt = fakeRuntime(async (_name, method) => (method === 'AppVersion' ? '1.2.3' : undefined));
+  const restore = installDesktopRuntime(rt);
+  try {
+    assert.equal(await callApp('AppVersion'), '1.2.3', 'a string result arrives as is');
+    assert.equal(await callApp('Quit', undefined), undefined);
+    await callApp('Mixed', 'a', undefined, 0);
+    assert.deepEqual(rt.calls, [
+      [ROUTER, 'AppVersion', []],
+      [ROUTER, 'Quit', [undefined]],
+      [ROUTER, 'Mixed', ['a', undefined, 0]],
+    ]);
+    // On the wire undefined arguments are null, as when App was bound itself.
+    assert.equal(JSON.stringify(rt.calls[2][2]), '["a",null,0]');
   } finally { restore(); }
 });
 
@@ -156,7 +173,7 @@ test('openURL prefers the Go binding, then the runtime browser', async () => {
   try {
     const api = createAPI();
     await api.openURL('https://example.com/a');
-    assert.deepEqual(rt.calls, [[`${APP}.OpenURL`, 'https://example.com/a']]);
+    assert.deepEqual(rt.calls, [[ROUTER, 'OpenURL', ['https://example.com/a']]]);
     assert.deepEqual(rt.opened, []);
     fail = true;
     await api.openURL('https://example.com/b');

@@ -82,6 +82,8 @@ type Desktop struct {
 	RequestClose func(ctx context.Context)
 	// Print opens the system print dialog for the window.
 	Print func(ctx context.Context) error
+	// OpenWindow opens another app window in this process.
+	OpenWindow func() error
 
 	Notifications Notifier
 }

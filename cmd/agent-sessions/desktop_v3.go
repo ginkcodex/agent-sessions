@@ -14,16 +14,22 @@ import (
 )
 
 // newNotificationHub shares the desktop's notifications, a process-wide
-// Wails service, among the windows.
-func newNotificationHub(desktop *application.App) *app.NotificationHub {
-	return app.NewNotificationHub(&desktopNotifier{service: notifications.New(), ctx: desktop.Context()})
+// Wails service, among the windows. ctx returns the application's context;
+// it is first called when a window sends a notification.
+func newNotificationHub(ctx func() context.Context) *app.NotificationHub {
+	return app.NewNotificationHub(&desktopNotifier{service: notifications.New(), ctx: ctx})
 }
 
 // newDesktop adapts the Wails v3 application and one window to what
-// internal/app needs from the desktop.
-func newDesktop(desktop *application.App, window *application.WebviewWindow, notifier app.Notifier) app.Desktop {
+// internal/app needs from the desktop. app.Windows adds the shared
+// notifications and New Window.
+func newDesktop(desktop *application.App, window *application.WebviewWindow) app.Desktop {
 	return app.Desktop{
-		Emit: func(name string, payload any) { desktop.Event.Emit(name, payload) },
+		// Each window's events go to that window only: the App behind it
+		// numbers its terminals and prompts on its own.
+		Emit: func(name string, payload any) {
+			window.DispatchWailsEvent(&application.CustomEvent{Name: name, Data: payload})
+		},
 
 		OpenFile: func(_ context.Context, opts app.OpenDialogOptions) (string, error) {
 			return desktop.Dialog.OpenFileWithOptions(&application.OpenFileDialogOptions{
@@ -73,8 +79,6 @@ func newDesktop(desktop *application.App, window *application.WebviewWindow, not
 		// Close emits WindowClosing, so the close guard decides.
 		RequestClose: func(context.Context) { window.Close() },
 		Print:        func(context.Context) error { return printWindow(window) },
-
-		Notifications: notifier,
 	}
 }
 
@@ -100,7 +104,7 @@ func fileFilters(filters []app.FileFilter) []application.FileFilter {
 // as a bound service, so the page cannot send notifications itself.
 type desktopNotifier struct {
 	service *notifications.NotificationService
-	ctx     context.Context
+	ctx     func() context.Context
 
 	mu      sync.Mutex
 	started bool
@@ -114,7 +118,7 @@ func (n *desktopNotifier) Initialize() error {
 	if n.started {
 		return nil
 	}
-	if err := n.service.ServiceStartup(n.ctx, application.ServiceOptions{}); err != nil {
+	if err := n.service.ServiceStartup(n.ctx(), application.ServiceOptions{}); err != nil {
 		return err
 	}
 	n.started = true

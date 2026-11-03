@@ -31,7 +31,6 @@ const filesDroppedEvent = "files:dropped"
 // run launches the Wails v3 desktop application. It is only compiled with the
 // desktop build tag so default builds and tests never need GTK or WebKit.
 func run() {
-	service := app.NewApp()
 	app.SetNativeTerminalFonts(nativeTerminalFonts)
 	hideSiriAffordance()
 
@@ -42,99 +41,54 @@ func run() {
 		log.Fatal(err)
 	}
 
-	var window *application.WebviewWindow
-	var hub *app.NotificationHub
-	// closeApproved lets the app quit after the close guard has approved
-	// closing the only window. Before that, an OS quit becomes a window close
-	// so it goes through the same guard.
-	var closeApproved atomic.Bool
-	desktop := application.New(application.Options{
+	s := &shell{}
+	hub := newNotificationHub(func() context.Context { return s.desktop.Context() })
+	s.windows = app.NewWindows(hub, s.openWindow)
+	s.desktop = application.New(application.Options{
 		Name:        "Agent Sessions",
 		Description: "Browse and manage agentic coding tool sessions",
 		Icon:        frontend.AppIcon,
-		Services:    []application.Service{application.NewService(service)},
+		// The frontend calls every App method through the router, which
+		// finds the App of the calling window.
+		Services: []application.Service{application.NewService(app.NewRouter(s.windows, callingWindow))},
 		Assets: application.AssetOptions{
 			Handler:    application.AssetFileServerFS(assets),
 			Middleware: injectDesktopMarker,
 		},
-		ShouldQuit: func() bool {
-			if closeApproved.Load() || window == nil {
-				return true
-			}
-			go window.Close()
-			return false
-		},
-		OnShutdown: func() {
-			app.OnShutdown(service)
-			hub.Close()
-		},
+		// An OS quit first closes the windows through their close guards.
+		ShouldQuit: s.windows.ShouldQuit,
+		OnShutdown: s.windows.Shutdown,
 		Mac: application.MacOptions{
-			// Each process owns one window. After the close guard approves,
-			// terminate instead of leaving a windowless process in the Dock.
-			// This also completes Cmd+Q redirected through ShouldQuit above.
+			// Once the close guards let the last window close, terminate
+			// instead of leaving a windowless app in the Dock. This also
+			// completes a Cmd+Q redirected through ShouldQuit above.
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 		Linux: application.LinuxOptions{
 			ProgramName: "agent-sessions",
 		},
 	})
-
-	hub = newNotificationHub(desktop)
-	window = desktop.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:      "main",
-		Title:     "Agent Sessions",
-		Width:     1280,
-		Height:    820,
-		MinWidth:  960,
-		MinHeight: 600,
-		// Files dropped on the terminal panel arrive as paths. Only elements
-		// marked data-file-drop-target receive them.
-		EnableFileDrop: true,
-		Mac: application.MacWindow{
-			// Escape belongs to in-app dialogs, not to fullscreen.
-			DisableEscapeExitsFullscreen: true,
-		},
-		Linux: application.LinuxWindow{
-			Icon:             frontend.AppIcon,
-			WebviewGpuPolicy: application.WebviewGpuPolicyOnDemand,
-		},
-	})
-	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
-		if app.OnBeforeClose(service) {
-			event.Cancel()
-			return
-		}
-		closeApproved.Store(true)
-	})
-
-	// Wails hands dropped paths only to Go; pass them on to the page, which
-	// works out the terminal under the CSS-pixel drop point.
-	window.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
-		files := event.Context().DroppedFiles()
-		target := event.Context().DropTargetDetails()
-		if len(files) == 0 || target == nil {
-			return
-		}
-		desktop.Event.Emit(filesDroppedEvent, map[string]any{
-			"filenames": files, "x": target.X, "y": target.Y,
-		})
-	})
+	if err := s.openWindow(); err != nil {
+		log.Fatal(err)
+	}
 
 	var started atomic.Bool
-	desktop.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+	s.desktop.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		if !started.CompareAndSwap(false, true) {
 			return
 		}
 		// GTK is initialized by now and the window exists.
 		disableFontHinting()
 		hookMouseNavigation(context.Background())
-		app.OnStartup(service, desktop.Context(), newDesktop(desktop, window, hub.View()))
+		s.start()
 		hookWindowCycling(func(forward bool) {
-			_ = service.FocusNextWindow(forward)
+			if w := s.desktop.Window.Current(); w != nil {
+				_ = s.windows.FocusNextWindow(w.Name(), forward)
+			}
 		})
 	})
 
-	if err := desktop.Run(); err != nil {
+	if err := s.desktop.Run(); err != nil {
 		log.Fatal(err)
 	}
 }

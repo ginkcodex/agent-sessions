@@ -1,6 +1,7 @@
 // A stand-in App binding for the desktop backend. The real one calls each Go
-// method through Call.ByName (see desktop-runtime.test.mjs); these tests pass
-// plain objects, where a missing method stands for an older backend.
+// method through the router's Call.ByName (see desktop-runtime.test.mjs);
+// these tests pass plain objects, where a missing method stands for an older
+// backend.
 import { createDesktopAPI } from '../src/lib/api.ts';
 import { setDesktopRuntimeLoader } from '../src/lib/desktopRuntime.ts';
 

@@ -26,27 +26,30 @@ describe the v2 scaffold; they are kept as history.
 ### Code boundaries
 
 - **Go:** only `cmd/agent-sessions` imports Wails (`run_gui.go`,
-  `desktop_v3.go`, `mousenav_native.go`). `internal/app` defines an
-  `app.Desktop` struct of callbacks (events, dialogs, window state,
+  `shell.go`, `desktop_v3.go`, `mousenav_native.go`). `internal/app` defines
+  an `app.Desktop` struct of callbacks (events, dialogs, window state,
   notifications, close requests); `desktop_v3.go` fills it from the Wails
-  application and its window. The CLI and the default build never link Wails
+  application and one window. The CLI and the default build never link Wails
   or GTK.
-- **Bindings:** the `App` service is registered with
-  `application.NewService`. The frontend calls each method by its full name
-  through `Call.ByName` (`frontend/src/lib/appBinding.ts`); a Go test keeps
-  `APP_METHODS` in step with the exported methods of `internal/app.App`. No
-  generated bindings are committed or imported.
+- **Bindings:** the only bound service is `app.Router`, whose one method
+  `Call(method, args)` runs an `App` method on the App of the calling window
+  (Wails passes the window in the call's context). The frontend calls it
+  through `Call.ByName` (`callApp` in `frontend/src/lib/desktopRuntime.ts`,
+  `frontend/src/lib/appBinding.ts`); a Go test keeps `APP_METHODS` in step
+  with the exported methods of `internal/app.App`. No generated bindings are
+  committed or imported.
 - **Runtime:** `frontend/src/lib/desktopRuntime.ts` is the only module that
   imports `@wailsio/runtime`, and loads it with a dynamic import only when the
   page runs in the desktop app. The Go asset server marks that case by
   injecting `window.__AGENT_SESSIONS_DESKTOP__`; the browser demo and Node
   tests never load the runtime.
-- **Events:** Go emits through `application.App.Event.Emit`. Dropped files
-  reach only Go in v3, so the shell re-emits them to the page as
-  `files:dropped`.
-- **Window:** each process owns one window; New Window starts another copy of
-  the app. The close guard runs on the window's closing hook, and a quit from
-  the OS is turned into a guarded window close first.
+- **Events:** each App emits to its own window only
+  (`WebviewWindow.DispatchWailsEvent`). Dropped files reach only Go in v3, so
+  the shell re-emits them to the page as `files:dropped`.
+- **Window:** each window has its own `app.App` in `app.Windows`, created
+  and torn down with the window. New Window still starts another copy of the
+  app. The close guard runs on the window's closing hook, and a quit from the
+  OS is turned into a guarded window close first.
 - **Linux native code:** the mouse side-button hook (`mousenav_linux.c`) uses
   a capture-phase `GtkGestureClick` on the `WebKitWebView`, and font hinting is
   turned off through GTK 4 settings (`fonts_linux.go`).

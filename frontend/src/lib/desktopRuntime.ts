@@ -4,8 +4,11 @@
 // the desktop app: the browser demo and node tests never load it.
 import type * as Wails from '@wailsio/runtime';
 
-/** The Go service every App binding is called through, by full method name. */
-export const APP_SERVICE = 'github.com/ginkcode/agent-sessions/internal/app.App';
+/**
+ * The one Go method the frontend calls. It runs the named App method on the
+ * App of this window: each window of the desktop app has its own.
+ */
+export const ROUTER_CALL = 'github.com/ginkcode/agent-sessions/internal/app.Router.Call';
 
 /**
  * Files dropped on a `data-file-drop-target` element. The desktop shell
@@ -88,10 +91,10 @@ export function setDesktopRuntimeLoader(next?: () => Promise<DesktopRuntime>): v
   loading = undefined;
 }
 
-/** Calls App.method in the Go backend. */
+/** Calls App.method of this window in the Go backend. */
 export async function callApp(method: string, ...args: unknown[]): Promise<any> {
   const rt = await loadDesktopRuntime();
-  return rt.Call.ByName(`${APP_SERVICE}.${method}`, ...args);
+  return rt.Call.ByName(ROUTER_CALL, method, args);
 }
 
 /**

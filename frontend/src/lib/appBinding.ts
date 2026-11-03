@@ -1,6 +1,6 @@
 // The desktop App binding: one entry per exported Go method of
-// github.com/ginkcode/agent-sessions/internal/app.App, each called through
-// Call.ByName with its full name. An explicit object, not a Proxy, so a
+// github.com/ginkcode/agent-sessions/internal/app.App, each called by name
+// through the Go router (see callApp). An explicit object, not a Proxy, so a
 // method's presence can still be checked. Keep APP_METHODS one quoted name per
 // line and in step with the Go App: a Go test compares the two lists.
 import type { WailsAppBinding } from './api';

@@ -25,7 +25,7 @@ test('fullscreen shortcuts use Ctrl+Cmd+F on macOS and F11 elsewhere, including 
   assert.equal(terminalKeyAction(f11, false), 'app');
 });
 
-const APP = 'github.com/ginkcode/agent-sessions/internal/app.App';
+const ROUTER = 'github.com/ginkcode/agent-sessions/internal/app.Router.Call';
 
 // A desktop runtime whose ToggleFullscreen call is answered by toggle.
 function desktopFullscreen(toggle) {
@@ -46,12 +46,12 @@ function desktopFullscreen(toggle) {
   };
 }
 
-test('desktop fullscreen calls the App binding by its full Go name', async () => {
+test('desktop fullscreen calls the App method through the router', async () => {
   const desktop = desktopFullscreen(async () => {});
   try {
     await toggleFullscreen();
     await toggleFullscreen();
-    assert.deepEqual(desktop.calls, [[`${APP}.ToggleFullscreen`], [`${APP}.ToggleFullscreen`]]);
+    assert.deepEqual(desktop.calls, [[ROUTER, 'ToggleFullscreen', []], [ROUTER, 'ToggleFullscreen', []]]);
   } finally { desktop.restore(); }
 });
 
@@ -124,7 +124,7 @@ test('desktop Escape safeguard uses capture so dialogs cannot bypass it by stopp
 });
 
 test('native macOS fullscreen does not exit on Escape', () => {
-  const gui = readFileSync(new URL('../../cmd/agent-sessions/run_gui.go', import.meta.url), 'utf8');
+  const gui = readFileSync(new URL('../../cmd/agent-sessions/shell.go', import.meta.url), 'utf8');
   assert.match(gui, /DisableEscapeExitsFullscreen:\s*true/);
 });
 
