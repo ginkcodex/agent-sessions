@@ -798,11 +798,12 @@
       <button
         type="button"
         class="scroll-bottom-pill"
-        title="Scroll to bottom"
+        title={jumpingToBottom ? 'Loading the latest messages…' : 'Scroll to bottom'}
+        aria-label={jumpingToBottom ? 'Loading the latest messages' : 'Scroll to bottom'}
         disabled={jumpingToBottom}
         onclick={scrollToBottom}
       >
-        {jumpingToBottom ? 'Loading…' : '↓ Bottom'}
+        <Icon name={jumpingToBottom ? 'loader-circle' : 'arrow-down'} size={18} class={jumpingToBottom ? 'spin' : ''} />
       </button>
     {/if}
   {/if}
@@ -893,9 +894,10 @@
     content-visibility: auto;
   }
 
+  /* A reply has no card of its own, so the ring stands off its text. */
   :global(.message-index-anchor.search-jump-target .message-card) {
     outline: 2px solid rgba(245, 158, 11, 0.45);
-    outline-offset: 0;
+    outline-offset: 4px;
   }
 
   :global(mark.search-jump-match) {
@@ -971,34 +973,26 @@
     user-select: none;
   }
 
+  /* Round floating buttons in the pane's corner: Scroll to bottom, and the
+     bottom anchor in its place once the bottom is near. */
   .scroll-bottom-pill {
     position: absolute;
     bottom: 20px;
     right: 24px;
-    padding: 6px 12px;
-    border-radius: 20px;
-    background-color: var(--accent-color);
-    color: white;
-    font-size: 0.75rem;
-    font-weight: 600;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    border: none;
-    cursor: pointer;
-    transition: transform 0.15s ease, opacity 0.15s ease;
-    z-index: 10;
-  }
-
-  .bottom-anchor {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
     padding: 0;
-    font-size: 1rem;
-    background-color: var(--bg-secondary);
+    border-radius: 50%;
+    background-color: var(--segment-thumb);
     color: var(--text-secondary);
+    box-shadow: var(--shadow-popover);
     border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: transform 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+    z-index: 10;
   }
 
   .anchor-icon {
@@ -1026,6 +1020,10 @@
 
   .scroll-bottom-pill:hover:not(:disabled) {
     transform: translateY(-2px);
-    opacity: 0.95;
+    color: var(--text-primary);
+  }
+
+  .bottom-anchor.anchored:hover:not(:disabled) {
+    color: white;
   }
 </style>

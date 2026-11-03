@@ -505,29 +505,25 @@
     </div>
 
     <!-- Token use, on the path's line; it wraps below when space runs out. -->
-    <div class="stats-group">
-      <div class="stat-pill">
-        <span class="stat-label">In:</span>
+    <div class="stats-group" aria-label="Token use">
+      <span class="stat-pill" title="Input tokens">
         <span class="stat-val">{formatTokens(meta.tokens.input)}</span>
-      </div>
-      <span class="stat-sep">·</span>
-      <div class="stat-pill">
-        <span class="stat-label">Out:</span>
+        <span class="stat-label">in</span>
+      </span>
+      <span class="stat-pill" title="Output tokens">
         <span class="stat-val">{formatTokens(meta.tokens.output)}</span>
-      </div>
+        <span class="stat-label">out</span>
+      </span>
       {#if meta.tokens.cacheRead && meta.tokens.cacheRead > 0}
-        <span class="stat-sep">·</span>
-        <div class="stat-pill">
-          <span class="stat-label">Cache:</span>
+        <span class="stat-pill" title="Tokens read from the prompt cache">
           <span class="stat-val">{formatTokens(meta.tokens.cacheRead)}</span>
-        </div>
+          <span class="stat-label">cached</span>
+        </span>
       {/if}
       {#if meta.costUsd && meta.costUsd > 0}
-        <span class="stat-sep">·</span>
-        <div class="stat-pill">
-          <span class="stat-label">Cost:</span>
+        <span class="stat-pill cost" title="Estimated cost">
           <span class="stat-val">{formatCost(meta.costUsd)}</span>
-        </div>
+        </span>
       {/if}
     </div>
   </div>
@@ -958,10 +954,11 @@
     font-family: var(--font-mono);
   }
 
+  /* Token use as small tonal chips: the number, then a quiet unit. */
   .stats-group {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
@@ -977,9 +974,12 @@
   }
 
   .stat-pill {
-    display: flex;
-    align-items: center;
+    display: inline-flex;
+    align-items: baseline;
     gap: 3px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background-color: var(--segment-track);
   }
 
   .stat-label {
@@ -995,7 +995,4 @@
     color: var(--text-secondary);
   }
 
-  .stat-sep {
-    opacity: 0.4;
-  }
 </style>

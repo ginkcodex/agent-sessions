@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Message, SessionRef, SearchHitKind } from '../../types';
-  import { formatAbsoluteTime } from '../../date';
+  import { formatAbsoluteTime, formatShortTime } from '../../date';
   import { preferences } from '../../stores/preferences.svelte';
   import { manage } from '../../stores/manage.svelte';
   import { toast } from '../../stores/toast.svelte';
@@ -52,7 +52,9 @@
     onFileLink,
   }: Props = $props();
 
-  let formattedTime = $derived(message.time ? formatAbsoluteTime(message.time, preferences.timeZone) : '');
+  // A short time beside the role; the full one, with its zone, on hover.
+  let shortTime = $derived(message.time ? formatShortTime(message.time, preferences.timeZone) : '');
+  let fullTime = $derived(message.time ? formatAbsoluteTime(message.time, preferences.timeZone) : '');
   let isSystem = $derived(message.role === 'system');
   let isUser = $derived(message.role === 'user');
   let isAssistant = $derived(message.role === 'assistant');
@@ -188,60 +190,63 @@
     class:is-meta={message.isMeta}
     oncontextmenu={openMenu}
   >
-    <div class="message-card">
-      <div class="message-meta-header">
-        <div class="meta-left">
-          {#if isUser}
-            <span class="role-icon user"><Icon name="user" size={12} /></span>
-            <span class="role-label">User</span>
-          {:else if isAssistant}
-            <span class="role-icon assistant"><AgentIcon agent={sessionRef?.agent} size={11} /></span>
-            <span class="role-label">Assistant</span>
-            {#if message.model}
-              <span class="model-tag">{message.model}</span>
-            {/if}
-          {:else}
-            <span class="role-icon system"><Icon name="settings" size={12} /></span>
-            <span class="role-label">System</span>
+    <!-- The role, model and time sit above the message rather than in a card
+         header: user messages are a bubble on the right, the agent's reply
+         is open text under its mark. -->
+    <div class="message-meta-header">
+      <div class="meta-left">
+        {#if isUser}
+          <span class="role-icon user"><Icon name="user" size={12} /></span>
+          <span class="role-label">You</span>
+        {:else if isAssistant}
+          <span class="role-icon assistant"><AgentIcon agent={sessionRef?.agent} size={11} /></span>
+          <span class="role-label">Assistant</span>
+          {#if message.model}
+            <span class="model-tag">{message.model}</span>
           {/if}
-          {#if message.isSidechain}
-            <span class="sidechain-tag">sidechain</span>
-          {/if}
-          {#if translation?.status === 'loading'}
-            <span class="translation-tag" role="status">Translating…</span>
-          {:else if translation?.status === 'done'}
-            <span class="translation-tag">
-              {translated ? translateSettings.language : 'Original'} ·
-              <button type="button" class="translation-toggle" onclick={() => translations.toggleOriginal(key)}>
-                {translated ? 'Show original' : 'Show translation'}
-              </button>
-            </span>
-          {:else if translation?.status === 'error'}
-            <span class="translation-tag failed" title={translation.error}>
-              Translation failed ·
-              <button type="button" class="translation-toggle" onclick={translate}>Retry</button>
-            </span>
-          {/if}
-        </div>
-
-        {#if formattedTime || (revealed && onResetLevel)}
-          <div class="meta-right">
-            {#if revealed && onResetLevel}
-              <button
-                type="button"
-                class="reset-level"
-                aria-label="Show this message at the current display level"
-                title="Shown in full for this search result. Click to show it at the current display level."
-                onclick={onResetLevel}
-              >↻</button>
-            {/if}
-            {#if formattedTime}
-              <span class="time-label" title={message.time}>{formattedTime}</span>
-            {/if}
-          </div>
+        {:else}
+          <span class="role-icon system"><Icon name="settings" size={12} /></span>
+          <span class="role-label">System</span>
+        {/if}
+        {#if message.isSidechain}
+          <span class="sidechain-tag">sidechain</span>
+        {/if}
+        {#if translation?.status === 'loading'}
+          <span class="translation-tag" role="status">Translating…</span>
+        {:else if translation?.status === 'done'}
+          <span class="translation-tag">
+            {translated ? translateSettings.language : 'Original'} ·
+            <button type="button" class="translation-toggle" onclick={() => translations.toggleOriginal(key)}>
+              {translated ? 'Show original' : 'Show translation'}
+            </button>
+          </span>
+        {:else if translation?.status === 'error'}
+          <span class="translation-tag failed" title={translation.error}>
+            Translation failed ·
+            <button type="button" class="translation-toggle" onclick={translate}>Retry</button>
+          </span>
         {/if}
       </div>
 
+      {#if shortTime || (revealed && onResetLevel)}
+        <div class="meta-right">
+          {#if shortTime}
+            <time class="time-label" datetime={message.time} title={fullTime}>{shortTime}</time>
+          {/if}
+          {#if revealed && onResetLevel}
+            <button
+              type="button"
+              class="reset-level"
+              aria-label="Show this message at the current display level"
+              title="Shown in full for this search result. Click to show it at the current display level."
+              onclick={onResetLevel}
+            >↻</button>
+          {/if}
+        </div>
+      {/if}
+    </div>
+
+    <div class="message-card">
       <div class="message-parts-body" bind:this={body}>
         {#each visibleParts as part, idx (idx)}
           {#if part.kind === 'text' && part.text}
@@ -278,54 +283,78 @@
 
 <style>
   .message-bubble-wrapper {
+    /* The avatar's width plus its gap: replies line up with the role label. */
+    --gutter: 28px;
     display: flex;
     flex-direction: column;
-    margin-bottom: 16px;
+    gap: 6px;
+    margin-bottom: 22px;
     width: 100%;
   }
 
+  /* The user's message: a soft bubble on the right, its label above it. */
   .message-bubble-wrapper.role-user {
     align-items: flex-end;
   }
 
-  .message-bubble-wrapper.role-user .message-card {
-    max-width: 85%;
-    background-color: var(--bg-secondary);
-    border-left: 3px solid var(--accent-color);
+  .role-user .message-meta-header {
+    flex-direction: row-reverse;
   }
 
-  .message-bubble-wrapper.role-assistant .message-card {
-    width: 100%;
-    background-color: var(--bg-secondary);
-    box-shadow: var(--shadow-card);
+  .role-user .meta-left {
+    flex-direction: row-reverse;
   }
 
-  .message-bubble-wrapper.role-system .message-card {
-    width: 100%;
+  .role-user .message-card {
+    max-width: min(85%, 720px);
     background-color: var(--bg-secondary);
-    border: 1px dashed var(--border-color);
+    border-radius: 16px 4px 16px 16px;
+  }
+
+  .role-user .message-parts-body {
+    padding: 10px 14px;
+  }
+
+  /* The agent's reply: open text under its mark, no card. */
+  .role-assistant .message-card,
+  .role-system .message-card {
+    margin-left: var(--gutter);
+  }
+
+  /* Open text sits on the pane's own surface, so code blocks take a tone. */
+  .role-assistant,
+  .role-system {
+    --code-bg: var(--bg-secondary);
+  }
+
+  .role-system .message-card {
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-md);
+  }
+
+  .role-system .message-parts-body {
+    padding: 8px 12px;
   }
 
   .message-card {
+    min-width: 0;
     border-radius: var(--radius-md);
-    overflow: hidden;
   }
 
   .message-meta-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     flex-wrap: wrap;
-    gap: 4px 24px;
-    padding: 6px 12px;
-    background-color: var(--bg-secondary);
+    gap: 4px 10px;
     font-size: 11.52px;
+    color: var(--text-muted);
   }
 
   .meta-left {
     display: flex;
     align-items: center;
-    gap: 6px;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   /* A small round avatar holding the role's icon. */
@@ -353,15 +382,11 @@
     font-family: var(--font-mono);
     color: var(--text-muted);
     font-size: 10.88px;
-    padding: 1px 4px;
-    border-radius: 3px;
-    background: var(--bg-tertiary);
   }
 
   .sidechain-tag {
     font-size: 10.4px;
     color: #a855f7;
-    font-style: italic;
   }
 
   .translation-tag {
@@ -409,12 +434,17 @@
   }
 
   .reset-level:hover {
-    background-color: var(--bg-tertiary);
+    background-color: var(--hover-bg);
     color: var(--text-primary);
   }
 
-  .message-parts-body {
-    padding: 12px;
+  /* Paragraph margins inside the body don't push it away from its label. */
+  .message-parts-body > :global(:first-child) {
+    margin-top: 0;
+  }
+
+  .message-parts-body > :global(:last-child) {
+    margin-bottom: 0;
   }
 
   .file-attachment-pill {
@@ -422,8 +452,8 @@
     align-items: center;
     gap: 6px;
     padding: 4px 8px;
-    border-radius: 4px;
-    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    background: var(--segment-track);
     font-size: 12px;
     font-family: var(--font-mono);
     margin: 4px 0;

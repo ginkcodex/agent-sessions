@@ -64,6 +64,27 @@ export function formatAbsoluteTime(dateStr: string, zone: TimeZoneMode = 'utc'):
   return `${weekday} ${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${utc ? 'UTC' : utcOffset(date)}`;
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// A message's time as a chat shows it: "14:32" today, "Nov 3, 14:32" this
+// year, "2025-11-03 14:32" before. Same zone as formatAbsoluteTime, which
+// the caller shows in full on hover.
+export function formatShortTime(dateStr: string, zone: TimeZoneMode = 'utc', now: Date = new Date()): string {
+  if (!isKnownTime(dateStr)) return '';
+  const date = new Date(dateStr);
+  const utc = zone === 'utc';
+  const parts = (d: Date) => utc
+    ? [d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes()]
+    : [d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()];
+  const [year, month, day, hours, minutes] = parts(date);
+  const [nowYear, nowMonth, nowDay] = parts(now);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const clock = `${pad(hours)}:${pad(minutes)}`;
+  if (year === nowYear && month === nowMonth && day === nowDay) return clock;
+  if (year === nowYear) return `${MONTHS[month]} ${day}, ${clock}`;
+  return `${year}-${pad(month + 1)}-${pad(day)} ${clock}`;
+}
+
 // getTimezoneOffset is minutes behind UTC, so +07:00 reports -420.
 function utcOffset(date: Date): string {
   const offset = -date.getTimezoneOffset();

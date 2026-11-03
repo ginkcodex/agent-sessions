@@ -8,6 +8,7 @@
   import { link } from '../../stores/link.svelte';
   import AttentionDot from '../common/AttentionDot.svelte';
   import Icon from '../common/Icon.svelte';
+  import AgentIcon from '../common/AgentIcon.svelte';
   import { sessionRename } from '../../stores/sessionRename.svelte';
 
   interface Props {
@@ -18,9 +19,11 @@
      * list renders it: virtual-list items are transformed and contained, which
      * would clip a fixed-position menu drawn inside the row. */
     onMenu?: (session: SessionMeta, x: number, y: number) => void;
+    /** Shows the agent's mark; off while the list is filtered to one agent. */
+    showAgent?: boolean;
   }
 
-  let { session, isSelected, onSelect, onMenu }: Props = $props();
+  let { session, isSelected, onSelect, onMenu, showAgent = true }: Props = $props();
 
   let showCountTooltip = $state(false);
   function openMenu(event: MouseEvent) {
@@ -35,6 +38,9 @@
   let relativeTime = $derived(formatRelativeTime(session.updatedAt));
   let absoluteTime = $derived(formatAbsoluteTime(session.updatedAt, preferences.timeZone));
   let bulkSelected = $derived(manage.isRefSelected(session.ref));
+  // Once any session is picked, every row shows its checkbox; before that a
+  // row shows it only under the pointer or focus.
+  let selecting = $derived((manage.selectedRefKeys?.size ?? 0) > 0);
   // Where the agent running this session in a terminal tab stands.
   let attention = $derived.by(() => {
     const tab = terminals.tabFor(session.ref, link.dataHost ?? '');
@@ -84,24 +90,31 @@
   }}
 >
   <div class="row-top">
-    {#if manage.settings.enabled}
-      <input
-        type="checkbox"
-        class="bulk-check"
-        checked={bulkSelected}
-        onclick={handleBulkToggle}
-        onkeydown={handleBulkKeydown}
-        aria-label="Select session {session.title || session.ref.id}"
-      />
-    {/if}
     {#if attention === 'working' || attention === 'needs' || attention === 'done'}
       <AttentionDot state={attention} size={6} announce />
     {:else if session.live}
       <span class="live-dot" title="Active session"></span>
     {/if}
-    <span class="agent-badge agent-{session.ref.agent}">{session.ref.agent}</span>
+    {#if showAgent || manage.settings.enabled}
+      <!-- The agent's mark; in manage mode its checkbox takes its place. -->
+      <span class="lead" class:checkable={manage.settings.enabled} class:checking={bulkSelected || selecting}>
+        {#if showAgent}
+          <AgentIcon agent={session.ref.agent} size={12} />
+        {/if}
+        {#if manage.settings.enabled}
+          <input
+            type="checkbox"
+            class="bulk-check"
+            checked={bulkSelected}
+            onclick={handleBulkToggle}
+            onkeydown={handleBulkKeydown}
+            aria-label="Select session {session.title || session.ref.id}"
+          />
+        {/if}
+      </span>
+    {/if}
     {#if session.archived}
-      <span class="archived-tag">archived</span>
+      <span class="archived-tag">Archived</span>
     {/if}
     <span
       class="time-label"
@@ -113,6 +126,7 @@
 
   <div class="row-middle">
     <span class="title-text" class:subagent={Boolean(session.parentId)} title={displayTitle}>
+      {#if session.parentId}<Icon name="corner-down-right" size={12} class="subagent-icon" label="Subagent" />{/if}
       {displayTitle}
     </span>
   </div>
@@ -148,16 +162,17 @@
 
 <style>
   .session-row {
-    /* Height plus margin must match the itemHeight passed to VirtualList. */
+    /* Height plus margins must match the itemHeight passed to VirtualList.
+       The side margins inset the row so the selection reads as a pill. */
     height: 80px;
-    margin-bottom: 4px;
+    margin: 2px 6px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 8px 12px;
-    border-radius: var(--radius-sm);
-    background-color: var(--bg-primary);
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    background-color: transparent;
     cursor: pointer;
     user-select: none;
     position: relative;
@@ -165,17 +180,20 @@
   }
 
   .session-row:hover {
-    background-color: var(--bg-secondary);
+    background-color: var(--hover-bg);
   }
 
   .session-row.selected {
     background-color: var(--active-bg);
-    border-left: 3px solid var(--accent-color);
-    padding-left: 9px;
   }
 
   .session-row.bulk-selected:not(.selected) {
-    background-color: rgba(239, 68, 68, 0.06);
+    background-color: color-mix(in srgb, var(--danger) 8%, transparent);
+  }
+
+  .session-row:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
   }
 
   .session-row.archived {
@@ -205,33 +223,42 @@
     100% { opacity: 0.6; }
   }
 
-  .agent-badge {
-    padding: 1px 4px;
-    border-radius: 3px;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.65rem;
+  /* One 16px slot for the agent's mark, or the checkbox over it. */
+  .lead {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
   }
 
-  .agent-badge.agent-claude-code {
-    background: rgba(217, 119, 87, 0.15);
-    color: var(--agent-claude);
+  .lead .bulk-check {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.1s ease;
   }
 
-  .agent-badge.agent-codex {
-    background: rgba(16, 163, 127, 0.15);
-    color: var(--agent-codex);
+  .session-row:hover .lead.checkable .bulk-check,
+  .session-row:focus-within .lead.checkable .bulk-check,
+  .lead.checking .bulk-check {
+    opacity: 1;
   }
 
-  .agent-badge.agent-opencode {
-    background: rgba(59, 130, 246, 0.15);
-    color: var(--agent-opencode);
+  .session-row:hover .lead.checkable :global(.agent-icon),
+  .session-row:focus-within .lead.checkable :global(.agent-icon),
+  .lead.checking :global(.agent-icon) {
+    visibility: hidden;
   }
 
   .archived-tag {
-    font-size: 0.65rem;
+    padding: 0 5px;
+    border-radius: 4px;
+    font-size: 0.62rem;
+    font-weight: 500;
     color: var(--text-muted);
-    font-style: italic;
+    background-color: var(--segment-track);
   }
 
   .time-label {
@@ -256,8 +283,17 @@
     width: 100%;
   }
 
+  .session-row.selected .title-text {
+    font-weight: 600;
+  }
+
+  /* A subagent's session: led by a branch-off arrow, in a quieter color. */
   .title-text.subagent {
-    font-style: italic;
+    color: var(--text-secondary);
+  }
+
+  .title-text :global(.subagent-icon) {
+    margin-right: 3px;
     color: var(--text-muted);
   }
 

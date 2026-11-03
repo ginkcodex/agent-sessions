@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatTokens, formatCost, formatBytes, formatVersion } from '../src/lib/format.ts';
 import { isThemeMode, nextThemeMode, resolveTheme, themeButtonTitle } from '../src/lib/theme.ts';
-import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo, isTimeZoneMode } from '../src/lib/date.ts';
+import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo, isTimeZoneMode, formatShortTime } from '../src/lib/date.ts';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
@@ -65,6 +65,15 @@ test('isKnownTime rejects Go zero time and invalid strings', () => {
   assert.equal(isKnownTime(''), false);
   assert.equal(isKnownTime('not a date'), false);
   assert.equal(isKnownTime('2026-09-28T10:00:00Z'), true);
+});
+
+test('formatShortTime shortens message times by how far back they are', () => {
+  const now = new Date('2026-11-04T09:00:00Z');
+  assert.equal(formatShortTime('2026-11-04T07:05:09Z', 'utc', now), '07:05');
+  assert.equal(formatShortTime('2026-11-03T23:59:00Z', 'utc', now), 'Nov 3, 23:59');
+  assert.equal(formatShortTime('2025-12-31T08:30:00Z', 'utc', now), '2025-12-31 08:30');
+  assert.equal(formatShortTime('0001-01-01T00:00:00Z', 'utc', now), '');
+  assert.equal(formatShortTime('', 'utc', now), '');
 });
 
 test('formatAgo drops "ago" for just now', () => {

@@ -316,6 +316,7 @@
               appState.selectedSessionRef?.id === session.ref.id}
             onSelect={handleSelectSession}
             onMenu={openSessionMenu}
+            showAgent={!appState.filter.agent}
           />
         {/snippet}
       </VirtualList>
