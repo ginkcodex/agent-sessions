@@ -283,6 +283,12 @@ set-version:
 	@echo "$(V)" | grep -Eq '$(SEMVER_RE)' || { echo "$(V) is not a semantic version" >&2; exit 1; }
 	@! git rev-parse -q --verify "refs/tags/v$(V)" >/dev/null || { echo "v$(V) is already tagged" >&2; exit 1; }
 	@git diff --quiet HEAD -- || { echo 'commit or stash your changes first' >&2; exit 1; }
+	@if test -d web/src/lib; then \
+		tmp=$$(mktemp web/src/lib/app-version.json.XXXXXX) && \
+		jq -n --arg version '$(V)' '{version: $$version}' > "$$tmp" && \
+		mv "$$tmp" web/src/lib/app-version.json || exit 1; \
+		echo 'Updated web demo version; commit and deploy the web repository separately.'; \
+	fi
 	sed -i.bak 's/^\( *"productVersion": *"\)[^"]*"/\1$(V)"/' wails.json && rm -f wails.json.bak
 	git commit -m "chore: release v$(V)" -- wails.json
 
