@@ -65,7 +65,8 @@ func run() {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 		Linux: application.LinuxOptions{
-			ProgramName: "agent-sessions",
+			ApplicationID: linuxAppID,
+			ProgramName:   linuxProgramName,
 		},
 	})
 	if err := s.openWindow(); err != nil {

@@ -77,7 +77,7 @@ done
 expected_files=$(
     {
         echo '-rwxr-xr-x /usr/bin/agent-sessions'
-        echo '-rw-r--r-- /usr/share/applications/agent-sessions.desktop'
+        echo '-rw-r--r-- /usr/share/applications/io.github.ginkcode.AgentSessions.desktop'
         echo '-rw-r--r-- /usr/share/pixmaps/agent-sessions.png'
         printf -- '-rw-r--r-- %s\n' "${remote_files[@]}"
     } | LC_ALL=C sort -k2
@@ -131,8 +131,8 @@ header=$(head -c 20 "$exe" | od -An -v -tx1 | tr -d ' \n')
 if [ -n "$binary" ]; then
     cmp -s "$exe" "$binary" || fail "/usr/bin/agent-sessions differs from $binary"
 fi
-cmp -s "$tmp/deb/usr/share/applications/agent-sessions.desktop" "$root/packaging/linux/agent-sessions.desktop" ||
-    fail "desktop entry differs from packaging/linux/agent-sessions.desktop"
+cmp -s "$tmp/deb/usr/share/applications/io.github.ginkcode.AgentSessions.desktop" "$root/packaging/linux/io.github.ginkcode.AgentSessions.desktop" ||
+    fail "desktop entry differs from packaging/linux/io.github.ginkcode.AgentSessions.desktop"
 cmp -s "$tmp/deb/usr/share/pixmaps/agent-sessions.png" "$root/frontend/assets/Icon-universal.png" ||
     fail "icon differs from frontend/assets/Icon-universal.png"
 remote_args=()

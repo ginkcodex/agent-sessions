@@ -38,13 +38,13 @@ fi
 for lib in 'libgtk-4\.so' 'libwebkitgtk-6\.0\.so'; do
     grep -Eq "$lib[^ ]* => /" <<<"$libs" || fail "/usr/bin/agent-sessions does not resolve ${lib//\\/}"
 done
-test -f /usr/share/applications/agent-sessions.desktop || fail "desktop entry missing"
+test -f /usr/share/applications/io.github.ginkcode.AgentSessions.desktop || fail "desktop entry missing"
 test -f /usr/share/pixmaps/agent-sessions.png || fail "icon missing"
 servers=(/usr/lib/agent-sessions/remote/*.gz)
 [ -f "${servers[0]}" ] || fail "no remote servers in /usr/lib/agent-sessions/remote"
 for f in "${servers[@]}"; do gzip -t "$f" || fail "corrupt $f"; done
 apt-get purge -y -qq agent-sessions >/tmp/apt.log 2>&1 || { cat /tmp/apt.log; fail "apt-get purge failed"; }
-for path in /usr/bin/agent-sessions /usr/share/applications/agent-sessions.desktop /usr/lib/agent-sessions; do
+for path in /usr/bin/agent-sessions /usr/share/applications/io.github.ginkcode.AgentSessions.desktop /usr/lib/agent-sessions; do
     test ! -e "$path" || fail "$path left behind after purge"
 done
 printf 'verify-deb-install: installed, %d shared libraries resolved, %d servers, purged cleanly\n' \

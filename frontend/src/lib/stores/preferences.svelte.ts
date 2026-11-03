@@ -29,7 +29,7 @@ export class PreferencesStore {
     sessionList: LIMITS.sessionList.default,
   });
   // The level each session opens at; the header selector overrides it per session.
-  transcriptMode = $state<TranscriptMode>('activity');
+  transcriptMode = $state<TranscriptMode>('chat');
   // Zone for message and session timestamps.
   timeZone = $state<TimeZoneMode>('utc');
   terminalFont = $state('');
@@ -60,7 +60,7 @@ export class PreferencesStore {
       const mode = localStorage.getItem(TRANSCRIPT_MODE_KEY);
       if (isTranscriptMode(mode)) this.transcriptMode = mode;
     } catch {
-      // Storage disabled; keep Activity
+      // Storage disabled; keep Chat
     }
 
     try {
