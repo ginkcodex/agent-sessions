@@ -48,6 +48,8 @@ export async function loadServerModule(url, replacements) {
 }
 
 let dialogCloseModule;
+let iconModule;
+let agentIconModule;
 
 async function importCompiled(filename, code, replacements) {
   replacements = [
@@ -66,6 +68,21 @@ async function importCompiled(filename, code, replacements) {
     dialogCloseModule ??= loadServerComponent(new URL('../src/lib/components/common/DialogCloseButton.svelte', import.meta.url), []);
     globalThis.__dialogCloseButton = (await dialogCloseModule).default;
     replacements.push([closeButton, 'const DialogCloseButton = globalThis.__dialogCloseButton;']);
+  }
+  // Components render the real shared icon, wherever they import it from.
+  const iconImport = code.match(/import Icon from '[./]*(?:common\/)?Icon\.svelte';/)?.[0];
+  if (iconImport && !replacements.some(([from]) => from === iconImport)) {
+    iconModule ??= loadServerComponent(new URL('../src/lib/components/common/Icon.svelte', import.meta.url), [
+      ["'../../icons'", JSON.stringify(new URL('../src/lib/icons.ts', import.meta.url).href)],
+    ]);
+    globalThis.__icon = (await iconModule).default;
+    replacements.push([iconImport, 'const Icon = globalThis.__icon;']);
+  }
+  const agentIconImport = code.match(/import AgentIcon from '[./]*(?:common\/)?AgentIcon\.svelte';/)?.[0];
+  if (agentIconImport && !replacements.some(([from]) => from === agentIconImport)) {
+    agentIconModule ??= loadServerComponent(new URL('../src/lib/components/common/AgentIcon.svelte', import.meta.url), []);
+    globalThis.__agentIcon = (await agentIconModule).default;
+    replacements.push([agentIconImport, 'const AgentIcon = globalThis.__agentIcon;']);
   }
   // Pure display-label helpers shared by the diagnostics components resolve to the real module.
   for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools'], ["'../codeLanguages'", 'codeLanguages'], ["'../../../codeLanguages'", 'codeLanguages'], ["'../../../date'", 'date']]) {

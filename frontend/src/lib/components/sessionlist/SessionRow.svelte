@@ -7,6 +7,7 @@
   import { terminals } from '../../stores/terminals.svelte';
   import { link } from '../../stores/link.svelte';
   import AttentionDot from '../common/AttentionDot.svelte';
+  import Icon from '../common/Icon.svelte';
   import { sessionRename } from '../../stores/sessionRename.svelte';
 
   interface Props {
@@ -125,7 +126,7 @@
       onmouseleave={() => (showCountTooltip = false)}
     >
       <span class="count-badge">
-        <span class="count-icon">💬</span>
+        <Icon name="message-square" size={11} class="count-icon" />
         <span class="count-num">{messageTotal}</span>
       </span>
       {#if showCountTooltip}
@@ -140,7 +141,7 @@
     {/if}
 
     {#if session.gitBranch}
-      <span class="branch-tag" title="Git Branch: {session.gitBranch}">🌿 {session.gitBranch}</span>
+      <span class="branch-tag" title="Git Branch: {session.gitBranch}"><Icon name="git-branch" size={11} /> {session.gitBranch}</span>
     {/if}
   </div>
 </div>
@@ -281,8 +282,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .count-icon {
-    font-size: 0.65rem;
+  .count-badge :global(.count-icon) {
     opacity: 0.7;
   }
 

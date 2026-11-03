@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import { connectionStore } from '../../stores/connection.svelte';
   import { connectionBanner } from '../../guidance';
 
@@ -41,7 +42,7 @@
         {#if message.retrying}
           <span class="spinner"></span>
         {:else}
-          ⚠️
+          <Icon name="triangle-alert" size={16} />
         {/if}
       </span>
       <div class="banner-text">

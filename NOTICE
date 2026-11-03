@@ -13,5 +13,7 @@ The software license does not grant trademark rights in the Agent Sessions
 name or logo. Third-party trademarks belong to their respective owners.
 
 Third-party components and assets retain their respective licenses and
-notices, including the vscode-icons assets in frontend/public/file-icons/
-and the Microsoft ConPTY runtime distributed with Windows packages.
+notices, including the vscode-icons assets in frontend/public/file-icons/,
+the Lucide icons in frontend/src/lib/icons.ts (ISC License,
+frontend/src/assets/icons/Lucide-ISC.txt) and the Microsoft ConPTY runtime
+distributed with Windows packages.

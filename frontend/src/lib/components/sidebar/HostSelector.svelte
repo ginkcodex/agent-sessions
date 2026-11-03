@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../common/Icon.svelte';
   import { connectionStore } from '../../stores/connection.svelte';
   import HostEnvDialog from '../common/HostEnvDialog.svelte';
   import { filterHosts } from '../../link';
@@ -114,7 +115,7 @@
   >
     <span class="status-dot {statusClass}"></span>
     <span class="host-name">{connectionStore.currentHost}</span>
-    <span class="caret-icon" aria-hidden="true">▾</span>
+    <Icon name="chevron-down" size={12} strokeWidth={2.25} class="caret-icon" />
   </button>
 
   {#if menuOpen}
@@ -128,7 +129,7 @@
         role="menuitem"
         onclick={handleSelectLocal}
       >
-        <span class="item-icon">💻</span>
+        <Icon name="monitor" size={15} class="item-icon" />
         <span class="item-label">Local</span>
         {#if connectionStore.phase === 'local'}
           <span class="item-check">✓</span>
@@ -150,7 +151,7 @@
                 if (e.key === 'Enter') handleSelectHost(distro.host);
               }}
             >
-              <span class="item-icon">🐧</span>
+              <Icon name="square-terminal" size={15} class="item-icon" />
               <div class="host-details">
                 <span class="item-label">{distro.name}</span>
                 {#if distro.default}
@@ -165,7 +166,7 @@
                   aria-label="Configure environment overrides for {distro.name}"
                   onclick={(e) => handleOpenEnv(e, distro.host)}
                 >
-                  ⚙
+                  <Icon name="settings" size={13} />
                 </button>
                 {#if connectionStore.isRemote && connectionStore.host === distro.host}
                   <span class="item-check">✓</span>
@@ -211,7 +212,7 @@
                 if (e.key === 'Enter') handleSelectHost(host.name);
               }}
             >
-              <span class="item-icon">🌐</span>
+              <Icon name="server" size={15} class="item-icon" />
               <div class="host-details">
                 <span class="item-label">{host.name}</span>
                 {#if host.hostName || host.user}
@@ -227,7 +228,7 @@
                   title="Configure environment overrides"
                   onclick={(e) => handleOpenEnv(e, host.name)}
                 >
-                  ⚙
+                  <Icon name="settings" size={13} />
                 </button>
                 {#if connectionStore.isRemote && connectionStore.host === host.name}
                   <span class="item-check">✓</span>
@@ -273,7 +274,7 @@
           role="menuitem"
           onclick={handleSelectLocal}
         >
-          <span class="item-icon">🔌</span>
+          <Icon name="plug" size={15} class="item-icon" />
           <span class="item-label">Disconnect</span>
         </button>
       {/if}
@@ -359,8 +360,7 @@
     }
   }
 
-  .caret-icon {
-    font-size: 0.65rem;
+  .host-chip :global(.caret-icon) {
     opacity: 0.6;
   }
 
@@ -428,9 +428,8 @@
     font-weight: 600;
   }
 
-  .item-icon {
-    font-size: 0.85rem;
-    flex-shrink: 0;
+  .menu-item :global(.item-icon) {
+    color: var(--text-muted);
   }
 
   .item-label {
@@ -479,6 +478,7 @@
   }
 
   .env-btn {
+    display: inline-flex;
     background: transparent;
     border: none;
     color: var(--text-muted);

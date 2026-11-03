@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   // Small per-agent glyphs in each agent's brand color, drawn inline. Codex
   // uses its reference mark; the others are simplified marks.
   interface Props {
@@ -47,7 +48,7 @@
       />
     </svg>
   {:else}
-    <span class="fallback">📄</span>
+    <Icon name="bot" size={size} />
   {/if}
 </span>
 
@@ -73,9 +74,5 @@
 
   .opencode {
     color: var(--agent-opencode);
-  }
-
-  .fallback {
-    font-size: 0.85rem;
   }
 </style>

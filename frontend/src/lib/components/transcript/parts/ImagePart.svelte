@@ -20,6 +20,7 @@
 </script>
 
 <script lang="ts">
+  import Icon from '../../common/Icon.svelte';
   import { untrack } from 'svelte';
   import { openViewer } from '../../../viewer';
 
@@ -82,7 +83,7 @@
   </button>
 {:else if error}
   <div class="image-failed" title={error}>
-    <span>⚠️</span>
+    <Icon name="triangle-alert" size={13} />
     <span>{name}</span>
     <span class="image-failed-note">not shown</span>
   </div>

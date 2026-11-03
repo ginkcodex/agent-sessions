@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../common/Icon.svelte';
   import type { GroupNode, SessionRef } from '../../types';
   import { appState } from '../../stores/appState.svelte';
   import { discovery } from '../../stores/discovery.svelte';
@@ -121,7 +122,7 @@
       </div>
     {:else}
       <div class="tree-empty-card">
-        <span class="tree-empty-icon">📁</span>
+        <span class="tree-empty-icon"><Icon name="folder" size={22} strokeWidth={1.75} /></span>
         <h4>No Agents Detected</h4>
         <p class="tree-empty-sub">
           Looking for session history in:
@@ -224,8 +225,13 @@
   }
 
   .tree-empty-icon {
-    font-size: 2rem;
-    opacity: 0.6;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-tertiary);
+    color: var(--text-muted);
   }
 
   .tree-empty-card h4 {

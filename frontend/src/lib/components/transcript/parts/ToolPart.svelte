@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../../common/Icon.svelte';
   import type { ToolCall, SessionRef } from '../../../types';
   import { highlightCode } from '../../../highlight';
   import { reachesLineCount } from '../../../layout';
@@ -75,18 +76,18 @@
 <div class="tool-card" class:status-error={tool.status === 'error'}>
   <div class="tool-header">
     <div class="tool-id-group">
-      <span class="tool-icon">🔧</span>
+      <Icon name="wrench" size={14} class="tool-icon" />
       <span class="tool-name">{tool.name}</span>
       <span class="tool-call-id">{tool.id}</span>
     </div>
 
     <div class="tool-status-badge status-{tool.status}">
       {#if tool.status === 'completed'}
-        <span class="status-indicator">✓</span> completed
+        <Icon name="check" size={12} strokeWidth={2.5} /> completed
       {:else if tool.status === 'error'}
-        <span class="status-indicator">✗</span> error
+        <Icon name="x" size={12} strokeWidth={2.5} /> error
       {:else if tool.status === 'pending'}
-        <span class="status-indicator">⏳</span> running
+        <Icon name="loader-circle" size={12} strokeWidth={2.5} class="spin" /> running
       {:else}
         <span class="status-indicator">?</span> {tool.status}
       {/if}
@@ -148,7 +149,7 @@
       {/if}
 
       {#if blobError}
-        <div class="blob-error-msg">⚠️ {blobError}</div>
+        <div class="blob-error-msg"><Icon name="triangle-alert" size={12} /> {blobError}</div>
       {/if}
     </div>
   {/if}
@@ -184,8 +185,8 @@
     gap: 6px;
   }
 
-  .tool-icon {
-    font-size: 13.6px;
+  :global(.tool-icon) {
+    color: var(--text-muted);
   }
 
   .tool-name {
@@ -334,15 +335,18 @@
   }
 
   .mini-copy-btn {
-    padding: 1px 6px;
+    padding: 1px 8px;
     font-size: 10.88px;
-    border-radius: 3px;
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
     cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   .mini-copy-btn:hover {
+    background: var(--hover-bg);
     color: var(--text-primary);
   }
 

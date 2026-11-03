@@ -70,6 +70,7 @@
     windowCycleShortcut,
   } from './lib/terminal';
   import { isMac } from './main';
+  import appMark from './assets/brand/app-mark.png';
 
   let isWails = $state(false);
   let appVersion = $state('');
@@ -315,7 +316,7 @@
     >
     <header class="pane-header sidebar-header">
       <div class="brand">
-        <span class="app-icon">⚡</span>
+        <img class="app-icon" src={appMark} alt="" width="20" height="20" draggable="false" />
         <h1 class="app-title">Agent Sessions</h1>
       </div>
       <div class="header-actions">
@@ -744,15 +745,22 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
   }
 
   .app-icon {
-    font-size: 1.1rem;
+    display: block;
+    width: 20px;
+    height: 20px;
   }
 
   .app-title {
     font-size: 0.95rem;
-    font-weight: 600;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .header-actions {

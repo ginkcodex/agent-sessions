@@ -10,6 +10,7 @@
   import { copyFailed } from '../../guidance';
   import { toast } from '../../stores/toast.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
+  import Icon from '../common/Icon.svelte';
   import NavButtons from './NavButtons.svelte';
   import { link } from '../../stores/link.svelte';
   import { launcher } from '../../stores/launcher.svelte';
@@ -223,7 +224,7 @@
               }
             }}
           >
-            ▾
+            <Icon name="chevron-down" size={13} strokeWidth={2.25} />
           </button>
           {#if resumeMenuOpen}
             <div class="action-dropdown-menu" role="menu">
@@ -313,7 +314,7 @@
               }
             }}
           >
-            ▾
+            <Icon name="chevron-down" size={13} strokeWidth={2.25} />
           </button>
           {#if newMenuOpen}
             <div class="action-dropdown-menu" role="menu">
@@ -355,7 +356,7 @@
             }
           }}
         >
-          Continue in ▾
+          Continue in <Icon name="chevron-down" size={13} strokeWidth={2.25} />
         </button>
         {#if continueMenuOpen}
           <div class="action-dropdown-menu" role="menu">
@@ -394,7 +395,7 @@
             }
           }}
         >
-          Export ▾
+          Export <Icon name="chevron-down" size={13} strokeWidth={2.25} />
         </button>
         {#if exportMenuOpen}
           <div class="action-dropdown-menu" role="menu">
@@ -463,7 +464,7 @@
 
   <div class="header-meta-row">
     <div class="meta-item cwd-item" title={meta.cwd}>
-      <span class="meta-icon">📁</span>
+      <Icon name="folder" size={13} class="meta-icon" />
       <span class="cwd-text">{meta.cwd}</span>
       {#if meta.cwdMissing}
         <span class="missing-badge">[missing]</span>
@@ -493,13 +494,13 @@
 
     {#if meta.gitBranch}
       <div class="meta-item branch-item" title="Git Branch: {meta.gitBranch}">
-        <span class="meta-icon">🌿</span>
+        <Icon name="git-branch" size={13} class="meta-icon" />
         <span class="branch-text">{meta.gitBranch}</span>
       </div>
     {/if}
 
     <div class="meta-item count-item">
-      <span class="meta-icon">💬</span>
+      <Icon name="message-square" size={13} class="meta-icon" />
       <span class="count-val">{messageTotal} msgs</span>
     </div>
 
@@ -648,6 +649,9 @@
   }
 
   .action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
     padding: 3px 8px;
     border-radius: var(--radius-sm, 6px);
     font-size: 0.72rem;
@@ -699,9 +703,14 @@
     white-space: nowrap;
   }
 
-  /* New session: outlined, so Resume stays the main action. */
+  /* New session: a tonal button, so Resume stays the main action. */
   .action-btn.new-btn {
-    border: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
+  }
+
+  .action-btn.new-btn:hover:not(:disabled) {
+    background-color: var(--bg-tertiary);
   }
 
   .action-btn.new-btn:disabled {
@@ -716,7 +725,7 @@
 
   .new-split .new-toggle {
     padding: 3px 6px;
-    border-left: none;
+    border-left: 1px solid var(--border-color);
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
   }
@@ -738,23 +747,20 @@
     color: var(--text-muted);
   }
 
-  /* A pill-shaped segmented control: a hairline outline, dividers between
-     the levels and an accent tint filling the chosen one. */
+  /* A segmented control: a filled track with the chosen level raised on
+     it, so the levels separate by tone instead of outlines. */
   .mode-switch {
     display: inline-flex;
-    overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
-    border-radius: 999px;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--radius-md);
+    background-color: var(--segment-track);
   }
 
   .mode-switch .mode-btn {
-    padding: 2px 12px;
-    border-radius: 0;
-    transition: background-color 0.15s ease, color 0.15s ease;
-  }
-
-  .mode-switch .mode-btn + .mode-btn {
-    border-left: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
+    padding: 2px 10px;
+    border-radius: calc(var(--radius-md) - 2px);
+    transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   }
 
   .mode-switch .mode-btn:hover {
@@ -768,8 +774,9 @@
 
   .action-btn.mode-btn.active,
   .action-btn.mode-btn.active:hover {
-    background-color: var(--active-bg);
-    color: var(--accent-color);
+    background-color: var(--segment-thumb);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-thumb);
   }
 
   .action-btn.find-btn {
@@ -815,8 +822,8 @@
     min-width: 140px;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm, 6px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-popover);
     padding: 4px;
     display: flex;
     flex-direction: column;
@@ -841,12 +848,9 @@
   }
 
   .action-menu-item:hover {
-    background: var(--bg-tertiary);
+    background: var(--hover-bg);
     color: var(--text-primary);
   }
-
-
-
 
   .header-title-row {
     margin: 2px 0;
@@ -855,7 +859,8 @@
   .title-text {
     margin: 0;
     font-size: 1.05rem;
-    font-weight: 600;
+    font-weight: 650;
+    letter-spacing: -0.015em;
     color: var(--text-primary);
     line-height: 1.3;
     overflow: hidden;
@@ -875,7 +880,11 @@
   .meta-item {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
+  }
+
+  .meta-item :global(.meta-icon) {
+    color: var(--text-muted);
   }
 
   .cwd-item {

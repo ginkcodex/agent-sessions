@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import { modalFocus } from '../../modalFocus';
   import { importer } from '../../stores/importer.svelte';
   import { appState } from '../../stores/appState.svelte';
@@ -123,7 +124,7 @@
                   onclick={() => (path = dir)}
                   ondblclick={() => choose(dir)}
                 >
-                  📁 {dir}
+                  <Icon name="folder" size={13} /> {dir}
                 </button>
               </li>
             {/each}

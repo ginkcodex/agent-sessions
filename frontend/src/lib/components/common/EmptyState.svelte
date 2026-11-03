@@ -1,6 +1,9 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
+  import type { IconName } from '../../icons';
+
   interface Props {
-    icon?: string;
+    icon?: IconName;
     title: string;
     description?: string;
     actionText?: string;
@@ -8,7 +11,7 @@
   }
 
   let {
-    icon = '💬',
+    icon = 'message-square',
     title,
     description,
     actionText,
@@ -17,7 +20,7 @@
 </script>
 
 <div class="empty-state">
-  <div class="empty-icon">{icon}</div>
+  <div class="empty-icon"><Icon name={icon} size={22} strokeWidth={1.75} /></div>
   <h3 class="empty-title">{title}</h3>
   {#if description}
     <p class="empty-desc">{description}</p>
@@ -44,9 +47,14 @@
   }
 
   .empty-icon {
-    font-size: 2.5rem;
-    margin-bottom: 4px;
-    opacity: 0.6;
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 6px;
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-secondary);
+    color: var(--text-muted);
   }
 
   .empty-title {

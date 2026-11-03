@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../../common/Icon.svelte';
   import type { SessionRef } from '../../../types';
   import { appState } from '../../../stores/appState.svelte';
 
@@ -20,7 +21,7 @@
     title="Open child subagent session"
     onclick={handleClick}
   >
-    <span class="subagent-icon">🔗</span>
+    <Icon name="link" size={13} class="subagent-icon" />
     <span class="subagent-label">Subagent:</span>
     <span class="subagent-id">{child.id}</span>
     <span class="subagent-arrow">→ Open</span>

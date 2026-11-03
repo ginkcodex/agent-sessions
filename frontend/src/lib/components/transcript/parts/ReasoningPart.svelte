@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../../common/Icon.svelte';
   import { renderMarkdown } from '../../../markdown';
   import { handleMessageClick } from '../../../messageFileClick';
   import { renderMermaid } from '../../../mermaid';
@@ -24,7 +25,7 @@
 
 <details class="reasoning-block" open={defaultExpanded} ontoggle={(event) => expanded = event.currentTarget.open}>
   <summary class="reasoning-summary">
-    <span class="reasoning-icon">🧠</span>
+    <Icon name="brain" size={14} class="reasoning-icon" />
     <span class="reasoning-title">Thinking process…</span>
   </summary>
   <div class="reasoning-body">
@@ -62,8 +63,8 @@
     color: var(--text-primary);
   }
 
-  .reasoning-icon {
-    font-size: 13.6px;
+  :global(.reasoning-icon) {
+    color: var(--text-muted);
   }
 
   .reasoning-body {

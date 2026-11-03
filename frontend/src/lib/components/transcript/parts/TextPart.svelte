@@ -47,8 +47,11 @@
   }
 
   :global(.text-part-container h1, .text-part-container h2, .text-part-container h3, .text-part-container h4) {
-    margin: 1em 0 0.4em 0;
+    margin: 1.2em 0 0.45em 0;
     color: var(--text-primary);
+    font-weight: 650;
+    letter-spacing: -0.012em;
+    line-height: 1.3;
   }
 
   :global(.text-part-container h1) { font-size: 20px; }
@@ -76,11 +79,10 @@
   :global(.text-part-container .inline-code) {
     font-family: var(--font-mono);
     font-size: 0.825em;
-    padding: 1px 4px;
-    border-radius: 4px;
-    background-color: var(--bg-tertiary);
+    padding: 1px 5px;
+    border-radius: 5px;
+    background-color: var(--segment-track);
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
   }
 
   :global(.text-part-container a) {
@@ -105,9 +107,10 @@
     font-size: 12.8px;
   }
 
+  /* Rows divide by hairlines only; no cell grid. */
   :global(.text-part-container th, .text-part-container td) {
-    border: 1px solid var(--border-color);
-    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-color);
+    padding: 7px 12px 7px 0;
     text-align: left;
     /* The inherited break-word lets columns shrink to one letter; keep whole
        words so each column fits its longest one and the table scrolls. */
@@ -116,15 +119,19 @@
   }
 
   :global(.text-part-container th) {
-    background-color: var(--bg-secondary);
+    border-bottom-color: var(--border-strong);
+    color: var(--text-secondary);
     font-weight: 600;
+  }
+
+  :global(.text-part-container tr:last-child td) {
+    border-bottom: none;
   }
 
   :global(.text-part-container .code-block-container) {
     margin: 0.8em 0;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    background-color: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    background-color: var(--code-bg);
     overflow: hidden;
   }
 
@@ -132,38 +139,37 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 4px 10px;
-    background-color: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-color);
+    padding: 4px 6px 0 12px;
   }
 
   :global(.text-part-container .code-lang-tag) {
     font-size: 10.88px;
     font-family: var(--font-mono);
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-muted);
-    text-transform: uppercase;
+    text-transform: lowercase;
   }
 
   :global(.text-part-container .copy-code-btn, .text-part-container .mermaid-toggle-btn, .text-part-container .mermaid-expand-btn) {
     font-size: 10.88px;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    background-color: transparent;
+    border: none;
+    color: var(--text-muted);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   :global(.text-part-container .copy-code-btn:hover, .text-part-container .mermaid-toggle-btn:hover, .text-part-container .mermaid-expand-btn:hover) {
+    background-color: var(--hover-bg);
     color: var(--text-primary);
   }
 
   :global(.text-part-container .copy-code-btn.copied) {
-    background-color: rgba(16, 185, 129, 0.15);
+    background-color: color-mix(in srgb, var(--status-live) 14%, transparent);
     color: var(--status-live);
-    border-color: var(--status-live);
   }
 
   :global(.text-part-container .code-block-actions) {
@@ -176,7 +182,7 @@
     padding: 10px 12px;
     overflow-x: auto;
     text-align: center;
-    background-color: var(--bg-primary);
+    background-color: transparent;
     cursor: zoom-in;
     /* Mermaid sizes labels without the text's break-word, which would
        otherwise wrap them narrower and clip them. */
@@ -190,9 +196,9 @@
 
   :global(.text-part-container pre) {
     margin: 0;
-    padding: 10px 12px;
+    padding: 8px 12px 12px;
     overflow-x: auto;
-    background-color: var(--bg-primary);
+    background-color: transparent;
   }
 
   :global(.text-part-container code.hljs) {

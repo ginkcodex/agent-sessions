@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../../common/Icon.svelte';
   import { highlightCode } from '../../../highlight';
 
   interface Props {
@@ -15,7 +16,7 @@
 <div class="patch-card">
   <div class="patch-header">
     <div class="patch-title-group">
-      <span class="patch-icon">📝</span>
+      <Icon name="file-diff" size={14} class="patch-icon" />
       <span class="patch-title">File Changes</span>
       {#if files && files.length > 0}
         <span class="patch-count">{files.length} {files.length === 1 ? 'file' : 'files'}</span>
@@ -37,7 +38,7 @@
     <ul class="patch-files-list">
       {#each files as file}
         <li class="patch-file-item">
-          <span class="file-icon">📄</span>
+          <Icon name="file" size={13} class="file-icon" />
           <span class="file-name">{file}</span>
         </li>
       {/each}
@@ -75,8 +76,8 @@
     gap: 6px;
   }
 
-  .patch-icon {
-    font-size: 13.6px;
+  :global(.patch-icon) {
+    color: var(--text-muted);
   }
 
   .patch-title {
@@ -123,9 +124,8 @@
     color: var(--text-secondary);
   }
 
-  .file-icon {
-    font-size: 12px;
-    opacity: 0.7;
+  :global(.file-icon) {
+    color: var(--text-muted);
   }
 
   .diff-viewer {

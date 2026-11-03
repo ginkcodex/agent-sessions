@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import DialogCloseButton from './DialogCloseButton.svelte';
   import { importer } from '../../stores/importer.svelte';
   import { BUDGET_PRESETS } from '../../portable';
@@ -170,7 +171,7 @@
                         {restoreItem.paths.length === 1 ? 'file' : 'files'} ({formatBytes(restoreItem.bytes)}).
                       </p>
                       {#if restoreItem.warning}
-                        <p class="restore-note">⚠️ {restoreItem.warning}</p>
+                        <p class="restore-note"><Icon name="triangle-alert" size={12} /> {restoreItem.warning}</p>
                       {/if}
                     {/if}
                     {#if copyAvailable && (importer.restoreCopy || restoreItem?.blocked)}
@@ -369,19 +370,19 @@
 
                 {#if importer.preview.report.trimmed}
                   <div class="stat-pill warn-pill">
-                    <span>⚠️ Trimmed to fit budget</span>
+                    <span><Icon name="triangle-alert" size={12} /> Trimmed to fit budget</span>
                   </div>
                 {/if}
 
                 {#if totalRedactions > 0}
                   <div class="stat-pill redact-pill">
-                    <span>🔒 {totalRedactions} secrets redacted</span>
+                    <span><Icon name="shield-check" size={12} /> {totalRedactions} secrets redacted</span>
                   </div>
                 {/if}
 
                 {#if importer.preview.promptFile}
                   <div class="stat-pill notice-pill" title={importer.preview.promptFile}>
-                    <span>📄 Delivered via handoff file</span>
+                    <span><Icon name="file-text" size={12} /> Delivered via handoff file</span>
                   </div>
                 {/if}
               </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../common/Icon.svelte';
   import { tick, untrack } from 'svelte';
   import type { SessionRef, Message, MessageJump, TerminalOpenMode } from '../../types';
   import { appState } from '../../stores/appState.svelte';
@@ -671,7 +672,7 @@
 >
   {#if !appState.selectedSessionRef}
     <EmptyState
-      icon="💬"
+      icon="message-square"
       title="No Session Selected"
       description="Select a session from the list to view its full conversation and tool activity."
     />
@@ -729,7 +730,7 @@
       <div class="messages-inner-list" bind:this={listEl}>
         {#if messages.length === 0}
           <div class="empty-messages-notice">
-            <span class="empty-icon">📭</span>
+            <Icon name="inbox" size={16} />
             <span>No messages found in this session transcript.</span>
           </div>
         {:else}

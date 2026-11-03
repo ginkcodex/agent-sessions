@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import DialogCloseButton from './DialogCloseButton.svelte';
   import TerminalFontSetting from './TerminalFontSetting.svelte';
   import CodingAgentsSettings from './CodingAgentsSettings.svelte';
@@ -173,7 +174,7 @@
                         aria-label={showKey ? 'Hide key' : 'Show key'}
                         onclick={() => (showKey = !showKey)}
                         tabindex="-1"
-                      >{showKey ? '👁️' : '🔒'}</button>
+                      >{#if showKey}<Icon name="eye-off" size={14} />{:else}<Icon name="eye" size={14} />{/if}</button>
                     </div>
                     {#if replacingKey}
                       <button type="button" class="link-btn" onclick={() => { replacingKey = false; apiKey = ''; }}>Keep the saved key</button>
@@ -505,8 +506,8 @@
   .text-input { width: 100%; }
   .text-input.secret { padding-right: 36px; }
   .input-wrapper { position: relative; display: flex; align-items: center; }
-  .toggle-reveal-btn { position: absolute; right: 6px; background: transparent; border: none; padding: 4px; font-size: .8rem; opacity: .7; }
-  .toggle-reveal-btn:hover { opacity: 1; }
+  .toggle-reveal-btn { position: absolute; right: 6px; display: inline-flex; background: transparent; border: none; padding: 4px; color: var(--text-muted); }
+  .toggle-reveal-btn:hover { color: var(--text-primary); }
   .key-row { display: flex; align-items: center; gap: 8px; }
   .key-saved { flex: 1; color: var(--text-secondary); }
   .link-btn { align-self: flex-start; padding: 0; border: none; background: none; color: var(--accent-color); font-size: .75rem; }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../common/Icon.svelte';
   import type { GroupNode } from '../../types';
   import GroupNodeItem from './GroupNodeItem.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
@@ -124,7 +125,7 @@
         aria-label={isCollapsed ? 'Expand' : 'Collapse'}
         onclick={handleDisclosureClick}
       >
-        <span class="disclosure-arrow" class:open={!isCollapsed}>▶</span>
+        <span class="disclosure-arrow" class:open={!isCollapsed}><Icon name="chevron-right" size={12} strokeWidth={2.25} /></span>
       </button>
     {:else}
       <span class="disclosure-spacer"></span>
@@ -134,9 +135,9 @@
       {#if kind === 'agent'}
         <AgentIcon agent={node.agent} size={15} />
       {:else if kind === 'directory' && node.cwdMissing}
-        <span class="node-icon missing" title="Directory no longer exists on disk">⚠️</span>
+        <span class="node-icon missing" title="Directory no longer exists on disk"><Icon name="folder-x" size={15} /></span>
       {:else if kind === 'directory'}
-        <span class="node-icon folder">📁</span>
+        <span class="node-icon folder"><Icon name="folder" size={15} /></span>
       {:else}
         <AgentIcon agent={node.agent} />
       {/if}
@@ -262,8 +263,7 @@
   }
 
   .disclosure-arrow {
-    display: inline-block;
-    font-size: 0.65rem;
+    display: inline-flex;
     transition: transform 0.15s ease;
   }
 
@@ -284,7 +284,12 @@
   }
 
   .node-icon {
-    font-size: 0.85rem;
+    display: inline-flex;
+    color: var(--text-muted);
+  }
+
+  .node-icon.missing {
+    color: var(--status-needs);
   }
 
   .node-label {

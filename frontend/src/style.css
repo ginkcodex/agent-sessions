@@ -43,6 +43,15 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
+  /* Raised and floating layers: menus, popovers, the chosen segment. */
+  --shadow-popover: 0 10px 28px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+  --shadow-thumb: 0 1px 2px rgba(15, 23, 42, 0.12), 0 0 0 0.5px rgba(15, 23, 42, 0.08);
+  /* Controls fill a tinted track instead of drawing outlines; the track is
+     translucent so it reads on every surface. */
+  --segment-track: rgba(15, 23, 42, 0.06);
+  --segment-thumb: #ffffff;
+  --border-strong: rgba(15, 23, 42, 0.18);
+  --code-bg: var(--bg-primary);
   /* Bundled Inter and JetBrains Mono (imported in main.ts) look the same on
      every platform. The system fallbacks avoid Helvetica: fontconfig aliases
      it to Nimbus Sans, whose metrics sit text ~2.5px above center in every
@@ -82,6 +91,11 @@
     --count-badge-text: #450a0a;
     --star-color: #facc15;
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --shadow-thumb: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
+    --segment-track: rgba(255, 255, 255, 0.06);
+    --segment-thumb: #454544;
+    --border-strong: rgba(255, 255, 255, 0.16);
   }
 }
 
@@ -134,9 +148,28 @@ html, body, #app {
      px (the previous 16px-rem values) so it keeps its size. */
   font-size: 18px;
   font-family: var(--font-sans);
+  /* Inter's open 4, 6 and 9 and single-storey a: rounder, less generic. */
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   color: var(--text-primary);
   background-color: var(--bg-primary);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Headings in the app chrome sit a little tighter, as Inter is drawn for. */
+h1, h2, h3, h4 {
+  letter-spacing: -0.012em;
+}
+
+/* Icons (Icon.svelte) that show work in progress. */
+.icon.spin {
+  animation: icon-spin 1s linear infinite;
+}
+
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Inherited text in session content stays at the previous 16px base. The
@@ -175,7 +208,7 @@ input, select {
   font-family: inherit;
   font-size: 0.8rem;
   color: var(--text-primary);
-  background-color: var(--bg-secondary);
+  background-color: var(--segment-track);
   border: none;
   border-radius: var(--radius-sm);
 }
@@ -280,12 +313,12 @@ input, select {
   }
 }
 
-/* Fenced code block container & copy button */
+/* Fenced code block container & copy button: one tinted surface, no
+   outline or header bar. */
 .code-block-container {
   margin: 0.8em 0;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  background-color: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  background-color: var(--code-bg);
   overflow: hidden;
 }
 
@@ -293,45 +326,44 @@ input, select {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 10px;
-  background-color: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-color);
+  padding: 4px 6px 0 12px;
 }
 
 .code-lang-tag {
   font-size: 10.88px;
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-muted);
-  text-transform: uppercase;
+  text-transform: lowercase;
 }
 
 .copy-code-btn {
   font-size: 10.88px;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  border: none;
+  color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .copy-code-btn:hover {
+  background-color: var(--hover-bg);
   color: var(--text-primary);
 }
 
 .copy-code-btn.copied {
-  background-color: rgba(16, 185, 129, 0.15);
+  background-color: color-mix(in srgb, var(--status-live) 14%, transparent);
   color: var(--status-live);
-  border-color: var(--status-live);
 }
 
 .code-block-container pre {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 12px 12px;
   overflow-x: auto;
-  background-color: var(--bg-primary);
+  background-color: transparent;
 }
 
 .code-block-container code.hljs {

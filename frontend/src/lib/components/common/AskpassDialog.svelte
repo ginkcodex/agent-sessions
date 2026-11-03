@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import { modalFocus } from '../../modalFocus';
   import { connectionStore } from '../../stores/connection.svelte';
 
@@ -67,7 +68,7 @@
     >
       <header class="dialog-header">
         <div class="header-title-group">
-          <span class="auth-icon" aria-hidden="true">🔑</span>
+          <span class="auth-icon" aria-hidden="true"><Icon name="key-round" size={16} /></span>
           <h2 id="askpass-dialog-title">SSH Authentication</h2>
         </div>
         {#if connectionStore.host}
@@ -101,7 +102,7 @@
                 onclick={() => (showPassword = !showPassword)}
                 tabindex="-1"
               >
-                {showPassword ? '👁️' : '🔒'}
+                {#if showPassword}<Icon name="eye-off" size={14} />{:else}<Icon name="eye" size={14} />{/if}
               </button>
             {/if}
           </div>
@@ -169,7 +170,8 @@
   }
 
   .auth-icon {
-    font-size: 1.1rem;
+    display: inline-flex;
+    color: var(--text-muted);
   }
 
   h2 {
@@ -218,13 +220,13 @@
     background: transparent;
     border: none;
     cursor: pointer;
+    display: inline-flex;
     padding: 4px;
-    font-size: 0.85rem;
-    opacity: 0.7;
+    color: var(--text-muted);
   }
 
   .toggle-reveal-btn:hover {
-    opacity: 1;
+    color: var(--text-primary);
   }
 
   .security-note {

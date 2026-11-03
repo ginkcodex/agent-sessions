@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../common/Icon.svelte';
   import { untrack } from 'svelte';
   import { newSession } from '../../stores/newSession.svelte';
   import { terminals } from '../../stores/terminals.svelte';
@@ -19,7 +20,7 @@
 </script>
 
 <div class="workspace-start">
-  <span class="icon" aria-hidden="true">📁</span>
+  <span class="icon" aria-hidden="true"><Icon name="folder" size={22} strokeWidth={1.75} /></span>
   <h3>No sessions yet</h3>
   <p class="path">{cwd}</p>
   <p>Start a coding agent in this workspace. New sessions appear here once discovered.</p>
@@ -39,7 +40,7 @@
 <style>
   .workspace-start { padding: 32px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
   h3, p { margin: 0; } h3 { font-size: 16px; } p { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
-  .path { font-family: var(--font-mono); overflow-wrap: anywhere; } .icon { font-size: 30px; }
+  .path { font-family: var(--font-mono); overflow-wrap: anywhere; } .icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: var(--radius-lg); background: var(--bg-secondary); color: var(--text-muted); }
   label { margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
   button, select { padding: 7px 12px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); }
   button { cursor: pointer; } button:disabled { opacity: .5; cursor: default; } .primary { background: var(--accent-color); color: white; }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   // Themed replacement for <select>. WebKitGTK draws native select popups
   // with the GTK theme, which ignores the app's colors and fonts.
   interface Option {
@@ -97,7 +98,7 @@
     onkeydown={handleTriggerKeydown}
   >
     <span class="trigger-label">{selected?.label ?? ''}</span>
-    <span class="caret" aria-hidden="true"></span>
+    <Icon name="chevron-down" size={12} strokeWidth={2.25} class="caret" />
   </button>
 
   {#if open}
@@ -142,8 +143,8 @@
     align-items: center;
     gap: 6px;
     height: var(--control-height, 24px);
-    padding: 0 7px;
-    border-radius: 4px;
+    padding: 0 8px;
+    border-radius: var(--radius-sm);
     font-size: 0.72rem;
     font-weight: 500;
     white-space: nowrap;
@@ -162,13 +163,14 @@
     outline: none;
   }
 
-  .caret {
-    width: 0;
-    height: 0;
-    border-left: 3.5px solid transparent;
-    border-right: 3.5px solid transparent;
-    border-top: 4px solid currentColor;
-    opacity: 0.7;
+  .trigger :global(.caret) {
+    margin-right: -2px;
+    opacity: 0.6;
+    transition: transform 0.15s ease;
+  }
+
+  .trigger.open :global(.caret) {
+    transform: rotate(180deg);
   }
 
   .menu {
@@ -182,8 +184,8 @@
     list-style: none;
     background-color: var(--bg-primary);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-popover);
     outline: none;
   }
 
@@ -196,8 +198,8 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 8px 4px 4px;
-    border-radius: 4px;
+    padding: 5px 10px 5px 6px;
+    border-radius: var(--radius-sm);
     font-size: 0.75rem;
     white-space: nowrap;
     color: var(--text-primary);
@@ -205,7 +207,7 @@
   }
 
   .menu li.active {
-    background-color: var(--bg-tertiary);
+    background-color: var(--hover-bg);
   }
 
   .menu li.selected {

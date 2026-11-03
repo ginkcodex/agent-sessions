@@ -35,9 +35,10 @@
   .segmented-control {
     display: flex;
     width: 100%;
-    background-color: var(--bg-tertiary);
+    gap: 2px;
+    background-color: var(--segment-track);
     padding: 2px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
   }
 
   .segment-button {
@@ -46,9 +47,9 @@
     font-size: 0.75rem;
     font-weight: 500;
     color: var(--text-secondary);
-    border-radius: 4px;
+    border-radius: calc(var(--radius-md) - 2px);
     text-align: center;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   }
 
   .segment-button:hover {
@@ -56,9 +57,9 @@
   }
 
   .segment-button.active {
-    background-color: var(--bg-primary);
-    color: var(--accent-color);
+    background-color: var(--segment-thumb);
+    color: var(--text-primary);
     font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-thumb);
   }
 </style>

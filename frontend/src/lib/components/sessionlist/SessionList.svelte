@@ -8,6 +8,7 @@
   import SessionListSkeleton from './SessionListSkeleton.svelte';
   import SessionRow from './SessionRow.svelte';
   import EmptyState from '../common/EmptyState.svelte';
+  import Icon from '../common/Icon.svelte';
   import ErrorState from '../common/ErrorState.svelte';
   import { manage } from '../../stores/manage.svelte';
   import { AGE_FILTERS, filterSessionsByAge, isAgeFilter } from '../../manage';
@@ -167,7 +168,7 @@
 >
   <div class="search-toolbar">
     <div class="text-field">
-      <span class="search-icon">🔍</span>
+      <Icon name="search" size={14} class="search-icon" />
       <input
         type="search"
         placeholder="Filter sessions (title, prompt, cwd, model)…"
@@ -282,24 +283,24 @@
       {:else if emptyState === 'discovering'}
         <div class="discovering" role="status">
           <EmptyState
-            icon="⏳"
+            icon="loader-circle"
             title="Discovering sessions…"
             description="Looking for agent session history. Sessions appear here as they are found."
           />
         </div>
       {:else if emptyState === 'no-agents' || emptyState === 'no-sessions'}
         <EmptyState
-          icon="📭"
+          icon="inbox"
           title="No sessions found"
           description={emptyState === 'no-agents'
             ? 'No supported agents were detected.'
             : 'Discovery finished without finding any session history.'}
         />
       {:else if problem}
-        <EmptyState icon="⚠️" title={problem.title} description={problem.description} />
+        <EmptyState icon="triangle-alert" title={problem.title} description={problem.description} />
       {:else}
         <EmptyState
-          icon="🔍"
+          icon="search"
           title="No matching sessions"
           description="No sessions match the current search and filters."
           actionText="Clear filters"
@@ -346,9 +347,8 @@
     gap: 6px;
   }
 
-  .search-icon {
-    font-size: 0.8rem;
-    opacity: 0.5;
+  .search-toolbar :global(.search-icon) {
+    color: var(--text-muted);
   }
 
   /* Every control in the row shares one height (also read by Dropdown). */

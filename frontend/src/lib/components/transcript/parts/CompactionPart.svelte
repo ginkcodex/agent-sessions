@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../../common/Icon.svelte';
   interface Props {
     text?: string;
   }
@@ -18,7 +19,7 @@
       if (text) isExpanded = !isExpanded;
     }}
   >
-    <span class="pill-icon">✂️</span>
+    <Icon name="scissors" size={12} class="pill-icon" />
     <span class="pill-text">Context Compacted</span>
     {#if text}
       <span class="pill-chevron">{isExpanded ? '▲' : '▼'}</span>
@@ -69,8 +70,8 @@
     border-color: var(--text-secondary);
   }
 
-  .pill-icon {
-    font-size: 12px;
+  :global(.pill-icon) {
+    color: var(--text-muted);
   }
 
   .pill-chevron {

@@ -12,6 +12,8 @@
   import { messageMarkdown, messageText, visibleTranscriptParts, withTranslation, type TranscriptMode } from '../../transcript';
   import { printMessage } from '../../print';
   import ContextMenu, { type ContextMenuItem } from '../common/ContextMenu.svelte';
+  import Icon from '../common/Icon.svelte';
+  import AgentIcon from '../common/AgentIcon.svelte';
   import TextPart from './parts/TextPart.svelte';
   import ReasoningPart from './parts/ReasoningPart.svelte';
   import ToolPart from './parts/ToolPart.svelte';
@@ -190,16 +192,16 @@
       <div class="message-meta-header">
         <div class="meta-left">
           {#if isUser}
-            <span class="role-icon">👤</span>
+            <span class="role-icon user"><Icon name="user" size={12} /></span>
             <span class="role-label">User</span>
           {:else if isAssistant}
-            <span class="role-icon">🤖</span>
+            <span class="role-icon assistant"><AgentIcon agent={sessionRef?.agent} size={11} /></span>
             <span class="role-label">Assistant</span>
             {#if message.model}
               <span class="model-tag">{message.model}</span>
             {/if}
           {:else}
-            <span class="role-icon">⚙️</span>
+            <span class="role-icon system"><Icon name="settings" size={12} /></span>
             <span class="role-label">System</span>
           {/if}
           {#if message.isSidechain}
@@ -258,7 +260,7 @@
             <ImagePart file={part.file} {sessionRef} />
           {:else if part.kind === 'file' && part.file}
             <div class="file-attachment-pill">
-              <span>📎</span>
+              <Icon name="paperclip" size={13} />
               <span>{part.file.name || part.file.ref || 'Attachment'}</span>
             </div>
           {/if}
@@ -326,8 +328,20 @@
     gap: 6px;
   }
 
+  /* A small round avatar holding the role's icon. */
   .role-icon {
-    font-size: 12.8px;
+    display: inline-grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+  }
+
+  .role-icon.user {
+    background-color: var(--active-bg);
+    color: var(--accent-color);
   }
 
   .role-label {

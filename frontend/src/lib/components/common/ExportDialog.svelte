@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import DialogCloseButton from './DialogCloseButton.svelte';
   import { exporter } from '../../stores/export.svelte';
   import { BUDGET_PRESETS } from '../../portable';
@@ -153,12 +154,12 @@
             </div>
             {#if total > 0}
               <div class="stat-pill redact-pill">
-                <span>🔒 {total} redacted</span>
+                <span><Icon name="shield-check" size={12} /> {total} redacted</span>
               </div>
             {/if}
             {#if exporter.preview.fidelity?.overflow?.length}
               <div class="stat-pill warn-pill" title={exporter.preview.fidelity.overflow.join('\n')}>
-                <span>⚠️ {exporter.preview.fidelity.overflow.length} outputs over the 64 MiB cap</span>
+                <span><Icon name="triangle-alert" size={12} /> {exporter.preview.fidelity.overflow.length} outputs over the 64 MiB cap</span>
               </div>
             {/if}
           </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import DialogCloseButton from './DialogCloseButton.svelte';
   import { handoff } from '../../stores/handoff.svelte';
   import { BUDGET_PRESETS } from '../../portable';
@@ -176,19 +177,19 @@
 
             {#if handoff.preview.report.trimmed}
               <div class="stat-pill warn-pill">
-                <span>⚠️ Trimmed to fit budget</span>
+                <span><Icon name="triangle-alert" size={12} /> Trimmed to fit budget</span>
               </div>
             {/if}
 
             {#if totalRedactions > 0}
               <div class="stat-pill redact-pill">
-                <span>🔒 {totalRedactions} secrets redacted</span>
+                <span><Icon name="shield-check" size={12} /> {totalRedactions} secrets redacted</span>
               </div>
             {/if}
 
             {#if handoff.preview.promptFile}
               <div class="stat-pill notice-pill" title={handoff.preview.promptFile}>
-                <span>📄 Delivered via handoff file</span>
+                <span><Icon name="file-text" size={12} /> Delivered via handoff file</span>
               </div>
             {/if}
           </div>

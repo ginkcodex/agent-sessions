@@ -622,10 +622,10 @@ function textOf(html) {
 test('HostSelector lists WSL distributions above SSH hosts', async () => {
   const html = await renderHostSelector(await hostSelectorStore(new MockBackendAPI()));
   const text = textOf(html);
-  const wsl = text.indexOf('WSL 🐧 Ubuntu');
+  const wsl = text.indexOf('WSL Ubuntu');
   const ssh = text.indexOf('SSH Hosts');
   assert.ok(text.indexOf('Local') < wsl && wsl >= 0 && wsl < ssh, text);
-  assert.match(text, /Local ✓ WSL 🐧 Ubuntu Default distribution ⚙ 🐧 Debian ⚙ SSH Hosts/);
+  assert.match(text, /Local ✓ WSL Ubuntu Default distribution Debian SSH Hosts/);
   assert.equal(text.split('Default distribution').length - 1, 1, 'only the default distribution is marked');
   assert.ok(text.indexOf('dev-box') > ssh && text.indexOf('prod-server') > ssh);
   assert.match(html, /aria-label="Configure environment overrides for Ubuntu"/);
@@ -641,7 +641,7 @@ test('HostSelector shows a connected distribution by label and checks its row', 
   const html = await renderHostSelector(store);
   assert.match(html, /<span class="host-name[^"]*">Debian \(WSL\)<\/span>/);
   assert.match(html, /title="Connected to Debian \(WSL\)"/);
-  assert.match(textOf(html), /💻 Local WSL 🐧 Ubuntu Default distribution ⚙ 🐧 Debian ⚙ ✓ SSH Hosts/);
+  assert.match(textOf(html), /Local WSL Ubuntu Default distribution Debian ✓ SSH Hosts/);
   assert.equal(textOf(html).split('✓').length - 1, 1, 'only the connected distribution is checked');
   assert.match(textOf(html), /Disconnect/);
 });
@@ -652,7 +652,7 @@ test('HostSelector leaves out the WSL section when there are no distributions', 
   const html = await renderHostSelector(await hostSelectorStore(mock));
   const text = textOf(html);
   assert.doesNotMatch(text, /\bWSL\b|Default distribution|Ubuntu|Debian/);
-  assert.match(text, /Local ✓ SSH Hosts ↻ 🌐 dev-box/);
+  assert.match(text, /Local ✓ SSH Hosts ↻ dev-box/);
 
   // A failed SSH listing is shown in the SSH section; WSL still lists.
   const failed = await hostSelectorStore({
@@ -660,7 +660,7 @@ test('HostSelector leaves out the WSL section when there are no distributions', 
     listWSLDistros: async () => [{ name: 'Ubuntu', host: 'wsl:Ubuntu', default: true }],
   });
   const failedText = textOf(await renderHostSelector(failed));
-  assert.match(failedText, /WSL 🐧 Ubuntu Default distribution ⚙ SSH Hosts ↻ ssh config unreadable Go/);
+  assert.match(failedText, /WSL Ubuntu Default distribution SSH Hosts ↻ ssh config unreadable Go/);
   assert.doesNotMatch(failedText, /No SSH config hosts found/);
 });
 
