@@ -150,6 +150,8 @@ func (e *Engine) diagnostics(ctx context.Context) (*diagnosticsOwner, error) {
 			return nil, err
 		}
 		owner.tick = in.Tick
+		// Keep injected fixtures independent of installed host toolchains for
+		// saved checks too. A nil discoverSaved uses the host-free fallback.
 	} else {
 		if host, err = diagnosticsIdentity(e.hostKind(), roots.Config, e.machineID); err != nil {
 			return nil, err
@@ -165,9 +167,9 @@ func (e *Engine) diagnostics(ctx context.Context) (*diagnosticsOwner, error) {
 		if err != nil {
 			return nil, err
 		}
-	}
-	owner.discoverSaved = func(root cd.AuthorizedRoot, off cd.DisabledLanguages) []cd.Registration {
-		return discoverCheckersIn(root, e.rustPreparePath(), e.managedDirs(), off)
+		owner.discoverSaved = func(root cd.AuthorizedRoot, off cd.DisabledLanguages) []cd.Registration {
+			return discoverCheckersIn(root, e.rustPreparePath(), e.managedDirs(), off)
+		}
 	}
 	e.codeDiagnostics = owner
 	go owner.events(e)

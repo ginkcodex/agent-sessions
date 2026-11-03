@@ -11,8 +11,31 @@ import (
 
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/scan"
 )
+
+func TestInjectedLiveDiagnosticsSkipsHostSavedDiscovery(t *testing.T) {
+	for _, injected := range []bool{false, true} {
+		t.Run(map[bool]string{false: "production", true: "injected"}[injected], func(t *testing.T) {
+			options := []Option{WithRoots(paths.Roots{Config: t.TempDir()}), WithFixtureMachineIdentity("fixture-machine")}
+			if injected {
+				options = append(options, WithInjectedLiveCodeDiagnostics(LiveCodeDiagnosticsInjection{Host: "fixture-host"}))
+			}
+			e := NewEngine(options...)
+			t.Cleanup(func() { _ = e.Close() })
+			o, err := e.diagnostics(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Injected fixtures must use discoverAll's host-free saved-checker
+			// fallback, while production must retain installed-tool discovery.
+			if (o.discoverSaved == nil) != injected {
+				t.Fatalf("host saved-checker discovery installed = %v, injected = %v", o.discoverSaved != nil, injected)
+			}
+		})
+	}
+}
 
 // Exercise the actual asynchronous Engine discovery/approval/document route.
 // The fake launcher fails without executing anything; framed successful sync and
