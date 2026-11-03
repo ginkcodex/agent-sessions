@@ -508,6 +508,14 @@
   // target opens and renders, the viewer scrolls to that heading.
   let pendingAnchor = $state<{ path: string; id: string } | null>(null);
 
+  async function loadMarkdownImage(href: string): Promise<string | null> {
+    if (!files.dir || !files.selectedPath || historical || external || blocked) return null;
+    const target = markdownFileTarget(files.selectedPath, href);
+    if (!target || !isImageFile(target)) return null;
+    const content = await api.readFile(files.dir, target);
+    return content.image && content.data ? `data:${content.image};base64,${content.data}` : null;
+  }
+
   function followFileLink(href: string) {
     if (!files.selectedPath) return;
     if (historical || external) {
@@ -1386,7 +1394,7 @@
         {#if showMarkdown}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="markdown-preview" bind:this={find.previewEl} oncontextmenu={openPreviewMenu} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14px'}>
-            <MarkdownDoc source={text} onFileLink={followFileLink} />
+            <MarkdownDoc source={text} onFileLink={followFileLink} loadImage={loadMarkdownImage} />
           </div>
         {:else if showSvg}
           {@render imageView()}

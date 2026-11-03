@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { renderMarkdown } from '../../markdown';
+  import { renderDocumentMarkdown } from '../../documentMarkdown';
   import { handleCopyCodeClick } from '../../copycode';
   import { renderMermaid } from '../../mermaid';
   import { theme } from '../../stores/theme.svelte';
@@ -7,11 +7,27 @@
   interface Props {
     source: string;
     onFileLink?: (href: string) => void;
+    loadImage?: (href: string) => Promise<string | null>;
   }
 
-  let { source, onFileLink }: Props = $props();
+  let { source, onFileLink, loadImage }: Props = $props();
 
-  let renderedHtml = $derived(renderMarkdown(source, Boolean(onFileLink)));
+  let renderedHtml = $derived(renderDocumentMarkdown(source));
+
+  $effect(() => {
+    void renderedHtml;
+    const root = container;
+    const load = loadImage;
+    let cancelled = false;
+    if (root && load) {
+      for (const img of root.querySelectorAll<HTMLImageElement>('img[data-document-image]')) {
+        void load(img.dataset.documentImage!).then((src) => {
+          if (!cancelled && src) img.src = src;
+        }).catch(() => { /* Missing or unavailable images retain their alt text. */ });
+      }
+    }
+    return () => { cancelled = true; };
+  });
 
   function scrollToAnchor(root: HTMLElement | undefined, id: string) {
     if (!root || !id) return;
@@ -110,6 +126,15 @@
     color: var(--text-primary);
     border: 1px solid var(--border-color);
   }
+
+  :global(.markdown-doc img) {
+    max-width: 100%;
+    object-fit: contain;
+  }
+
+  :global(.markdown-doc [align="center"]) { text-align: center; }
+  :global(.markdown-doc [align="right"]) { text-align: right; }
+  :global(.markdown-doc [align="left"]) { text-align: left; }
 
   :global(.markdown-doc a) {
     color: var(--accent-color);
