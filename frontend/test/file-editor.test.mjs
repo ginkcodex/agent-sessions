@@ -139,6 +139,7 @@ async function loadEditorModule() {
   source = source.replace("'./fullscreen'", JSON.stringify(new URL('fullscreen.ts', EDITOR_URL).href));
   source = source.replace("'./sourceDiagnostics'", JSON.stringify(new URL('sourceDiagnostics.ts', EDITOR_URL).href));
   source = source.replace("'./problemNavigation'",  JSON.stringify(new URL('problemNavigation.ts', EDITOR_URL).href));
+  source = source.replace("'./problemOverview'", JSON.stringify(new URL('problemOverview.ts', EDITOR_URL).href));
   source = source.replace("'./files'", JSON.stringify(new URL('files.ts', EDITOR_URL).href));
   source = source.replace("'./searchReplace'", JSON.stringify(new URL('searchReplace.ts', EDITOR_URL).href));
   source = source.replace("'./sourceNavigation'", JSON.stringify(new URL('sourceNavigation.ts', EDITOR_URL).href));
@@ -220,12 +221,49 @@ test('lint uses shared verified ranges against LF state, plain attribution and e
   editor.destroy();
 });
 
+// Each marked line number names its worst problem's severity.
+function lineSeverities(state) {
+  const lines = [];
+  for (const set of state.facet(lineNumberMarkers)) {
+    for (let cursor = set.iter(); cursor.value; cursor.next()) lines.push([state.doc.lineAt(cursor.from).number, cursor.value.elementClass]);
+  }
+  return lines;
+}
+
+test('line numbers take the worst severity and the overview ruler hears each change once', () => {
+  const id = {}, diagnostics = lintInput(id, [
+    { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+    { start: { line: 0, character: 1 }, end: { line: 0, character: 2 } },
+    { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } },
+  ]);
+  diagnostics.findings[1].diagnostic.severity = 'error';
+  diagnostics.findings[2].diagnostic.severity = 'hint';
+  const reports = [];
+  const { view, editor, options } = mount({ id, text: 'abc\ndef\n', path: 'x.txt', diagnostics, onproblems: problems => reports.push(problems) });
+  assert.deepEqual(lineSeverities(view.state), [[1, 'cm-has-diagnostics cm-severity-error'], [2, 'cm-has-diagnostics cm-severity-hint']]);
+  assert.equal(reports.length, 1, 'reported once after mounting');
+  assert.deepEqual(reports[0].map(p => [p.range.start.line, p.range.start.character, p.range.end.character, p.severity, p.message, p.source]), [
+    [0, 0, 1, 'information', '<img onerror=evil>', '<checker> C1'],
+    [0, 1, 2, 'error', '<img onerror=evil>', '<checker> C1'],
+    [1, 0, 1, 'hint', '<img onerror=evil>', '<checker> C1'],
+  ]);
+  editor.update({ ...options });
+  assert.equal(reports.length, 1, 'the same problems are not reported again');
+  type(view, '!');
+  assert.equal(reports.length, 2);
+  assert.deepEqual(reports[1], [], 'typing clears the saved markers, and the ruler with them');
+  assert.equal(editor.lineTop(1), 28, 'a line top includes the document padding');
+  assert.equal(editor.lineTop(99), undefined);
+  assert.equal(editor.scrollDOM, view.scrollDOM);
+  editor.destroy();
+});
+
 // Line numbers marked as having diagnostics, as the viewer marks them.
 function markedLines(state) {
   const lines = [];
   for (const set of state.facet(lineNumberMarkers)) {
     for (let cursor = set.iter(); cursor.value; cursor.next()) {
-      if (cursor.value.elementClass === 'cm-has-diagnostics') lines.push(state.doc.lineAt(cursor.from).number);
+      if (cursor.value.elementClass.split(' ').includes('cm-has-diagnostics')) lines.push(state.doc.lineAt(cursor.from).number);
     }
   }
   return lines;

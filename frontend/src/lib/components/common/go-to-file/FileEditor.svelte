@@ -10,13 +10,16 @@
   import type { FileEditorController, FileEditorOptions } from '../../../fileEditor';
   import { filePrompt } from '../../../stores/filePrompt.svelte';
 
-  let { id, text, path, version, wrap, disabled = false, diagnostics, position, onposition, selection, onselection, onchange, onsave, symbols }: FileEditorOptions = $props();
+  let { id, text, path, version, wrap, disabled = false, diagnostics, position, onposition, selection, onselection, onchange, onsave, symbols, onproblems, scroller = $bindable() }: FileEditorOptions & {
+    /** The element that scrolls the text, for the overview ruler. */
+    scroller?: HTMLElement;
+  } = $props();
   let host: HTMLDivElement;
   let editor = $state<FileEditorController>();
   let error = $state('');
 
   function options(): FileEditorOptions {
-    return { id, text, path, version, wrap, disabled, diagnostics, position, onposition, selection, onselection, onchange, onsave, symbols };
+    return { id, text, path, version, wrap, disabled, diagnostics, position, onposition, selection, onselection, onchange, onsave, symbols, onproblems };
   }
 
   onMount(() => {
@@ -24,6 +27,7 @@
     void import('../../../fileEditor').then(({ createFileEditor }) => {
       if (!disposed) {
         editor = createFileEditor(host, options());
+        scroller = editor.scrollDOM;
         if (pending?.valid()) editor.revealRange(pending.range);
         pending = undefined;
         // The runtime loads lazily: by now a prompt may hold focus.
@@ -36,6 +40,7 @@
       disposed = true;
       editor?.destroy();
       editor = undefined;
+      scroller = undefined;
     };
   });
 
@@ -49,6 +54,8 @@
   export function caret(): CodeDiagnosticPosition | undefined { return editor?.caret(); }
   export function find(): boolean { return editor?.find() ?? false; }
   export function closeSearch(): boolean { return editor?.closeSearch() ?? false; }
+  /** Where a 0-based line starts, in px from the top of the scrolled text. */
+  export function lineTop(line: number): number | undefined { return editor?.lineTop(line); }
   export function handleKey(event: KeyboardEvent): boolean { return editor?.handleKey(event) ?? false; }
 </script>
 

@@ -101,16 +101,16 @@ test('SSR keeps syntax HTML intact, escapes messages and exposes overlaps withou
     assert.match(html, /<span class="hljs-string">&lt;&amp;text<\/span>/);
     assert.doesNotMatch(html, /<img|<checker>|<code>/);
     assert.match(html, /&lt;img/);
-    assert.match(html, /diagnostics: error, warning/);
-    assert.match(html, /aria-describedby="[^"]+ [^"]+"/);
+    // The line number takes the worst severity's colour and names every message, worst first.
+    assert.match(html, /has-diagnostics" data-severity="error"/);
+    assert.match(html, /aria-label="Select line 1; Error: &lt;img onerror=&quot;evil&quot;> &amp; text; Warning: &lt;img/);
     assert.match(html, /mark-modified/);
     assert.match(html, /aria-pressed="true"/);
-    assert.match(html, /File-level finding/);
-    assert.match(html, /Stale: the file or checker changed/);
-    assert.doesNotMatch(html, /stale or unverified|remains in Problems only/);
+    // Problems the source cannot mark are not listed above it (see UnplacedDiagnostics).
+    assert.doesNotMatch(html, /Source diagnostics|File-level finding|Stale: the file or checker changed|aria-describedby/);
     assert.match(html, /font-size:\s*24px/);
     const diff = await renderWithFixture(component, { files: { wrap } }, { ...props, showDiff: true });
-    assert.doesNotMatch(diff, /Source diagnostics|has-diagnostics|diagnostics: error/);
+    assert.doesNotMatch(diff, /has-diagnostics|data-severity="error"|Error:/);
     const plain = await renderWithFixture(component, { files: { wrap } }, { ...props, htmlLines: null });
     assert.match(plain, /&lt;&amp;text/);
   }

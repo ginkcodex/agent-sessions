@@ -83,32 +83,49 @@ const source = await loadServerComponent(new URL('../src/lib/components/common/g
 ]);
 const sourceProps = diagnostics => ({ rows: [{ kind: 'line', index: 0 }, { kind: 'line', index: 1 }], htmlLines: null, plainLines: ['a', 'bcd'], showDiff: false, presentation: false, presentationFontSize: 14, diagnostics });
 
-test('source list is compact: severity pill, Ln/Col, short source, escaped and bounded long messages', async () => {
+const unplacedURL = new URL('../src/lib/components/common/go-to-file/UnplacedDiagnostics.svelte', import.meta.url);
+const unplaced = await loadServerComponent(unplacedURL, []);
+
+test('source keeps only marks in the text: no list above it, the line number names each problem', async () => {
   const long = '<img src=x onerror=alert(1)> first line\n' + 'detail '.repeat(60);
   const p = projectSourceDiagnostics('a\nbcd', [finding(diag()), finding(diag({ severity: 'warning', range: undefined, message: long }))], saved);
   const html = await renderWithFixture(source, { files: { wrap: false } }, sourceProps(p));
-  assert.match(html, /class="sev sev-error[^"]*">Error</); assert.match(html, /class="sev sev-warning[^"]*">Warning</);
-  assert.match(html, />Ln 2, Col 3</); assert.match(html, />File</);
-  assert.match(html, /<details class="msg long[^"]*"><summary[^>]*>&lt;img src=x onerror=alert\(1\)> first line<\/summary>/);
+  assert.doesNotMatch(html, /Source diagnostics|class="sev |<details/);
+  assert.match(html, /data-severity="error" aria-label="Select line 2; Error: undefined: x"/);
+  assert.match(html, /data-severity="none" aria-label="Select line 1"/);
   assert.doesNotMatch(html, /<img/);
-  assert.match(html, /File-level finding \(no line position\)/);
-  assert.doesNotMatch(html, /not current|Refresh results|Reopen live sync/, 'file-level only: no stale badge or recovery');
-  assert.match(html, /1 Error/); assert.match(html, /1 Warning/);
   const style = readFileSync(new URL('../src/lib/components/common/go-to-file/SourceView.svelte', import.meta.url), 'utf8');
-  assert.match(style, /\.diagnostic-messages \{[^}]*font-size: 12px/); assert.match(style, /\.diagnostic-messages ul \{[^}]*max-height:[^;]+;[^}]*overflow: auto/);
+  assert.doesNotMatch(style, /\.diagnostic-messages/);
+  assert.match(style, /\.ln\[data-severity='error'\] \{ color: #f85149; \}/);
+});
+
+test('file-level findings get one line above the source, without a recovery', async () => {
+  const long = '<img src=x onerror=alert(1)> first line\n' + 'detail '.repeat(60);
+  const p = projectSourceDiagnostics('a\nbcd', [finding(diag()), finding(diag({ severity: 'warning', range: undefined, message: long }))], saved);
+  const recovery = { label: 'Refresh results', description: 'nothing is saved', run() {} };
+  const html = await renderWithFixture(unplaced, {}, { diagnostics: p, recovery });
+  assert.match(html, /role="status"/);
+  assert.match(html, /1 problem not marked in the source \(1 file-level\); see Problems\./);
+  assert.match(html, /class="dot sev-warning/);
+  assert.match(html, /title="Warning: &lt;img src=x onerror=alert\(1\)> first line/);
+  assert.match(html, /File-level finding \(no line position\)/);
+  assert.doesNotMatch(html, /<img/);
+  assert.doesNotMatch(html, /not current|Refresh results|Reopen live sync/, 'file-level only: no stale count or recovery');
+  const none = projectSourceDiagnostics('a\nbcd', [finding(diag())], saved);
+  assert.doesNotMatch(await renderWithFixture(unplaced, {}, { diagnostics: none, recovery }), /role="status"/, 'nothing to say when every problem is marked');
 });
 
 test('truly stale results show a described recovery action; nothing runs during render', async () => {
   let runs = 0;
   const p = projectSourceDiagnostics('a\nbcd', [finding(diag({ freshness: 'stale' })), finding(diag({ range: undefined }))], saved);
   const recovery = { label: 'Refresh results', description: 'Refresh re-reads saved files and fetches the latest results; nothing is saved or re-run.', run: () => runs++ };
-  const html = await renderWithFixture(source, { files: { wrap: true } }, { ...sourceProps(p), recovery });
-  assert.match(html, /1 not current/);
+  const html = await renderWithFixture(unplaced, {}, { diagnostics: p, recovery });
+  assert.match(html, /2 problems not marked in the source \(1 file-level · 1 not current\)/);
   assert.match(html, /Stale: the file or checker changed/);
   assert.match(html, /nothing is saved/);
   assert.deepEqual(renderedButtons(html).filter(b => b.text === 'Refresh results').map(b => b.disabled), [false]);
   assert.equal(runs, 0);
-  const disabled = await renderWithFixture(source, { files: { wrap: true } }, { ...sourceProps(p), recovery: { ...recovery, disabled: true } });
+  const disabled = await renderWithFixture(unplaced, {}, { diagnostics: p, recovery: { ...recovery, disabled: true } });
   assert.equal(renderedButtons(disabled).find(b => b.text === 'Refresh results').disabled, true);
 });
 

@@ -19,6 +19,7 @@ import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpe
 import type { CodeDiagnosticPosition } from './codeDiagnostics';
 import { HOVER_DELAY, contextPress, linkModifier, menuKey, wordRange, type SelectionHold, type ViewportPoint } from './sourceNavigation';
 import { handleCopyCodeClick } from './copycode';
+import { severityRank, type OverviewProblem, type ProblemSeverity } from './problemOverview';
 
 /**
  * Code navigation from the draft. `current` says whether the editor still
@@ -52,6 +53,8 @@ export interface FileEditorOptions {
   onsave: () => void;
   /** Read through owners when asked, like every callback here. */
   symbols?: EditorSymbols;
+  /** The diagnostics the editor shows, for the overview ruler; called when they change. */
+  onproblems?: (problems: OverviewProblem[]) => void;
 }
 
 interface CachedEditor {
@@ -86,7 +89,14 @@ const theme = EditorView.theme({
   '.cm-gutters': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-muted)', border: 'none', borderRight: '1px solid var(--border-color)' },
   '.cm-gutter': { paddingTop: '0', paddingBottom: '0' },
   '.cm-lineNumbers .cm-gutterElement': { padding: '0 10px 0 14px', minWidth: '0' },
-  '.cm-lineNumbers .cm-has-diagnostics': { textDecoration: 'underline dotted', fontWeight: 'bold' },
+  // Line numbers in their worst problem's colour, as in the viewer (SourceView).
+  '.cm-lineNumbers .cm-has-diagnostics': { fontWeight: 'bold' },
+  '.cm-lineNumbers .cm-severity-error': { color: '#f85149' },
+  '.cm-lineNumbers .cm-severity-warning': { color: '#d29922' },
+  '.cm-lineNumbers .cm-severity-information': { color: '#2f81f7' },
+  '.cm-lineNumbers .cm-severity-hint': { color: '#8250df' },
+  ':root:not([data-theme="dark"]) & .cm-lineNumbers .cm-severity-error': { color: '#cf222e' },
+  ':root:not([data-theme="dark"]) & .cm-lineNumbers .cm-severity-warning': { color: '#9a6700' },
   // The selection layer sits behind the lines, so the active line's tint must
   // stay translucent or it hides a selection on the cursor's line.
   '.cm-activeLine': { backgroundColor: 'var(--hover-bg)' },
@@ -215,23 +225,56 @@ export function editorDiagnostics(state: EditorState, options: FileEditorOptions
     });
 }
 
-// Lines with diagnostics are marked on their numbers, as in the viewer. A
-// separate lint gutter would widen the gutter and move the text.
-const diagnosticLine = new class extends GutterMarker { elementClass = 'cm-has-diagnostics'; }();
+const problemSeverity = (severity: Diagnostic['severity']): ProblemSeverity => severity === 'info' ? 'information' : severity;
+
+// Lines with diagnostics are marked on their numbers, in the colour of the
+// worst, as in the viewer. A separate lint gutter would widen the gutter and
+// move the text.
+class DiagnosticLine extends GutterMarker {
+  readonly severity: ProblemSeverity;
+  constructor(severity: ProblemSeverity) { super(); this.severity = severity; this.elementClass = `cm-has-diagnostics cm-severity-${severity}`; }
+  eq(other: GutterMarker) { return other instanceof DiagnosticLine && other.severity === this.severity; }
+}
+const diagnosticMarkers = Object.fromEntries((['error', 'warning', 'information', 'hint'] as const).map(s => [s, new DiagnosticLine(s)])) as Record<ProblemSeverity, DiagnosticLine>;
 const diagnosticLines = StateField.define<RangeSet<GutterMarker>>({
   create: () => RangeSet.empty,
   update(value, tr) {
     if (!tr.docChanged && !tr.effects.some(e => e.is(setDiagnosticsEffect))) return value;
     const { doc } = tr.state;
-    const starts = new Set<number>();
-    forEachDiagnostic(tr.state, (_, from, to) => {
+    const worst = new Map<number, ProblemSeverity>();
+    forEachDiagnostic(tr.state, (d, from, to) => {
+      const severity = problemSeverity(d.severity);
       // The end is exclusive: a range ending at a line's start does not reach that line.
-      for (let line = doc.lineAt(from).number, last = doc.lineAt(Math.max(from, to - 1)).number; line <= last; line++) starts.add(doc.line(line).from);
+      for (let line = doc.lineAt(from).number, last = doc.lineAt(Math.max(from, to - 1)).number; line <= last; line++) {
+        const start = doc.line(line).from, seen = worst.get(start);
+        if (!seen || severityRank[severity] < severityRank[seen]) worst.set(start, severity);
+      }
     });
-    return RangeSet.of([...starts].map(from => diagnosticLine.range(from)), true);
+    return RangeSet.of([...worst].map(([from, severity]) => diagnosticMarkers[severity].range(from)), true);
   },
   provide: field => lineNumberMarkers.from(field),
 });
+
+/** The diagnostics a state shows, as the overview ruler takes them. */
+export function editorProblems(state: EditorState): OverviewProblem[] {
+  const problems: OverviewProblem[] = [];
+  forEachDiagnostic(state, (d, from, to) => problems.push({
+    range: { start: editorPosition(state, from), end: editorPosition(state, to) },
+    severity: problemSeverity(d.severity), message: d.message, source: d.source ?? '',
+  }));
+  return problems;
+}
+// What each view last reported, so an unchanged set is not reported again.
+const reported = new WeakMap<EditorView, string>();
+function reportProblems(view: EditorView) {
+  const report = owners.get(view)?.onproblems;
+  if (!report) return;
+  const problems = editorProblems(view.state);
+  const key = JSON.stringify(problems);
+  if (reported.get(view) === key) return;
+  reported.set(view, key);
+  report(problems);
+}
 
 // Clearing in the same transaction prevents even one frame of automatically
 // mapped saved markers. Undo is a document change too, not freshness evidence.
@@ -457,6 +500,7 @@ function freshState(options: FileEditorOptions): EditorState {
       EditorView.updateListener.of(update => {
         if (update.docChanged && !update.transactions.every(tr => tr.annotation(external)))
           owners.get(update.view)?.onchange(update.state.doc.toString());
+        if (update.docChanged || update.transactions.some(tr => tr.effects.some(e => e.is(setDiagnosticsEffect)))) reportProblems(update.view);
       }),
     ],
   });
@@ -607,6 +651,7 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
   setLanguage();
   if (options.position) restorePosition(options.position);
   else if (reuse) restore(cached.top, cached.left);
+  reportProblems(view);
 
   return {
     update(next: FileEditorOptions) {
@@ -628,6 +673,14 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
       configure();
       view.dispatch(setDiagnostics(view.state, editorDiagnostics(view.state, options)));
       if (reset || changedPath) setLanguage();
+      reportProblems(view);
+    },
+    /** The element that scrolls the text. */
+    scrollDOM: view.scrollDOM,
+    /** Where a 0-based line starts, in px from the top of the scrolled text; estimated outside the viewport. */
+    lineTop(line: number): number | undefined {
+      if (destroyed || line < 0 || line >= view.state.doc.lines) return undefined;
+      return view.lineBlockAt(view.state.doc.line(line + 1).from).top + view.documentPadding.top;
     },
     revealRange(range: CodeDiagnosticRange): boolean {
       if (destroyed) return false;

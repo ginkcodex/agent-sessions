@@ -50,6 +50,7 @@ export async function loadServerModule(url, replacements) {
 let dialogCloseModule;
 let iconModule;
 let agentIconModule;
+const goToFileModules = {};
 
 async function importCompiled(filename, code, replacements) {
   replacements = [
@@ -78,6 +79,14 @@ async function importCompiled(filename, code, replacements) {
     globalThis.__icon = (await iconModule).default;
     replacements.push([iconImport, 'const Icon = globalThis.__icon;']);
   }
+  // Go to File renders the real problem ruler and the unplaced-problems line.
+  for (const [name, file] of [['OverviewRuler', 'OverviewRuler'], ['UnplacedDiagnostics', 'UnplacedDiagnostics']]) {
+    const statement = `import ${name} from './${file}.svelte';`;
+    if (!code.includes(statement) || replacements.some(([from]) => from === statement)) continue;
+    goToFileModules[name] ??= loadServerComponent(new URL(`../src/lib/components/common/go-to-file/${file}.svelte`, import.meta.url), []);
+    globalThis[`__${name}`] = (await goToFileModules[name]).default;
+    replacements.push([statement, `const ${name} = globalThis.__${name};`]);
+  }
   const agentIconImport = code.match(/import AgentIcon from '[./]*(?:common\/)?AgentIcon\.svelte';/)?.[0];
   if (agentIconImport && !replacements.some(([from]) => from === agentIconImport)) {
     agentIconModule ??= loadServerComponent(new URL('../src/lib/components/common/AgentIcon.svelte', import.meta.url), []);
@@ -85,7 +94,7 @@ async function importCompiled(filename, code, replacements) {
     replacements.push([agentIconImport, 'const AgentIcon = globalThis.__agentIcon;']);
   }
   // Pure display-label helpers shared by the diagnostics components resolve to the real module.
-  for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools'], ["'../codeLanguages'", 'codeLanguages'], ["'../../../codeLanguages'", 'codeLanguages'], ["'../../../date'", 'date']]) {
+  for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../problemOverview'", 'problemOverview'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools'], ["'../codeLanguages'", 'codeLanguages'], ["'../../../codeLanguages'", 'codeLanguages'], ["'../../../date'", 'date']]) {
     if (code.includes(module) && !replacements.some(([from]) => from === module)) {
       replacements.push([module, JSON.stringify(new URL(`../src/lib/${file}.ts`, import.meta.url).href)]);
     }

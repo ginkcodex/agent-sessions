@@ -39,6 +39,9 @@
   import LoadingSpinner from '../LoadingSpinner.svelte';
   import MarkdownDoc from '../MarkdownDoc.svelte';
   import SourceView from './SourceView.svelte';
+  import OverviewRuler from './OverviewRuler.svelte';
+  import UnplacedDiagnostics from './UnplacedDiagnostics.svelte';
+  import { overviewMarks, problemsAt, sourceProblems, type OverviewProblem } from '../../../problemOverview';
   import FileEditor from './FileEditor.svelte';
   import { keyHandled } from '../../../fullscreen';
   import { createImagePreview } from './imagePreview.svelte';
@@ -475,6 +478,31 @@
       description: 'Some positions are from an older version of this file. Refresh re-reads saved files and fetches the latest results; nothing is saved or re-run.',
       run: () => { void codeDiagnostics.refresh().catch(() => {}); } };
   });
+  // The overview ruler: what the viewer paints, or the editor's lint state.
+  let viewerProblems = $derived(sourceProblems(sourceDiagnostics));
+  let editorProblems = $state.raw<OverviewProblem[]>([]);
+  let editorScroller: HTMLElement | undefined = $state();
+  let overview = $derived(overviewMarks(editing ? editorProblems : viewerProblems));
+  // Line tops from the rendered lines, so wrapped lines place marks right.
+  function viewerMeasurer() {
+    const root = codeScroll;
+    if (!root) return () => undefined;
+    const lines = new Map<number, HTMLElement>();
+    for (const el of root.querySelectorAll<HTMLElement>('[data-source-line]')) lines.set(Number(el.dataset.sourceLine) - 1, el);
+    const base = root.getBoundingClientRect().top + root.clientTop - root.scrollTop;
+    return (line: number) => {
+      const el = lines.get(line);
+      return el ? el.getBoundingClientRect().top - base : undefined;
+    };
+  }
+  const editorMeasurer = () => (line: number) => editor?.lineTop(line);
+  function pickProblem(problem: OverviewProblem) {
+    closeSymbolPopups();
+    if (editing) {
+      editor?.revealRange(problem.range, () => true);
+      editor?.focus();
+    } else if (codeScroll) revealSourceRange(codeScroll, problem.range);
+  }
   let rows: DiffRow[] = $derived(
     showDiff
       // An empty or deleted file has no lines, only the ones it lost.
@@ -752,7 +780,7 @@
   let symbolMenu = $state<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
   // Gives back a selection the open menu holds (SelectionHold).
   let releaseSelection: (() => void) | undefined;
-  let hoverCard = $state<{ html: string; truncated: boolean; x: number; y: number } | null>(null);
+  let hoverCard = $state<{ html: string; truncated: boolean; problems: OverviewProblem[]; x: number; y: number } | null>(null);
   let hoverSequence = 0;
   let symbolSequence = 0;
   let hoverInside = false;
@@ -882,12 +910,17 @@
     clearTimeout(hoverCloseTimer);
     const sequence = ++hoverSequence;
     const path = files.selectedPath, tab = files.activeTab;
-    if (!path || !tab || symbolBlocker || symbolMenu || symbolPicker) return;
+    if (!path || !tab || symbolMenu || symbolPicker) return;
+    // The problems on the word show at once, with or without a language server.
+    const word = wordRange(plainLines[position.line] ?? '', position.character);
+    const problems = word ? problemsAt(viewerProblems, position.line, word.start, word.end) : [];
+    hoverCard = problems.length ? { html: '', truncated: false, problems, ...at } : null;
+    if (symbolBlocker) return;
     const out = await codeDiagnostics.navigate(path, 'hover', position);
     if (sequence !== hoverSequence || files.activeTab !== tab) return;
     // A hover that fails says nothing: it was never asked for.
-    if (out.kind !== 'result' || !out.result.hover?.value) { hoverCard = null; return; }
-    hoverCard = { html: hoverHtml(out.result.hover), truncated: Boolean(out.result.truncated), ...at };
+    if (out.kind !== 'result' || !out.result.hover?.value) { hoverCard = problems.length ? hoverCard : null; return; }
+    hoverCard = { html: hoverHtml(out.result.hover), truncated: Boolean(out.result.truncated), problems, ...at };
   }
   /** The hover for the editor's own tooltip (CodeMirror places and closes it). */
   async function draftHover(position: CodeDiagnosticPosition, current: () => boolean) {
@@ -1044,7 +1077,7 @@
   {#if navigationNotice}<div class="state nav-notice" role="status">{navigationNotice}</div>{/if}
   {#if symbolNotice}<div class="symbol-notice" role="status" style:left="{symbolNotice.x}px" style:top="{symbolNotice.y + 14}px">{symbolNotice.text}</div>{/if}
   {#if hoverCard}
-    <HoverCard html={hoverCard.html} truncated={hoverCard.truncated} x={hoverCard.x} y={hoverCard.y} maxHeight={(codeScroll?.clientHeight ?? 400) * 0.6}
+    <HoverCard html={hoverCard.html} truncated={hoverCard.truncated} problems={hoverCard.problems} x={hoverCard.x} y={hoverCard.y} maxHeight={(codeScroll?.clientHeight ?? 400) * 0.6}
       onenter={() => { hoverInside = true; clearTimeout(hoverCloseTimer); }} onleave={() => { hoverInside = false; hoverCard = null; }} />
   {/if}
   {#if symbolPicker}
@@ -1289,7 +1322,10 @@
           }}
           onsave={saveInPlace}
           symbols={editorSymbols}
+          onproblems={(problems) => (editorProblems = problems)}
+          bind:scroller={editorScroller}
         />
+        <OverviewRuler marks={overview} scroller={editorScroller} measurer={editorMeasurer} onpick={pickProblem} />
       </div>
     {:else if fileStatus(files.selectedPath) === 'D' && !historical && !activeTab?.gitBasis}
       <div class="state center">This file was deleted since the last commit.</div>
@@ -1394,6 +1430,9 @@
           </div>
         {/if}
       {/if}
+      {#if !showPreview}
+        <UnplacedDiagnostics diagnostics={sourceDiagnostics} recovery={sourceRecovery} />
+      {/if}
       <div
         class="code-scroll"
         bind:this={codeScroll}
@@ -1420,10 +1459,13 @@
         <!-- Replace the source tree on tab switches: diffing unrelated files makes
              WebKit remove thousands of line/token nodes individually. -->
         {#key activeTab}
-          <SourceView diagnostics={sourceDiagnostics} recovery={sourceRecovery} {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} selection={selectedLines} onselectline={selectLine} onclearselection={clearSelection} {symbols} bind:codeEl={find.codeEl} />
+          <SourceView diagnostics={sourceDiagnostics} {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} selection={selectedLines} onselectline={selectLine} onclearselection={clearSelection} {symbols} bind:codeEl={find.codeEl} />
         {/key}
         {/if}
       </div>
+      {#if !showPreview}
+        <OverviewRuler marks={overview} scroller={codeScroll} measurer={viewerMeasurer} onpick={pickProblem} />
+      {/if}
       {#if showMarkdown && (hoveredPreviewLink || focusedPreviewLink)}
         <div class="link-preview" role="status">{hoveredPreviewLink || focusedPreviewLink}</div>
       {/if}

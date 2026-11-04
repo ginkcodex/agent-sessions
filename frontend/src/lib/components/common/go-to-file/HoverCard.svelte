@@ -1,11 +1,15 @@
 <script lang="ts">
   import { handleCopyCodeClick } from '../../../copycode';
+  import { severityLabels } from '../../../codeCheckLabels';
+  import type { OverviewProblem } from '../../../problemOverview';
 
   // What the language server says about the word under the pointer, below it
   // (above, near the bottom of the window). The text is the transcript's
-  // Markdown, escaped; a long one scrolls.
-  let { html, truncated, x, y, maxHeight, onenter, onleave }: {
+  // Markdown, escaped; a long one scrolls. Problems on the word come first,
+  // as in VS Code.
+  let { html, truncated, problems = [], x, y, maxHeight, onenter, onleave }: {
     html: string;
+    problems?: OverviewProblem[];
     truncated: boolean;
     /** The pointer, in viewport coordinates. */
     x: number;
@@ -21,7 +25,7 @@
   let top = $state(0);
 
   $effect(() => {
-    void html; void x; void y;
+    void html; void problems; void x; void y;
     if (!card) return;
     const { width, height } = card.getBoundingClientRect();
     left = Math.max(MARGIN, Math.min(x, window.innerWidth - width - MARGIN));
@@ -43,7 +47,14 @@
   onpointerleave={onleave}
   onclick={handleCopyCodeClick}
 >
-  <div class="hover-body">{@html html}</div>
+  {#each problems as problem, i (i)}
+    <div class="hover-problem">
+      <span class="sev sev-{problem.severity}">{severityLabels[problem.severity]}</span>
+      <span class="msg">{problem.message}</span>
+      {#if problem.source}<span class="src">{problem.source}</span>{/if}
+    </div>
+  {/each}
+  {#if html}<div class="hover-body" class:after-problems={problems.length > 0}>{@html html}</div>{/if}
   {#if truncated}<div class="hover-truncated">The description was cut short.</div>{/if}
 </div>
 
@@ -63,6 +74,45 @@
     line-height: 1.5;
     color: var(--text-primary);
     word-break: break-word;
+  }
+
+  .hover-problem {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 8px;
+    align-items: baseline;
+  }
+
+  .hover-problem + .hover-problem { margin-top: 4px; }
+
+  .hover-problem .sev {
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 16px;
+    white-space: nowrap;
+  }
+
+  .sev-error { color: #f85149; background: rgba(248, 81, 73, 0.12); }
+  .sev-warning { color: #d29922; background: rgba(210, 153, 34, 0.12); }
+  .sev-information { color: #2f81f7; background: rgba(47, 129, 247, 0.12); }
+  .sev-hint { color: #8250df; background: rgba(130, 80, 223, 0.12); }
+  :global(:root:not([data-theme='dark'])) .sev-error { color: #cf222e; }
+  :global(:root:not([data-theme='dark'])) .sev-warning { color: #9a6700; }
+
+  .hover-problem .msg { white-space: pre-wrap; }
+
+  .hover-problem .src {
+    grid-column: 2;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .hover-body.after-problems {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-color);
   }
 
   .hover-body :global(p) { margin: 0.4em 0; }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { paintSourceDiagnostics, type SourceDiagnosticProjection } from '../../../sourceDiagnostics';
-  import { locationLabel, longMessage, messagePreview, severityLabels, staleKind, toolName } from '../../../codeCheckLabels';
+  import { severityLabels } from '../../../codeCheckLabels';
+  import { severityRank } from '../../../problemOverview';
   import { files } from '../../../stores/files.svelte';
   import type { DiffRow } from '../../../files';
   import { includesFileLine, type FileLineSelection } from '../../../fileSelection';
@@ -18,14 +19,13 @@
     onselectline,
     onclearselection,
     diagnostics = { messages: [], segments: [] },
-    recovery,
     symbols,
   }: {
     /** Code navigation on words: underline, Cmd/Ctrl+click, hover and menu. */
     symbols?: SourceSymbols;
+    /** Painted under the text and marked on the line numbers. The messages
+     * show on hover, on the overview ruler and in Problems (see FileViewer). */
     diagnostics?: SourceDiagnosticProjection;
-    /** Explicit, described recovery for results that are actually stale (never shown for file-level findings). */
-    recovery?: { label: string; description: string; disabled?: boolean; run: () => void };
     rows: DiffRow[];
     htmlLines: string[] | null;
     plainLines: string[];
@@ -39,26 +39,30 @@
     onclearselection?: () => void;
   } = $props();
 
-  const messageId = $props.id();
-  let messagesEl: HTMLDetailsElement | undefined = $state();
-  function selectDiagnosticLine(line: number, extend: boolean) {
-    onselectline?.(line, extend);
-    if (lineMessages.has(line - 1) && messagesEl) messagesEl.open = true;
-  }
   let activeDiagnostics = $derived(showDiff ? { messages: [], segments: [] } : diagnostics);
-  let severityCounts = $derived((['error', 'warning', 'information', 'hint'] as const)
-    .map(severity => [severity, activeDiagnostics.messages.filter(m => m.finding.diagnostic.severity === severity).length] as const)
-    .filter(([, count]) => count > 0));
-  let staleCount = $derived(activeDiagnostics.messages.filter(m => staleKind(m.kind)).length);
+  // The findings on each line, worst first.
   let lineMessages = $derived.by(() => {
     const map = new Map<number, number[]>();
+    const severity = (i: number) => severityRank[activeDiagnostics.messages[i].finding.diagnostic.severity];
     for (const s of activeDiagnostics.segments) {
       const indexes = map.get(s.line) ?? [];
       if (!indexes.includes(s.finding)) indexes.push(s.finding);
       map.set(s.line, indexes);
     }
+    for (const indexes of map.values()) indexes.sort((a, b) => severity(a) - severity(b));
     return map;
   });
+  function lineSeverity(line: number) {
+    const first = lineMessages.get(line)?.[0];
+    return first === undefined ? 'none' : activeDiagnostics.messages[first].finding.diagnostic.severity;
+  }
+  function lineLabel(line: number) {
+    const messages = (lineMessages.get(line) ?? []).map(i => {
+      const d = activeDiagnostics.messages[i].finding.diagnostic;
+      return `${severityLabels[d.severity]}: ${d.message}`;
+    });
+    return `Select line ${line + 1}${messages.length ? `; ${messages.join('; ')}` : ''}`;
+  }
   $effect(() => {
     htmlLines; plainLines; rows;
     if (codeEl) return paintSourceDiagnostics(codeEl, activeDiagnostics, 'source-diagnostic');
@@ -235,37 +239,6 @@
   };
 </script>
 
-{#if activeDiagnostics.messages.length}
-  <details class="diagnostic-messages" bind:this={messagesEl}>
-    <summary>
-      <span class="title">Source diagnostics</span>
-      {#each severityCounts as [severity, count] (severity)}<span class="sev sev-{severity}">{count} {severityLabels[severity]}</span>{/each}
-      {#if staleCount}<span class="tag stale">{staleCount} not current</span>{/if}
-    </summary>
-    {#if staleCount && recovery}
-      <div class="recovery" role="group" aria-label="Recover stale positions">
-        <span>{recovery.description}</span>
-        <button type="button" disabled={recovery.disabled} onclick={recovery.run}>{recovery.label}</button>
-      </div>
-    {/if}
-    <ul>
-      {#each activeDiagnostics.messages as message, i}
-        {@const d = message.finding.diagnostic}
-        <li id={`${messageId}-${i}`} class:stale={staleKind(message.kind)}>
-          <span class="sev sev-{d.severity}">{severityLabels[d.severity]}</span>
-          <span class="loc">{locationLabel(d.range, message.kind)}</span>
-          {#if longMessage(d.message)}
-            <details class="msg long"><summary>{messagePreview(d.message)}</summary><div class="full">{d.message}</div></details>
-          {:else}
-            <span class="msg">{d.message}</span>
-          {/if}
-          <span class="src" title={message.finding.entries.map(e => `${e.diagnostic.source} (${toolName(e.providerId)}) · ${e.diagnostic.freshness} · ${e.diagnostic.basis.kind}`).join('; ')}>{[...new Set(message.finding.entries.map(e => e.diagnostic.source))].join(', ')}{d.code ? ` · ${d.code}` : ''}</span>
-          {#if message.notice}<span class="notice" class:warn={staleKind(message.kind)}>{message.notice}</span>{/if}
-        </li>
-      {/each}
-    </ul>
-  </details>
-{/if}
 <div class="code source file-source" use:lineClicks use:symbolPointer={symbols} bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined} style:--digits={String(htmlLines?.length ?? plainLines.length).length}>
   {#snippet lineNumber(row: DiffRow)}
     {#if row.kind === 'removed'}
@@ -275,10 +248,10 @@
         class:sign={showDiff && row.mark} class:added={showDiff && row.mark}
         class:selected={includesFileLine(selection, row.index + 1)}
         class:has-diagnostics={lineMessages.has(row.index)}
-        aria-describedby={lineMessages.get(row.index)?.map(i => `${messageId}-${i}`).join(' ')}
-        aria-label={`Select line ${row.index + 1}${lineMessages.has(row.index) ? '; diagnostics: ' + lineMessages.get(row.index)!.map(i => activeDiagnostics.messages[i].finding.diagnostic.severity).join(', ') + '; activate to show messages' : ''}`} aria-pressed={includesFileLine(selection, row.index + 1)}
+        data-severity={lineSeverity(row.index)}
+        aria-label={lineLabel(row.index)} aria-pressed={includesFileLine(selection, row.index + 1)}
         title={`${row.mark ? MARK_LABELS[row.mark] + ' · ' : ''}Click to select line; Shift-click to select range`}
-        onclick={(event) => selectDiagnosticLine(row.index + 1, event.shiftKey)}
+        onclick={(event) => onselectline?.(row.index + 1, event.shiftKey)}
       >{showDiff && row.mark ? '+' : row.index + 1}</button>
     {/if}
   {/snippet}
@@ -312,34 +285,14 @@
 </div>
 
 <style>
-  /* Compact, bounded list above the source: never grows to push the code out of view. */
-  .diagnostic-messages { flex-shrink: 0; padding: 4px 12px; font-family: var(--font-sans); font-size: 12px; line-height: 1.4; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); }
-  .diagnostic-messages > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; cursor: pointer; color: var(--text-secondary); }
-  .diagnostic-messages > summary .title { color: var(--text-primary); font-weight: 600; }
-  .diagnostic-messages ul { list-style: none; margin: 4px 0 2px; padding: 0; max-height: min(30vh, 220px); overflow: auto; }
-  .diagnostic-messages li { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; column-gap: 8px; align-items: baseline; padding: 2px 4px; border-radius: 4px; }
-  .diagnostic-messages li:hover { background: var(--hover-bg); }
-  .diagnostic-messages li.stale .msg { color: var(--text-secondary); }
-  .sev { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap; background: var(--bg-tertiary, rgba(127, 127, 127, 0.15)); }
-  .sev-error { color: #f85149; background: rgba(248, 81, 73, 0.12); }
-  .sev-warning { color: #d29922; background: rgba(210, 153, 34, 0.12); }
-  .sev-information { color: #2f81f7; background: rgba(47, 129, 247, 0.12); }
-  .sev-hint { color: #8250df; background: rgba(130, 80, 223, 0.12); }
-  :global(:root:not([data-theme='dark'])) .sev-error { color: #cf222e; }
-  :global(:root:not([data-theme='dark'])) .sev-warning { color: #9a6700; }
-  .loc { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
-  .msg { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-  .msg.long > summary { cursor: pointer; overflow-wrap: anywhere; }
-  .msg.long .full { max-height: 8em; overflow: auto; margin-top: 2px; padding: 4px 6px; border-left: 2px solid var(--border-color); white-space: pre-wrap; font-family: var(--font-mono); font-size: 11px; }
-  .src { font-size: 11px; color: var(--text-muted, var(--text-secondary)); white-space: nowrap; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; }
-  .notice { grid-column: 2 / -1; font-size: 11px; color: var(--text-secondary); }
-  .notice.warn { color: #d29922; }
-  .tag { padding: 0 6px; border-radius: 8px; font-size: 11px; line-height: 16px; }
-  .tag.stale { color: #d29922; border: 1px solid rgba(210, 153, 34, 0.5); }
-  .recovery { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0; color: var(--text-secondary); font-size: 11px; }
-  .recovery button { padding: 2px 8px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 12px; color: var(--text-primary); cursor: pointer; }
-  .recovery button:disabled { opacity: 0.5; cursor: default; }
-  .ln.has-diagnostics { text-decoration: underline dotted; font-weight: bold; }
+  /* A line with problems: its number in the worst one's color. */
+  .ln.has-diagnostics { font-weight: 700; }
+  .ln[data-severity='error'] { color: #f85149; }
+  .ln[data-severity='warning'] { color: #d29922; }
+  .ln[data-severity='information'] { color: #2f81f7; }
+  .ln[data-severity='hint'] { color: #8250df; }
+  :global(:root:not([data-theme='dark'])) .ln[data-severity='error'] { color: #cf222e; }
+  :global(:root:not([data-theme='dark'])) .ln[data-severity='warning'] { color: #9a6700; }
   :global(::highlight(source-symbol)) { text-decoration: underline; color: var(--accent-color); }
   .code:global(.linking) .line { cursor: pointer; }
   :global(::highlight(source-diagnostic-error)) { text-decoration: underline wavy #d1242f; }
