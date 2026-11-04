@@ -670,6 +670,14 @@ func (m *Manager) publishPathDiagnostics(project Project, providerID, generation
 				} else if len(d.routes) > 0 {
 					isolated = false
 				}
+				// A version only the open lifecycle sent is proof on its own,
+				// also for a reopened URI; it maps back to the document version.
+				if lifecycle, ok := m.provider.(interface {
+					PublicationVersionFor(AuthorizedRoot, string, string, string, int64) (int64, bool)
+				}); ok && version != nil {
+					v, ok := lifecycle.PublicationVersionFor(a.root, path, providerID, generation, *version)
+					version, isolated = &v, ok
+				}
 				if !isolated {
 					return failure("resyncRequired", "Document publication lifecycle is ambiguous; results are unavailable until session restart")
 				}

@@ -151,26 +151,102 @@ func (d SessionDocuments) Session(root AuthorizedRoot, path string) (string, Ser
 // app's closed-ID FIFO. Exhaustion disables all path publications until restart.
 const maxPublicationURIs = 256
 
-func (s *lspSession) recordPublicationURI(uri string) {
+// openLifecycle records an open attempt for uri and starts its wire versions:
+// at zero for the URI's first open on this transport, otherwise above every
+// version the transport has sent, so no earlier lifecycle's publication can
+// name a version of this one.
+func (s *lspSession) openLifecycle(uri string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	first := s.recordPublicationURILocked(uri)
+	base := int64(0)
+	if !first {
+		base = s.wireHigh
+	}
+	if s.wireBases == nil {
+		s.wireBases = make(map[string]int64)
+	}
+	s.wireBases[uri] = base
+}
+
+// recordPublicationURILocked reports whether this is the URI's first recorded
+// open. Once the history is full nothing is first: certification of later
+// opens rests on wire versions alone.
+func (s *lspSession) recordPublicationURILocked(uri string) bool {
 	if s.publicationFull {
-		return
+		return false
 	}
 	if reused, seen := s.publicationURIs[uri]; seen {
 		if !reused {
 			s.publicationURIs[uri] = true
 		}
-		return
+		return false
 	}
 	if len(s.publicationURIs) >= maxPublicationURIs {
 		s.publicationFull = true
-		return
+		return false
 	}
 	if s.publicationURIs == nil {
 		s.publicationURIs = make(map[string]bool)
 	}
 	s.publicationURIs[uri] = false
+	return true
+}
+
+// wireVersion is the version sent for a document version of the open
+// lifecycle of uri. It is recorded before delivery: an interrupted write may
+// still have reached the server.
+func (s *lspSession) wireVersion(uri string, version int64) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	base, ok := s.wireBases[uri]
+	if !ok {
+		return 0, failure("resyncRequired", "Document is not open on this language session")
+	}
+	if version < 1 || version > maxSequence-base {
+		return 0, failure("limitExceeded", "Document version exceeds the language session range")
+	}
+	wire := base + version
+	s.wireHigh = max(s.wireHigh, wire)
+	return wire, nil
+}
+
+func (s *lspSession) closeLifecycle(uri string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.wireBases, uri)
+}
+
+// PublicationVersionFor maps a versioned publication for path to the document
+// version of its open lifecycle on the current transport. It fails when the
+// version was not sent by that lifecycle, which also rejects every late
+// publication from an earlier lifecycle of a reopened URI.
+func (d SessionDocuments) PublicationVersionFor(root AuthorizedRoot, path, providerID, generation string, wire int64) (int64, bool) {
+	s := d.publicationSession(root, path, providerID, generation)
+	if s == nil {
+		return 0, false
+	}
+	target, err := root.ResolvePath(root.Project().HostID, path)
+	if err != nil {
+		return 0, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	base, ok := s.wireBases[fileURI(target)]
+	if !ok || wire <= base {
+		return 0, false
+	}
+	return wire - base, true
+}
+
+func (d SessionDocuments) publicationSession(root AuthorizedRoot, path, providerID, generation string) *lspSession {
+	for _, entry := range d.OwnerSessions(root, path) {
+		if entry.Err == nil && entry.Owner.ProviderID == providerID && entry.Generation == generation {
+			_, s, _ := d.serverFor(root, path, entry.Owner)
+			return s
+		}
+	}
+	return nil
 }
 
 // PublicationIsolated proves that exactly one open was attempted for this wire
@@ -184,13 +260,7 @@ func (d SessionDocuments) PublicationIsolated(root AuthorizedRoot, path, generat
 }
 
 func (d SessionDocuments) PublicationIsolatedFor(root AuthorizedRoot, path, providerID, generation string) bool {
-	var s *lspSession
-	for _, entry := range d.OwnerSessions(root, path) {
-		if entry.Err == nil && entry.Owner.ProviderID == providerID && entry.Generation == generation {
-			_, s, _ = d.serverFor(root, path, entry.Owner)
-			break
-		}
-	}
+	s := d.publicationSession(root, path, providerID, generation)
 	if s == nil {
 		return false
 	}
@@ -326,10 +396,18 @@ func (d SessionDocuments) Apply(ctx context.Context, step DocumentStep) error {
 	case "open":
 		// Record before attempting delivery: an interrupted write may have reached
 		// the server. A failed open must never make the next open look isolated.
-		s.recordPublicationURI(uri)
+		s.openLifecycle(uri)
+		wire, err := s.wireVersion(uri, step.Version)
+		if err != nil {
+			return err
+		}
 		method = "textDocument/didOpen"
-		params = map[string]any{"textDocument": lspItem{uri, server.LanguageID, step.Version, step.Text}}
+		params = map[string]any{"textDocument": lspItem{uri, server.LanguageID, wire, step.Text}}
 	case "change":
+		wire, err := s.wireVersion(uri, step.Version)
+		if err != nil {
+			return err
+		}
 		method = "textDocument/didChange"
 		changes := make([]map[string]any, 0, len(step.Changes))
 		for _, c := range step.Changes {
@@ -342,11 +420,13 @@ func (d SessionDocuments) Apply(ctx context.Context, step DocumentStep) error {
 			}
 			changes = append(changes, item)
 		}
-		params = map[string]any{"textDocument": map[string]any{"uri": uri, "version": step.Version}, "contentChanges": changes}
+		params = map[string]any{"textDocument": map[string]any{"uri": uri, "version": wire}, "contentChanges": changes}
 	case "save":
 		method = "textDocument/didSave" // never includes text, by negotiation and by design
 		params = map[string]any{"textDocument": map[string]any{"uri": uri}}
 	case "close":
+		// The lifecycle ends here even if delivery fails: nothing may certify it.
+		s.closeLifecycle(uri)
 		method = "textDocument/didClose"
 		params = map[string]any{"textDocument": map[string]any{"uri": uri}}
 	default:

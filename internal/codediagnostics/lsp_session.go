@@ -701,6 +701,12 @@ type lspSession struct {
 	// Transport-lifetime history: never evicted on close or attachment changes.
 	publicationURIs map[string]bool // value true means reused/ambiguous
 	publicationFull bool            // budget exhausted: reject every path push
+	// Wire versions: a URI's first lifecycle sends document versions as they
+	// are; a reopened one sends base + version, where base is the highest wire
+	// version this transport ever sent. A versioned publication above the base
+	// of the open lifecycle can therefore only describe that lifecycle.
+	wireHigh  int64
+	wireBases map[string]int64 // open lifecycles only
 
 	ready    chan struct{} // closed once with the first terminal/ready result
 	readyErr error

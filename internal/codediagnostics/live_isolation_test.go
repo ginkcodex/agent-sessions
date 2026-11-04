@@ -54,6 +54,63 @@ func TestLiveReusedURIDiscardsFindingsAndEmpties(t *testing.T) {
 	}
 }
 
+// A reopened URI sends versions above everything the transport sent before, so
+// publications naming them describe the new lifecycle and nothing earlier.
+func TestLiveReopenedURICertifiedByItsWireVersions(t *testing.T) {
+	x := newLiveLifecycle(t)
+	ctx, c := context.Background(), x.owner.snap.Context
+	uri := uriOf(x.root, "a.go")
+	if _, err := x.owner.OpenDocument(ctx, c, "a.go", "A", 1, "aa", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.owner.ChangeDocument(ctx, c, "A", 2, "ab"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.owner.OpenDocument(ctx, c, "b.go", "B", 1, "bb", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.owner.CloseDocument(ctx, c, "A"); err != nil {
+		t.Fatal(err)
+	}
+	// Wire versions so far: a.go 1 and 2, b.go 1. The reopen starts above 2.
+	if _, err := x.owner.OpenDocument(ctx, c, "a.go", "A2", 1, "aa", ""); err != nil {
+		t.Fatal(err)
+	}
+	before := x.snapshot(t)
+	for _, version := range []any{1, 2, nil} {
+		x.push(t, uri, version, []any{liveDiagnostic("earlier lifecycle", Range{})})
+		assertPublicationUnchanged(t, x, before)
+	}
+	current := func(message string, version int64) {
+		t.Helper()
+		for _, set := range x.snapshot(t).ResultSets {
+			if set.Scope.DocumentID != "A2" {
+				continue
+			}
+			if len(set.Diagnostics) != 1 {
+				t.Fatalf("%+v", set)
+			}
+			d := set.Diagnostics[0]
+			if d.Message != message || d.Freshness != "current" || d.Basis.Version == nil || *d.Basis.Version != version || d.Range == nil {
+				t.Fatalf("%+v", d)
+			}
+			return
+		}
+		t.Fatal("reopened lifecycle has no results")
+	}
+	x.push(t, uri, 3, []any{liveDiagnostic("reopened", Range{Position{0, 0}, Position{0, 1}})})
+	current("reopened", 1)
+	if _, err := x.owner.ChangeDocument(ctx, c, "A2", 2, "ab"); err != nil {
+		t.Fatal(err)
+	}
+	x.push(t, uri, 4, []any{liveDiagnostic("edited", Range{Position{0, 0}, Position{0, 2}})})
+	current("edited", 2)
+	// A version the lifecycle has not sent yet is not proof either.
+	before = x.snapshot(t)
+	x.push(t, uri, 9, []any{})
+	assertPublicationUnchanged(t, x, before)
+}
+
 func TestLiveIsolationHistorySurvivesReapproval(t *testing.T) {
 	x := newLiveLifecycle(t)
 	ctx, c := context.Background(), x.owner.snap.Context
@@ -171,7 +228,8 @@ func TestLiveIsolationBudgetFailsClosedAndCanonicalURI(t *testing.T) {
 		t.Fatal("canonical URI alias escaped ambiguity")
 	}
 	// Keep a certified set on a distinct URI: after exhaustion even an empty
-	// matching push must not erase that set or manufacture an all-clean result.
+	// unversioned push must not erase that set or manufacture an all-clean
+	// result. Versioned pushes stay provable by their lifecycle's wire versions.
 	if _, err := x.owner.OpenDocument(ctx, c, "b.go", "certified", 1, "bb", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -191,8 +249,12 @@ func TestLiveIsolationBudgetFailsClosedAndCanonicalURI(t *testing.T) {
 		}
 	}
 	before := x.snapshot(t)
-	x.push(t, uriOf(x.root, "b.go"), 1, []any{})
+	x.push(t, uriOf(x.root, "b.go"), nil, []any{})
 	assertPublicationUnchanged(t, x, before)
+	x.push(t, uriOf(x.root, "b.go"), 1, []any{liveDiagnostic("still certified", Range{})})
+	if s := x.snapshot(t); s.Sequence == before.Sequence {
+		t.Fatal("the open lifecycle lost its versioned proof")
+	}
 	for _, path := range []string{"a.go", "p256.go"} {
 		if _, err := x.owner.OpenDocument(ctx, c, path, path, 1, "bb", ""); err != nil {
 			t.Fatal(err)

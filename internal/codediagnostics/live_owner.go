@@ -132,6 +132,14 @@ func (d *LiveDocuments) PublicationIsolatedFor(root AuthorizedRoot, path, provid
 	return ok && p.documents.PublicationIsolatedFor(root, path, providerID, generation)
 }
 
+func (d *LiveDocuments) PublicationVersionFor(root AuthorizedRoot, path, providerID, generation string, wire int64) (int64, bool) {
+	p, ok := d.project(root)
+	if !ok {
+		return 0, false
+	}
+	return p.documents.PublicationVersionFor(root, path, providerID, generation, wire)
+}
+
 func (d *LiveDocuments) Apply(ctx context.Context, step DocumentStep) error {
 	p, ok := d.project(step.Root)
 	if !ok {
