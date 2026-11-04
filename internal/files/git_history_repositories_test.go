@@ -171,24 +171,28 @@ func TestGitHistoryRepositoriesTruncationAndSkips(t *testing.T) {
 	nestedRepo(t, source, "source")
 	gitdir := filepath.Join(source, "source", ".git")
 	root := t.TempDir()
+	// Not a multiple of the worker count, so the last batch is cut to fit the cap.
+	limit := gitHistoryResolveWorkers*2 + 3
+	setLimit(t, &gitHistoryRepositoryCap, limit)
 	// Git-file repositories share object storage for a small, fast cap fixture.
-	for i := 0; i <= MaxGitHistoryRepositories; i++ {
+	for i := 0; i <= limit; i++ {
 		write(t, root, fmt.Sprintf("repo-%03d/.git", i), "gitdir: "+gitdir+"\n")
 	}
 	write(t, root, "node_modules/hidden/.git", "invalid")
 	got, err := GitHistoryRepositories(context.Background(), root)
-	if err != nil || !got.Truncated || len(got.Repositories) != MaxGitHistoryRepositories {
+	if err != nil || !got.Truncated || len(got.Repositories) != limit {
 		t.Fatalf("cap: %d, %v, %v", len(got.Repositories), got.Truncated, err)
 	}
-	if got.Repositories[0].Path != "repo-000" || got.Repositories[len(got.Repositories)-1].Path != "repo-499" {
+	if got.Repositories[0].Path != "repo-000" || got.Repositories[len(got.Repositories)-1].Path != fmt.Sprintf("repo-%03d", limit-1) {
 		t.Fatal("not sorted")
 	}
 }
 
 func TestGitHistoryRepositoriesWalkTruncated(t *testing.T) {
 	requireGit(t)
+	limit := lowFileCap(t)
 	root := t.TempDir()
-	for i := 0; i <= MaxFiles; i++ {
+	for i := 0; i <= limit; i++ {
 		if err := os.Mkdir(filepath.Join(root, fmt.Sprintf("dir-%05d", i)), 0755); err != nil {
 			t.Fatal(err)
 		}

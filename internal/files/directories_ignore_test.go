@@ -111,43 +111,51 @@ func TestGitDirectoriesNestedIgnoreRules(t *testing.T) {
 }
 
 // A wide tree needs one decision per level instead of one per 128-entry chunk.
+// The per-chunk walkers would spend ~1000 Git processes here, slow on Windows;
+// BenchmarkWideDirectories compares them, and the reference tests above and in
+// directories_frontier_test.go check equal output against real check-ignore.
 func TestGitDirectoriesWideTreeBatches(t *testing.T) {
+	rules := map[string]string{".gitignore": "node_modules/\n"}
+	// The base fixture's own directories, decided by the same rules.
+	want, truncated, err := gitDirectories(context.Background(), ignoreTree(t, rules))
+	if err != nil || truncated {
+		t.Fatalf("base tree: truncated=%v err=%v", truncated, err)
+	}
 	var dirs []string
 	for i := range 1000 {
 		dirs = append(dirs, fmt.Sprintf("w%04d/c", i))
+		want = append(want, fmt.Sprintf("w%04d", i), fmt.Sprintf("w%04d/c", i))
 		if i%100 == 0 {
 			dirs = append(dirs, fmt.Sprintf("w%04d/node_modules/pkg", i))
 		}
 	}
-	root := ignoreTree(t, map[string]string{".gitignore": "node_modules/\n"}, dirs...)
-	var calls, pf13Calls, refCalls int
+	slices.Sort(want)
+	root := ignoreTree(t, rules, dirs...)
+	var calls int
 	got, truncated, err := gitDirectories(checkCount(&calls), root)
-	if err != nil || truncated || len(got) < 2000 || slices.ContainsFunc(got, func(p string) bool { return filepath.Base(p) == "node_modules" }) {
-		t.Fatalf("%d dirs truncated=%v err=%v", len(got), truncated, err)
+	if err != nil || truncated || !slices.Equal(got, want) {
+		t.Fatalf("%d dirs, want %d; truncated=%v err=%v", len(got), len(want), truncated, err)
 	}
-	pf13, _, _ := walkDirectories(checkCount(&pf13Calls), root, ignoredDirectories, frontierLimit{128, 64 << 10})
-	want, _, _ := referenceDirectories(checkCount(&refCalls), root, ignoredDirectories)
-	if !slices.Equal(got, want) || !slices.Equal(pf13, want) {
-		t.Fatal("frontier output differs from the reference")
-	}
-	t.Logf("check-ignore processes: %d (PF-13 frontier %d, per-chunk reference %d)", calls, pf13Calls, refCalls)
-	if calls > 3 || calls >= pf13Calls || calls >= refCalls {
-		t.Fatalf("check-ignore processes: %d (PF-13 frontier %d, reference %d)", calls, pf13Calls, refCalls)
+	if calls > 3 {
+		t.Fatalf("check-ignore processes: %d, want at most 3", calls)
 	}
 }
 
 func TestGitDirectoriesCapWithLargeFrontier(t *testing.T) {
+	limit := lowFileCap(t)
+	// As with 20000 and 4096: several full frontiers, and the cap falls mid-batch.
+	setLimit(t, &directoryFrontier.paths, 60)
 	var dirs []string
-	for i := range MaxFiles + 1 {
+	for i := range limit + 1 {
 		dirs = append(dirs, fmt.Sprintf("d%05d", i))
 	}
 	root := ignoreTree(t, nil, dirs...)
 	var calls int
 	got, truncated, err := gitDirectories(checkCount(&calls), root)
-	if err != nil || !truncated || len(got) != MaxFiles {
+	if err != nil || !truncated || len(got) != limit {
 		t.Fatalf("%d dirs truncated=%v err=%v", len(got), truncated, err)
 	}
-	if want := (MaxFiles + directoryFrontier.paths) / directoryFrontier.paths; calls != want {
+	if want := (limit + directoryFrontier.paths) / directoryFrontier.paths; calls != want {
 		t.Fatalf("check-ignore processes: %d, want %d", calls, want)
 	}
 }

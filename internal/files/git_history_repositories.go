@@ -62,7 +62,7 @@ func GitHistoryRepositories(ctx context.Context, dir string) (GitHistoryReposito
 	}
 	candidates := paths.Repositories
 	for next := 0; next < len(candidates); {
-		remaining := MaxGitHistoryRepositories - len(result.Repositories)
+		remaining := gitHistoryRepositoryCap - len(result.Repositories)
 		if remaining == 0 {
 			result.Truncated = true
 			break

@@ -83,9 +83,10 @@ func TestListingIncludesEmptyIgnoredDirectories(t *testing.T) {
 }
 
 func TestDirectoryListingCap(t *testing.T) {
+	limit := lowFileCap(t)
 	root := t.TempDir()
 	// Test the walker directly so the cap is independent of installed git.
-	for i := 0; i <= MaxFiles; i++ {
+	for i := 0; i <= limit; i++ {
 		if err := os.Mkdir(filepath.Join(root, fmt.Sprintf("d%05d", i)), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -94,7 +95,7 @@ func TestDirectoryListingCap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !out.Truncated || len(out.Directories) != MaxFiles {
+	if !out.Truncated || len(out.Directories) != limit {
 		t.Fatalf("cap: %d truncated=%v", len(out.Directories), out.Truncated)
 	}
 }

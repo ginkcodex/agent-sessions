@@ -40,7 +40,7 @@ func referenceDirectories(ctx context.Context, root string, check ignoreCheck) (
 			var candidates []string
 			for _, entry := range entries {
 				visited++
-				if visited > MaxFiles*4 {
+				if visited > fileCap*4 {
 					truncated = true
 					break
 				}
@@ -57,7 +57,7 @@ func referenceDirectories(ctx context.Context, root string, check ignoreCheck) (
 						if ignored[candidate] {
 							continue
 						}
-						if len(directories) >= MaxFiles {
+						if len(directories) >= fileCap {
 							truncated = true
 							break
 						}
@@ -244,14 +244,12 @@ func TestDirectoryFrontierCancellation(t *testing.T) {
 
 // Entries read before the visit cap are listed but never entered, as before.
 func TestDirectoryFrontierVisitCap(t *testing.T) {
-	if testing.Short() {
-		t.Skip("creates MaxFiles*4 entries")
-	}
+	limit := lowFileCap(t)
 	root := t.TempDir()
-	for i := range MaxFiles*4 + 10 {
+	for i := range limit*4 + 10 {
 		name := filepath.Join(root, fmt.Sprintf("e%05d", i))
 		var err error
-		if i%1000 == 0 {
+		if i%50 == 0 {
 			err = os.Mkdir(name, 0o700)
 			if err == nil {
 				err = os.Mkdir(filepath.Join(name, "child"), 0o700)

@@ -62,7 +62,7 @@ func walkDirectories(ctx context.Context, root string, check ignoreCheck, limit 
 			if ignored[candidate] {
 				continue
 			}
-			if len(directories) >= MaxFiles {
+			if len(directories) >= fileCap {
 				truncated = true
 				return
 			}
@@ -99,7 +99,7 @@ func walkDirectories(ctx context.Context, root string, check ignoreCheck, limit 
 			entries, readErr := f.ReadDir(128)
 			for _, entry := range entries {
 				visited++
-				if visited > MaxFiles*4 {
+				if visited > fileCap*4 {
 					truncated, capped = true, true
 					break
 				}

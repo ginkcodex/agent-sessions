@@ -12,6 +12,10 @@ const (
 	GitHistoryTimeout         = 20 * time.Second
 )
 
+// gitHistoryRepositoryCap is MaxGitHistoryRepositories; tests lower it because
+// each candidate costs a Git process.
+var gitHistoryRepositoryCap = MaxGitHistoryRepositories
+
 // GitHistoryTarget retains the authorized workspace, independently of the
 // selected relative repository. Repo is "." for the containing repository.
 type GitHistoryTarget struct {

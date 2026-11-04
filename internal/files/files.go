@@ -23,6 +23,9 @@ import (
 // MaxFiles caps a listing so a huge tree cannot flood the UI.
 const MaxFiles = 20000
 
+// fileCap is MaxFiles; cap tests lower it rather than build 20k-entry trees.
+var fileCap = MaxFiles
+
 // MaxReadBytes is the largest text file Read returns the contents of. The
 // viewer draws every line, so much larger files are slow to show; and JSON
 // can grow text up to 6 times (\u003c for <), which this keeps under the
@@ -190,10 +193,10 @@ func listPaths(ctx context.Context, root string, gitFound func(), repoFound func
 			gitFound()
 		}
 		out := Listing{Root: root, Files: files, Git: true}
-		if len(out.Files) > MaxFiles {
-			out.Files, out.Truncated = out.Files[:MaxFiles], true
+		if len(out.Files) > fileCap {
+			out.Files, out.Truncated = out.Files[:fileCap], true
 		}
-		out.Ignored, out.IgnoredDirectories = gitIgnored(ctx, root, MaxFiles-len(out.Files))
+		out.Ignored, out.IgnoredDirectories = gitIgnored(ctx, root, fileCap-len(out.Files))
 		directories, truncated, err := gitDirectories(ctx, root)
 		if err != nil {
 			return Listing{}, err
@@ -466,7 +469,7 @@ func walkPaths(ctx context.Context, root string, repoFound func(string, string))
 			}
 			return fs.SkipDir
 		}
-		if len(out.Files)+len(out.Directories) >= MaxFiles {
+		if len(out.Files)+len(out.Directories) >= fileCap {
 			out.Truncated = true
 			return errFull
 		}

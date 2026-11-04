@@ -77,10 +77,13 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
+      # internal/files runs ~500 serial tests that start Git processes and
+      # build 20k-80k entry trees. Windows runners take 6-10 min on it, so the
+      # default 10m per-package timeout panics on slower runners.
       - name: Go vet and tests
         run: |
           go vet ./...
-          go test -count=1 ./...
+          go test -count=1 -timeout 30m ./...
       - name: Frontend type check, tests and build
         working-directory: frontend
         run: |

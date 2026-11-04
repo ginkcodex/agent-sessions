@@ -11,7 +11,7 @@ import (
 )
 
 func TestListingPartsMatchList(t *testing.T) {
-	for _, count := range []int{8, MaxFiles + 1} {
+	for _, count := range []int{8, lowFileCap(t) + 1} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			root := listingTree(t, count)
 			for _, dir := range []string{root, filepath.Join(root, "nested")} {

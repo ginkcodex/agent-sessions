@@ -76,7 +76,8 @@ func listingTree(t testing.TB, count int) string {
 }
 
 func TestSyntheticListingBaseline(t *testing.T) {
-	for _, count := range []int{128, MaxFiles + 1} {
+	limit := lowFileCap(t)
+	for _, count := range []int{128, limit + 1} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			root := listingTree(t, count)
 			calls := map[string]int{}
@@ -85,8 +86,8 @@ func TestSyntheticListingBaseline(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := min(count+4, MaxFiles) // two ignore files, keep.tmp, untracked.txt
-			if !got.Git || got.Root != root || len(got.Files) != want || got.Truncated != (count+4 > MaxFiles) {
+			want := min(count+4, limit) // two ignore files, keep.tmp, untracked.txt
+			if !got.Git || got.Root != root || len(got.Files) != want || got.Truncated != (count+4 > limit) {
 				t.Fatalf("listing: Git=%v files=%d truncated=%v root=%q", got.Git, len(got.Files), got.Truncated, got.Root)
 			}
 			if calls["ls-files"] != 2 || calls["rev-parse"] != 1 || calls["status"] != 1 || calls["check-ignore"] != 2 {
@@ -111,10 +112,10 @@ func TestSyntheticListingBaseline(t *testing.T) {
 					t.Errorf("unexpected directory %s", path)
 				}
 			}
-			if len(got.Files)+len(got.Ignored) > MaxFiles || !slices.IsSorted(got.Files) || !slices.IsSorted(got.Directories) {
+			if len(got.Files)+len(got.Ignored) > limit || !slices.IsSorted(got.Files) || !slices.IsSorted(got.Directories) {
 				t.Fatal("cap/order violated")
 			}
-			if count < MaxFiles && (!slices.Contains(got.Files, "nested/keep.tmp") || !slices.Contains(got.Ignored, "file.skip") || !slices.Contains(got.Ignored, "nested/drop.tmp")) {
+			if count < limit && (!slices.Contains(got.Files, "nested/keep.tmp") || !slices.Contains(got.Ignored, "file.skip") || !slices.Contains(got.Ignored, "nested/drop.tmp")) {
 				t.Fatal("nested ignore/negation baseline missing")
 			}
 			before := calls["ls-files"]
@@ -124,7 +125,7 @@ func TestSyntheticListingBaseline(t *testing.T) {
 			}
 			result, err := Search(context.Background(), root, SearchQuery{Pattern: "needle"})
 			// Baseline, not a target: Git search filters ignored paths but bypasses List's
-			// MaxFiles cap, so untracked.txt is found after the truncated listing boundary.
+			// file cap, so untracked.txt is found after the truncated listing boundary.
 			if err != nil || result.Truncated || len(result.Files) != 2 {
 				t.Fatalf("search: files=%d truncated=%v err=%v", len(result.Files), result.Truncated, err)
 			}
@@ -165,14 +166,15 @@ func TestSyntheticListingSymlinkIsolation(t *testing.T) {
 }
 
 func TestSyntheticGitDirectoryCap(t *testing.T) {
+	limit := lowFileCap(t)
 	root := listingTree(t, 0)
-	for i := range MaxFiles + 1 {
+	for i := range limit + 1 {
 		if err := os.Mkdir(filepath.Join(root, fmt.Sprintf("d%05d", i)), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	dirs, truncated, err := gitDirectories(context.Background(), root)
-	if err != nil || !truncated || len(dirs) != MaxFiles {
+	if err != nil || !truncated || len(dirs) != limit {
 		t.Fatalf("directory cap: %d truncated=%v err=%v", len(dirs), truncated, err)
 	}
 }
