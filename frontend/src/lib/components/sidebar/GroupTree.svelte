@@ -67,6 +67,7 @@
     Boolean(
       appState.filter.agent ||
         appState.filter.hasSubagents ||
+        appState.filter.hideSubagents ||
         appState.filter.query ||
         appState.filter.path ||
         appState.filter.liveOnly ||

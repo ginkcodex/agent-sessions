@@ -21,6 +21,7 @@
   <a href="#install">Install</a> ·
   <a href="#what-you-can-do">Features</a> ·
   <a href="#get-started">Get started</a> ·
+  <a href="#how-a-handoff-works">Handoff</a> ·
   <a href="#remote-hosts-and-wsl">SSH &amp; WSL</a> ·
   <a href="#build-from-source">Build from source</a>
 </p>
@@ -186,7 +187,7 @@ or subscriptions.
 - **Continue in another agent** with a generated handoff document: choose a
   context budget, include reasoning if needed, and optionally redact secrets.
   This passes context to the new agent; it does not convert one agent's native
-  session format into another's.
+  session format into another's. See [How a handoff works](#how-a-handoff-works).
 - Rename sessions in the supported agents' native stores.
 
 ### Work with project files and Git
@@ -235,6 +236,48 @@ before sharing it.
 - `Ctrl+,` (`⌘,` on macOS) opens Settings; `/` opens transcript search;
   `Esc` closes dialogs.
 
+## How a handoff works
+
+Claude Code, Codex CLI, and OpenCode store sessions in different formats, and
+none of them can open another's. **Continue in** does not convert a session.
+It writes a Markdown handoff document and starts a **new** session in the
+target agent with it as context. The original session is left untouched, and
+you can still resume it in its own agent.
+
+**What carries over**
+
+| Part | In the handoff |
+| --- | --- |
+| Instructions | Tells the agent it is continuing earlier work, to check `git status`/`git diff` first, not to redo completed work, and to summarize and wait for you before changing anything. Includes a mapping between the two agents' tool names. |
+| Session facts | Source agent, session ID, original and current directory, Git branch, model, dates, and the original resume command. |
+| Your messages | The first goal and **every user message, verbatim**. |
+| Compaction summary | The latest one the source agent wrote, if any. |
+| Working state | Files created, edited, or deleted; commands run, with failures; the latest todo list; approved plans; subagent tasks and results; errors. |
+| Timeline | Earlier assistant replies and tool calls (short excerpts of tool output); reasoning only if you choose to include it. |
+| Last turns | The last three messages in full, with complete tool output. |
+
+Subagent transcripts linked to the session are included as well.
+
+**What does not carry over:** the agent's internal state, such as its native
+session ID, cached context, or permission approvals. The new agent works on the
+files as they are on disk now, not as they were when the session ended.
+
+**Budget.** Choose Compact (≈25k tokens), Detailed (≈80k, the default), Full
+(≈150k), or Unlimited. When the document is over budget, the timeline is
+reduced first: older tool output is dropped, then older reasoning, then older
+replies are shortened to their first paragraph, and finally the timeline is
+dropped. Your messages, working state, and last turns are kept. The preview
+lists everything that was removed.
+
+**Files.** Two files are written to the `handoffs` folder in the app's data
+directory, on the host where the session lives: `<id>-handoff.md` (the
+budgeted prompt) and `<id>-full.md` (the complete, untrimmed history, which the
+agent can read when it needs more). The target agent is started in the
+session's project directory with a short instruction to read the prompt file.
+Both files are owner-only and deleted after 30 days. Settings can clear them
+sooner. With **Redact secrets** on, recognized secrets are masked in both
+files. Redaction is best-effort, so review the preview first.
+
 ## Remote hosts and WSL
 
 **SSH:** select an alias from `~/.ssh/config` or enter a host. The app uses your
@@ -253,6 +296,14 @@ through `wsl.exe`; SSH setup is not required.
   On Windows, SSH must authenticate without prompts, using keys or an agent.
 - Save and start/stop **SSH local port forwards** to reach remote development
   services through `127.0.0.1`. This feature is for SSH hosts, not WSL targets.
+
+**Agents run where the session lives.** Resume and Continue in start the
+agent on the selected host, in the session's project directory, using that
+host's agent installation and login. For an SSH host they open in the built-in
+terminal panel, or you can copy the command and run it in your own `ssh`
+shell. For a WSL distribution they can also open in an external Windows
+terminal. Handoff files are written on that host too, so nothing is copied
+back to your computer.
 
 Remote access is not automatic synchronization: histories remain on their
 original hosts unless you explicitly export or restore them.

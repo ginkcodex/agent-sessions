@@ -1,13 +1,19 @@
-# Runs on every branch push and pull request: tests and frontend type check on
-# Linux, Windows and macOS, and desktop builds for all three. Tag pushes are
-# left to release.yml, which runs the checks before packaging (deb/rpm/dmg).
-# Desktop builds use the release tags (desktop,production; see GUI_TAGS in
-# the Makefile).
+# Runs on every branch push except main, and on pull requests from forks:
+# tests and frontend type check on Linux, Windows and macOS, and desktop builds
+# for all three.
+#
+# Work lands on develop and reaches main only through a merge of a tested
+# develop, so a push to main would test the same code again. A pull request
+# from a branch of this repository shows the checks its branch push already
+# ran on the same commit, so its pull_request run skips every job. Tag pushes
+# are left to release.yml, which runs the checks before packaging
+# (deb/rpm/dmg). Desktop builds use the release tags (desktop,production; see
+# GUI_TAGS in the Makefile).
 name: CI
 
 on:
   push:
-    branches: ['**']
+    branches-ignore: [main]
   pull_request:
 
 permissions:
@@ -22,6 +28,7 @@ env:
 
 jobs:
   test:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
@@ -59,6 +66,7 @@ jobs:
           npm test
 
   windows-test-build:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: windows-latest
     # pwsh only fails a step on its last command's exit code; bash -e fails on
     # any of them.
@@ -99,6 +107,7 @@ jobs:
   # The macOS terminal launcher (AppleScript, .app detection, zsh) is only
   # exercised for real here.
   macos-test:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -130,6 +139,7 @@ jobs:
   # cross-builds the Windows exe with its icon, manifest and version
   # resources (make windows-app), which the native Windows job skips.
   linux-build:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
