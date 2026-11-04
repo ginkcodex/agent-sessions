@@ -17,12 +17,15 @@ func TestGitHistoryRepositoriesRootAndScope(t *testing.T) {
 	nestedRepo(t, parent, "repo")
 	root, _ := filepath.EvalSymlinks(filepath.Join(parent, "repo"))
 	write(t, root, "src/deep/file", "x")
-	// A nested repository is deliberately not another choice for Git workspaces.
+	// A nested repository is a choice only for workspaces that contain it.
 	nestedRepo(t, root, "nested")
 	for _, scope := range []string{"", "src/deep"} {
 		dir := filepath.Join(root, filepath.FromSlash(scope))
 		got, err := GitHistoryRepositories(context.Background(), dir)
 		want := GitHistoryRepositoryList{Repositories: []GitHistoryRepository{{Path: ".", Name: "repo", Scope: scope}}}
+		if scope == "" {
+			want.Repositories = append(want.Repositories, GitHistoryRepository{Path: "nested", Name: "nested"})
+		}
 		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Fatalf("%q: %+v, %v", scope, got, err)
 		}
@@ -63,6 +66,64 @@ func TestGitHistoryRepositoriesChildrenAndGitFiles(t *testing.T) {
 	write(t, parent, "a/sub/file", "x")
 	if _, err := resolveGitHistoryTarget(context.Background(), GitHistoryTarget{Dir: parent, Repo: "a/sub"}); err == nil {
 		t.Fatal("accepted non-root child")
+	}
+}
+
+func TestGitHistoryRepositoriesInsideGitWorkspace(t *testing.T) {
+	requireGit(t)
+	parent := t.TempDir()
+	git := nestedRepo(t, parent, "outer")
+	root := filepath.Join(parent, "outer")
+	// The reported layout: an ignored child repository in a Git workspace.
+	write(t, root, ".gitignore", "/web/\nbuild/\nnode_modules/\n")
+	nestedRepo(t, root, "web")
+	// An untracked repository beside tracked files is found.
+	write(t, root, "tools/README", "x")
+	git("add", "tools/README")
+	git("commit", "-q", "-m", "tools")
+	nestedRepo(t, root, "tools/untracked")
+	// Folders Git reports whole are not read, so repositories inside an ignored
+	// or wholly untracked folder that is not one are not offered.
+	nestedRepo(t, root, "build/deep/hidden")
+	nestedRepo(t, root, "scratch/hidden")
+	write(t, root, "node_modules/pkg/index.js", "x")
+	nestedRepo(t, parent, "source")
+	git("-c", "protocol.file.allow=always", "submodule", "add", "-q", filepath.Join(parent, "source"), "module")
+	git("-c", "protocol.file.allow=always", "submodule", "add", "-q", filepath.Join(parent, "source"), "uninitialized")
+	git("-c", "protocol.file.allow=always", "submodule", "add", "-q", filepath.Join(parent, "source"), "tools/lib")
+	git("commit", "-q", "-m", "submodules")
+	// .gitmodules paths are from the top; a scoped workspace gets its own.
+	scoped, err := GitHistoryRepositories(context.Background(), filepath.Join(root, "tools"))
+	if err != nil || len(scoped.Repositories) != 3 || scoped.Repositories[1].Path != "lib" || scoped.Repositories[2].Path != "untracked" {
+		t.Fatalf("scoped %+v, %v", scoped, err)
+	}
+	if err := os.RemoveAll(filepath.Join(root, "uninitialized")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "uninitialized"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := GitHistoryRepositories(context.Background(), root)
+	if err != nil || got.Truncated {
+		t.Fatalf("%+v, %v", got, err)
+	}
+	var paths []string
+	for _, repo := range got.Repositories {
+		paths = append(paths, repo.Path)
+	}
+	if want := []string{".", "module", "tools/lib", "tools/untracked", "web"}; !reflect.DeepEqual(paths, want) {
+		t.Fatalf("paths %v", paths)
+	}
+	canonical, _ := filepath.EvalSymlinks(root)
+	target, err := resolveGitHistoryTarget(context.Background(), GitHistoryTarget{Dir: root, Repo: "web"})
+	if err != nil || target.Root != filepath.Join(canonical, "web") || target.Scope != "" {
+		t.Fatalf("target %+v, %v", target, err)
+	}
+	// The cap counts the workspace's own repository.
+	setLimit(t, &gitHistoryRepositoryCap, 2)
+	got, err = GitHistoryRepositories(context.Background(), root)
+	if err != nil || !got.Truncated || len(got.Repositories) != 2 || got.Repositories[0].Path != "." {
+		t.Fatalf("cap %+v, %v", got, err)
 	}
 }
 
