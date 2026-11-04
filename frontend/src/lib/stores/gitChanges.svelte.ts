@@ -24,8 +24,10 @@ export class GitChangesStore {
   collapsed = $state(new Set<string>());
   syncOperation = $state<'fetch' | 'pull' | 'push' | null>(null);
   syncMessage = $state('');
-  /** The repositories inside a project that is in none, as History finds them. */
+  /** The repositories inside the project, as History finds them; not its own. */
   repositories = $state.raw<GitHistoryRepository[]>([]);
+  /** The project's own repository, when it is in one, as discovery names it. */
+  ownRepository = $state.raw<GitHistoryRepository | null>(null);
   repositoriesLoading = $state(false);
   /** '' for the project's own repository; else the chosen one inside it. */
   repository = $state('');
@@ -61,7 +63,7 @@ export class GitChangesStore {
     return null;
   }
   /** A project in no repository holds several; the pane waits for a choice. */
-  get requiresRepository(): boolean { return this.repository === '' && this.repositories.length > 1; }
+  get requiresRepository(): boolean { return this.repository === '' && !this.ownRepository && this.repositories.length > 1; }
   private get discoverable(): boolean {
     const caps = connectionStore.capabilities;
     return caps.gitChangesRepository === true && caps.gitHistory === true;
@@ -72,7 +74,7 @@ export class GitChangesStore {
     if (workspace === this.workspace) return;
     this.workspace = workspace;
     this.repository = this.remembered.get(JSON.stringify([files.dir, link.dataHost])) ?? '';
-    this.repositories = []; this.repositoriesLoading = false; this.discovered = false;
+    this.repositories = []; this.ownRepository = null; this.repositoriesLoading = false; this.discovered = false;
     ++this.discoveries;
   }
   private choose(repository: string): void {
@@ -107,7 +109,8 @@ export class GitChangesStore {
 
   /**
    * Reads the status, or returns the repository to read instead. A project in
-   * no repository may hold some: like History, Changes then works on one of
+   * a repository works on its own until another inside it is chosen. A project
+   * in no repository may hold some: like History, Changes then works on one of
    * them, the only one or the one chosen.
    */
   private async read(dir: string, repository: string, current: () => boolean): Promise<string | null> {
@@ -121,11 +124,16 @@ export class GitChangesStore {
     }
     const status = await api.gitStatus(dir, repository);
     if (!current()) return null;
-    if (!repository && status.ok) { this.repositories = []; this.discovered = false; }
     this.status = status; this.error = null;
-    if (repository || status.ok || !this.discoverable) return null;
+    if (repository || !this.discoverable) return null;
+    // Status shows first; the repositories inside are looked for once per
+    // project, again on an explicit refresh, and when it became a repository.
+    if (status.ok) {
+      if (!this.discovered || !this.ownRepository) await this.discover(dir, current);
+      return null;
+    }
     const found = await this.discover(dir, current);
-    return current() && found?.length === 1 ? found[0].path : null;
+    return current() && !this.ownRepository && found?.length === 1 ? found[0].path : null;
   }
 
   private async discover(dir: string, current: () => boolean): Promise<GitHistoryRepository[] | null> {
@@ -134,8 +142,10 @@ export class GitChangesStore {
     try {
       const result = await api.gitHistoryRepositories(dir);
       if (!current()) return null;
-      // '.' is the project's own repository, which Git could not read.
-      this.repositories = (result.repositories ?? []).filter(r => r.path !== '.');
+      // '.' is the project's own repository: the empty choice, not a nested one.
+      const found = result.repositories ?? [];
+      this.ownRepository = found.find(r => r.path === '.') ?? null;
+      this.repositories = found.filter(r => r.path !== '.');
       this.discovered = true;
       return this.repositories;
     } catch (e) {
@@ -145,7 +155,8 @@ export class GitChangesStore {
   }
 
   async selectRepository(path: string): Promise<void> {
-    if (path === this.repository || !this.repositories.some(r => r.path === path)) return;
+    if (path === this.repository) return;
+    if (path ? !this.repositories.some(r => r.path === path) : !this.ownRepository) return;
     this.choose(path);
     await this.refresh();
   }

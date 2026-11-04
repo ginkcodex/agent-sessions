@@ -3,6 +3,7 @@ package files
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -34,5 +35,25 @@ func TestGitChangesRepositoryPaths(t *testing.T) {
 	}
 	if r.Path("") != "" || r.Path("x") != "child/x" {
 		t.Fatal("path")
+	}
+}
+
+// A repository the project's own ignores is reviewed as itself, not the outer one.
+func TestGitChangesRepositoryInsideGitProject(t *testing.T) {
+	requireGit(t)
+	parent := t.TempDir()
+	nestedRepo(t, parent, "outer")
+	root, _ := filepath.EvalSymlinks(filepath.Join(parent, "outer"))
+	write(t, root, ".gitignore", "/web/\n")
+	nestedRepo(t, root, "web")
+	write(t, root, "web/main.go", "package main\n\nfunc main() {}\n")
+	r, err := ResolveGitChangesRepository(context.Background(), root, "web")
+	if err != nil || r.Root != filepath.Join(root, "web") {
+		t.Fatalf("resolve: %+v %v", r, err)
+	}
+	status, err := GitRepoStatus(context.Background(), r.Root)
+	status = r.Status(status)
+	if err != nil || !status.OK || len(status.Entries) != 1 || status.Entries[0].Path != "web/main.go" {
+		t.Fatalf("status: %+v %v", status, err)
 	}
 }
