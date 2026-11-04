@@ -25,7 +25,7 @@ MACOS_APPICON := frontend/assets/Icon-macOS.png
 
 .PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps check-gui-linkage \
 	package-linux package-macos package-windows windows-app \
-	remote-servers conpty windows-setup version tags set-version tag untag release help check-app-icons
+	remote-servers conpty windows-setup version tags set-version tag untag release sync help check-app-icons
 
 # Headless servers the desktop app deploys over SSH. CGO stays off: these
 # binaries have no GUI. Cross targets need a Go toolchain that can produce
@@ -368,6 +368,13 @@ release:
 	@git rev-parse -q --verify "refs/tags/$(TAG)" >/dev/null || $(MAKE) --no-print-directory tag
 	git push origin "$(TAG)"
 
+# After a develop → main PR is merged: move develop forward to main's merge
+# commit (and its release tag). --ff-only never creates a commit; it stops if
+# develop has commits main lacks.
+sync:
+	git switch develop
+	git pull origin main --ff-only
+
 help:
 	@printf 'Development\n'
 	@printf '  %-22s %s\n' 'test' 'Run Go tests with the race detector'
@@ -396,6 +403,7 @@ help:
 	@printf '  %-22s %s\n' 'tag' 'Pre-releases only: create tag v<version> at HEAD (local)'
 	@printf '  %-22s %s\n' 'untag' 'Delete the local tag'
 	@printf '  %-22s %s\n' 'release' 'Pre-releases only: create the tag if needed and push it; CI publishes'
+	@printf '  %-22s %s\n' 'sync' 'After a merge into main: switch to develop and fast-forward it to main'
 
 clean:
 	rm -rf bin build/bin build/darwin build/dmg build/remote build/windows dist frontend/dist "$(WINDOWS_SYSO)"
