@@ -316,9 +316,10 @@ package-windows: check-app-icons
 		packaging/windows/agent-sessions.wxs
 	$(MAKE) windows-setup MSI="dist/agent-sessions_$(VERSION)_windows_amd64.msi"
 
-# Release tags (see make help). Pushing v<VERSION> runs
-# .github/workflows/release.yml, which refuses a tag that does not match
-# wails.json.
+# Releases (see make help). A stable release is a version bump merged into
+# main: .github/workflows/release.yml publishes it and creates tag v<VERSION>.
+# Tags are pushed by hand only for pre-releases (x.y.z-suffix); the workflow
+# refuses a tag that does not match wails.json.
 TAG := v$(VERSION)
 SEMVER_RE := ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$$
 
@@ -352,6 +353,7 @@ set-version:
 
 tag:
 	@echo "$(VERSION)" | grep -Eq '$(SEMVER_RE)' || { echo "wails.json version '$(VERSION)' is not a semantic version" >&2; exit 1; }
+	@case "$(VERSION)" in *-*) ;; *) echo "$(VERSION) is a stable version: merge it into main and the release workflow tags it" >&2; exit 1 ;; esac
 	@git diff --quiet HEAD -- || { echo 'commit or stash your changes before tagging' >&2; exit 1; }
 	@! git rev-parse -q --verify "refs/tags/$(TAG)" >/dev/null || { echo "$(TAG) already exists; bump with make set-version V=..." >&2; exit 1; }
 	git tag -a "$(TAG)" -m "Agent Sessions $(VERSION)"
@@ -390,10 +392,10 @@ help:
 	@printf '\nReleases (current: v$(VERSION))\n'
 	@printf '  %-22s %s\n' 'version' 'Show the version and whether its tag exists'
 	@printf '  %-22s %s\n' 'tags' 'List release tags, newest first'
-	@printf '  %-22s %s\n' 'set-version V=x.y.z' 'Bump wails.json and commit it'
-	@printf '  %-22s %s\n' 'tag' 'Create tag v<version> at HEAD (local only)'
+	@printf '  %-22s %s\n' 'set-version V=x.y.z' 'Bump wails.json and commit it; merged into main, it releases'
+	@printf '  %-22s %s\n' 'tag' 'Pre-releases only: create tag v<version> at HEAD (local)'
 	@printf '  %-22s %s\n' 'untag' 'Delete the local tag'
-	@printf '  %-22s %s\n' 'release' 'Create the tag if needed and push it; CI publishes'
+	@printf '  %-22s %s\n' 'release' 'Pre-releases only: create the tag if needed and push it; CI publishes'
 
 clean:
 	rm -rf bin build/bin build/darwin build/dmg build/remote build/windows dist frontend/dist "$(WINDOWS_SYSO)"
