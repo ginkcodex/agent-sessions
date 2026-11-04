@@ -533,3 +533,27 @@ func TestDiagnostics(t *testing.T) {
 		t.Errorf("codex scan error = %q, want 'scan failed'", errs["codex"])
 	}
 }
+
+func TestFilterSessionsHidesSubagents(t *testing.T) {
+	parent := model.SessionMeta{Ref: model.SessionRef{Agent: model.AgentOpenCode, ID: "parent"}}
+	child := model.SessionMeta{Ref: model.SessionRef{Agent: model.AgentOpenCode, ID: "child"}, ParentID: "parent"}
+	other := model.SessionMeta{Ref: model.SessionRef{Agent: model.AgentClaude, ID: "solo"}}
+	all := []model.SessionMeta{parent, child, other}
+	ids := func(sessions []model.SessionMeta) []string {
+		out := []string{}
+		for _, m := range sessions {
+			out = append(out, m.Ref.ID)
+		}
+		return out
+	}
+	if got := ids(filterSessions(all, FilterOpts{})); len(got) != 3 {
+		t.Fatalf("unfiltered = %v, want every session", got)
+	}
+	if got := ids(filterSessions(all, FilterOpts{HideSubagents: true})); len(got) != 2 || got[0] != "parent" || got[1] != "solo" {
+		t.Fatalf("hideSubagents = %v, want [parent solo]", got)
+	}
+	// Combined with hasSubagents, a parent still counts its hidden children.
+	if got := ids(filterSessions(all, FilterOpts{HideSubagents: true, HasSubagents: true})); len(got) != 1 || got[0] != "parent" {
+		t.Fatalf("hideSubagents+hasSubagents = %v, want [parent]", got)
+	}
+}

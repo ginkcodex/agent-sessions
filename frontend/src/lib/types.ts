@@ -157,6 +157,8 @@ export interface FilterOpts {
   liveOnly?: boolean;
   archived?: boolean;
   hasSubagents?: boolean;
+  /** Leaves out the sessions an agent spawned as subagents. */
+  hideSubagents?: boolean;
   // Case-insensitive substring of the session's cwd or repo root.
   path?: string;
 }

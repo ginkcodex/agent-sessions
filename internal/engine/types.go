@@ -21,6 +21,8 @@ type FilterOpts struct {
 	LiveOnly     bool   `json:"liveOnly,omitempty"`
 	Archived     bool   `json:"archived,omitempty"`
 	HasSubagents bool   `json:"hasSubagents,omitempty"`
+	// HideSubagents drops the sessions an agent spawned as subagents.
+	HideSubagents bool `json:"hideSubagents,omitempty"`
 	// Path narrows to sessions whose working directory (or repo root)
 	// contains this case-insensitive substring.
 	Path string `json:"path,omitempty"`

@@ -369,7 +369,7 @@ export class AppState {
       // loaded around a host switch can come from the other backend, and
       // saving then would wipe this host's toggles.
       const f = this.filter;
-      if (groups.length > 0 && !f.agent && !f.query && !f.path && !f.liveOnly && !f.hasSubagents) {
+      if (groups.length > 0 && !f.agent && !f.query && !f.path && !f.liveOnly && !f.hasSubagents && !f.hideSubagents) {
         const pruned = pruneKeys(this.collapsedKeys, groups);
         if (pruned.size !== this.collapsedKeys.size) {
           this.collapsedKeys = pruned;

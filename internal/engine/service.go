@@ -494,6 +494,9 @@ func filterSessions(sessions []model.SessionMeta, f FilterOpts) []model.SessionM
 		if f.LiveOnly && !m.Live {
 			continue
 		}
+		if f.HideSubagents && m.ParentID != "" {
+			continue
+		}
 		if !f.Archived && m.Archived {
 			continue
 		}

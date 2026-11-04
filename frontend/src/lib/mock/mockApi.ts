@@ -2172,6 +2172,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     return list.filter((s) => {
       if (f.agent && s.ref.agent !== f.agent) return false;
       if (f.liveOnly && !s.live) return false;
+      if (f.hideSubagents && s.parentId) return false;
       if (!f.archived && s.archived) return false;
       if (f.query) {
         const q = f.query.toLowerCase();

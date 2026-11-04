@@ -37,7 +37,7 @@
   import WorkspaceStart from './WorkspaceStart.svelte';
 
   let selectedWorkspace = $derived(nodeDirectory(appState.groups, appState.selectedGroupKey ?? ''));
-  let emptyWorkspace = $derived(selectedWorkspace && workspaces.directories.includes(selectedWorkspace) && appState.sessions.length === 0 && !appState.filter.query && !appState.filter.agent && !appState.filter.liveOnly && !appState.filter.archived && !appState.filter.hasSubagents);
+  let emptyWorkspace = $derived(selectedWorkspace && workspaces.directories.includes(selectedWorkspace) && appState.sessions.length === 0 && !appState.filter.query && !appState.filter.agent && !appState.filter.liveOnly && !appState.filter.archived && !appState.filter.hasSubagents && !appState.filter.hideSubagents);
 
   const AGE_OPTIONS = AGE_FILTERS.map((f) => ({ value: f.id, label: f.label }));
 
@@ -60,7 +60,7 @@
 
   let narrowed = $derived(Boolean(
     appState.filter.query || appState.filter.path || appState.filter.agent ||
-    appState.filter.liveOnly || appState.filter.hasSubagents || appState.filter.archived ||
+    appState.filter.liveOnly || appState.filter.hasSubagents || appState.filter.hideSubagents || appState.filter.archived ||
     appState.selectedGroupKey || manage.ageFilter !== 'any'
   ));
   let emptyState = $derived(
@@ -98,6 +98,10 @@
     appState.setFilter({ archived: !appState.filter.archived });
   }
 
+  function toggleSubagents() {
+    appState.setFilter({ hideSubagents: !appState.filter.hideSubagents });
+  }
+
   function handleSortChange(field: string) {
     appState.setSort({ field, desc: appState.sort.desc });
   }
@@ -113,7 +117,7 @@
 
   function handleClearFilters() {
     clearTimeout(searchTimer);
-    appState.setFilter({ query: '', liveOnly: false, archived: false });
+    appState.setFilter({ query: '', liveOnly: false, archived: false, hideSubagents: false });
     manage.setAgeFilter('any');
   }
 
@@ -201,6 +205,20 @@
         onclick={toggleArchived}
       >
         Archived
+      </button>
+
+      <!-- Icon only: the row has no room for another label. The arrow is the
+           mark subagent rows carry; struck through, they are hidden. -->
+      <button
+        type="button"
+        class="filter-btn icon-btn"
+        class:active={appState.filter.hideSubagents}
+        aria-pressed={Boolean(appState.filter.hideSubagents)}
+        aria-label="Hide subagent sessions"
+        title={appState.filter.hideSubagents ? 'Subagent sessions are hidden (click to show)' : 'Hide subagent sessions'}
+        onclick={toggleSubagents}
+      >
+        <Icon name="corner-down-right" size={13} />
       </button>
 
       <!-- A view filter, so it stays visible on hosts without session management. -->
@@ -352,9 +370,11 @@
   }
 
   /* Every control in the row shares one height (also read by Dropdown). */
+  /* Wraps instead of clipping in a narrow pane; sorting then keeps right. */
   .filter-controls {
     --control-height: 24px;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
   }
@@ -384,6 +404,26 @@
     background-color: var(--active-bg);
     color: var(--accent-color);
     font-weight: 600;
+  }
+
+  .icon-btn {
+    position: relative;
+    justify-content: center;
+    flex: none;
+    width: var(--control-height);
+    padding: 0;
+  }
+
+  /* Hidden: a slash across the subagent mark. */
+  .icon-btn.active::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 1.5px;
+    border-radius: 1px;
+    background-color: currentColor;
+    box-shadow: 0 0 0 1px var(--active-bg);
+    transform: rotate(-45deg);
   }
 
   .live-btn .live-indicator {
