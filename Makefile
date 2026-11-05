@@ -31,6 +31,9 @@ MACOS_APPICON := frontend/assets/Icon-macOS.png
 # binaries have no GUI. Cross targets need a Go toolchain that can produce
 # them (CI does); `make remote-servers HOST=1` builds only the host pair.
 # packaging/windows/agent-sessions.wxs lists one file per platform.
+# With MACOS_SIGN_ID (see package-macos) the darwin servers are Developer ID
+# signed before gzip: the notary service unpacks the .gz files in the app
+# and rejects unsigned executables inside.
 REMOTE_PLATFORMS ?= linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 REMOTE_DIR ?= build/remote
 # The ConPTY the Windows app ships in conpty\ next to its exe: Windows' own
@@ -72,6 +75,9 @@ remote-servers:
 		echo "building $$name"; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch \
 			$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o "$(REMOTE_DIR)/$$name" ./cmd/agent-sessions-cli; \
+		if [ "$$os" = darwin ] && [ -n "$(MACOS_SIGN_ID)" ]; then \
+			codesign --force --options runtime --timestamp --sign "$(MACOS_SIGN_ID)" "$(REMOTE_DIR)/$$name"; \
+		fi; \
 		gzip -c -n "$(REMOTE_DIR)/$$name" > "$(REMOTE_DIR)/$$name.gz"; \
 		rm -f "$(REMOTE_DIR)/$$name"; \
 	done; \
@@ -192,16 +198,31 @@ package-linux: check-app-icons gui-build
 # lipo, plutil, codesign, hdiutil) and needs jq. Each architecture is a plain
 # go build; lipo joins them. The bundle is assembled from
 # packaging/macos/Info.plist.in, filled from wails.json's info, with an icon
-# from `wails3 generate icons`. It is ad-hoc signed, not notarized.
+# from `wails3 generate icons`.
+# By default the app is ad-hoc signed and not notarized. MACOS_SIGN_ID, a
+# "Developer ID Application: ..." identity in the keychain, signs the app
+# (hardened runtime, packaging/macos/entitlements.plist) and the .dmg
+# instead. MACOS_NOTARY_PROFILE, a notarytool keychain profile, then has
+# packaging/macos/notarize.sh notarize the .dmg and staple it, so it opens
+# without Gatekeeper warnings on any Mac.
 # hdiutil intermittently fails with "Resource busy" on CI runners, so the
 # .dmg step retries once.
 # Go 1.26 itself needs macOS 12, so that is the deployment target.
 MACOS_MIN ?= 12.0
 MACOS_APP := build/bin/Agent Sessions.app
+MACOS_DMG = dist/agent-sessions_$(VERSION)_macos_universal.dmg
+MACOS_SIGN_ID ?=
+MACOS_NOTARY_PROFILE ?=
 # Fills the Info.plist template's @PLACEHOLDERS@ with XML-escaped values.
 MACOS_PLIST_JQ = def x: gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;"); .info as $$i | $$tpl | gsub("@VERSION@"; $$version | x) | gsub("@MACOS_MIN@"; $$min | x) | gsub("@PRODUCT_NAME@"; $$i.productName | x) | gsub("@COMMENTS@"; $$i.comments | x) | gsub("@COPYRIGHT@"; $$i.copyright | x)
 package-macos: check-app-icons check-gui-deps
 	@command -v jq >/dev/null 2>&1 || { echo "jq not found: brew install jq" >&2; exit 1; }
+	@if [ -n "$(MACOS_NOTARY_PROFILE)" ] && [ -z "$(MACOS_SIGN_ID)" ]; then \
+		echo "MACOS_NOTARY_PROFILE needs MACOS_SIGN_ID: Apple only notarizes Developer ID signed code" >&2; exit 1; \
+	fi
+	@if [ -n "$(MACOS_SIGN_ID)" ] && ! security find-identity -v -p codesigning | grep -qF '"$(MACOS_SIGN_ID)"'; then \
+		echo "signing identity not in the keychain: $(MACOS_SIGN_ID)" >&2; exit 1; \
+	fi
 	cd frontend && npm run build
 	rm -rf build/darwin "$(MACOS_APP)" build/dmg
 	mkdir -p build/darwin "$(MACOS_APP)/Contents/MacOS" "$(MACOS_APP)/Contents/Resources"
@@ -225,9 +246,18 @@ package-macos: check-app-icons check-gui-deps
 	jq -r --arg version '$(VERSION)' --arg min '$(MACOS_MIN)' --rawfile tpl packaging/macos/Info.plist.in \
 		'$(MACOS_PLIST_JQ)' wails.json > "$(MACOS_APP)/Contents/Info.plist"
 	plutil -lint "$(MACOS_APP)/Contents/Info.plist"
-	# Servers go in before codesign so the signature covers them.
-	$(MAKE) remote-servers REMOTE_DIR="$(MACOS_APP)/Contents/Resources/remote"
+	# Servers go in before codesign so the signature covers them. The
+	# executable is the bundle's only bare Mach-O (the servers are gzipped and
+	# signed by remote-servers), so signing the bundle needs no --deep.
+	$(MAKE) remote-servers REMOTE_DIR="$(MACOS_APP)/Contents/Resources/remote" MACOS_SIGN_ID="$(MACOS_SIGN_ID)"
+ifeq ($(MACOS_SIGN_ID),)
 	codesign --force --deep --sign - "$(MACOS_APP)"
+else
+	codesign --force --options runtime --timestamp \
+		--entitlements packaging/macos/entitlements.plist \
+		--sign "$(MACOS_SIGN_ID)" "$(MACOS_APP)"
+	codesign --verify --strict --verbose=2 "$(MACOS_APP)"
+endif
 	mkdir -p build/dmg dist
 	cp -R "$(MACOS_APP)" build/dmg/
 	ln -s /Applications build/dmg/Applications
@@ -239,11 +269,17 @@ package-macos: check-app-icons check-gui-deps
 	image_kib=$$((staging_kib + extra_kib)); \
 	printf 'DMG staging: %s KiB; image capacity: %s KiB\n' "$$staging_kib" "$$image_kib"; \
 	df -h build/dmg dist "$${TMPDIR:-/tmp}"; \
-	hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -size "$${image_kib}k" -ov -format UDZO dist/agent-sessions_$(VERSION)_macos_universal.dmg || \
-		{ sleep 5; hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -size "$${image_kib}k" -ov -format UDZO dist/agent-sessions_$(VERSION)_macos_universal.dmg; }
+	hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -size "$${image_kib}k" -ov -format UDZO "$(MACOS_DMG)" || \
+		{ sleep 5; hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -size "$${image_kib}k" -ov -format UDZO "$(MACOS_DMG)"; }
 	# The staging link to /Applications must not outlive the image: language
 	# servers watching this repo would follow it.
 	rm -rf build/dmg
+ifneq ($(MACOS_SIGN_ID),)
+	codesign --force --timestamp --sign "$(MACOS_SIGN_ID)" "$(MACOS_DMG)"
+endif
+ifneq ($(MACOS_NOTARY_PROFILE),)
+	bash packaging/macos/notarize.sh "$(MACOS_DMG)" "$(MACOS_NOTARY_PROFILE)"
+endif
 
 # Wrap an existing MSI without rebuilding the desktop app or modifying sources.
 MSI ?= dist/agent-sessions_$(VERSION)_windows_amd64.msi
@@ -393,7 +429,7 @@ help:
 	@printf '  %-22s %s\n' 'clean' 'Remove build outputs'
 	@printf '\nPackaging (writes dist/)\n'
 	@printf '  %-22s %s\n' 'package-linux' '.deb and .rpm for ARCH (default: host)'
-	@printf '  %-22s %s\n' 'package-macos' 'Universal .dmg (macOS only, needs jq)'
+	@printf '  %-22s %s\n' 'package-macos' 'Universal .dmg (macOS only, needs jq; MACOS_SIGN_ID/MACOS_NOTARY_PROFILE)'
 	@printf '  %-22s %s\n' 'package-windows' 'amd64 .msi + _setup.exe (needs wixl, jq, python3)'
 	@printf '  %-22s %s\n' 'windows-setup MSI=...' 'Wrap an existing MSI (optional SETUP_OUT=...)'
 	@printf '\nReleases (current: v$(VERSION))\n'

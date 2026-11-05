@@ -31,25 +31,122 @@ type gitHistoryResolvedTarget struct {
 }
 
 // GitHistoryRepositories discovers choices, not authorization grants. Every later
-// read must resolve its target again. A Git-backed workspace needs only ".";
-// otherwise the existing bounded source-tree walk supplies child candidates.
+// read must resolve its target again. A Git-backed workspace offers "." and the
+// repositories its own Git leaves out of it (ignored, untracked or submodule
+// worktrees); otherwise the existing bounded source-tree walk supplies them.
 func GitHistoryRepositories(ctx context.Context, dir string) (GitHistoryRepositoryList, error) {
 	ctx, cancel := context.WithTimeout(ctx, GitHistoryTimeout)
 	defer cancel()
 	result := GitHistoryRepositoryList{Repositories: []GitHistoryRepository{}}
 	target, err := resolveGitHistoryTarget(ctx, GitHistoryTarget{Dir: dir, Repo: "."})
-	if err == nil {
+	var candidates []string
+	switch {
+	case err == nil:
 		result.Repositories = append(result.Repositories, gitHistoryRepository(target))
-		return result, nil
-	}
-	if !errors.Is(err, errGitHistoryNotRepository) {
+		candidates, err = gitHistoryNestedCandidates(ctx, target)
+		if err != nil {
+			return result, err
+		}
+	case errors.Is(err, errGitHistoryNotRepository):
+		paths, err := ListPaths(ctx, target.Workspace)
+		if err != nil {
+			return result, err
+		}
+		result.Truncated = paths.Truncated
+		candidates = paths.Repositories
+	default:
 		return result, err
 	}
-	paths, err := ListPaths(ctx, target.Workspace)
+	if err := resolveGitHistoryCandidates(ctx, dir, candidates, &result); err != nil {
+		return result, err
+	}
+	// The workspace's own repository comes first, then the nested ones by path.
+	sort.Slice(result.Repositories, func(i, j int) bool {
+		a, b := result.Repositories[i].Path, result.Repositories[j].Path
+		return a != b && (a == "." || b != "." && a < b)
+	})
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+// gitHistoryNestedCandidates lists, best effort, the worktrees below a Git
+// workspace that its repository does not track as files: untracked or ignored
+// folders that are themselves worktrees, and checked-out submodules. Paths are
+// slash-separated and relative to the workspace.
+//
+// Discovery runs whenever History opens or regains focus, so it costs one walk
+// of the tracked folders. Without ignore rules and with --directory, Git
+// reports each untracked or ignored folder once ("node_modules/") and never
+// reads it. Only the folders it reports are checked for a .git marker, so a
+// repository inside one that is not itself a repository (build/x, a wholly
+// untracked tools/x) is not offered. Submodules come from .gitmodules rather
+// than the index, which would print every tracked file.
+func gitHistoryNestedCandidates(ctx context.Context, own gitHistoryResolvedTarget) ([]string, error) {
+	workspace := own.Workspace
+	seen := map[string]bool{}
+	var candidates []string
+	add := func(rel string) {
+		rel = strings.TrimSuffix(rel, "/")
+		if rel == "" || rel == "." || seen[rel] {
+			return
+		}
+		// Only a direct marker makes a candidate; an uninitialized submodule or a
+		// plain ignored folder is not a repository and must not flag truncation.
+		if _, err := os.Lstat(filepath.Join(workspace, filepath.FromSlash(rel), ".git")); err != nil {
+			return
+		}
+		seen[rel] = true
+		candidates = append(candidates, rel)
+	}
+	if out, err := gitOutputEnv(ctx, workspace, nil, gitHistoryEnv(), []string{"--literal-pathspecs"}, "ls-files", "-z", "--others", "--directory"); err == nil {
+		for name := range strings.SplitSeq(string(out), "\x00") {
+			if strings.HasSuffix(name, "/") {
+				add(name)
+			}
+		}
+	}
+	for _, path := range gitHistorySubmodulePaths(ctx, own.Root) {
+		// .gitmodules paths are from the repository top; keep those in the workspace.
+		if own.Scope != "" {
+			var ok bool
+			if path, ok = strings.CutPrefix(path, own.Scope+"/"); !ok {
+				continue
+			}
+		}
+		add(path)
+	}
+	sort.Strings(candidates)
+	return candidates, ctx.Err()
+}
+
+// gitHistorySubmodulePaths reads the submodule paths .gitmodules declares at
+// root, relative to it. Git parses the file; it is not run as configuration.
+func gitHistorySubmodulePaths(ctx context.Context, root string) []string {
+	file := filepath.Join(root, ".gitmodules")
+	if info, err := os.Lstat(file); err != nil || !info.Mode().IsRegular() {
+		return nil
+	}
+	out, err := gitOutputEnv(ctx, root, nil, gitHistoryEnv(), nil, "config", "-z", "--file", file, "--get-regexp", `^submodule\..*\.path$`)
 	if err != nil {
-		return result, err
+		return nil
 	}
-	result.Truncated = paths.Truncated
+	var paths []string
+	for entry := range strings.SplitSeq(string(out), "\x00") {
+		// -z prints each entry as "key\nvalue".
+		if _, path, ok := strings.Cut(entry, "\n"); ok {
+			if path = filepath.ToSlash(filepath.Clean(filepath.FromSlash(path))); filepath.IsLocal(path) {
+				paths = append(paths, path)
+			}
+		}
+	}
+	return paths
+}
+
+// resolveGitHistoryCandidates validates candidate worktrees into result, up to
+// gitHistoryRepositoryCap entries in total.
+func resolveGitHistoryCandidates(ctx context.Context, dir string, candidates []string, result *GitHistoryRepositoryList) error {
 	// Each candidate costs a Git process, and process start-up on Windows is slow
 	// enough that a few hundred sequential checks exhaust GitHistoryTimeout.
 	// Resolve small batches concurrently, but consume each batch in candidate
@@ -60,10 +157,9 @@ func GitHistoryRepositories(ctx context.Context, dir string) (GitHistoryReposito
 		target gitHistoryResolvedTarget
 		err    error
 	}
-	candidates := paths.Repositories
 	for next := 0; next < len(candidates); {
 		remaining := gitHistoryRepositoryCap - len(result.Repositories)
-		if remaining == 0 {
+		if remaining <= 0 {
 			result.Truncated = true
 			break
 		}
@@ -85,16 +181,12 @@ func GitHistoryRepositories(ctx context.Context, dir string) (GitHistoryReposito
 					result.Truncated = true
 					continue
 				}
-				return result, err
+				return err
 			}
 			result.Repositories = append(result.Repositories, gitHistoryRepository(r.target))
 		}
 	}
-	sort.Slice(result.Repositories, func(i, j int) bool { return result.Repositories[i].Path < result.Repositories[j].Path })
-	if err := ctx.Err(); err != nil {
-		return result, err
-	}
-	return result, nil
+	return nil
 }
 
 func gitHistoryRepository(t gitHistoryResolvedTarget) GitHistoryRepository {

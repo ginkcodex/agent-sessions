@@ -194,6 +194,50 @@ test('a remembered repository that is gone falls back, and older hosts never loo
   delete globalThis.__gitFixture;
 });
 
+test('a project in a repository keeps its own and offers the ones inside it', async () => {
+  const { store, f, calls } = workspace(['.', 'web']);
+  f.api.gitStatus = async (_dir, repo) => { calls.push(['status', repo]); return status([entry(repo ? `${repo}/x` : 'own', '', 'M')]); };
+  await store.refresh();
+  assert.deepEqual(calls, [['status', ''], 'discover'], 'status shows before the repositories inside are looked for');
+  assert.equal(store.ownRepository.path, '.');
+  assert.deepEqual(store.repositories.map(r => r.path), ['web']);
+  assert.equal(store.repository, '');
+  assert.equal(store.requiresRepository, false);
+  assert.equal(store.writeBlocker, null);
+  assert.equal(store.status.entries[0].path, 'own');
+
+  calls.length = 0;
+  await store.refresh();
+  assert.deepEqual(calls, [['status', '']], 'a plain refresh does not look again');
+  await store.selectRepository('web');
+  assert.equal(store.repository, 'web');
+  assert.equal(store.status.entries[0].path, 'web/x');
+  await store.selectRepository('');
+  assert.equal(store.repository, '', 'the project\'s own repository can be chosen again');
+  assert.deepEqual(calls.at(-1), ['status', '']);
+
+  calls.length = 0;
+  f.repositories = ['.', 'api', 'web'];
+  await store.refresh(true);
+  assert.deepEqual(calls, [['status', ''], 'discover']);
+  assert.deepEqual(store.repositories.map(r => r.path), ['api', 'web']);
+  delete globalThis.__gitFixture;
+});
+
+test('a project that becomes a repository looks for the ones inside it again', async () => {
+  const { store, f, calls } = workspace(['a', 'b']);
+  await store.refresh();
+  assert.equal(store.requiresRepository, true);
+  f.repositories = ['.', 'a', 'b'];
+  f.api.gitStatus = async (_dir, repo) => { calls.push(['status', repo]); return status([]); };
+  calls.length = 0;
+  await store.refresh();
+  assert.deepEqual(calls, [['status', ''], 'discover']);
+  assert.equal(store.ownRepository.path, '.');
+  assert.equal(store.requiresRepository, false);
+  delete globalThis.__gitFixture;
+});
+
 const pane = await loadServerComponent(new URL('../src/lib/components/common/go-to-file/ChangesPane.svelte', import.meta.url), [
   ["import { connectionStore } from '../../../stores/connection.svelte';", fixtureStore('connectionStore')],
   ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
@@ -224,6 +268,21 @@ test('Changes pane offers the repositories inside a project in none', async () =
   html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: caps } }, { onOpen() {} });
   assert.doesNotMatch(html, /Choose a repository…|contains 2 repositories/);
   assert.match(html, /a\/x/);
+  delete globalThis.__gitFixture;
+});
+
+test('Changes pane names a project\'s own repository among those inside it', async () => {
+  const { store, f } = workspace(['.', 'web']);
+  f.repositories = ['.', 'web'];
+  f.api.gitHistoryRepositories = async () => ({ repositories: [{ path: '.', name: 'agent-sessions', scope: '' }, { path: 'web', name: 'web', scope: '' }], truncated: false });
+  f.api.gitStatus = async (_dir, repo) => status([entry(repo ? `${repo}/x` : 'own.ts', '', 'M')]);
+  await store.refresh();
+  const html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: f.connectionStore.capabilities } }, { onOpen() {} });
+  assert.match(html, /aria-label="Changes repository"/);
+  assert.match(html, /<option value=""[^>]*>agent-sessions<\/option>/);
+  assert.match(html, /<option value="web"[^>]*>web<\/option>/);
+  assert.doesNotMatch(html, /Choose a repository…|Looking for repositories/);
+  assert.match(html, /own\.ts/);
   delete globalThis.__gitFixture;
 });
 

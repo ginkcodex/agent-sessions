@@ -167,7 +167,11 @@
   let previewOn = $state(false);
   let navigation = $state.raw<ProblemNavigationRequest<FileTab> | null>(null);
   let navigationSequence = 0;
-  let navigationNotice = $state('');
+  // A navigation result is about the tab that was active when it was reached,
+  // never about the tabs opened after it.
+  let navigationNotice = $state.raw<{ text: string; tab: FileTab | undefined } | null>(null);
+  function notify(text: string) { navigationNotice = { text, tab: files.activeTab }; }
+  function navigationNoticeFor(tab: FileTab | undefined) { return navigationNotice && navigationNotice.tab === tab ? navigationNotice.text : ''; }
   // Problems follow the code-check context too: a finding from an older
   // check must not be drawn over newer text.
   function navigationIdentity(kind: ProblemNavigationRequest['kind'] = 'problem') {
@@ -192,7 +196,7 @@
   function startNavigation(path: string, kind: ProblemNavigationRequest['kind'], range: CodeDiagnosticRange | undefined, locate: ProblemNavigationRequest<FileTab>['locate'], keep = true, outside = false) {
     navigation = null;
     if (!(outside || problemPath(path)) || !files.dir || frozen || blocked) {
-      navigationNotice = NOTICES[kind].open;
+      notify(NOTICES[kind].open);
       return;
     }
     if (outside) files.openExternal(path, { keep });
@@ -200,7 +204,7 @@
     const tab = files.activeTab;
     if (!tab || tab.path !== path) return;
     pendingAnchor = null;
-    navigationNotice = '';
+    navigationNotice = null;
     navigation = { id: ++navigationSequence, identity: navigationIdentity(kind), tab, path, kind, range, locate };
   }
   export function navigateProblem(diagnostic: CodeDiagnostic) {
@@ -223,7 +227,7 @@
     if (!files.matchesFileLinkReveal(request) || frozen || blocked) return;
     linkReveal = request;
     pendingAnchor = null;
-    navigationNotice = '';
+    navigationNotice = null;
     previewOn = false;
     if (files.diff) files.toggleDiff();
     presentation = false;
@@ -245,21 +249,20 @@
     const valid = () => linkValid() && matchesProblemNavigation(request, navigation, navigationIdentity(request.kind), files.activeTab, files.selectedPath);
     if (!linkValid() || !matchesProblemNavigation(request, navigation, identity, files.activeTab, files.selectedPath)) { finishNavigation(); return; }
     if (files.loadingFile || (!editing && highlightPending)) return;
-    // A file that cannot be read says so in its own tab; a notice would stay
-    // above every other tab too.
+    // A file that cannot be read says so in its own tab; no notice repeats it.
     if (files.fileError) { finishNavigation(); return; }
     if (fileStatus(request.path) === 'D') {
-      navigationNotice = NOTICES[request.kind].deleted;
+      notify(NOTICES[request.kind].deleted);
       finishNavigation(); return;
     }
     const tab = files.activeTab!;
     const shownSource = () => (tab.edit?.editing ? tab.edit.draft : text);
     const source = shownSource();
     const reason = request.locate(tab, source);
-    if (reason) { navigationNotice = reason; finishNavigation(); return; }
+    if (reason) { notify(reason); finishNavigation(); return; }
     const range = request.kind === 'link' ? fileLinkRange(source, request.location!) : request.range;
     if (!isTextContent(tab.content) || !range || !rangeOffsets(source, range)) {
-      navigationNotice = NOTICES[request.kind].range;
+      notify(NOTICES[request.kind].range);
       finishNavigation(); return;
     }
     previewOn = false;
@@ -270,11 +273,11 @@
       if (!valid() || showPreview || showDiff || frozen || (!editing && highlightPending)) return;
       // A draft may have changed while the source/editor was mounting.
       if (request.locate(tab, shownSource())) {
-        navigationNotice = 'Stale: the file changed while it was opening; this position no longer matches the text.';
+        notify('Stale: the file changed while it was opening; this position no longer matches the text.');
         finishNavigation(); return;
       }
       if (!rangeOffsets(shownSource(), range)) {
-        navigationNotice = NOTICES[request.kind].range;
+        notify(NOTICES[request.kind].range);
         finishNavigation(); return;
       }
       const editorValid = () => valid() && !frozen && !request.locate(tab, shownSource()) && Boolean(rangeOffsets(shownSource(), range));
@@ -286,6 +289,12 @@
   // Editing. A tab in edit mode shows the editor in place of every viewer
   // state, so a draft stays reachable even when the listing says deleted.
   let activeTab = $derived(files.activeTab);
+  let shownNavigationNotice = $derived(navigationNoticeFor(activeTab));
+  // Leaving the tab dismisses its notice; it does not come back with the tab.
+  $effect(() => {
+    const tab = activeTab;
+    untrack(() => { if (navigationNotice && navigationNotice.tab !== tab) navigationNotice = null; });
+  });
   // A file outside the project, opened by going to a definition: shown, never
   // edited, and without the project's git or code checks.
   let historical = $derived(Boolean(activeTab && tabOwner(activeTab) === 'history'));
@@ -1074,7 +1083,7 @@
 
 <section class="viewer" class:presentation aria-label="File content">
   {@render tabs?.()}
-  {#if navigationNotice}<div class="state nav-notice" role="status">{navigationNotice}</div>{/if}
+  {#if shownNavigationNotice}<div class="state nav-notice" role="status">{shownNavigationNotice}</div>{/if}
   {#if symbolNotice}<div class="symbol-notice" role="status" style:left="{symbolNotice.x}px" style:top="{symbolNotice.y + 14}px">{symbolNotice.text}</div>{/if}
   {#if hoverCard}
     <HoverCard html={hoverCard.html} truncated={hoverCard.truncated} problems={hoverCard.problems} x={hoverCard.x} y={hoverCard.y} maxHeight={(codeScroll?.clientHeight ?? 400) * 0.6}

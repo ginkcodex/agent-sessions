@@ -201,7 +201,9 @@ export class GitHistoryStore {
       if (!this.current(identity) || generation !== this.discoveryGeneration) return;
       this.repositories = result.repositories ?? []; this.repositoriesTruncated = result.truncated;
       this.discovered = true; this.stale = false;
+      // A Git workspace opens on its own repository ('.'), not the nested ones.
       this.selectedRepository = this.repositories.some(r => r.path === prior) ? prior
+        : this.repositories.some(r => r.path === '.') ? '.'
         : this.repositories.length === 1 ? this.repositories[0].path : null;
       if (this.selectedRepository !== prior) this.selectedRef = 'HEAD';
       this.remember();

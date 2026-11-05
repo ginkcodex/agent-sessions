@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Entitlements of the Developer ID signed app (`make package-macos
+     MACOS_SIGN_ID=...`), which runs under the hardened runtime. Keep this
+     minimal. The app is not sandboxed, and WKWebView runs JavaScript in
+     WebKit's own processes, so it needs no JIT or memory exceptions.
+     Apple Events: Open in terminal drives Terminal, iTerm2 and Ghostty with
+     osascript. Without this entitlement the hardened runtime refuses them
+     (-1743) before macOS asks the user. -->
+<plist version="1.0">
+    <dict>
+        <key>com.apple.security.automation.apple-events</key>
+        <true/>
+    </dict>
+</plist>

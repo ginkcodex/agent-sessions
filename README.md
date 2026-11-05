@@ -88,11 +88,9 @@ the download.
 2. Drag **Agent Sessions** into **Applications**.
 3. Open it from Applications.
 
-The same download supports **Apple silicon and Intel Macs**. The app is ad-hoc
-signed, **not notarized**. If macOS blocks the first launch, try right-clicking
-the app and choosing **Open**. Depending on your macOS version, you may need to
-attempt a launch first, then use **System Settings → Privacy & Security → Open
-Anyway**. Only approve a download you trust.
+The same download supports **Apple silicon and Intel Macs**. The app is signed
+with a Developer ID and notarized by Apple, so macOS opens it without
+Gatekeeper warnings.
 
 ### Linux
 

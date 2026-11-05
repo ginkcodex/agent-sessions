@@ -110,7 +110,7 @@ function viewerHarness(files) {
     $state: Object.assign(v => v, { raw: v => v }), $effect: fn => effect = fn,
   };
   ctx.$effect = fn => ctx.runEffect = fn;
-  const control = new Function('ctx', `with(ctx) { ${js}; return { navigateProblem, navigateMatch, navigateFileLink, effect: () => ctx.runEffect(), preview: () => previewOn, notice: () => navigationNotice }; }`)(ctx);
+  const control = new Function('ctx', `with(ctx) { ${js}; return { navigateProblem, navigateMatch, navigateFileLink, effect: () => ctx.runEffect(), preview: () => previewOn, notice: () => navigationNoticeFor(files.activeTab) }; }`)(ctx);
   return { ...control, ctx, reveals, async flush() { ticks.splice(0).forEach(f => f()); await Promise.resolve(); } };
 }
 const content = path => ({ path, text: 'a😀z\r\nβx', size: 9, revision: 'r', edit: { eligible: true, newline: 'crlf' } });
@@ -226,6 +226,8 @@ test('viewer failed/file-level/unverified targets never select or reload a draft
   assert.match(files.fileError, /unreadable/); assert.equal(h.notice(), '');
   h.navigateProblem(diagnostic({ path: 'level', range: undefined })); await Promise.resolve(); await Promise.resolve(); h.effect();
   assert.match(h.notice(), /File-level/);
+  // The notice is about that tab only, not the files opened after it.
+  files.openFile('other.md', { keep: true }); await Promise.resolve(); await Promise.resolve(); assert.equal(h.notice(), '');
   h.navigateProblem(diagnostic({ path: 'level', basis: { kind: 'saved', revision: 'old' } })); h.effect(); assert.match(h.notice(), /unverified/);
   assert.equal(h.reveals.length, 0);
   files.startEditing('level'); const tab = files.activeTab;

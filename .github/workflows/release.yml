@@ -194,9 +194,22 @@ jobs:
             dist/*.rpm
           if-no-files-found: error
 
+  # Developer ID signing and notarization use these repository secrets:
+  #   MACOS_CERT_P12_BASE64  the "Developer ID Application" certificate and
+  #                          its private key, exported as .p12, base64
+  #   MACOS_CERT_PASSWORD    the .p12's export password
+  #   APPLE_API_KEY_P8       App Store Connect API key (.p8 file contents)
+  #   APPLE_API_KEY_ID       its Key ID
+  #   APPLE_API_ISSUER       its Issuer ID
+  # They live in a throwaway keychain for this job only, and only the steps
+  # that need them see them. A run that publishes fails without them, so no
+  # release ships an un-notarized .dmg. Manual runs without them build the
+  # ad-hoc signed .dmg, as forks do.
   macos:
     needs: [version, test]
     runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -212,15 +225,74 @@ jobs:
       - name: Verify macOS runtime icon
         # Native test checks the embedded Icon Composer tile and its background.
         run: go test -count=1 ./frontend -run '^TestAppIcon$'
+      - name: Load the signing certificate and notary key
+        env:
+          PUBLISH: ${{ needs.version.outputs.publish }}
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          if [ -z "$MACOS_CERT_P12_BASE64" ] || [ -z "$MACOS_CERT_PASSWORD" ] ||
+             [ -z "$APPLE_API_KEY_P8" ] || [ -z "$APPLE_API_KEY_ID" ] || [ -z "$APPLE_API_ISSUER" ]; then
+            if [ "$PUBLISH" = true ]; then
+              echo "::error::a release needs the Developer ID secrets (MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_API_KEY_P8, APPLE_API_KEY_ID, APPLE_API_ISSUER)"
+              exit 1
+            fi
+            echo "::warning::Developer ID secrets not set: building an ad-hoc signed, un-notarized .dmg"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_pw=$(openssl rand -hex 32)
+          security create-keychain -p "$keychain_pw" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_pw" "$keychain"
+          # Keep the login keychain searchable after ours.
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          printf '%s' "$MACOS_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          # Lets codesign use the key without a GUI prompt.
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_pw" "$keychain" > /dev/null
+          identity=$(security find-identity -v -p codesigning "$keychain" |
+            sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -n 1)
+          if [ -z "$identity" ]; then
+            echo "::error::MACOS_CERT_P12_BASE64 holds no Developer ID Application identity"
+            exit 1
+          fi
+          team=${identity##*(}
+          team=${team%)}
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+          xcrun notarytool store-credentials agent-sessions-notary --keychain "$keychain" \
+            --key "$RUNNER_TEMP/notary.p8" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
+          rm -f "$RUNNER_TEMP/notary.p8"
+          {
+            echo "MACOS_SIGN_ID=$identity"
+            echo "MACOS_TEAM_ID=$team"
+            echo "MACOS_NOTARY_PROFILE=agent-sessions-notary"
+            echo "MACOS_NOTARY_KEYCHAIN=$keychain"
+          } >> "$GITHUB_ENV"
+          echo "Signing as $identity"
       - name: Build universal .app and .dmg
         # package-macos generates the bundle icns from MACOS_APPICON, the same
-        # Icon Composer export embedded by frontend/icon_darwin.go.
-        run: make package-macos VERSION=${{ needs.version.outputs.version }}
+        # Icon Composer export embedded by frontend/icon_darwin.go. With the
+        # signing step's MACOS_SIGN_ID and MACOS_NOTARY_PROFILE it also signs,
+        # notarizes and staples.
+        timeout-minutes: 60
+        run: make package-macos VERSION="$VERSION"
       - name: Verify universal app, Info.plist, signature, .dmg and servers
         timeout-minutes: 10
-        run: bash packaging/macos/verify-dmg.sh "dist/agent-sessions_${VERSION}_macos_universal.dmg" "$VERSION"
-        env:
-          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          dmg="dist/agent-sessions_${VERSION}_macos_universal.dmg"
+          if [ -n "${MACOS_TEAM_ID:-}" ]; then
+            bash packaging/macos/verify-dmg.sh --developer-id "$MACOS_TEAM_ID" --notarized "$dmg" "$VERSION"
+          else
+            bash packaging/macos/verify-dmg.sh "$dmg" "$VERSION"
+          fi
+      - name: Remove the signing keychain
+        if: always() && env.MACOS_NOTARY_KEYCHAIN != ''
+        run: security delete-keychain "$MACOS_NOTARY_KEYCHAIN"
       - uses: actions/upload-artifact@v7
         with:
           name: macos-universal

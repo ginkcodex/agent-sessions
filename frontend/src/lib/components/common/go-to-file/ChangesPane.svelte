@@ -59,7 +59,8 @@
       {#if gitChanges.repositories.length}
         <label class="repository">Repository
           <select aria-label="Changes repository" value={gitChanges.repository} disabled={gitChanges.busy || gitChanges.repositoriesLoading} onchange={(e) => { branchesOpen = false; void gitChanges.selectRepository(e.currentTarget.value); }}>
-            {#if !gitChanges.repository}<option value="" disabled>Choose a repository…</option>{/if}
+            {#if gitChanges.ownRepository}<option value="">{gitChanges.ownRepository.name}</option>
+            {:else if !gitChanges.repository}<option value="" disabled>Choose a repository…</option>{/if}
             {#each gitChanges.repositories as repo (repo.path)}<option value={repo.path}>{repo.path}</option>{/each}
           </select>
         </label>
@@ -123,7 +124,7 @@
       </div>
     {/if}
     {#if status?.operation}<p class="note">{status.operation} in progress. Resolve conflicts before committing.</p>{/if}
-    {#if gitChanges.repositoriesLoading}<p class="note" role="status">Looking for repositories in this workspace…</p>
+    {#if gitChanges.repositoriesLoading && !status?.ok}<p class="note" role="status">Looking for repositories in this workspace…</p>
     {:else if gitChanges.requiresRepository}
       <p class="note" role="status">This workspace contains {gitChanges.repositories.length} repositories. Choose one to review its changes.</p>
       <ul class="repositories" aria-label="Repositories">
