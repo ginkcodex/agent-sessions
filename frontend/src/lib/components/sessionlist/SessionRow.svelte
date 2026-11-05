@@ -35,6 +35,15 @@
   let displayTitle = $derived(session.title || session.firstPrompt || '(untitled)');
   let relativeTime = $derived(formatRelativeTime(session.updatedAt));
   let absoluteTime = $derived(formatAbsoluteTime(session.updatedAt, preferences.timeZone));
+  // Named beside the mark, so the row still says whose session it is while
+  // the manage checkbox covers the mark.
+  let agentName = $derived.by(() => {
+    const agent = session.ref.agent;
+    if (agent === 'claude-code') return 'Claude Code';
+    if (agent === 'codex') return 'Codex';
+    if (agent === 'opencode') return 'OpenCode';
+    return agent || 'Session';
+  });
   let bulkSelected = $derived(manage.isRefSelected(session.ref));
   // Once any session is picked, every row shows its checkbox; before that a
   // row shows it only under the pointer or focus.
@@ -107,6 +116,7 @@
         />
       {/if}
     </span>
+    <span class="agent-name">{agentName}</span>
     {#if session.archived}
       <span class="archived-tag">Archived</span>
     {/if}
@@ -251,6 +261,17 @@
   .session-row:focus-within .lead.checkable :global(.agent-icon),
   .lead.checking :global(.agent-icon) {
     visibility: hidden;
+  }
+
+  /* Tinted in the agent's color, like the badge the mark replaced. */
+  .agent-name {
+    margin-left: -2px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--row-agent);
+    background-color: color-mix(in srgb, var(--row-agent) 15%, transparent);
   }
 
   .archived-tag {

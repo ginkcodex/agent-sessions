@@ -45,6 +45,12 @@ test('only subagent session titles are marked as subagents, even when selected',
 
 test('rows always show the agent mark, even when the list is filtered to one agent', async () => {
   assert.match(await renderRow(undefined), /class="agent-icon[^"]*"[^>]*title="Claude Code"/);
+  // The name stays beside the mark, so it still shows while a checkbox covers the mark.
+  assert.match(await renderRow(undefined), /class="agent-name[^"]*">Claude Code</);
+  const managing = await renderRow(undefined, false, 'Session title', { manage: { settings: { enabled: true }, selectedRefKeys: new Set(['other']) } });
+  assert.match(managing, /class="lead[^"]*checking[\s\S]*class="agent-name[^"]*">Claude Code</);
+  // It keeps the old badge's tint: the agent's color on a faint wash of it.
+  assert.match(readFileSync(url, 'utf8'), /\.agent-name\s*\{[^}]*color: var\(--row-agent\);[^}]*background-color: color-mix\(in srgb, var\(--row-agent\) 15%, transparent\);/);
   const list = readFileSync(new URL('../src/lib/components/sessionlist/SessionList.svelte', import.meta.url), 'utf8');
   assert.doesNotMatch(list, /showAgent/, 'an agent filter does not hide the mark');
 });
