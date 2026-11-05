@@ -20,7 +20,7 @@ describe the v2 scaffold; they are kept as history.
 | Linux | GTK 4 and WebKitGTK 6.0 through cgo. `make check-gui-linkage` fails if the binary links GTK 3 or WebKit2GTK. |
 | Linux packages | `.deb` depends on `libgtk-4-1` and `libwebkitgtk-6.0-4`; `.rpm` on `gtk4` and `webkitgtk6.0`. |
 | Supported Linux | Ubuntu 24.04+, Debian 13+, Fedora 40+. **Ubuntu 22.04 and Debian 12 are dropped**: they do not ship WebKitGTK 6.0. CI and release builds use Ubuntu 24.04. |
-| macOS | cgo with Cocoa/WebKit. `make package-macos` builds a universal, ad-hoc signed `.dmg` from `packaging/macos/Info.plist.in`. |
+| macOS | cgo with Cocoa/WebKit. `make package-macos` builds a universal `.dmg` from `packaging/macos/Info.plist.in`: ad-hoc signed by default, Developer ID signed and notarized with `MACOS_SIGN_ID`/`MACOS_NOTARY_PROFILE` (see [MAC-APP-RELEASE.md](MAC-APP-RELEASE.md)). |
 | Windows | Cross-compiled on Linux without cgo (`make windows-app`, `make package-windows`). |
 
 ### Code boundaries
