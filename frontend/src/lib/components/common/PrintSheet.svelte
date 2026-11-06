@@ -101,6 +101,10 @@
   @media print {
     .print-sheet {
       display: block;
+      /* macOS's WebKit cuts up to about a pixel and a half off the right of
+         each page, where the page width falls between pixels; content kept
+         2px in from the edge prints whole. */
+      padding-right: 2px;
       print-color-adjust: exact;
       -webkit-print-color-adjust: exact;
     }

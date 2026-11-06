@@ -16,3 +16,8 @@ test('printed code blocks keep a tinted box, without the label or Copy button', 
   const sheet = readFileSync(new URL('../src/lib/components/common/PrintSheet.svelte', import.meta.url), 'utf8');
   assert.match(sheet, /print-color-adjust: exact;\s*-webkit-print-color-adjust: exact;/, 'backgrounds print');
 });
+
+test('printed content keeps clear of the right edge macOS cuts off', () => {
+  const sheet = readFileSync(new URL('../src/lib/components/common/PrintSheet.svelte', import.meta.url), 'utf8');
+  assert.match(sheet, /@media print \{\s*\.print-sheet \{[^}]*padding-right: 2px;/);
+});
