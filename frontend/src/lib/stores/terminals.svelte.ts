@@ -135,7 +135,8 @@ export class TerminalsStore {
   open = $state(false);
   maximized = $state(false);
   height = $state(PANEL_HEIGHT.default);
-  position = $state<PanelPosition>('bottom');
+  /** Docked left, below the session list, until the user moves it. */
+  position = $state<PanelPosition>('left');
   /** Whether a maximized panel stacks split panes rather than setting them side by side. */
   maximizedStacked = $state(false);
   /** A running agent tab whose close waits for confirmation. */
