@@ -25,6 +25,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/scan"
 	"github.com/ginkcode/agent-sessions/internal/term"
 	"github.com/ginkcode/agent-sessions/internal/translate"
+	"github.com/ginkcode/agent-sessions/internal/update"
 	"github.com/ginkcode/agent-sessions/internal/version"
 )
 
@@ -65,6 +66,8 @@ type App struct {
 	panelOverride *panelSystem
 	// translator replaces the default translation client in tests.
 	translator *translate.Client
+	// updates replaces the release check in tests.
+	updates *update.Checker
 
 	events            *catalogBus
 	desktopEvents     engine.Emitter
@@ -252,6 +255,17 @@ func (a *App) NewWindow() error {
 	return nil
 }
 
+// ShowAbout opens the About window. Windows and Linux reach it from the
+// sidebar's logo; macOS from the app menu.
+func (a *App) ShowAbout() error {
+	fn := desktopFrom(a.appCtx()).ShowAbout
+	if fn == nil {
+		return fmt.Errorf("show about: %w", ErrDesktopUnavailable)
+	}
+	fn()
+	return nil
+}
+
 // startAnotherCopy starts another copy of this app; tests replace it.
 var startAnotherCopy = func() error {
 	cmd, err := newWindowCommand()
@@ -343,6 +357,16 @@ func (a *App) close() error {
 // without the release ldflags. It is local even while connected to a host.
 func (a *App) AppVersion() string {
 	return version.Current()
+}
+
+// CheckForUpdate compares this app's version with the latest GitHub release.
+// Like AppVersion it is about this computer's app, whichever host is shown.
+func (a *App) CheckForUpdate() (update.Info, error) {
+	checker := a.updates
+	if checker == nil {
+		checker = update.NewChecker()
+	}
+	return checker.Check(a.appCtx(), version.Current())
 }
 
 // Ping returns a greeting confirmation from the backend service.

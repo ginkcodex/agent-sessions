@@ -24,6 +24,9 @@ type shell struct {
 	// before then wait in pending and start with it.
 	running bool
 	pending []shellWindow
+	// about is the open About window, if any.
+	aboutMu sync.Mutex
+	about   *application.WebviewWindow
 }
 
 type shellWindow struct {
@@ -119,5 +122,7 @@ func (s *shell) start() {
 }
 
 func (s *shell) startWindow(w shellWindow) {
-	s.windows.Start(w.name, s.desktop.Context(), newDesktop(s.desktop, w.window))
+	desktop := newDesktop(s.desktop, w.window)
+	desktop.ShowAbout = s.showAbout
+	s.windows.Start(w.name, s.desktop.Context(), desktop)
 }

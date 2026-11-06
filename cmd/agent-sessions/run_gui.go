@@ -69,6 +69,7 @@ func run() {
 			ProgramName:   linuxProgramName,
 		},
 	})
+	s.useAboutWindow()
 	if err := s.openWindow(); err != nil {
 		log.Fatal(err)
 	}
@@ -94,10 +95,14 @@ func run() {
 	}
 }
 
-// injectDesktopMarker adds desktopMarker to the app's HTML page.
+// desktopPages are the HTML pages that get desktopMarker: the app's, and the
+// About window's.
+var desktopPages = map[string]bool{"/": true, "/index.html": true, aboutPage: true}
+
+// injectDesktopMarker adds desktopMarker to the app's HTML pages.
 func injectDesktopMarker(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
+		if !desktopPages[r.URL.Path] {
 			next.ServeHTTP(w, r)
 			return
 		}
