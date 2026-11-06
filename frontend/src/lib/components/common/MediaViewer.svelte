@@ -10,6 +10,7 @@
   import { theme } from '../../stores/theme.svelte';
   import { toast } from '../../stores/toast.svelte';
   import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
+  import Icon from './Icon.svelte';
 
   // A Mermaid diagram or an attached image in the whole window. It opens
   // fitted to the window and can be zoomed with the buttons, + / - / 0, or
@@ -306,13 +307,23 @@
     <header class="viewer-toolbar">
       <span class="viewer-title">{attached ? attached.name : 'Diagram'}</span>
       <div class="viewer-actions">
-        <button type="button" class="viewer-btn" title="Zoom out (-)" aria-label="Zoom out" onclick={() => setZoom(zoom / STEP)}>−</button>
-        <span class="zoom-level" aria-live="polite">{Math.round(zoom * 100)}%</span>
-        <button type="button" class="viewer-btn" title="Zoom in (+)" aria-label="Zoom in" onclick={() => setZoom(zoom * STEP)}>+</button>
-        <button type="button" class="viewer-btn" class:active={fitted} title="Fit to window (0)" onclick={fit}>Fit</button>
+        <!-- Zoom out, the level, and zoom in share one track. -->
+        <div class="zoom-group" role="group" aria-label="Zoom">
+          <button type="button" class="zoom-btn" title="Zoom out (-)" aria-label="Zoom out" onclick={() => setZoom(zoom / STEP)}>
+            <Icon name="minus" size={14} strokeWidth={2.25} />
+          </button>
+          <span class="zoom-level" aria-live="polite">{Math.round(zoom * 100)}%</span>
+          <button type="button" class="zoom-btn" title="Zoom in (+)" aria-label="Zoom in" onclick={() => setZoom(zoom * STEP)}>
+            <Icon name="plus" size={14} strokeWidth={2.25} />
+          </button>
+        </div>
+        <button type="button" class="viewer-btn" class:active={fitted} aria-pressed={fitted} title="Fit to window (0)" onclick={fit}>
+          <Icon name="scan" size={14} />Fit
+        </button>
         <button
           type="button"
           class="viewer-btn"
+          class:open={exportMenu !== null}
           title={attached ? 'Save or copy the image' : 'Save or copy the diagram as an image'}
           aria-haspopup="menu"
           aria-expanded={exportMenu !== null}
@@ -321,7 +332,10 @@
           bind:this={exportButton}
           onpointerdown={(e) => exportMenu && e.stopPropagation()}
           onclick={toggleExportMenu}
-        >{exporting ? 'Exporting…' : 'Export'}</button>
+        >
+          <Icon name="download" size={14} />{exporting ? 'Exporting…' : 'Export'}<Icon name="chevron-down" size={12} class="export-chevron" />
+        </button>
+        <span class="viewer-divider" aria-hidden="true"></span>
         <DialogCloseButton title="Close (Esc)" onclick={() => void close()} />
       </div>
     </header>
@@ -389,22 +403,34 @@
   .viewer-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
+  }
+
+  /* Like the session header's buttons: borderless, quiet until hovered. */
+  .viewer-btn,
+  .zoom-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: none;
+    color: var(--text-secondary);
+    background-color: transparent;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
   }
 
   .viewer-btn {
-    min-width: 28px;
     height: 28px;
-    padding: 0 8px;
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
-    background-color: var(--bg-primary);
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    cursor: pointer;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
   }
 
-  .viewer-btn:hover {
+  .viewer-btn:hover:not(:disabled),
+  .viewer-btn.open,
+  .zoom-btn:hover {
     color: var(--text-primary);
     background-color: var(--hover-bg);
   }
@@ -414,22 +440,55 @@
     cursor: default;
   }
 
-  .viewer-btn:disabled:hover {
-    color: var(--text-secondary);
-    background-color: var(--bg-primary);
+  /* Fitted, like an active toggle elsewhere (Find). */
+  .viewer-btn.active,
+  .viewer-btn.active:hover {
+    color: var(--accent-color);
+    background-color: var(--active-bg);
   }
 
-  .viewer-btn.active {
-    color: var(--accent-color);
-    border-color: var(--accent-color);
+  .viewer-btn :global(.export-chevron) {
+    margin-left: -1px;
+    opacity: 0.7;
+  }
+
+  .viewer-btn:focus-visible,
+  .zoom-btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+  }
+
+  /* A segmented track, like the Chat / Activity / All switch. */
+  .zoom-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--radius-md);
+    background-color: var(--segment-track);
+  }
+
+  .zoom-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: calc(var(--radius-md) - 2px);
   }
 
   .zoom-level {
-    min-width: 48px;
+    min-width: 42px;
     text-align: center;
-    font-size: 0.78rem;
+    font-size: 0.72rem;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
+    color: var(--text-primary);
+  }
+
+  .viewer-divider {
+    width: 1px;
+    height: 18px;
+    margin: 0 2px;
+    background-color: var(--border-color);
   }
 
   .viewer-viewport {
