@@ -44,6 +44,9 @@
   import { launcher } from './lib/stores/launcher.svelte';
   import { translateSettings } from './lib/stores/translate.svelte';
   import { terminals } from './lib/stores/terminals.svelte';
+  import { fileActions } from './lib/stores/fileActions.svelte';
+  import { filePrompt } from './lib/stores/filePrompt.svelte';
+  import { confirmEndingTerminals } from './lib/closeConfirm';
   import { alerts } from './lib/stores/alerts.svelte';
   import { attentionSummary, mostUrgent } from './lib/alerts';
   import AttentionDot from './lib/components/common/AttentionDot.svelte';
@@ -168,6 +171,7 @@
     void launcher.init();
     void translateSettings.init();
     terminals.init();
+    fileActions.confirmClose = () => confirmEndingTerminals(terminals.tabs, filePrompt.ask.bind(filePrompt));
     alerts.init();
     newSession.init();
     sessionLinks.init();

@@ -55,6 +55,37 @@ func TestFileCloseGuard(t *testing.T) {
 	}
 }
 
+func TestFileCloseGuardAsksWhileTerminalsRun(t *testing.T) {
+	running := false
+	g := fileCloseGuard{busy: func() bool { return running }}
+	if prevent, id := g.request(); prevent || id != 0 {
+		t.Fatal("a window with nothing running should close")
+	}
+	if id, answer := g.requestHeld(); id != 0 || answer != nil {
+		t.Fatal("a window with nothing running should agree to a quit")
+	}
+	running = true
+	prevent, id := g.request()
+	if !prevent || id == 0 {
+		t.Fatal("a running terminal must defer the close to the frontend")
+	}
+	if !g.complete(id, true) {
+		t.Fatal("approval should close the window")
+	}
+	if prevent, again := g.request(); prevent || again != 0 {
+		t.Fatal("the approved close should pass")
+	}
+	held, answer := g.requestHeld()
+	if held == 0 || answer == nil {
+		t.Fatal("a running terminal must ask before a quit")
+	}
+	g.complete(held, false)
+	running = false
+	if prevent, id := g.request(); prevent || id != 0 {
+		t.Fatal("once the terminals end the window should close unasked")
+	}
+}
+
 func TestFileCloseGuardHeldRequest(t *testing.T) {
 	var g fileCloseGuard
 	if id, answer := g.requestHeld(); id != 0 || answer != nil {

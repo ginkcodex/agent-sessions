@@ -20,6 +20,15 @@ test('candidate offsets exclude quotes, punctuation and line/column suffixes', (
   assert.deepEqual(paths("'a folder/config.json' foo.ts:12:3: README.md."), ['a folder/config.json', 'foo.ts', 'README.md']);
 });
 
+test('box-drawing pane borders and block gutters end a candidate', () => {
+  const text = 'quit.        │internal/app/app.go                +3';
+  const candidates = extractTerminalFileCandidates(text);
+  assert.deepEqual(candidates.map((c) => c.path), ['internal/app/app.go']);
+  assert.equal(text.slice(candidates[0].start, candidates[0].end), 'internal/app/app.go');
+  assert.deepEqual(paths('a.ts│b.ts ┃src/c.go┃ ▌docs/d.md ╰─README.md'), ['a.ts', 'b.ts', 'src/c.go', 'docs/d.md', 'README.md']);
+  assert.deepEqual(paths('"left.ts │ right.ts"'), ['left.ts', 'right.ts']);
+});
+
 test('git status recognizes extensionless paths and spaces, and only rename destinations', () => {
   for (const [text, expected] of [
     ['\tmodified:   scripts/check', 'scripts/check'],

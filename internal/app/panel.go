@@ -37,6 +37,7 @@ type terminalManager interface {
 	Close(id string) error
 	CloseAll()
 	Running(host string) bool
+	AnyRunning() bool
 	Tab(id string) (term.Tab, error)
 }
 

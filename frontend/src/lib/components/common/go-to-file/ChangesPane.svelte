@@ -196,8 +196,9 @@
   .chevron { flex: 0 0 10px; font-size: .7rem; color: var(--text-muted); }
 
   .repo-bar { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px; border-bottom: 1px solid var(--border-color); }
-  /* The picker sizes to its repository; its menu keeps within the pane. */
-  .repository { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-secondary); }
+  /* The picker sizes to its repository; its menu keeps within the pane. It
+     is as tall as the History toolbar's controls. */
+  .repository { --control-height: 26px; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-secondary); }
   .repository :global(.dropdown) { flex: 1; }
   .repository :global(.menu) { max-width: 100%; }
   .repo-head { display: flex; align-items: center; gap: 6px; min-width: 0; }

@@ -97,7 +97,7 @@
 {#if menu}<ContextMenu x={menu.x} y={menu.y} {items} ariaLabel="History ref actions" onClose={() => menu = null} />{/if}
 
 <style>
-  .actions { padding: 3px 8px; border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-primary); background: var(--bg-secondary); cursor: pointer; }
+  .actions { height: var(--control-height, 24px); padding: 0 8px; border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-primary); background: var(--bg-secondary); cursor: pointer; }
   .action-error { color: var(--error-color, var(--text-primary)); }
   .branches { padding: 12px 8px; font-size: .8rem; line-height: 1.4; }
   h3 { margin: 0 4px 10px; font-size: .85rem; font-weight: 600; color: var(--text-primary); }

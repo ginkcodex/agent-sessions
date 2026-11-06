@@ -1,0 +1,41 @@
+name: Install apt packages
+description: >-
+  Installs Ubuntu packages without waiting on Azure's Ubuntu mirror. It puts
+  Canonical's archive ahead of Azure's in the runner's apt mirror list, and
+  caches the .debs it downloads so later runs install them without a mirror.
+inputs:
+  packages:
+    description: Space-separated package names, installed without recommends.
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        # The prefix names the OS, architecture, package set and month, so a
+        # cache never outlives the month or crosses Ubuntu releases.
+        . /etc/os-release
+        sum=$(printf '%s\n' $PACKAGES | sort -u | sha256sum | cut -c1-16)
+        echo "prefix=apt-v1-$ID-$VERSION_ID-$RUNNER_ARCH-$sum-$(date -u +%Y-%m)-" >> "$GITHUB_OUTPUT"
+        echo "dir=$RUNNER_TEMP/apt-debs-$sum" >> "$GITHUB_OUTPUT"
+    # Restores the newest cache for this prefix; the primary key never
+    # matches, so a run that had to download saves a fresh one.
+    - uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.key.outputs.dir }}
+        key: ${{ steps.key.outputs.prefix }}${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+        restore-keys: ${{ steps.key.outputs.prefix }}
+    - id: install
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/install.sh" "$DEBS" $PACKAGES
+      env:
+        DEBS: ${{ steps.key.outputs.dir }}
+        PACKAGES: ${{ inputs.packages }}
+    - if: steps.install.outputs.save == 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.key.outputs.dir }}
+        key: ${{ steps.key.outputs.prefix }}${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}

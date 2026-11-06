@@ -201,6 +201,9 @@ func (a *App) onStartup(ctx context.Context) {
 		a.terminals = term.NewManager(emitter)
 	}
 	a.conn.setBusy(a.terminals.Running)
+	a.fileClose.mu.Lock()
+	a.fileClose.busy = a.terminals.AnyRunning
+	a.fileClose.mu.Unlock()
 	if dir := a.claimsDir(); dir != "" {
 		claims := newHostClaims(dir, func() { raiseWindow(ctx) })
 		a.conn.setClaims(claims)

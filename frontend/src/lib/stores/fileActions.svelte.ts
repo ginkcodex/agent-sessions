@@ -6,6 +6,17 @@ import { filePrompt } from './filePrompt.svelte';
 export class FileActions {
   busy = $state(false);
   quitting = $state(false);
+  /**
+   * Asked first on a native close or quit: whether to end what else runs in
+   * the window, such as its terminals. The app sets it.
+   */
+  confirmClose: () => Promise<boolean> = async () => true;
+  /**
+   * Until this time a native close does not ask confirmClose: the user has
+   * just agreed to a restart that ends the terminals. A restart that another
+   * window calls off leaves it to run out.
+   */
+  closeConfirmedUntil = 0;
 
   private async resolve(targets: DraftTarget[], title: string): Promise<boolean> {
     const dirty = targets.filter(({ tab }) => tabHasUnsaved(tab));
@@ -190,7 +201,10 @@ export class FileActions {
     if (this.busy || this.quitting) { await api.completeFileClose(id, false); return; }
     this.busy = true;
     try {
-      const allow = await this.resolve(files.draftTargets, 'Close window?');
+      const confirmed = Date.now() < this.closeConfirmedUntil;
+      this.closeConfirmedUntil = 0;
+      const allow = (confirmed || await this.confirmClose())
+        && await this.resolve(files.draftTargets, 'Close window?');
       this.quitting = allow;
       await api.completeFileClose(id, allow);
     } catch {
