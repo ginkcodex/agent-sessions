@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { canOpenExternal, canOpenPanel, openMode } from '../src/lib/terminal.ts';
 import { renderSessionHeader } from './helpers.mjs';
 
@@ -73,4 +74,10 @@ test('SessionHeader offers Find in session where the view handles it', async () 
   assert.match(open, /class="action-btn find-btn[^"]* active"[^>]*aria-pressed="true"[^>]*aria-label="Find in session"[^>]*title="Find in session \((⌘F|Ctrl\+F)\)"/);
   const closed = await renderSessionHeader(fixture, { onFind: () => {} });
   assert.match(closed, /aria-pressed="false"[^>]*aria-label="Find in session"/);
+});
+
+test('SessionHeader menus keep each item on one line', () => {
+  const source = readFileSync(new URL('../src/lib/components/transcript/SessionHeader.svelte', import.meta.url), 'utf8');
+  // "New Claude Code session" wrapped to the width of the narrow New ▾ button.
+  assert.match(source, /\.action-menu-item \{[^}]*white-space: nowrap;/);
 });

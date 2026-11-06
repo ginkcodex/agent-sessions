@@ -858,6 +858,9 @@
     text-align: left;
     width: 100%;
     box-sizing: border-box;
+    /* Menus hang from narrow buttons; one line per item makes them as wide
+       as their longest item instead of the button's width. */
+    white-space: nowrap;
   }
 
   .action-menu-item:hover {
