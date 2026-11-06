@@ -200,9 +200,10 @@ or subscriptions.
   and create or switch branches. Fetch, fast-forward pull, and non-force push
   are available in the project UI.
 - Enable project-approved code checks and language-tool features such as
-  diagnostics, hover, and definition/reference navigation. Support depends on
-  the language, platform, and available tools; this is a lightweight workbench,
-  not a full IDE.
+  diagnostics, hover, and definition/reference navigation for Go,
+  TypeScript/JavaScript, Svelte, Python and Rust, and RuboCop lint for Ruby.
+  Support depends on the language, platform, and available tools; this is a
+  lightweight workbench, not a full IDE.
 
 > **Editing limits:** binary, non-UTF-8, mixed-line-ending, symlinked, protected,
 > and larger-than-500-KB files stay read-only. Drafts live in memory, not in a

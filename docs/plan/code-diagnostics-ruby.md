@@ -1,11 +1,47 @@
 # Code checks: Ruby (RuboCop) (2026-11-07)
 
-**Status: planned 2026-11-07** ([tasks RB-00…RB-06](../tasks/ruby.md)). Parent
-plans: [code-diagnostics.md](code-diagnostics.md), the
+**Status: implemented 2026-11-07** ([tasks RB-00…RB-06](../tasks/ruby.md);
+wire details in the [contract, R12](code-diagnostics-contract.md#r12-additive-ruby-language-2026-11-07)).
+Parent plans: [code-diagnostics.md](code-diagnostics.md), the
 [editor (Zed) model](code-diagnostics-zed-model.md) and
 [language settings](code-diagnostics-languages.md). Closest precedents: Ruff
 ([code-diagnostics-python.md](code-diagnostics-python.md)) for the provider
 shape and Pyright (`pyright_lsp.go`) for an interpreter bound into approval.
+
+Where the code differs from the plan below (details in each task's Outcome):
+
+- Ruby resolution takes the workspace's directories up to the opened folder,
+  nearest first; a version file that exists but names no plain CRuby version
+  (`invalidRequest`) stops discovery instead of falling back. A lockfile
+  request also accepts the newest installed patch of the same minor version.
+  On `PATH`, a too-old Ruby (macOS's 2.6) is skipped when a usable one follows.
+- Only Ruby sources enable RuboCop; a `Gemfile` alone (fastlane, CocoaPods,
+  Jekyll) gives the muted `unsupported` row. Only a `Gemfile` marks a nested
+  Ruby workspace. `.bundle`, `.ruby-lsp` and `vendor/bundle` are skipped by
+  the shared scan for every language.
+- More `unsupported` states than planned: RuboCop from a `git`/`path` source,
+  an unreadable `Gemfile.lock` or `.bundle/config`, a `BUNDLE_PATH` outside
+  the project, a locked RuboCop without a `Gemfile`, and a Ruby or gem
+  directory containing `:`.
+- Findings are `uncertain`, not `current`: the pushes carry no version, so
+  each records the version observed at receipt and keeps its range.
+- The frontend says "No language server provides go to definition, references
+  or hover for Ruby files" before any approval or install reason, and leaves
+  Ruby out of the languages with app downloads.
+- Not handled: Homebrew Ruby's own gem directory
+  (`$(brew --prefix)/lib/ruby/gems/<abi>`), which lies outside its Cellar
+  prefix; a RuboCop installed there reports `missingTool`.
+
+Tested: synthetic Go tests for every rule (each confirmed to fail when its rule
+is removed), the evidence replay, frontend tests, and one real run of
+`TestLocalLiveRealRubocopSmoke` on darwin/arm64 (RuboCop 1.92.2, mise Ruby
+4.0.9, standalone mode): approval required before open, `Lint/Syntax` as an
+error, three convention offenses as information, an empty push for the fixed
+draft, each finding `uncertain` with its range and observed version, and
+nothing written to the project or `HOME`. Not tested: Linux, native Windows
+(unsupported anyway), real SSH/WSL hosts, Bundler mode through the Go adapter
+(only in the RB-00 spike and a read-only discovery probe), and manual editor
+QA.
 
 ## Goal
 

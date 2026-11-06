@@ -59,6 +59,13 @@ test('each reason navigation is unavailable says what is missing', () => {
     [{ basis: undefined }, /still opening this file/],
   ];
   for (const [change, reason] of cases) assert.match(navigationBlocker({ ...ready, ...change }), reason, JSON.stringify(change));
+  // RuboCop answers no navigation, before or after approval, installed or not.
+  const rubocop = { ...gopls, providerId: 'rubocop' };
+  for (const change of [{ servers: [rubocop] }, { servers: [rubocop], approved: false }, { servers: [{ ...rubocop, availability: 'missingTool' }] }, { servers: [rubocop], basis: undefined }])
+    assert.equal(navigationBlocker({ ...ready, ...change }), 'No language server provides go to definition, references or hover for Ruby files; RuboCop reports lint and syntax problems only.', JSON.stringify(change));
+  assert.match(navigationBlocker({ ...ready, servers: [rubocop], off: 'Ruby' }), /^Ruby is off in Settings/);
+  // A server that navigates beside it still answers.
+  assert.equal(navigationBlocker({ ...ready, servers: [rubocop, gopls] }), undefined);
   // One of two servers running is enough.
   assert.equal(navigationBlocker({ ...ready, servers: [{ ...gopls, providerId: 'ruff', phase: 'failed' }, gopls] }), undefined);
 });

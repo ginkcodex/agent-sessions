@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixtureStore, loadServerComponent, loadServerModule, renderWithFixture } from './helpers.mjs';
+import { fixtureStore, loadServerComponent, loadServerModule, renderWithFixture, renderedButtons } from './helpers.mjs';
 import { CODE_LANGUAGES, codeLanguageIds, languageList, languageOfPath, languageOfProvider } from '../src/lib/codeLanguages.ts';
 import { liveLanguages, providerMode, providerStatus } from '../src/lib/codeCheckLabels.ts';
 import { navigationBlocker } from '../src/lib/codeNavigation.ts';
@@ -23,13 +23,16 @@ const panel = await loadServerComponent(new URL('../src/lib/components/common/go
 ]);
 
 test('the language table matches the backend IDs and maps providers and files', () => {
-  assert.deepEqual(CODE_LANGUAGES.map(l => l.id), ['go', 'typescript', 'svelte', 'python', 'rust']);
+  assert.deepEqual(CODE_LANGUAGES.map(l => l.id), ['go', 'typescript', 'svelte', 'python', 'rust', 'ruby']);
+  assert.deepEqual(codeLanguageIds(['ruby', 'go']), ['go', 'ruby']);
+  assert.equal(languageOfProvider('rubocop')?.id, 'ruby');
   assert.deepEqual(codeLanguageIds(['rust', 'nonsense', 'go', 'rust', 7]), ['go', 'rust']);
   assert.equal(languageOfProvider('go-vet-2')?.id, 'go');
   assert.equal(languageOfProvider('pyright')?.id, 'python');
   assert.equal(languageOfProvider('mock-checker'), undefined);
-  for (const [path, id] of [['a/B.PY', 'python'], ['x.pyi', 'python'], ['m.mts', 'typescript'], ['App.svelte', 'svelte'], ['lib.rs', 'rust'], ['main.go', 'go']]) assert.equal(languageOfPath(path)?.id, id, path);
-  assert.equal(languageOfPath('README.md'), undefined);
+  for (const [path, id] of [['a/B.PY', 'python'], ['x.pyi', 'python'], ['m.mts', 'typescript'], ['App.svelte', 'svelte'], ['lib.rs', 'rust'], ['main.go', 'go'], ['app/User.RB', 'ruby'], ['lib/tasks/db.rake', 'ruby'], ['x.gemspec', 'ruby'], ['config.ru', 'ruby']]) assert.equal(languageOfPath(path)?.id, id, path);
+  // Extensionless Ruby files and templates are not owned, as on the backend.
+  for (const path of ['README.md', 'Gemfile', 'Rakefile', 'show.html.erb']) assert.equal(languageOfPath(path), undefined, path);
   assert.equal(languageList(['Go', 'Python', 'Rust']), 'Go, Python and Rust');
   // The shared table keeps the existing labels.
   assert.equal(providerMode({ providerId: 'go-vet-1', coverage: { kind: 'savedProject', externalChanges: 'unwatched' } }), 'saved Go files · on demand');
@@ -141,6 +144,7 @@ function render(overrides = {}) {
 test('the panel names only the languages that are on and explains off and ignored ones', async () => {
   const all = await render();
   assert.match(all, /For Go, TypeScript\/JavaScript, Svelte, Python and Rust, a missing supported server/);
+  assert.match(all, /class="mono[^"]*">gem install rubocop<\/span>/);
   assert.match(all, /npm install -g pyright/);
   assert.doesNotMatch(all, /off in Settings/);
   const off = await render({ languagesOff: ['python', 'rust'], providers: [saved, live('ruff', undefined, 'disabled'), { ...saved, providerId: 'cargo-check', availability: 'disabled', notice: 'Off in Settings', coverage: { ...saved.coverage, roots: [] } }] });
@@ -155,6 +159,30 @@ test('the panel names only the languages that are on and explains off and ignore
   assert.match(old, /older and still checks Python, though it is off in Settings/);
   const changed = await render({ languagesChanged: true });
   assert.match(changed, /Language settings changed since these checkers were found/);
+});
+
+const rubocop = (availability, notice) => ({ ...live('rubocop', ['.rb', '.rake', '.gemspec', '.ru'], availability), ...(notice ? { notice } : {}) });
+test('Ruby: RuboCop setup text and install hints, never an app download or navigation claim', async () => {
+  const missing = await render({ providers: [saved, rubocop('missingTool', 'RuboCop is not installed for Ruby 4.0.9.')], managed: { hostId: 'local:actual', state: 'idle' }, snapshot: { approval: { state: 'required' }, proposal: { tools: [] } } });
+  assert.match(missing, /Ruby linter \(RuboCop\)/);
+  assert.match(missing, /RuboCop is not installed for Ruby 4\.0\.9\./);
+  assert.match(missing, /class="mono[^"]*">bundle add rubocop --group development<\/span>(<!--[^>]*-->)* or (<!--[^>]*-->)*<span class="mono[^"]*">gem install rubocop<\/span>/);
+  assert.match(missing, /RuboCop is never downloaded by this app\. It runs with the Ruby the project asks for/);
+  assert.match(missing, /RuboCop for Ruby \(lint and syntax problems\)/);
+  // Ruby is not among the languages with app downloads, and no Install button is offered.
+  assert.match(missing, /For Go, TypeScript\/JavaScript, Svelte, Python and Rust, a missing supported server/);
+  assert.doesNotMatch(missing, /Python, Rust and Ruby, a missing|Install rubocop/);
+  assert.ok(!renderedButtons(missing).some(b => /^Install /.test(b.text)));
+  // Approval names RuboCop as giving no navigation, unless Ruby is off.
+  const approval = await render({ providers: [live('gopls', ['.go'], 'approvalRequired'), rubocop('approvalRequired')], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [{ providerId: 'rubocop', executable: '/r/bin/ruby', configPaths: ['Gemfile'] }] } } });
+  assert.match(approval, /Ruff alone does not provide navigation\. RuboCop does not provide navigation for Ruby\./);
+  assert.doesNotMatch(approval, /navigation with available language servers:[^.]*RuboCop/);
+  const rubyOff = await render({ languagesOff: ['ruby'], providers: [live('gopls', ['.go'], 'approvalRequired'), rubocop('disabled')], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [] } } });
+  assert.doesNotMatch(rubyOff, /RuboCop does not provide navigation|RuboCop is never downloaded|gem install rubocop/);
+  assert.match(rubyOff, /Ruby is off in Settings/);
+  // A folder without Ruby files has only the muted row and no Ruby setup text.
+  const other = await render({ providers: [saved, { ...rubocop('unsupported', 'No Ruby file was found in this project.'), coverage: { ...rubocop().coverage, roots: [] } }] });
+  assert.doesNotMatch(other, /RuboCop is never downloaded/);
 });
 
 test('the panel links to Settings for languages and downloads instead of its own switch', async () => {

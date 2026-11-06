@@ -114,6 +114,7 @@ type LocalLiveEnvironment struct {
 	Ruff    RuffEnvironment
 	Pyright PyrightEnvironment
 	Rust    RustEnvironment
+	Ruby    RubyEnvironment     // Home defaults to Go.Home
 	Svelte  SvelteLSEnvironment // Home defaults to Go.Home
 	// Disabled languages are not discovered at all: no tool lookup, no
 	// registration.
@@ -122,7 +123,8 @@ type LocalLiveEnvironment struct {
 
 // DiscoverLocalLive is the production local live route's discovery: gopls,
 // vtsls (CD-23), the Svelte language server (CD-24), Ruff and Pyright for
-// Python and rust-analyzer, each with independent availability. Metadata only.
+// Python, rust-analyzer and RuboCop for Ruby, each with independent
+// availability. Metadata only.
 func DiscoverLocalLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Registration, error) {
 	if len(env.GoPath) > 64 || len(env.Path) > 64 {
 		return nil, failure("limitExceeded", "Reviewed executable search budget exceeded")
@@ -161,7 +163,7 @@ func DiscoverLocalLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Registr
 		}
 		byProvider[svelteLSProviderID] = svelteLiveRegistration(sv)
 	}
-	// TypeScript and Python come from the nested-workspace scan when the project
+	// TypeScript, Python and Ruby come from the nested-workspace scan when the project
 	// has nested projects, else from one server for the whole root.
 	nested, used, err := discoverWorkspaceLive(root, env)
 	if err != nil {

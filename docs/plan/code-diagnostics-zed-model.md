@@ -40,6 +40,8 @@ read "Off in Settings".
 | Node.js (for vtsls/Pyright) | — | `PATH`, version 18 or newer (reused, not copied) | Node.js v24.22.1 LTS archive |
 | Ruff | `.venv/bin`, `venv/bin` | `PATH` (uv, pipx, pip, Homebrew, standalone) | Ruff 0.15.20 release archive |
 | rust-analyzer | — | `PATH` is never trusted for live Rust | the app's exact pinned rust-analyzer release archive |
+| RuboCop | the version in `Gemfile.lock`, installed in `BUNDLE_PATH` (`vendor/bundle`) or a gem directory | the newest `rubocop` gem in the user's or the Ruby's gem directory | — (never downloaded) |
+| Ruby (for RuboCop) | `.ruby-version`, `mise.toml`, `.tool-versions`, `Gemfile.lock` `RUBY VERSION` | rbenv, mise, asdf, chruby, rvm install folders, then `PATH` (shims skipped) | — |
 | TypeScript library | `node_modules/typescript` | — | the copy vtsls ships with |
 
 - **Versions are not gated.** gopls is accepted when its build info names the
@@ -66,6 +68,14 @@ read "Off in Settings".
   execute that interpreter to discover import paths, so the interpreter is bound
   into project approval too. No interpreter means limited stub-only checks and no
   unresolved-import claims. Native Pyright and remote QA are still pending.
+- **Ruby runs the project's RuboCop.** The interpreter and gems are found as
+  files, without running Ruby, a shim or Bundler. A RuboCop locked in
+  `Gemfile.lock` runs as `ruby -rbundler/setup <gem>/exe/rubocop --lsp`, which
+  loads the project's `Gemfile`; otherwise the newest installed gem runs
+  directly with `GEM_HOME`/`GEM_PATH`. The interpreter, RuboCop's and Bundler's
+  entry files and gemspecs, and the version file are bound into approval.
+  RuboCop gives lint and syntax findings only, no navigation
+  ([code-diagnostics-ruby.md](code-diagnostics-ruby.md)).
 - **Rust live analysis is pinned.** A user PATH rust-analyzer is never a live
   server; only the exact pinned managed copy is registered. Its initialize
   options and `rust-analyzer` workspace config both set

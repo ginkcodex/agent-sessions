@@ -13,11 +13,21 @@ Fixtures and validation: `internal/codediagnostics/testdata/contract/` and
 `internal/codediagnostics/contract_test.go`. The fixtures use synthetic identities
 and source only, never real project contents or secrets.
 
+## R12 additive Ruby language (2026-11-07)
+
+`ruby` joins the `disabledLanguages` IDs of R11, with one live provider,
+`rubocop` (`openedDocuments`, `documentExtensions` `.rb`, `.rake`, `.gemspec`,
+`.ru`). Its pushes are unversioned, so its findings carry
+`basis.observedVersion` and freshness `uncertain`, as vtsls's do, but keep
+their range. It offers no navigation, completion or code actions. No new
+capability: an older server ignores `ruby` and lists no `rubocop` provider.
+Contract version remains 1.
+
 ## R11 additive language settings (2026-10-30)
 
 Optional `disabledLanguages: string[]` on `attachCodeDiagnostics` names the
 languages turned off in Settings: `go`, `typescript`, `svelte`, `python`,
-`rust` (`internal/codediagnostics/languages.go`; the frontend keeps the same
+`rust`, and since R12 `ruby` (`internal/codediagnostics/languages.go`; the frontend keeps the same
 IDs in `frontend/src/lib/codeLanguages.ts`). At most 16 entries, each 1–32
 bytes, else `invalidArgument`; unknown IDs are ignored. The App wrapper is
 `AttachCodeDiagnostics(dir, contractVersion, expectedHostId, disabledLanguages)`

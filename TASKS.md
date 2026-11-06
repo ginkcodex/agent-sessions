@@ -409,7 +409,7 @@ get code checks and Go to Definition. Not included in the milestone totals above
 
 ## Follow-up — Ruby code checks
 
-Planned 2026-11-07. **1/7 complete.** Plan:
+Planned 2026-11-07. **7/7 complete.** Plan:
 [code-diagnostics-ruby.md](docs/plan/code-diagnostics-ruby.md);
 [task briefs](docs/tasks/ruby.md). Ruby lint and syntax checks in opened files
 through RuboCop's language server, using the project's Bundler setup or an
@@ -419,13 +419,13 @@ later plans. Not included in the milestone totals above.
 | ID | Status | Scope | Est |
 |---|---|---|---|
 | [RB-00](docs/tasks/ruby.md#rb-00--rubocop-server-spike) | ✅ | Spike: real `rubocop --lsp` behavior | 3 |
-| [RB-01](docs/tasks/ruby.md#rb-01--ruby-runtime-resolution) | Not started | Ruby interpreter and version | 4 |
-| [RB-02](docs/tasks/ruby.md#rb-02--gems-and-bundler) | Not started | Gems and Bundler | 4 |
-| [RB-03](docs/tasks/ruby.md#rb-03--rubocop-adapter) | Not started | RuboCop adapter | 4 |
-| [RB-04](docs/tasks/ruby.md#rb-04--wiring) | Not started | Language table, bridge, scan, engine | 4 |
-| [RB-05](docs/tasks/ruby.md#rb-05--frontend) | Not started | Frontend | 3 |
-| [RB-06](docs/tasks/ruby.md#rb-06--smoke-test-docs-and-gate) | Not started | Smoke test, docs and gate | 3 |
-| **Total** | **0/7** | | **25** |
+| [RB-01](docs/tasks/ruby.md#rb-01--ruby-runtime-resolution) | ✅ | Ruby interpreter and version | 4 |
+| [RB-02](docs/tasks/ruby.md#rb-02--gems-and-bundler) | ✅ | Gems and Bundler | 4 |
+| [RB-03](docs/tasks/ruby.md#rb-03--rubocop-adapter) | ✅ | RuboCop adapter | 4 |
+| [RB-04](docs/tasks/ruby.md#rb-04--wiring) | ✅ | Language table, bridge, scan, engine | 4 |
+| [RB-05](docs/tasks/ruby.md#rb-05--frontend) | ✅ | Frontend | 3 |
+| [RB-06](docs/tasks/ruby.md#rb-06--smoke-test-docs-and-gate) | ✅ | Smoke test, docs and gate | 3 |
+| **Total** | **7/7** | | **25** |
 
 ## Follow-up — Performance
 

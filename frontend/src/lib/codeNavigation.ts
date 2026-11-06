@@ -48,6 +48,9 @@ export const OP_LABEL: Record<CodeNavigationOp, string> = {
   hover: 'Hover',
 };
 
+/** Live providers that answer no navigation request (RuboCop advertises none). */
+const LINT_ONLY = new Map([['rubocop', { language: 'Ruby', tool: 'RuboCop' }]]);
+
 /**
  * Why navigation cannot be asked for a file now, or undefined when it can.
  * Each reason says what is missing and, where there is one, what to do.
@@ -68,6 +71,9 @@ export function navigationBlocker(v: NavigationView): string | undefined {
   if (v.off) return `${v.off} is off in Settings, so code navigation is not offered for this file. Turn it on under Settings › Code checks.`;
   if (!v.live) return 'This host does not run language servers for open files, so code navigation is unavailable.';
   if (!v.navigation) return "This host's Agent Sessions server is older and does not offer code navigation.";
+  // A file that only linters declare gets no navigation, approved or not.
+  const linter = v.servers.length && v.servers.every(p => LINT_ONLY.has(p.providerId)) ? LINT_ONLY.get(v.servers[0].providerId) : undefined;
+  if (linter) return `No language server provides go to definition, references or hover for ${linter.language} files; ${linter.tool} reports lint and syntax problems only.`;
   if (!v.approved) return v.approvalBlocker ?? 'Approve code checks for this project in Code checks to use go to definition, references and hover.';
   const servers = v.servers.filter(p => p.availability === 'available');
   if (!servers.length) {

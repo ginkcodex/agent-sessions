@@ -66,6 +66,7 @@ test('label helpers: human tool names, consistent modes, bounded messages, remot
   assert.equal(liveLanguages([live('gopls', 'approvalRequired'), live('typescript', 'approvalRequired')], ['available', 'approvalRequired']), 'Go and TypeScript/JavaScript');
   assert.equal(liveLanguages([]), '');
   assert.equal(toolName('ruff'), 'Python linter (Ruff)');
+  assert.equal(toolName('rubocop'), 'Ruby linter (RuboCop)');
   assert.equal(providerMode({ providerId: 'ruff', coverage: cov('openedDocuments', 'unwatched') }), 'LSP · live, opened Python files');
   assert.equal(liveLanguages([live('gopls', 'available'), live('typescript', 'available'), live('ruff', 'available')]), 'Go, TypeScript/JavaScript and Python');
   assert.equal(liveLanguages([live('gopls', 'available'), live('ruff', 'unsupported')]), 'Go', 'a Python-free project never claims Python checking');

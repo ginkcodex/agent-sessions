@@ -150,6 +150,7 @@ func discoverLocalLiveIn(root cd.AuthorizedRoot, managed []string, prepareDir st
 		Ruff:     cd.RuffEnvironment{Home: home},
 		Pyright:  cd.PyrightEnvironment{Home: home},
 		Rust:     cd.RustEnvironment{Home: home, CargoHome: os.Getenv("CARGO_HOME"), RustupHome: os.Getenv("RUSTUP_HOME"), PrepareDir: prepareDir},
+		Ruby:     cd.RubyEnvironment{Home: home, RbenvRoot: os.Getenv("RBENV_ROOT"), MiseDataDir: os.Getenv("MISE_DATA_DIR"), AsdfDataDir: os.Getenv("ASDF_DATA_DIR")},
 		Disabled: off,
 	})
 }

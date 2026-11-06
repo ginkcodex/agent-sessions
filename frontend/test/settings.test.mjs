@@ -217,15 +217,16 @@ test('Settings › Code checks: language switches with their saved state, then a
     ['Svelte', true, '.svelte'],
     ['Python', true, '.py .pyi'],
     ['Rust', true, '.rs'],
+    ['Ruby', true, '.rb .rake .gemspec .ru'],
     ['Download missing language servers automatically', true, ''],
   ]);
   assert.match(all, /Turning a language on starts its checks in projects already approved; turning it off stops them\./);
   const headings = [...all.matchAll(/<h3[^>]*>([^<]+)<\/h3>/g)].map((m) => m[1]);
   assert.deepEqual(headings, ['Languages', 'Language servers', 'Logs']);
 
-  const saved = await render({ disabledLanguages: ['python', 'rust'], autoInstallLanguageServers: false });
+  const saved = await render({ disabledLanguages: ['python', 'rust', 'ruby'], autoInstallLanguageServers: false });
   assert.deepEqual(switches(saved).map(([name, on]) => [name, on]), [
-    ['Go', true], ['TypeScript/JavaScript', true], ['Svelte', true], ['Python', false], ['Rust', false],
+    ['Go', true], ['TypeScript/JavaScript', true], ['Svelte', true], ['Python', false], ['Rust', false], ['Ruby', false],
     ['Download missing language servers automatically', false],
   ]);
   // The switches act through the code checks store, which rediscovers an open project.
