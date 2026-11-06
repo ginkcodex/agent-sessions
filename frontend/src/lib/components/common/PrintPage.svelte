@@ -84,8 +84,11 @@
 </div>
 
 <style>
-  /* Paper reads smaller than the screen: the transcript's sizes at 90%. */
+  /* Paper reads smaller than the screen: the transcript's sizes at 90%.
+     Code blocks take the tone a message gives them; the page's own
+     --code-bg is the paper's white. */
   .print-page {
+    --code-bg: var(--bg-secondary);
     font-size: 12.6px;
     line-height: 1.6;
     color: var(--text-primary);
@@ -112,10 +115,6 @@
   .print-page :global(table),
   .print-page :global(code.hljs) {
     font-size: 11.5px;
-  }
-
-  .print-page :global(.code-lang-tag) {
-    font-size: 9.8px;
   }
 
   .print-page > :global(* + *) {
@@ -150,19 +149,23 @@
     overflow: visible;
   }
 
-  .print-page :global(.code-block-actions),
-  .print-page :global(.copy-code-btn) {
+  /* Short code blocks keep to one page. */
+  .print-page :global(.code-block-container) {
+    break-inside: avoid;
+  }
+
+  /* Paper needs neither the language label nor the Copy button. */
+  .print-page :global(.code-block-header) {
     display: none;
+  }
+
+  .print-page :global(.code-block-container pre) {
+    padding: 10px 12px;
   }
 
   .print-page :global(.mermaid-block.drawn) {
     border: none;
     background: none;
-    break-inside: avoid;
-  }
-
-  .print-page :global(.mermaid-block.drawn .code-block-header) {
-    display: none;
   }
 
   .print-page :global(.mermaid-diagram) {
