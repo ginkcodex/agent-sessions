@@ -1906,7 +1906,8 @@ export class MockBackendAPI extends MockCodeDiagnostics {
           sourceRef,
           targetRef,
           targetCwd: req.cwd,
-          paths: [`/home/haith/.claude/projects/${req.cwd.replace(/[^A-Za-z0-9]/g, '-')}/${targetRef.id}.jsonl`],
+          // OpenCode imports through its CLI into its database: no files to list.
+          paths: sourceRef.agent === 'opencode' ? [] : [`/home/haith/.claude/projects/${req.cwd.replace(/[^A-Za-z0-9]/g, '-')}/${targetRef.id}.jsonl`],
           bytes: bundle.nativeBytes,
           blocked: taken && !req.copy ? `session ${sourceRef.id} already exists; import it as a copy to keep both` : undefined,
           isCopy: Boolean(copyId),
@@ -1936,11 +1937,11 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       counts: { user: 1, assistant: 1, toolCalls: 0 },
       tokens: { input: 0, output: 0 },
       live: false,
-      sourcePath: item.paths[0],
+      sourcePath: item.paths?.[0],
     });
     this.restoreToken = '';
     return {
-      items: [{ ref: item.targetRef, title: bundle.source.title || '', ok: true, created: item.paths }],
+      items: [{ ref: item.targetRef, title: bundle.source.title || '', ok: true, created: item.paths ?? undefined }],
       restored: 1,
       failed: 0,
       totalBytes: item.bytes,

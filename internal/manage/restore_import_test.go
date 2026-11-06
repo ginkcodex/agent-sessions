@@ -80,6 +80,14 @@ func TestRestore_OpenCode_ImportArgvAndEnv(t *testing.T) {
 	if prev.Items[0].Blocked != "" {
 		t.Fatalf("unexpected block: %s", prev.Items[0].Blocked)
 	}
+	// The import dialog reads paths as an array; null left it stuck at "Checking…".
+	raw, err := json.Marshal(prev.Items[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"paths":[]`) {
+		t.Fatalf("preview item paths must encode as an empty array: %s", raw)
+	}
 
 	report, err := m.Restore(context.Background(), req, nil, prev.Token)
 	if err != nil {
