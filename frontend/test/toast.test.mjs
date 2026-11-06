@@ -120,3 +120,36 @@ test('toaster renders escaped full-path buttons and accessible dismiss control',
   assert.match(source, /onfocusin=/);
   assert.match(source, /onfocusout=/);
 });
+
+test('toast buttons sit at the end with the first one filled; choices list in full', async () => {
+  const url = new URL('../src/lib/components/common/Toaster.svelte', import.meta.url);
+  const component = await loadServerComponent(url, [
+    ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
+  ]);
+  const render = (extra) => renderWithFixture(component, { toast: { current: { ...message(extra), id: 1 } } });
+  const actions = [{ label: 'Open', onSelect() {} }, { label: 'Later', onSelect() {} }];
+
+  const buttons = await render({ actions });
+  assert.match(buttons, /class="toast-action[^"]*primary[^"]*"[^>]*>\s*Open/);
+  assert.doesNotMatch(buttons, /class="toast-action[^"]*primary[^"]*"[^>]*>\s*Later/);
+  assert.doesNotMatch(buttons, /class="toast-actions[^"]*choices/);
+  assert.doesNotMatch(buttons, /class="toast [^"]*wide/);
+
+  const choices = await render({ actions, choices: true });
+  assert.match(choices, /class="toast [^"]*wide/);
+  assert.match(choices, /class="toast-actions[^"]*choices/);
+  assert.doesNotMatch(choices, /primary/);
+
+  // A tone icon leads: info, or an alert for errors.
+  assert.match(await render({}), /class="toast-icon[^"]*"[^>]*aria-hidden="true"/);
+  assert.match(await render({ tone: 'error' }), /class="toast [^"]*error/);
+
+  const source = readFileSync(url, 'utf8');
+  assert.match(source, /name=\{message\.tone === 'error' \? 'circle-alert' : 'info'\}/);
+  assert.match(source, /\.toast-actions \{[^}]*justify-content: flex-end;/);
+  assert.match(source, /\.toast-actions\.choices \.toast-action \{[^}]*text-align: left;/);
+  assert.doesNotMatch(source, /border-left: 3px/, 'no accent stripe');
+
+  const fileOpen = readFileSync(new URL('../src/lib/messageFileOpen.ts', import.meta.url), 'utf8');
+  assert.match(fileOpen, /choices: true/, 'the file chooser lists its paths');
+});

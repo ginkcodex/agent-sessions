@@ -9,6 +9,11 @@ export interface ToastMessage {
   code?: string;
   tone?: 'info' | 'error';
   actions?: { label: string; onSelect: () => void }[];
+  /**
+   * The actions are alternatives to pick from, such as paths: listed in full,
+   * one per line. Otherwise they are buttons, the first one primary.
+   */
+  choices?: boolean;
   /** Stay visible until explicitly dismissed or replaced. */
   persistent?: boolean;
   /** Called on dismissal, expiry, replacement, or action selection. */

@@ -51,6 +51,10 @@ test('rows always show the agent mark, even when the list is filtered to one age
   assert.match(managing, /class="lead[^"]*checking[\s\S]*class="agent-name[^"]*">Claude Code</);
   // It keeps the old badge's tint: the agent's color on a faint wash of it.
   assert.match(readFileSync(url, 'utf8'), /\.agent-name\s*\{[^}]*color: var\(--row-agent\);[^}]*background-color: color-mix\(in srgb, var\(--row-agent\) 15%, transparent\);/);
+  assert.doesNotMatch(await renderRow(undefined), /class="agent-name[^"]*subagent/);
+  // A subagent's name is gray, like the subagent count, so main sessions stand out.
+  assert.match(await renderRow('parent'), /class="agent-name[^"]*subagent[^"]*">Claude Code</);
+  assert.match(readFileSync(url, 'utf8'), /\.agent-name\.subagent\s*\{[^}]*color: var\(--text-secondary\);[^}]*background-color: var\(--segment-track\);/);
   const list = readFileSync(new URL('../src/lib/components/sessionlist/SessionList.svelte', import.meta.url), 'utf8');
   assert.doesNotMatch(list, /showAgent/, 'an agent filter does not hide the mark');
 });
