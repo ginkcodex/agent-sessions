@@ -9,14 +9,19 @@ import (
 // Once editing has been enabled, native close requests always go through the
 // frontend. Keeping this armed for the window lifetime avoids a first-keystroke
 // race between asynchronous dirty notifications and the native UI thread.
-// The frontend must freeze editor input while approving a close.
+// The frontend must freeze editor input while approving a close. While a
+// terminal runs they go through the frontend too, which asks the user before
+// ending it.
 //
 // A request either closes the window (the user closes it) or is held: an app
 // quit or restart asks every window first and closes none of them until all
 // have agreed (see Windows.ShouldQuit).
 type fileCloseGuard struct {
-	mu         sync.Mutex
-	armed      bool
+	mu    sync.Mutex
+	armed bool
+	// busy reports that the window runs something a close would end, such
+	// as a terminal; nil is never. It must not take mu.
+	busy       func() bool
 	sequence   uint64
 	pending    uint64
 	held       bool       // the pending request is part of a quit
@@ -105,7 +110,7 @@ func (g *fileCloseGuard) request() (bool, uint64) {
 		g.authorized = false
 		return false, 0
 	}
-	if !g.armed {
+	if !g.mustAsk() {
 		return false, 0
 	}
 	if g.pending != 0 {
@@ -114,12 +119,18 @@ func (g *fileCloseGuard) request() (bool, uint64) {
 	return true, g.open(false)
 }
 
+// mustAsk reports whether a close must be approved by the frontend; g.mu is
+// held.
+func (g *fileCloseGuard) mustAsk() bool {
+	return g.armed || (g.busy != nil && g.busy())
+}
+
 // requestHeld opens a held request and returns its ID, or joins the pending
 // request with ID 0. A nil answer means the window may close as it is.
 func (g *fileCloseGuard) requestHeld() (uint64, *closeWait) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if !g.armed || g.authorized {
+	if g.authorized || !g.mustAsk() {
 		return 0, nil
 	}
 	if g.pending != 0 {

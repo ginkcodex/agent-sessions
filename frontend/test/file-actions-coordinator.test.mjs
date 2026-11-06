@@ -227,6 +227,46 @@ test('nativeClose: approval freezes for quit, cancel replies false, duplicates w
   assert.deepEqual(calls.saveEdited, []);
 });
 
+test('nativeClose asks confirmClose before the unsaved files, unless a restart was just confirmed', async () => {
+  const a = tab('a.txt', 'A');
+  const { actions, calls, prompts } = setup([a]);
+  let confirms = 0, answer = false;
+  actions.confirmClose = async () => { confirms++; return answer; };
+
+  // Refused: the drafts are never asked about, and the window stays.
+  await actions.nativeClose(1);
+  assert.equal(confirms, 1);
+  assert.equal(prompts.length, 0);
+  assert.deepEqual(calls.completeFileClose, [[1, false]]);
+  assert.equal(actions.quitting, false);
+  assert.equal(actions.busy, false);
+
+  // Agreed: the unsaved files are asked about next.
+  answer = true;
+  const agreed = actions.nativeClose(2);
+  (await prompt(prompts, 1)).answer(null);
+  await agreed;
+  assert.equal(confirms, 2);
+  assert.deepEqual(calls.completeFileClose.at(-1), [2, false]);
+
+  // A confirmed restart stands in for the question once.
+  answer = false;
+  actions.closeConfirmedUntil = Date.now() + 10_000;
+  const restart = actions.nativeClose(3);
+  (await prompt(prompts, 2)).answer(null);
+  await restart;
+  assert.equal(confirms, 2);
+  assert.equal(actions.closeConfirmedUntil, 0);
+  await actions.nativeClose(4);
+  assert.equal(confirms, 3);
+
+  // An expired one does not.
+  actions.closeConfirmedUntil = Date.now() - 1;
+  await actions.nativeClose(5);
+  assert.equal(confirms, 4);
+  assert.deepEqual(calls.completeFileClose.at(-1), [5, false]);
+});
+
 test('nativeClose reply failure unfreezes and reports refusal', async () => {
   const { actions, fixture, calls } = setup([tab('a.txt', 'same', 'same')]);
   fixture.api.completeFileClose = async (id, allow) => {

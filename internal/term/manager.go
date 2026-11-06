@@ -261,6 +261,13 @@ func (m *Manager) Running(host string) bool {
 	return false
 }
 
+// AnyRunning reports whether a terminal runs, on any host.
+func (m *Manager) AnyRunning() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.sessions) > 0
+}
+
 // Tab describes a running tab.
 func (m *Manager) Tab(id string) (Tab, error) {
 	s, err := m.get(id)

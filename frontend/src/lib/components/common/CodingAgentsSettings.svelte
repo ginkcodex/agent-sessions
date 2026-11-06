@@ -7,6 +7,9 @@
   import { filePrompt } from '../../stores/filePrompt.svelte';
   import { fileActions } from '../../stores/fileActions.svelte';
 
+  /** How long the restart prompt stands in for the close confirm. */
+  const RESTART_CONFIRMED_MS = 15_000;
+
   let applying = $state(false);
   let applyError = $state('');
 
@@ -28,7 +31,10 @@
         });
       } else {
         if (!api.restartApp) throw new Error('Please restart the app manually to apply coding agents.');
-        await api.restartApp();
+        // The prompt above already warned that the terminals end.
+        fileActions.closeConfirmedUntil = Date.now() + RESTART_CONFIRMED_MS;
+        try { await api.restartApp(); }
+        catch (err) { fileActions.closeConfirmedUntil = 0; throw err; }
       }
     } catch (err) { applyError = err instanceof Error ? err.message : String(err); }
     finally { applying = false; }

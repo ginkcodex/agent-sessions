@@ -59,6 +59,15 @@ func (f *fakeTerminalManager) Close(id string) error    { f.closed = append(f.cl
 func (f *fakeTerminalManager) CloseAll()                { f.closeAll++ }
 func (f *fakeTerminalManager) Running(host string) bool { return f.running[host] }
 
+func (f *fakeTerminalManager) AnyRunning() bool {
+	for _, running := range f.running {
+		if running {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *fakeTerminalManager) Tab(id string) (term.Tab, error) {
 	for _, tab := range f.tabs {
 		if tab.ID == id && !slices.Contains(f.closed, id) {
