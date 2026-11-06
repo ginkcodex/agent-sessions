@@ -279,8 +279,7 @@ test('Changes pane names a project\'s own repository among those inside it', asy
   await store.refresh();
   const html = await renderWithFixture(pane, { gitChanges: store, connectionStore: { capabilities: f.connectionStore.capabilities } }, { onOpen() {} });
   assert.match(html, /aria-label="Changes repository"/);
-  assert.match(html, /<option value=""[^>]*>agent-sessions<\/option>/);
-  assert.match(html, /<option value="web"[^>]*>web<\/option>/);
+  assert.match(html, /aria-label="Changes repository"[\s\S]*?class="trigger-label[^"]*">agent-sessions<\/span>/);
   assert.doesNotMatch(html, /Choose a repository…|Looking for repositories/);
   assert.match(html, /own\.ts/);
   delete globalThis.__gitFixture;

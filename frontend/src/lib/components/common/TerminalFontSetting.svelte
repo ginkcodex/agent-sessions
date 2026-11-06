@@ -3,11 +3,17 @@
   import { api } from '../../api';
   import { preferences } from '../../stores/preferences.svelte';
   import { terminalFontFamily } from '../../terminalFont';
+  import Dropdown from './Dropdown.svelte';
 
   let fonts = $state<string[]>([]);
   let loading = $state(true);
   let error = $state('');
   let selectedMissing = $derived(Boolean(preferences.terminalFont) && !loading && !error && !fonts.includes(preferences.terminalFont));
+  let fontOptions = $derived([
+    { value: '', label: 'App default (JetBrains Mono)' },
+    ...(preferences.terminalFont && !fonts.includes(preferences.terminalFont) ? [{ value: preferences.terminalFont, label: selectedMissing ? `${preferences.terminalFont} (unavailable)` : preferences.terminalFont }] : []),
+    ...fonts.map(font => ({ value: font, label: font })),
+  ]);
 
   async function refresh() {
     loading = true;
@@ -21,15 +27,9 @@
 </script>
 
 <div class="font-setting">
-  <label for="terminal-font">Built-in terminal font</label>
+  <h4>Built-in terminal font</h4>
   <div class="font-row">
-    <select id="terminal-font" value={preferences.terminalFont} onchange={(e) => preferences.setTerminalFont(e.currentTarget.value)} disabled={loading}>
-      <option value="">App default (JetBrains Mono)</option>
-      {#if selectedMissing || (preferences.terminalFont && !fonts.includes(preferences.terminalFont))}
-        <option value={preferences.terminalFont}>{preferences.terminalFont} (unavailable)</option>
-      {/if}
-      {#each fonts as font}<option value={font}>{font}</option>{/each}
-    </select>
+    <Dropdown ariaLabel="Built-in terminal font" options={fontOptions} value={preferences.terminalFont} disabled={loading} onChange={(font) => preferences.setTerminalFont(font)} />
     <button type="button" onclick={() => void refresh()} disabled={loading} aria-label="Refresh installed fonts">{loading ? 'Loading…' : 'Refresh'}</button>
   </div>
   <p class="hint">Choose a monospace font installed on this computer, including Nerd Fonts. No additional fonts are bundled or downloaded. Applies immediately to all built-in terminals.</p>
@@ -40,14 +40,12 @@
 
 <style>
   .font-setting { margin-top: 20px; }
-  label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 8px; }
-  .font-row { display: flex; gap: 8px; }
-  select { flex: 1; min-width: 0; }
-  select, button { padding: 6px 10px; border: none; border-radius: var(--radius-sm); color: var(--text-primary); background: var(--btn-bg); font-size: 0.8rem; }
-  button { cursor: pointer; font-weight: 500; transition: background-color var(--dur-fast) var(--ease-out); }
+  h4 { margin: 0 0 8px; font-size: 0.85rem; }
+  .font-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  button { flex-shrink: 0; height: 24px; padding: 0 10px; border: none; border-radius: var(--radius-sm); color: var(--text-primary); background: var(--btn-bg); font-size: 0.72rem; font-weight: 500; cursor: pointer; transition: background-color var(--dur-fast) var(--ease-out); }
   button:hover:not(:disabled) { background: var(--btn-bg-hover); }
-  select:focus-visible, button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
-  button:disabled, select:disabled { opacity: 0.6; }
+  button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+  button:disabled { opacity: 0.6; }
   .hint, .error { font-size: 0.78rem; line-height: 1.5; margin: 8px 0; }
   .hint { color: var(--text-muted); } .error { color: var(--danger, #ef4444); }
   .sample { padding: 12px; border-radius: var(--radius-md); background: var(--bg-secondary); font-size: 13px; line-height: 1.6; overflow-x: auto; white-space: nowrap; }

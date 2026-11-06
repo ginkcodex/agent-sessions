@@ -39,8 +39,7 @@ test('multiple repositories require an explicit choice before any history is sho
   const repositories = [{ path: 'api', name: 'api', scope: '' }, { path: 'web/app', name: 'app', scope: '' }];
   const fixture = state({ repositories, selectedRepository: null, repository: null, requiresRepositorySelection: true, refs: [] });
   const bar = await renderWithFixture(toolbar, fixture);
-  assert.match(bar, /<option value="" disabled=""[^>]*selected=""[^>]*>Choose a repository…<\/option>/);
-  assert.match(bar, /<option value="web\/app"[^>]*>web\/app<\/option>/);
+  assert.match(bar, /aria-label="History repository"[\s\S]*?class="trigger-label[^"]* placeholder[^"]*">Choose a repository…<\/span>/);
   assert.match(tag(bar, 'input', 'aria-label="Search commit message, author or OID"'), /disabled/);
   const list = await renderWithFixture(commits, fixture);
   assert.match(list, /contains 2 repositories\. Choose one/);
@@ -50,7 +49,7 @@ test('multiple repositories require an explicit choice before any history is sho
 
 test('toolbar labels the root repository and scoped history and never offers write actions', async () => {
   const bar = await renderWithFixture(toolbar, state({ repository: { path: '.', name: 'repo', scope: 'src/deep' } }));
-  assert.match(bar, /<option value="\."[^>]*>repo<\/option>/);
+  assert.match(bar, /aria-label="History repository"[\s\S]*?class="trigger-label[^"]*">repo<\/span>/);
   assert.match(bar, /Scoped history: src\/deep/);
   assert.match(bar, /placeholder="Message, author or hash…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/);
   assert.match(bar, /aria-label="Refresh Git history"/);
@@ -78,10 +77,10 @@ test('branch tree groups HEAD, local and each remote; the narrow selector mirror
   assert.doesNotMatch(filtered, /<summary[^>]*>[\s\S]*?>Remote</);
   assert.match(tree, /never switches or fetches/);
   const narrow = await renderWithFixture(branches, state(), { compact: true });
-  assert.match(narrow, /aria-label="History branch"/);
-  assert.match(narrow, /<optgroup label="Local"/);
-  assert.match(narrow, /<optgroup label="Remote · origin"[^>]*>[\s\S]*value="refs\/remotes\/origin\/main"/);
-  assert.match(narrow, /<optgroup label="Remote · upstream"/);
+  assert.match(narrow, /aria-label="History branch"[\s\S]*?class="trigger-label[^"]*">HEAD<\/span>/);
+  assert.doesNotMatch(narrow, /<select\b/);
+  const remote = await renderWithFixture(branches, state({ selectedRef: 'refs/remotes/origin/main' }), { compact: true });
+  assert.match(remote, /aria-label="History branch" title="refs\/remotes\/origin\/main"[^>]*>[\s\S]*?>origin\/main<\/span>/);
   const toolbarHtml = await renderWithFixture(toolbar, state());
   assert.match(toolbarHtml, /class="narrow-branches[^"]*"[\s\S]*aria-label="History branch"/);
 });

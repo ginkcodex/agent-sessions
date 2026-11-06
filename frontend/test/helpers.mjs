@@ -49,6 +49,7 @@ export async function loadServerModule(url, replacements) {
 
 let dialogCloseModule;
 let iconModule;
+let dropdownModule;
 let agentIconModule;
 const goToFileModules = {};
 
@@ -78,6 +79,13 @@ async function importCompiled(filename, code, replacements) {
     ]);
     globalThis.__icon = (await iconModule).default;
     replacements.push([iconImport, 'const Icon = globalThis.__icon;']);
+  }
+  // Components render the real shared dropdown, wherever they import it from.
+  const dropdownImport = code.match(/import Dropdown from '[./]*(?:common\/)?Dropdown\.svelte';/)?.[0];
+  if (dropdownImport && !replacements.some(([from]) => from === dropdownImport)) {
+    dropdownModule ??= loadServerComponent(new URL('../src/lib/components/common/Dropdown.svelte', import.meta.url), []);
+    globalThis.__sharedDropdown = (await dropdownModule).default;
+    replacements.push([dropdownImport, 'const Dropdown = globalThis.__sharedDropdown;']);
   }
   // Go to File renders the real problem ruler and the unplaced-problems line.
   for (const [name, file] of [['OverviewRuler', 'OverviewRuler'], ['UnplacedDiagnostics', 'UnplacedDiagnostics']]) {
@@ -135,8 +143,10 @@ async function importCompiled(filename, code, replacements) {
       replacements.push([store, "const gitChanges = new Proxy({}, { get: (_, key) => (globalThis.__componentFixture?.gitChanges ?? { status: null, refresh() {} })[key] });"]);
     }
   }
-  for (const module of ["'../../gitChanges'", "'../../../gitChanges'"]) {
-    if (code.includes(module) && !replacements.some(([from]) => from === module)) replacements.push([module, JSON.stringify(new URL('../src/lib/gitChanges.ts', import.meta.url).href)]);
+  for (const file of ['gitChanges', 'gitHistory']) {
+    for (const module of [`'../../${file}'`, `'../../../${file}'`]) {
+      if (code.includes(module) && !replacements.some(([from]) => from === module)) replacements.push([module, JSON.stringify(new URL(`../src/lib/${file}.ts`, import.meta.url).href)]);
+    }
   }
   const changesPane = "import ChangesPane from './ChangesPane.svelte';";
   if (code.includes(changesPane) && !replacements.some(([from]) => from === changesPane)) replacements.push([changesPane, "const ChangesPane = ($$renderer) => $$renderer.push('<div data-changes-pane></div>');"]);
