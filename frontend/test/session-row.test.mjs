@@ -55,6 +55,38 @@ test('rows always show the agent mark, even when the list is filtered to one age
   assert.doesNotMatch(list, /showAgent/, 'an agent filter does not hide the mark');
 });
 
+test('rows are tree items: nested by level, with a subagent toggle only on parents', async () => {
+  const top = await renderRow(undefined);
+  assert.match(top, /role="treeitem"[^>]*aria-level="1"/);
+  assert.doesNotMatch(top, /aria-expanded|subagent-toggle|class="session-row[^"]*nested/);
+
+  const parent = await renderRow(undefined, false, 'Session title', { childCount: 3 });
+  assert.match(parent, /role="treeitem"[^>]*aria-expanded="false"/);
+  assert.match(parent, /class="subagent-toggle[^"]*"[^>]*aria-expanded="false"[^>]*>[\s\S]*?3 subagents/);
+  const open = await renderRow(undefined, false, 'Session title', { childCount: 1, expanded: true });
+  assert.match(open, /class="subagent-toggle[^"]*open[^"]*"[^>]*aria-expanded="true"[^>]*>[\s\S]*?1 subagent</);
+
+  // Deep rows keep their real level but stop indenting after three.
+  const deep = await renderRow('parent', false, 'Session title', { depth: 5 });
+  assert.match(deep, /class="session-row[^"]*nested[^"]*"[^>]*style="--indent: 3;"[^>]*aria-level="6"/);
+  const source = readFileSync(url, 'utf8');
+  assert.match(source, /onclick=\{handleToggle\}\s*onkeydown=\{handleToggleKeydown\}/);
+  assert.match(source, /function handleToggle\(e: MouseEvent\) \{\s*e\.stopPropagation\(\);/, 'toggling does not open the session');
+});
+
+test('a context parent is dimmed and says why it is listed', async () => {
+  const html = await renderRow(undefined, false, 'Session title', { context: true, childCount: 1, expanded: true });
+  assert.match(html, /class="session-row[^"]*context[^"]*"[^>]*title="Does not match the filters; shown because a subagent under it does"/);
+  assert.doesNotMatch(await renderRow(undefined), /class="session-row[^"]*context/);
+});
+
+test('a subagent under a picked parent shows checked and locked', async () => {
+  const html = await renderRow('parent', false, 'Session title', { manage: { settings: { enabled: true } }, covered: true });
+  assert.match(html, /class="session-row[^"]*bulk-selected/);
+  assert.match(html, /class="lead[^"]*checking/);
+  assert.match(html, /class="bulk-check[^"]*"[^>]*checked[^>]*disabled[^>]*title="Deleted along with its parent"/);
+});
+
 test('manage checkboxes stay quiet until a row is hovered or a session is picked', async () => {
   assert.doesNotMatch(await renderRow(undefined), /bulk-check/);
   const idle = await renderRow(undefined, false, 'Session title', { manage: { settings: { enabled: true } } });

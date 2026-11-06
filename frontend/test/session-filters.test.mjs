@@ -26,13 +26,11 @@ test('hideSubagents leaves subagent sessions out of the list, the tree and the c
   assert.equal((await api.agentCounts({ hideSubagents: true }))[parent.ref.agent], shown[parent.ref.agent] - 1);
 });
 
-test('the toolbar toggles hideSubagents, counts it as narrowing and clears it', () => {
+test('the toolbar collapses every open subagent family instead of filtering subagents out', () => {
   const list = readFileSync(new URL('../src/lib/components/sessionlist/SessionList.svelte', import.meta.url), 'utf8');
-  assert.match(list, /aria-label="Hide subagent sessions"/);
-  assert.match(list, /aria-pressed=\{Boolean\(appState\.filter\.hideSubagents\)\}/);
-  assert.match(list, /appState\.setFilter\(\{ hideSubagents: !appState\.filter\.hideSubagents \}\)/);
-  assert.match(list, /appState\.filter\.hideSubagents \|\| appState\.filter\.archived/, 'an empty list offers to clear it');
+  assert.match(list, /aria-label="Collapse all subagent sessions"[\s\S]*?disabled=\{!anyExpanded\}[\s\S]*?onclick=\{collapseAll\}/);
+  assert.doesNotMatch(list, /setFilter\(\{ hideSubagents: !/, 'subagents stay listed, under their parents');
+  // A hideSubagents filter set through the API still narrows and is cleared.
+  assert.match(list, /appState\.filter\.hideSubagents \|\| appState\.filter\.archived/);
   assert.match(list, /appState\.setFilter\(\{ query: '', liveOnly: false, archived: false, hideSubagents: false \}\)/);
-  const tree = readFileSync(new URL('../src/lib/components/sidebar/GroupTree.svelte', import.meta.url), 'utf8');
-  assert.match(tree, /appState\.filter\.hideSubagents \|\|/);
 });

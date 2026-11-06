@@ -186,6 +186,7 @@ const tree = await loadServerComponent(new URL('../src/lib/components/sidebar/Gr
 const list = await loadServerComponent(new URL('../src/lib/components/sessionlist/SessionList.svelte', import.meta.url), [
   ...common,
   ["'../../tree'", lib('tree')],
+  ["'../../sessionTree'", lib('sessionTree')],
   ["import { workspaces } from '../../stores/workspaces.svelte';", 'const workspaces = { directories: [] };'],
   ["import WorkspaceStart from './WorkspaceStart.svelte';", 'const WorkspaceStart = () => {};'],
   ["'svelte';", `${JSON.stringify(import.meta.resolve('svelte'))};`],

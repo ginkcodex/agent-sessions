@@ -19,9 +19,37 @@
      * list renders it: virtual-list items are transformed and contained, which
      * would clip a fixed-position menu drawn inside the row. */
     onMenu?: (session: SessionMeta, x: number, y: number) => void;
+    /** Nesting under the session that spawned it; 0 for a top-level row. */
+    depth?: number;
+    /** Subagent sessions listed under this one. */
+    childCount?: number;
+    expanded?: boolean;
+    onToggle?: (session: SessionMeta) => void;
+    /** Listed only as the parent of a matching subagent; dimmed. */
+    context?: boolean;
+    /** An ancestor is picked for deletion, which takes this session too. */
+    covered?: boolean;
   }
 
-  let { session, isSelected, onSelect, onMenu }: Props = $props();
+  let {
+    session, isSelected, onSelect, onMenu,
+    depth = 0, childCount = 0, expanded = false, onToggle, context = false, covered = false,
+  }: Props = $props();
+
+  // Indentation stops growing after a few levels; deeper rows still say their
+  // level to assistive tech.
+  const MAX_INDENT = 3;
+  let indent = $derived(Math.min(depth, MAX_INDENT));
+
+  function handleToggle(e: MouseEvent) {
+    e.stopPropagation();
+    onToggle?.(session);
+  }
+
+  // Enter and Space press the button; the row must not also open the session.
+  function handleToggleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+  }
 
   let showCountTooltip = $state(false);
   function openMenu(event: MouseEvent) {
@@ -75,11 +103,17 @@
 <div
   class="session-row agent-{session.ref.agent}"
   class:selected={isSelected}
-  class:bulk-selected={bulkSelected}
+  class:bulk-selected={bulkSelected || covered}
   class:archived={session.archived}
-  role="option"
+  class:nested={indent > 0}
+  class:context
+  style="--indent: {indent};"
+  title={context ? 'Does not match the filters; shown because a subagent under it does' : undefined}
+  role="treeitem"
   tabindex="0"
   aria-selected={isSelected}
+  aria-level={depth + 1}
+  aria-expanded={childCount > 0 ? expanded : undefined}
   onclick={handleClick}
   oncontextmenu={openMenu}
   onkeydown={(e) => {
@@ -103,13 +137,15 @@
       <span class="live-dot" title="Active session"></span>
     {/if}
     <!-- The agent's mark; in manage mode its checkbox takes its place. -->
-    <span class="lead" class:checkable={manage.settings.enabled} class:checking={bulkSelected || selecting}>
+    <span class="lead" class:checkable={manage.settings.enabled} class:checking={bulkSelected || covered || selecting}>
       <AgentIcon agent={session.ref.agent} size={12} />
       {#if manage.settings.enabled}
         <input
           type="checkbox"
           class="bulk-check"
-          checked={bulkSelected}
+          checked={bulkSelected || covered}
+          disabled={covered}
+          title={covered ? 'Deleted along with its parent' : undefined}
           onclick={handleBulkToggle}
           onkeydown={handleBulkKeydown}
           aria-label="Select session {session.title || session.ref.id}"
@@ -117,6 +153,20 @@
       {/if}
     </span>
     <span class="agent-name">{agentName}</span>
+    {#if childCount > 0}
+      <button
+        type="button"
+        class="subagent-toggle"
+        class:open={expanded}
+        aria-expanded={expanded}
+        title={expanded ? 'Hide its subagent sessions' : 'Show its subagent sessions'}
+        onclick={handleToggle}
+        onkeydown={handleToggleKeydown}
+      >
+        <Icon name="chevron-right" size={11} class="toggle-chevron" />
+        {childCount} {childCount === 1 ? 'subagent' : 'subagents'}
+      </button>
+    {/if}
     {#if session.archived}
       <span class="archived-tag">Archived</span>
     {/if}
@@ -169,7 +219,8 @@
     /* Height plus margins must match the itemHeight passed to VirtualList.
        The side margins inset the row so the selection reads as a pill. */
     height: 80px;
-    margin: 2px 6px;
+    margin: 2px 6px 2px calc(6px + var(--indent, 0) * var(--indent-step));
+    --indent-step: 16px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -209,6 +260,29 @@
 
   .session-row.archived {
     opacity: 0.75;
+  }
+
+  /* One guide line per level in the indent, running through the gaps
+     between rows so a family reads as one column. */
+  .session-row.nested::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    left: calc(-1 * var(--indent) * var(--indent-step));
+    width: calc(var(--indent) * var(--indent-step));
+    background: repeating-linear-gradient(
+      to right,
+      transparent 0 7px,
+      var(--border-color) 7px 8px,
+      transparent 8px var(--indent-step)
+    );
+    pointer-events: none;
+  }
+
+  /* A parent listed only for its matching subagents. */
+  .session-row.context {
+    opacity: 0.6;
   }
 
   .row-top {
@@ -272,6 +346,35 @@
     white-space: nowrap;
     color: var(--row-agent);
     background-color: color-mix(in srgb, var(--row-agent) 15%, transparent);
+  }
+
+  .subagent-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 16px;
+    padding: 0 5px 0 2px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.62rem;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    background-color: var(--segment-track);
+    cursor: pointer;
+  }
+
+  .subagent-toggle:hover {
+    color: var(--text-primary);
+    background-color: var(--hover-bg);
+  }
+
+  .subagent-toggle :global(.toggle-chevron) {
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+
+  .subagent-toggle.open :global(.toggle-chevron) {
+    transform: rotate(90deg);
   }
 
   .archived-tag {
