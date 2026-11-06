@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
 import { Marked } from 'marked';
-import { renderMarkdown } from './markdown';
+import { keepsCellOnOneLine, renderMarkdown } from './markdown';
 
 /** Document HTML is untrusted; app-owned code controls are restored only after sanitizing. */
 export function renderDocumentMarkdown(source: string): string {
@@ -40,6 +40,10 @@ export function renderDocumentMarkdown(source: string): string {
       anchor.setAttribute('target', '_blank');
       anchor.setAttribute('rel', 'noopener noreferrer');
     }
+  }
+  // Added after sanitizing, which strips every class from the document.
+  for (const cell of fragment.querySelectorAll('th,td')) {
+    if (keepsCellOnOneLine(cell.textContent ?? '')) cell.classList.add('nowrap');
   }
   for (const image of fragment.querySelectorAll('img')) {
     const src = image.getAttribute('src') ?? '';

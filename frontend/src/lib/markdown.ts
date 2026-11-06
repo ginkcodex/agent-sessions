@@ -174,6 +174,37 @@ function splitTableRow(line: string): string[] {
   return cells;
 }
 
+// The column alignments a separator row asks for: :-- left, :-: center,
+// --: right. Left is the default, so it needs no class.
+function tableAlignments(separator: string): string[] {
+  return splitTableRow(separator).map((cell) => {
+    const left = cell.startsWith(':');
+    const right = cell.endsWith(':');
+    if (left && right) return 'align-center';
+    if (right) return 'align-right';
+    return '';
+  });
+}
+
+/**
+ * Whether a table cell with this visible text should keep to one line. A
+ * short cell that could wrap, such as an ID like "RB-00" or "3 days", would
+ * otherwise be squeezed down to its shortest piece by a long column beside it.
+ */
+export function keepsCellOnOneLine(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed.length <= 24 && /[\s-]/.test(trimmed);
+}
+
+// A rendered table cell; see keepsCellOnOneLine for the nowrap class.
+function tableCell(tag: 'th' | 'td', html: string, align: string): string {
+  const text = html.replace(/<[^>]*>/g, '').replace(/&[^;\s]+;/g, 'x');
+  const classes = [align];
+  if (keepsCellOnOneLine(text)) classes.push('nowrap');
+  const cls = classes.filter(Boolean).join(' ');
+  return cls ? `<${tag} class="${cls}">${html}</${tag}>` : `<${tag}>${html}</${tag}>`;
+}
+
 // A Mermaid diagram shows as its source until mermaid.ts draws it into the
 // empty .mermaid-diagram; the toggle then switches between the two, and
 // Expand (or a click on the diagram) shows it in the whole window.
@@ -308,6 +339,7 @@ export function renderMarkdown(source: string, fileLinks: FileLinkMode = false, 
     // Tables: lines with |
     if (isTableStart(lines, i)) {
       const headerCells = splitTableRow(line);
+      const aligns = tableAlignments(lines[i + 1]);
       i += 2; // Skip header and separator
 
       const rows: string[][] = [];
@@ -317,15 +349,15 @@ export function renderMarkdown(source: string, fileLinks: FileLinkMode = false, 
       }
 
       let tableHtml = '<div class="table-container"><table><thead><tr>';
-      for (const h of headerCells) {
-        tableHtml += `<th>${renderInline(h, fileLinks)}</th>`;
-      }
+      headerCells.forEach((h, colIdx) => {
+        tableHtml += tableCell('th', renderInline(h, fileLinks), aligns[colIdx] ?? '');
+      });
       tableHtml += '</tr></thead><tbody>';
       for (const row of rows) {
         tableHtml += '<tr>';
         for (let colIdx = 0; colIdx < headerCells.length; colIdx++) {
           const val = row[colIdx] || '';
-          tableHtml += `<td>${renderInline(val, fileLinks)}</td>`;
+          tableHtml += tableCell('td', renderInline(val, fileLinks), aligns[colIdx] ?? '');
         }
         tableHtml += '</tr>';
       }

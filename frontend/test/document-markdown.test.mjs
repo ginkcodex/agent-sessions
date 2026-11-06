@@ -45,6 +45,13 @@ test('document HTML cannot execute code or impersonate app controls', () => {
   assert.equal(root.querySelector('img').getAttribute('src'), null);
 });
 
+test('short table cells that could wrap keep to one line', () => {
+  const root = render('| ID | Scope | Est |\n|---|---|:-:|\n| RB-00 | A long scope that may wrap across several lines in a narrow window | 3 |\n| **Total** | | ~25h |');
+  const cells = [...root.querySelectorAll('td')];
+  assert.deepEqual(cells.map((cell) => cell.className), ['nowrap', '', '', '', '', '']);
+  assert.equal(root.querySelector('th:last-child').getAttribute('align'), 'center');
+});
+
 test('images allow HTTPS or inert relative paths, not local or executable URLs', () => {
   for (const src of ['javascript:alert(1)', 'data:image/svg+xml,bad', 'file:///etc/passwd', '//example.com/x', '/private/x']) {
     const img = render(`<img src="${src}">`).querySelector('img');

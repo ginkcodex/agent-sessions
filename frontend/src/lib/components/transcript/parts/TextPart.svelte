@@ -105,27 +105,48 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 12.8px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
   }
 
-  /* Rows divide by hairlines only; no cell grid. */
+  /* Rows divide by hairlines only; no cell grid. Cells sit at the top, so a
+     short cell lines up with the first line of a long one beside it. */
   :global(.text-part-container th, .text-part-container td) {
     border-bottom: 1px solid var(--border-color);
-    padding: 7px 12px 7px 0;
+    padding: 7px 16px 7px 0;
     text-align: left;
+    vertical-align: top;
     /* The inherited break-word lets columns shrink to one letter; keep whole
        words so each column fits its longest one and the table scrolls. */
     word-break: normal;
     overflow-wrap: normal;
   }
 
+  :global(.text-part-container th:last-child, .text-part-container td:last-child) {
+    padding-right: 0;
+  }
+
   :global(.text-part-container th) {
     border-bottom-color: var(--border-strong);
     color: var(--text-secondary);
     font-weight: 600;
+    vertical-align: bottom;
   }
 
   :global(.text-part-container tr:last-child td) {
     border-bottom: none;
+  }
+
+  :global(.text-part-container :is(th, td).nowrap) {
+    white-space: nowrap;
+  }
+
+  :global(.text-part-container :is(th, td).align-center) {
+    text-align: center;
+  }
+
+  :global(.text-part-container :is(th, td).align-right) {
+    text-align: right;
   }
 
   :global(.text-part-container .code-block-container) {

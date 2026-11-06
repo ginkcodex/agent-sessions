@@ -162,6 +162,8 @@
     border: 1px solid var(--border-color);
     padding: 4px 8px;
     text-align: left;
+    /* A short cell lines up with the first line of a long one beside it. */
+    vertical-align: top;
     /* The inherited break-word lets columns shrink to one letter; keep whole
        words so each column fits its longest one and the table scrolls. */
     word-break: normal;
@@ -171,6 +173,11 @@
   :global(.markdown-doc th) {
     background-color: var(--bg-secondary);
     font-weight: 600;
+    vertical-align: bottom;
+  }
+
+  :global(.markdown-doc :is(th, td).nowrap) {
+    white-space: nowrap;
   }
 
   :global(.markdown-doc .code-block-container) {
