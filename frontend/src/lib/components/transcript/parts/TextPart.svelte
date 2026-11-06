@@ -28,7 +28,7 @@
 
 <style>
   .text-part-container {
-    font-size: 14px;
+    font-size: 14.5px;
     line-height: 1.6;
     color: var(--text-primary);
     word-break: break-word;
@@ -54,9 +54,9 @@
     line-height: 1.3;
   }
 
-  :global(.text-part-container h1) { font-size: 20px; }
-  :global(.text-part-container h2) { font-size: 17.6px; }
-  :global(.text-part-container h3) { font-size: 15.2px; }
+  :global(.text-part-container h1) { font-size: 20.7px; }
+  :global(.text-part-container h2) { font-size: 18.2px; }
+  :global(.text-part-container h3) { font-size: 15.7px; }
 
   :global(.text-part-container ul, .text-part-container ol) {
     margin: 0.5em 0;
@@ -104,16 +104,16 @@
   :global(.text-part-container table) {
     width: 100%;
     border-collapse: collapse;
-    font-size: 12.8px;
+    font-size: 13.3px;
     line-height: 1.5;
     font-variant-numeric: tabular-nums;
   }
 
-  /* Rows divide by hairlines only; no cell grid. Cells sit at the top, so a
-     short cell lines up with the first line of a long one beside it. */
+  /* Hairlines between rows and columns, with no outer frame. Cells sit at the
+     top, so a short cell lines up with the first line of a long one. */
   :global(.text-part-container th, .text-part-container td) {
     border-bottom: 1px solid var(--border-color);
-    padding: 7px 16px 7px 0;
+    padding: 7px 12px;
     text-align: left;
     vertical-align: top;
     /* The inherited break-word lets columns shrink to one letter; keep whole
@@ -122,15 +122,21 @@
     overflow-wrap: normal;
   }
 
-  :global(.text-part-container th:last-child, .text-part-container td:last-child) {
-    padding-right: 0;
+  :global(.text-part-container :is(th, td) + :is(th, td)) {
+    border-left: 1px solid var(--border-color);
   }
 
   :global(.text-part-container th) {
     border-bottom-color: var(--border-strong);
+    background-color: color-mix(in srgb, var(--text-primary) 5%, transparent);
     color: var(--text-secondary);
     font-weight: 600;
     vertical-align: bottom;
+  }
+
+  /* Faint banding helps the eye follow a row across wide columns. */
+  :global(.text-part-container tbody tr:nth-child(even)) {
+    background-color: color-mix(in srgb, var(--text-primary) 2.5%, transparent);
   }
 
   :global(.text-part-container tr:last-child td) {
@@ -224,7 +230,7 @@
 
   :global(.text-part-container code.hljs) {
     font-family: var(--font-mono);
-    font-size: 12.8px;
+    font-size: 13.3px;
     line-height: 1.45;
   }
 </style>

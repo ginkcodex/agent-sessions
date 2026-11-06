@@ -117,14 +117,15 @@
     border-radius: 0 4px 4px 0;
   }
 
-  :global(.markdown-doc .inline-code) {
+  /* Marked writes inline code as a bare <code> and sanitizing strips classes,
+     so match any code outside a code block. Same look as the transcript's. */
+  :global(.markdown-doc :not(pre) > code) {
     font-family: var(--font-mono);
     font-size: 0.825em;
-    padding: 1px 4px;
-    border-radius: 4px;
-    background-color: var(--bg-tertiary);
+    padding: 1px 5px;
+    border-radius: 5px;
+    background-color: var(--segment-track);
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
   }
 
   :global(.markdown-doc img) {
