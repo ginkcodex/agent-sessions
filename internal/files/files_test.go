@@ -105,6 +105,45 @@ func TestListUsesGitIgnore(t *testing.T) {
 	}
 }
 
+func TestListReadsNestedRepositories(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	root := t.TempDir()
+	for _, dir := range []string{root, filepath.Join(root, "web"), filepath.Join(root, "tool")} {
+		if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+			t.Fatalf("git init %s: %v %s", dir, err, out)
+		}
+	}
+	// web is ignored by the parent, tool is only untracked; each keeps its
+	// own build output out with its own .gitignore.
+	write(t, root, ".gitignore", "/web/\nout/\n")
+	write(t, root, "a.go", "x")
+	write(t, root, "out/gen.go", "x")
+	for _, dir := range []string{"web", "tool"} {
+		write(t, root, dir+"/.gitignore", "node_modules/\n")
+		write(t, root, dir+"/src/Icon.svelte", "x")
+		write(t, root, dir+"/node_modules/pkg/index.js", "x")
+	}
+
+	got, err := List(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{".gitignore", "a.go", "tool/.gitignore", "tool/src/Icon.svelte"}; !slices.Equal(got.Files, want) {
+		t.Errorf("files = %v, want %v", got.Files, want)
+	}
+	if want := []string{"web/.gitignore", "web/src/Icon.svelte"}; !slices.Equal(got.Ignored, want) {
+		t.Errorf("ignored = %v, want %v", got.Ignored, want)
+	}
+	if want := []string{"out", "web"}; !slices.Equal(got.IgnoredDirectories, want) {
+		t.Errorf("ignored directories = %v, want %v", got.IgnoredDirectories, want)
+	}
+	if got.Truncated {
+		t.Error("listing should not be truncated")
+	}
+}
+
 func TestReadKinds(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "a.go", "package a\n")

@@ -65,7 +65,8 @@ type Listing struct {
 	Status map[string]Status `json:"status,omitempty"`
 	// Ignored are files .gitignore leaves out, such as .env; the tree shows
 	// them dimmed. Ignored folders (node_modules, build output) are not
-	// looked into, so only files outside them are here.
+	// looked into, so only files outside them are here, and the files of an
+	// ignored folder that is a Git worktree of its own, as its Git lists them.
 	Ignored []string `json:"ignored,omitempty"`
 	// IgnoredDirectories are those folders, and in a listing made without
 	// git the skipped dependency and build folders. ListDirectory reads one
@@ -196,7 +197,9 @@ func listPaths(ctx context.Context, root string, gitFound func(), repoFound func
 		if len(out.Files) > fileCap {
 			out.Files, out.Truncated = out.Files[:fileCap], true
 		}
-		out.Ignored, out.IgnoredDirectories = gitIgnored(ctx, root, fileCap-len(out.Files))
+		var ignoredTruncated bool
+		out.Ignored, out.IgnoredDirectories, ignoredTruncated = gitIgnored(ctx, root, fileCap-len(out.Files))
+		out.Truncated = out.Truncated || ignoredTruncated
 		directories, truncated, err := gitDirectories(ctx, root)
 		if err != nil {
 			return Listing{}, err
@@ -253,7 +256,9 @@ func gitOutputEnv(ctx context.Context, root string, stdin io.Reader, env, flags 
 	return stdout.Bytes(), err
 }
 
-// gitFiles lists tracked and untracked, not ignored, files under root.
+// gitFiles lists tracked and untracked, not ignored, files under root. Git
+// reports an untracked folder that is a worktree of its own as one "dir/"
+// entry without reading it; its files are listed in its place.
 func gitFiles(ctx context.Context, root string) ([]string, bool) {
 	out, ok := runGit(ctx, root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	if !ok {
@@ -265,6 +270,15 @@ func gitFiles(ctx context.Context, root string) ([]string, bool) {
 		// Lstat per entry can outlast Git's own timeout on a large or slow tree.
 		if len(seen)%1024 == 0 && ctx.Err() != nil {
 			return nil, true
+		}
+		if dir, ok := strings.CutSuffix(name, "/"); ok {
+			for _, file := range nestedRepositoryFiles(ctx, root, dir) {
+				if !seen[file] {
+					seen[file] = true
+					files = append(files, file)
+				}
+			}
+			continue
 		}
 		// A deleted tracked file is still listed until the change is staged.
 		if name == "" || seen[name] {
@@ -281,28 +295,61 @@ func gitFiles(ctx context.Context, root string) ([]string, bool) {
 }
 
 // gitIgnored lists the ignored files and folders under root, at most limit
-// of them. With --directory git reports an ignored folder as one "dir/"
-// entry without walking it.
-func gitIgnored(ctx context.Context, root string, limit int) (ignored, directories []string) {
+// of them, and whether some were left out. With --directory git reports an
+// ignored folder as one "dir/" entry without walking it. An ignored folder
+// that is a worktree of its own, such as a website kept in its own
+// repository, is source rather than build output: its files, as its own Git
+// lists them, are added to the ignored files, so a file name can be found
+// there. The folder stays listed, to be read as it is opened.
+func gitIgnored(ctx context.Context, root string, limit int) (ignored, directories []string, truncated bool) {
 	out, ok := runGit(ctx, root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
 	if !ok {
-		return nil, nil
+		return nil, nil, false
 	}
 	for name := range strings.SplitSeq(string(out), "\x00") {
+		if name == "" {
+			continue
+		}
 		if len(ignored)+len(directories) >= limit {
+			truncated = true
 			break
 		}
 		if dir, ok := strings.CutSuffix(name, "/"); ok {
 			if dir != "" {
 				directories = append(directories, dir)
+				ignored = append(ignored, nestedRepositoryFiles(ctx, root, dir)...)
 			}
-		} else if name != "" {
+		} else {
 			ignored = append(ignored, name)
 		}
 	}
+	if over := len(ignored) + len(directories) - limit; over > 0 {
+		ignored, truncated = ignored[:len(ignored)-over], true
+	}
 	slices.Sort(ignored)
 	slices.Sort(directories)
-	return ignored, directories
+	return ignored, directories, truncated
+}
+
+// nestedRepositoryFiles lists the files of rel, a folder below root that its
+// Git reports whole, when the folder is a worktree of its own: tracked and
+// untracked files, without what its own .gitignore leaves out. Paths are
+// relative to root. It is empty for a folder with no .git marker of its own;
+// a symlinked marker is not followed.
+func nestedRepositoryFiles(ctx context.Context, root, rel string) []string {
+	dir := filepath.Join(root, filepath.FromSlash(rel))
+	info, err := os.Lstat(filepath.Join(dir, ".git"))
+	if err != nil || (!info.IsDir() && !info.Mode().IsRegular()) {
+		return nil
+	}
+	files, ok := gitFiles(ctx, dir)
+	if !ok {
+		return nil
+	}
+	for i, file := range files {
+		files[i] = rel + "/" + file
+	}
+	return files
 }
 
 // gitStatus returns the status of the changed files under root, by path
