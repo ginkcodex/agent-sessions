@@ -182,6 +182,16 @@ export class AppState {
     }
   }
 
+  // A session outside the loaded list, such as the parent of a subagent that
+  // matches a filter its parent does not. Null when the backend has none.
+  async lookupSession(ref: SessionRef): Promise<SessionMeta | null> {
+    try {
+      return await api.getSessionMeta(ref);
+    } catch {
+      return null;
+    }
+  }
+
   goBack(): Promise<void> {
     return this.travel(() => this.history.back());
   }

@@ -3,7 +3,7 @@
   import { appState } from '../../stores/appState.svelte';
   import { discovery } from '../../stores/discovery.svelte';
   import { catalogNotice, emptyCatalogState, discoveryProblem } from '../../discovery';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
   import VirtualList from './VirtualList.svelte';
   import SessionListSkeleton from './SessionListSkeleton.svelte';
   import SessionRow from './SessionRow.svelte';
@@ -11,7 +11,11 @@
   import Icon from '../common/Icon.svelte';
   import ErrorState from '../common/ErrorState.svelte';
   import { manage } from '../../stores/manage.svelte';
-  import { AGE_FILTERS, filterSessionsByAge, isAgeFilter } from '../../manage';
+  import { AGE_FILTERS, filterSessionsByAge, isAgeFilter, refKey } from '../../manage';
+  import {
+    ancestorKeys, buildSessionTree, collectContext, expansionKey, flattenSessionTree, hasPickedAncestor,
+    isExpanded, pickedForDelete, type SessionTreeNode, type SessionTreeRow,
+  } from '../../sessionTree';
   import Dropdown from '../common/Dropdown.svelte';
   import { terminals } from '../../stores/terminals.svelte';
   import { link } from '../../stores/link.svelte';
@@ -58,6 +62,105 @@
     filterSessionsByAge(appState.sessions, manage.ageFilter)
   );
 
+  // Subagents sit under the session that spawned it. When a subagent matches
+  // the filters and its parent does not, the parent is listed too, dimmed:
+  // from the loaded list when only the age filter left it out, otherwise
+  // fetched. Null marks a parent the backend does not have.
+  let fetchedContext = $state(new Map<string, SessionMeta | null>());
+  let contextRequests = new Set<string>();
+  let loadedByKey = $derived(new Map(appState.sessions.map((s) => [refKey(s.ref), s])));
+  let contextScan = $derived(
+    collectContext(visibleSessions, (key) => loadedByKey.get(key) ?? fetchedContext.get(key))
+  );
+
+  // Another filter, group or host can bring other parents; refetch them.
+  $effect(() => {
+    void [appState.filter, appState.selectedGroupKey, link.dataHost];
+    untrack(() => {
+      fetchedContext = new Map();
+      contextRequests = new Set();
+    });
+  });
+
+  $effect(() => {
+    const requests = contextRequests;
+    for (const ref of contextScan.missing) {
+      const key = refKey(ref);
+      if (requests.has(key)) continue;
+      requests.add(key);
+      void appState.lookupSession(ref).then((meta) => {
+        if (requests !== contextRequests) return;
+        fetchedContext = new Map(fetchedContext).set(key, meta);
+      });
+    }
+  });
+
+  let tree = $derived(buildSessionTree(visibleSessions, contextScan.context));
+  // Open or closed per family, overriding the default: closed, except a
+  // context parent, which is listed only to show its subagents.
+  let expansion = $state(new Map<string, boolean>());
+  let rows = $derived(flattenSessionTree(tree, expansion));
+  let subagentCount = $derived(visibleSessions.filter((s) => s.parentId).length);
+  let anyExpanded = $derived(rows.some((r) => r.expanded));
+
+  function setExpanded(node: SessionTreeNode, open: boolean) {
+    expansion = new Map(expansion).set(expansionKey(node), open);
+  }
+
+  function toggleFamily(session: SessionMeta) {
+    const node = tree.byKey.get(refKey(session.ref));
+    if (node) setExpanded(node, !isExpanded(node, expansion));
+  }
+
+  function collapseAll() {
+    const next = new Map<string, boolean>();
+    for (const node of tree.byKey.values()) {
+      if (node.children.length > 0) next.set(expansionKey(node), false);
+    }
+    expansion = next;
+  }
+
+  let virtualList: { ensureVisible(index: number): void } | undefined = $state();
+
+  // The row standing for the selected session: its own, or, while its
+  // family is closed, its nearest listed ancestor's.
+  function selectedRowIndex(): number {
+    const ref = appState.selectedSessionRef;
+    if (!ref) return -1;
+    const key = refKey(ref);
+    for (const k of [key, ...ancestorKeys(tree, key)]) {
+      const i = rows.findIndex((r) => r.node.key === k);
+      if (i >= 0) return i;
+    }
+    return -1;
+  }
+
+  // A newly selected session is opened up to and scrolled into view, once:
+  // closing its family afterwards, or a background reload, leaves it be.
+  let revealedKey = '';
+  $effect(() => {
+    const ref = appState.selectedSessionRef;
+    const key = ref ? refKey(ref) : '';
+    if (key === revealedKey) return;
+    if (!key) {
+      revealedKey = '';
+      return;
+    }
+    if (!tree.byKey.has(key)) return;
+    revealedKey = key;
+    untrack(() => {
+      const closed = ancestorKeys(tree, key)
+        .map((k) => tree.byKey.get(k)!)
+        .filter((node) => !isExpanded(node, expansion));
+      if (closed.length > 0) {
+        const next = new Map(expansion);
+        for (const node of closed) next.set(expansionKey(node), true);
+        expansion = next;
+      }
+    });
+    void tick().then(() => virtualList?.ensureVisible(selectedRowIndex()));
+  });
+
   let narrowed = $derived(Boolean(
     appState.filter.query || appState.filter.path || appState.filter.agent ||
     appState.filter.liveOnly || appState.filter.hasSubagents || appState.filter.hideSubagents || appState.filter.archived ||
@@ -73,8 +176,16 @@
       : null
   );
 
-  let selectedVisibleCount = $derived(
-    manage.getSelectedRefs(visibleSessions).length
+  // Picking a parent covers its subagents: its delete takes them along.
+  let picked = $derived<ReadonlySet<string>>(manage.selectedRefKeys ?? new Set());
+  let toDelete = $derived(pickedForDelete(tree, picked));
+  let selectedVisibleCount = $derived(toDelete.length);
+  let allPicked = $derived(
+    visibleSessions.length > 0 &&
+      visibleSessions.every((s) => {
+        const key = refKey(s.ref);
+        return picked.has(key) || hasPickedAncestor(tree, key, picked);
+      })
   );
 
   // Debounce so fast typing doesn't trigger a backend query per keystroke.
@@ -96,10 +207,6 @@
 
   function toggleArchived() {
     appState.setFilter({ archived: !appState.filter.archived });
-  }
-
-  function toggleSubagents() {
-    appState.setFilter({ hideSubagents: !appState.filter.hideSubagents });
   }
 
   function handleSortChange(field: string) {
@@ -127,7 +234,7 @@
   }
 
   function toggleSelectAll() {
-    if (selectedVisibleCount === visibleSessions.length) {
+    if (allPicked) {
       manage.clearSelection();
     } else {
       manage.selectAll(visibleSessions);
@@ -135,28 +242,44 @@
   }
 
   function handleBulkDelete() {
-    const refs = manage.getSelectedRefs(visibleSessions);
-    if (!refs.length) return;
-    void manage.requestDelete(refs);
+    if (!toDelete.length) return;
+    void manage.requestDelete(toDelete);
+  }
+
+  function stepTo(index: number) {
+    const row = rows[index];
+    if (row) void appState.selectSession(row.node.session.ref, 'step');
+  }
+
+  // Left and Right open and close families, but only from the rows: in the
+  // search field they move the caret.
+  function fromRows(target: EventTarget | null): boolean {
+    return target === listEl || (target instanceof Element && target.closest('.list-body') !== null);
   }
 
   function handleKeyDown(e: KeyboardEvent) {
-    if (appState.sessions.length === 0) return;
-
-    const currentIndex = appState.sessions.findIndex(
-      (s) =>
-        s.ref.agent === appState.selectedSessionRef?.agent &&
-        s.ref.id === appState.selectedSessionRef?.id
-    );
+    if (rows.length === 0) return;
+    const current = selectedRowIndex();
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      const nextIndex = Math.min(appState.sessions.length - 1, currentIndex + 1);
-      appState.selectSession(appState.sessions[nextIndex].ref, 'step');
+      stepTo(Math.min(rows.length - 1, current + 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      const prevIndex = Math.max(0, currentIndex - 1);
-      appState.selectSession(appState.sessions[prevIndex].ref, 'step');
+      stepTo(Math.max(0, current - 1));
+    } else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && fromRows(e.target)) {
+      const row = rows[current];
+      if (!row) return;
+      e.preventDefault();
+      if (e.key === 'ArrowRight') {
+        if (row.node.children.length === 0) return;
+        if (row.expanded) stepTo(current + 1);
+        else setExpanded(row.node, true);
+      } else if (row.expanded) {
+        setExpanded(row.node, false);
+      } else if (row.node.parentKey) {
+        stepTo(rows.findIndex((r) => r.node.key === row.node.parentKey));
+      }
     }
   }
 </script>
@@ -207,18 +330,17 @@
         Archived
       </button>
 
-      <!-- Icon only: the row has no room for another label. The arrow is the
-           mark subagent rows carry; struck through, they are hidden. -->
+      <!-- Icon only: the row has no room for another label. Subagents start
+           tucked under their parents; this tucks every open family back. -->
       <button
         type="button"
         class="filter-btn icon-btn"
-        class:active={appState.filter.hideSubagents}
-        aria-pressed={Boolean(appState.filter.hideSubagents)}
-        aria-label="Hide subagent sessions"
-        title={appState.filter.hideSubagents ? 'Subagent sessions are hidden (click to show)' : 'Hide subagent sessions'}
-        onclick={toggleSubagents}
+        aria-label="Collapse all subagent sessions"
+        title="Collapse all subagent sessions"
+        disabled={!anyExpanded}
+        onclick={collapseAll}
       >
-        <Icon name="corner-down-right" size={13} />
+        <Icon name="chevrons-down-up" size={13} />
       </button>
 
       <!-- A view filter, so it stays visible on hosts without session management. -->
@@ -252,7 +374,10 @@
 
   <div class="list-subhead">
     <span class="session-count">
-      {visibleSessions.length} {visibleSessions.length === 1 ? 'session' : 'sessions'}
+      {visibleSessions.length - subagentCount} {visibleSessions.length - subagentCount === 1 ? 'session' : 'sessions'}
+      {#if subagentCount > 0}
+        · {subagentCount} {subagentCount === 1 ? 'subagent' : 'subagents'}
+      {/if}
     </span>
 
     {#if notice && visibleSessions.length > 0}
@@ -266,8 +391,7 @@
         <input
           type="checkbox"
           class="bulk-check"
-          checked={visibleSessions.length > 0 &&
-            selectedVisibleCount === visibleSessions.length}
+          checked={allPicked}
           onclick={toggleSelectAll}
         />
         Select all
@@ -326,14 +450,20 @@
         />
       {/if}
     {:else}
-      <VirtualList items={visibleSessions} itemHeight={84} overscan={5}>
-        {#snippet children(session: SessionMeta)}
+      <VirtualList bind:this={virtualList} items={rows} itemHeight={84} overscan={5} role="tree" label="Sessions">
+        {#snippet children(row: SessionTreeRow)}
           <SessionRow
-            {session}
-            isSelected={appState.selectedSessionRef?.agent === session.ref.agent &&
-              appState.selectedSessionRef?.id === session.ref.id}
+            session={row.node.session}
+            isSelected={appState.selectedSessionRef?.agent === row.node.session.ref.agent &&
+              appState.selectedSessionRef?.id === row.node.session.ref.id}
             onSelect={handleSelectSession}
             onMenu={openSessionMenu}
+            depth={row.depth}
+            childCount={row.node.children.length}
+            expanded={row.expanded}
+            onToggle={toggleFamily}
+            context={row.node.context}
+            covered={hasPickedAncestor(tree, row.node.key, picked)}
           />
         {/snippet}
       </VirtualList>
@@ -395,9 +525,14 @@
     transition: all 0.15s ease;
   }
 
-  .filter-btn:hover {
+  .filter-btn:hover:not(:disabled) {
     color: var(--text-primary);
     background-color: var(--hover-bg);
+  }
+
+  .filter-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
   }
 
   .filter-btn.active {
@@ -412,18 +547,6 @@
     flex: none;
     width: var(--control-height);
     padding: 0;
-  }
-
-  /* Hidden: a slash across the subagent mark. */
-  .icon-btn.active::after {
-    content: '';
-    position: absolute;
-    width: 16px;
-    height: 1.5px;
-    border-radius: 1px;
-    background-color: currentColor;
-    box-shadow: 0 0 0 1px var(--active-bg);
-    transform: rotate(-45deg);
   }
 
   .live-btn .live-indicator {

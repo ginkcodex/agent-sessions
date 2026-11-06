@@ -6,10 +6,25 @@
     items: T[];
     itemHeight?: number;
     overscan?: number;
+    /** ARIA role and name for the scroll container, such as a tree. */
+    role?: string;
+    label?: string;
     children: Snippet<[item: T, index: number]>;
   }
 
-  let { items, itemHeight = 84, overscan = 5, children }: Props = $props();
+  let { items, itemHeight = 84, overscan = 5, role, label, children }: Props = $props();
+
+  /** Scrolls the least needed to show the item at index whole. */
+  export function ensureVisible(index: number): void {
+    if (!containerEl || index < 0 || index >= items.length) return;
+    const top = index * itemHeight;
+    const bottom = top + itemHeight;
+    if (top < containerEl.scrollTop) {
+      containerEl.scrollTop = top;
+    } else if (bottom > containerEl.scrollTop + containerEl.clientHeight) {
+      containerEl.scrollTop = bottom - containerEl.clientHeight;
+    }
+  }
 
   let containerEl: HTMLElement | null = $state(null);
   let scrollTop = $state(0);
@@ -55,6 +70,8 @@
 <div
   bind:this={containerEl}
   class="virtual-list-container"
+  {role}
+  aria-label={label}
   onscroll={handleScroll}
 >
   <div class="virtual-list-phantom" style="height: {totalHeight}px;">
