@@ -34,6 +34,7 @@
   import type { CodeDiagnosticPosition, CodeNavigationLocation } from '../../../codeDiagnostics';
   import { SourceHistory, historyKey, hoverHtml, locationText, navigationKey, sourcePosition, wordRange, type SourceLocation, type SelectionHold, type SourceSymbols, type ViewportPoint } from '../../../sourceNavigation';
   import ContextMenu, { type ContextMenuItem } from '../ContextMenu.svelte';
+  import Dropdown from '../Dropdown.svelte';
   import HoverCard from './HoverCard.svelte';
   import type { FileContent } from '../../../types';
   import LoadingSpinner from '../LoadingSpinner.svelte';
@@ -161,6 +162,12 @@
   // Files larger than this are shown without highlighting, which is slow on
   // very long text.
   const HIGHLIGHT_LIMIT = 500_000;
+
+  const DIFF_BASES = [
+    { value: 'head', label: 'Working tree vs HEAD' },
+    { value: 'index', label: 'Unstaged: working tree vs index' },
+    { value: 'staged', label: 'Staged: index vs HEAD' },
+  ].map((basis) => ({ ...basis, title: basis.label }));
 
   const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
 
@@ -1176,11 +1183,8 @@
         {/if}
       {/if}
       {#if !historical && activeTab?.gitBasis}
-        <select aria-label="Diff basis" value={activeTab.gitBasis} disabled={frozen || Boolean(blocked)} onchange={(e) => files.openGitDiff(activeTab!.path, e.currentTarget.value as 'head' | 'index' | 'staged')}>
-          <option value="head">Working tree vs HEAD</option>
-          <option value="index">Unstaged: working tree vs index</option>
-          <option value="staged">Staged: index vs HEAD</option>
-        </select>
+        <Dropdown ariaLabel="Diff basis" options={DIFF_BASES} value={activeTab.gitBasis} disabled={frozen || Boolean(blocked)}
+          onChange={(basis) => files.openGitDiff(activeTab!.path, basis as 'head' | 'index' | 'staged')} />
         {#if activeTab.gitSubmodule}<span class="read-only" title="A submodule is recorded as the commit it is at. Review its own changes by choosing it as the repository.">Submodule</span>
         {:else}<button type="button" class="copy-btn" disabled={frozen || Boolean(blocked)} onclick={() => files.openFile(activeTab!.path, { keep: true })}>Open working file</button>{/if}
       {/if}
@@ -1658,17 +1662,12 @@
     font-size: 0.78rem;
   }
 
-  .viewer-header select {
+  /* In a narrow header the diff basis gives way down to its caret; its
+     tooltip names the basis. */
+  .viewer-header :global(.dropdown) {
     flex-shrink: 1;
-    min-width: 0;
-    height: 24px;
-    padding: 0 4px;
+    min-width: 44px;
     font-family: var(--font-sans);
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
   }
 
   .viewer-path {

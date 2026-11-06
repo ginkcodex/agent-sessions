@@ -2,6 +2,7 @@
   import { gitHistory } from '../../../stores/gitHistory.svelte';
   import { gitHistoryActions } from '../../../stores/gitHistoryActions.svelte';
   import ContextMenu, { type ContextMenuItem } from '../ContextMenu.svelte';
+  import Dropdown from '../Dropdown.svelte';
   let menu = $state<{ ref: string; x: number; y: number } | null>(null);
   $effect(() => {
     void gitHistory.contextKey; void gitHistory.selectedRepository; void gitHistory.refs;
@@ -42,6 +43,14 @@
   let remotes = $derived([...new Set(shown.filter(ref => ref.remote).map(ref => ref.name.split('/')[0]))]);
   let disabled = $derived(!!gitHistory.blockedReason || gitHistory.selectedRepository === null || gitHistory.refsLoading || !!gitHistory.refsError);
   let headLabel = $derived(gitHistory.detached ? 'HEAD (detached)' : gitHistory.unborn ? 'HEAD (unborn)' : 'HEAD');
+  // The narrow picker lists the refs the way the sidebar groups them.
+  let refOptions = $derived([
+    { value: 'HEAD', label: headLabel },
+    ...local.map(ref => ({ value: ref.ref, label: ref.name, title: ref.ref, group: 'Local' })),
+    ...remotes.flatMap(remote => shown.filter(ref => ref.remote && ref.name.split('/')[0] === remote)
+      .map(ref => ({ value: ref.ref, label: ref.name, title: ref.ref, group: `Remote · ${remote}` }))),
+    ...tags.map(ref => ({ value: ref.ref, label: ref.commit ? ref.name : `${ref.name} (not a commit)`, title: ref.ref, group: 'Tags', disabled: !ref.commit })),
+  ]);
 </script>
 
 {#snippet branchIcon()}
@@ -49,14 +58,12 @@
 {/snippet}
 
 {#if compact}
-  <label>Branch <select aria-label="History branch" value={gitHistory.selectedRef} {disabled} oncontextmenu={(e) => openMenu(e, gitHistory.selectedRef)} onkeydown={(e) => menuKey(e, gitHistory.selectedRef)} onchange={(e) => void gitHistory.selectRef(e.currentTarget.value)}>
-    <option value="HEAD">{headLabel}</option>
-    <optgroup label="Local">{#each local as ref (ref.ref)}<option value={ref.ref}>{ref.name}</option>{/each}</optgroup>
-    {#each remotes as remote}<optgroup label={`Remote · ${remote}`}>
-      {#each gitHistory.refs.filter(ref => ref.remote && ref.name.split('/')[0] === remote) as ref (ref.ref)}<option value={ref.ref}>{ref.name}</option>{/each}
-    </optgroup>{/each}
-    {#if tags.length}<optgroup label="Tags">{#each tags as ref (ref.ref)}<option value={ref.ref} disabled={!ref.commit}>{ref.name}{!ref.commit ? ' (not a commit)' : ''}</option>{/each}</optgroup>{/if}
-  </select><button type="button" class="actions" aria-label="Actions for selected history ref" aria-haspopup="menu" {disabled} onclick={(e) => openMenu(e, gitHistory.selectedRef)} onkeydown={(e) => menuKey(e, gitHistory.selectedRef)}>⋯</button></label>
+  <div class="branch"><span aria-hidden="true">Branch</span>
+    <Dropdown ariaLabel="History branch" options={refOptions} value={gitHistory.selectedRef} placeholder={gitHistory.selectedRef} {disabled}
+      oncontextmenu={(e) => openMenu(e, gitHistory.selectedRef)} onkeydown={(e) => menuKey(e, gitHistory.selectedRef)}
+      onChange={(ref) => void gitHistory.selectRef(ref)} />
+    <button type="button" class="actions" aria-label="Actions for selected history ref" aria-haspopup="menu" {disabled} onclick={(e) => openMenu(e, gitHistory.selectedRef)} onkeydown={(e) => menuKey(e, gitHistory.selectedRef)}>⋯</button>
+  </div>
 {:else}
   <nav aria-label="History refs" class="branches">
     <h3>Branches</h3>
@@ -116,6 +123,6 @@
   p { color: var(--text-secondary); font-size: .75rem; line-height: 1.5; }
   .hint { margin: 14px 4px 0; padding-top: 10px; border-top: 1px solid var(--border-color); }
   .empty { margin: 12px 4px; }
-  label { display: flex; align-items: center; gap: 6px; font-size: .8rem; line-height: 1.4; }
-  select { min-width: 0; max-width: 220px; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 7px; font: inherit; }
+  .branch { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: .8rem; line-height: 1.4; color: var(--text-secondary); }
+  .branch :global(.dropdown) { max-width: 220px; }
 </style>

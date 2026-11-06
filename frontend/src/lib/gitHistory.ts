@@ -21,3 +21,17 @@ export interface GitHistoryChange { path: string; oldPath?: string; status: stri
 export interface GitHistoryCommitDetail extends GitHistorySummary { committer: GitHistoryPerson; message: string; base: string; changes: GitHistoryChange[]; truncated: boolean }
 export interface GitHistoryDiffRequest extends GitHistoryCommitRequest { path: string }
 export interface GitHistoryDiff { content: FileContent; commit: string; base: string; change: GitHistoryChange; deleted: boolean; kind: 'text' | 'binary' | 'tooLarge' | 'symlink' | 'submodule' }
+
+export interface RepositoryOption { value: string; label: string; title: string }
+
+/** Options for a Repository picker. The project's own repository ('.') goes
+ *  by its name, the others by their path. Changes passes its own repository
+ *  apart, as the empty choice. */
+export function repositoryOptions(repositories: GitHistoryRepository[], own?: GitHistoryRepository | null): RepositoryOption[] {
+  const option = (r: GitHistoryRepository, value = r.path): RepositoryOption => {
+    const label = r.path === '.' ? r.name : r.path;
+    // Long paths are cut short; the tooltip has them whole.
+    return { value, label, title: label };
+  };
+  return [...(own ? [option(own, '')] : []), ...repositories.map(r => option(r))];
+}

@@ -757,6 +757,8 @@ test('TerminalsStore moves a tab, its panes with it', async () => {
 
 test('TerminalsStore splits a tab into panes beside the source, in its directory on the same host', async () => {
   await withTerminals(async ({ store, mock, MAX_GROUP_PANES }) => {
+    // Docked at the bottom, panes sit side by side.
+    store.setPosition('bottom');
     const first = await store.newShell('/a');
     const second = await store.newShell('/b');
     assert.deepEqual(panes(store), [[first.id], [second.id]], 'each launch is a tab of its own');
@@ -1013,27 +1015,27 @@ test('TerminalsStore keeps its height within the window and remembers the layout
   assert.deepEqual(new TextDecoder().decode(decodeTerminalData(Buffer.from('héllo ✓').toString('base64'))), 'héllo ✓');
 
   await withTerminals(async ({ store, storage, TerminalsStore }) => {
-    assert.deepEqual([store.open, store.height, store.position], [false, PANEL_HEIGHT.default, 'bottom']);
+    assert.deepEqual([store.open, store.height, store.position], [false, PANEL_HEIGHT.default, 'left']);
     assert.equal(store.maximizedStacked, false);
     store.setHeight(400, 1000);
-    store.setPosition('left');
+    store.setPosition('bottom');
     store.setMaximizedStacked(true);
     store.setOpen(true);
     assert.deepEqual(JSON.parse(storage.get('agent-sessions:terminal-panel')), {
       open: true,
       height: 400,
-      position: 'left',
+      position: 'bottom',
       maximizedStacked: true,
     });
     const restored = new TerminalsStore();
     restored.init();
-    assert.deepEqual([restored.open, restored.height, restored.position, restored.maximizedStacked], [true, 400, 'left', true]);
+    assert.deepEqual([restored.open, restored.height, restored.position, restored.maximizedStacked], [true, 400, 'bottom', true]);
     restored.destroy();
 
     storage.set('agent-sessions:terminal-panel', '{not json');
     const fallback = new TerminalsStore();
     fallback.init();
-    assert.deepEqual([fallback.open, fallback.height, fallback.position, fallback.maximizedStacked], [false, PANEL_HEIGHT.default, 'bottom', false]);
+    assert.deepEqual([fallback.open, fallback.height, fallback.position, fallback.maximizedStacked], [false, PANEL_HEIGHT.default, 'left', false]);
     fallback.destroy();
   });
 });

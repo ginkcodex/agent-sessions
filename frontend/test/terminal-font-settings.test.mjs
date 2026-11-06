@@ -12,9 +12,11 @@ test('terminal font setting offers the app default, current selection and Nerd F
     ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
   ]);
   const html = await renderWithFixture(component, { preferences: { terminalFont: 'FiraCode Nerd Font Mono' } });
-  assert.match(html, /Built-in terminal font/);
-  assert.match(html, /App default \(JetBrains Mono\)/);
-  assert.match(html, /FiraCode Nerd Font Mono/);
+  assert.match(html, /<h4[^>]*>Built-in terminal font<\/h4>/);
+  // Until the installed fonts are listed, the chosen one is not called unavailable.
+  assert.match(html, /aria-label="Built-in terminal font"[\s\S]*?class="trigger-label[^"]*">FiraCode Nerd Font Mono<\/span>/);
+  const byDefault = await renderWithFixture(component, { preferences: { terminalFont: '' } });
+  assert.match(byDefault, /class="trigger-label[^"]*">App default \(JetBrains Mono\)<\/span>/);
   assert.match(html, /No additional fonts are bundled or downloaded/);
   assert.match(html, /Terminal font preview/);
 });

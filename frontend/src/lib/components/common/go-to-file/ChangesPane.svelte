@@ -2,8 +2,10 @@
   import { gitChanges } from '../../../stores/gitChanges.svelte';
   import { connectionStore } from '../../../stores/connection.svelte';
   import { branchLabel, type ChangeSection } from '../../../gitChanges';
+  import { repositoryOptions } from '../../../gitHistory';
   import type { GitChange } from '../../../types';
   import FileIcon from '../FileIcon.svelte';
+  import Dropdown from '../Dropdown.svelte';
 
   let { onOpen }: { onOpen: (path: string, staged: boolean) => void } = $props();
   const sections: { key: ChangeSection; label: string }[] = [
@@ -57,13 +59,11 @@
   {:else}
     <div class="repo-bar">
       {#if gitChanges.repositories.length}
-        <label class="repository">Repository
-          <select aria-label="Changes repository" value={gitChanges.repository} disabled={gitChanges.busy || gitChanges.repositoriesLoading} onchange={(e) => { branchesOpen = false; void gitChanges.selectRepository(e.currentTarget.value); }}>
-            {#if gitChanges.ownRepository}<option value="">{gitChanges.ownRepository.name}</option>
-            {:else if !gitChanges.repository}<option value="" disabled>Choose a repository…</option>{/if}
-            {#each gitChanges.repositories as repo (repo.path)}<option value={repo.path}>{repo.path}</option>{/each}
-          </select>
-        </label>
+        <div class="repository"><span aria-hidden="true">Repository</span>
+          <Dropdown ariaLabel="Changes repository" options={repositoryOptions(gitChanges.repositories, gitChanges.ownRepository)} value={gitChanges.repository}
+            placeholder="Choose a repository…" disabled={gitChanges.busy || gitChanges.repositoriesLoading}
+            onChange={(repo) => { branchesOpen = false; void gitChanges.selectRepository(repo); }} />
+        </div>
       {/if}
       <div class="repo-head">
         {#if status?.ok}
@@ -187,7 +187,7 @@
   .changes-pane { flex: 1; min-height: 0; overflow: auto; font-size: .8rem; line-height: 1.4; }
   /* Controls default to the platform's small control font (11px in WebKit).
      Text boxes take the shared .text-field size. */
-  button, select { font: inherit; }
+  button { font: inherit; }
   button { cursor: pointer; }
   :disabled { opacity: .5; cursor: default; }
   .icon { width: 16px; height: 16px; flex-shrink: 0; color: var(--text-muted); }
@@ -196,8 +196,10 @@
   .chevron { flex: 0 0 10px; font-size: .7rem; color: var(--text-muted); }
 
   .repo-bar { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px; border-bottom: 1px solid var(--border-color); }
-  .repository { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
-  .repository select { flex: 1; min-width: 0; padding: 5px 7px; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; }
+  /* The picker sizes to its repository; its menu keeps within the pane. */
+  .repository { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-secondary); }
+  .repository :global(.dropdown) { flex: 1; }
+  .repository :global(.menu) { max-width: 100%; }
   .repo-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .branch { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 8px; text-align: left; color: var(--text-primary); background: transparent; border: 0; border-radius: 6px; font-weight: 500; }
   .branch:hover, .branch[aria-expanded='true'] { background: var(--hover-bg); }
@@ -213,7 +215,6 @@
 
   .branches { display: flex; flex-direction: column; gap: 6px; padding: 10px 8px; border-bottom: 1px solid var(--border-color); }
   .search-icon { width: 14px; height: 14px; flex-shrink: 0; color: var(--text-muted); }
-  .repository select:focus { outline: 2px solid var(--accent-color); outline-offset: -1px; }
   .branch-list { display: flex; flex-direction: column; max-height: 240px; overflow: auto; }
   .row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; text-align: left; color: var(--text-primary); background: transparent; border: 0; border-radius: 6px; }
   .row:hover:not(:disabled) { background: var(--hover-bg); }
