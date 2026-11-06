@@ -252,6 +252,17 @@ func (a *App) NewWindow() error {
 	return nil
 }
 
+// ShowAbout opens the About window. Windows and Linux reach it from the
+// sidebar's logo; macOS from the app menu.
+func (a *App) ShowAbout() error {
+	fn := desktopFrom(a.appCtx()).ShowAbout
+	if fn == nil {
+		return fmt.Errorf("show about: %w", ErrDesktopUnavailable)
+	}
+	fn()
+	return nil
+}
+
 // startAnotherCopy starts another copy of this app; tests replace it.
 var startAnotherCopy = func() error {
 	cmd, err := newWindowCommand()

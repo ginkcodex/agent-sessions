@@ -126,6 +126,8 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    * the app has one window only (the browser mock).
    */
   newWindow?(): Promise<void>;
+  /** Opens the About window. Absent outside the desktop app. */
+  showAbout?(): Promise<void>;
   restartApp?(): Promise<void>;
   /**
    * Brings the app's next window to the front, or the previous one when
@@ -334,6 +336,7 @@ export interface WailsAppBinding {
   PrintWindow(): Promise<void>;
   ToggleFullscreen?(): Promise<void>;
   NewWindow(): Promise<void>;
+  ShowAbout(): Promise<void>;
   RestartApp?(): Promise<void>;
   FocusNextWindow?(forward: boolean): Promise<void>;
   NotificationStatus(): Promise<NotificationStatus>;
@@ -768,6 +771,14 @@ class WailsBackendAPI implements BackendAPI {
   async newWindow(): Promise<void> {
     try {
       return await this.binding.NewWindow();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async showAbout(): Promise<void> {
+    try {
+      return await this.binding.ShowAbout();
     } catch (e) {
       throw normalizeError(e);
     }
@@ -1589,6 +1600,7 @@ const UNGUARDED = new Set<string>([
   'printWindow',
   // A new window is another app on this computer.
   'newWindow',
+  'showAbout',
   'restartApp',
   'focusNextWindow',
   // Alerts are about panel tabs, which outlive a host switch.

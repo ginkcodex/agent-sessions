@@ -98,6 +98,19 @@
   // Only the desktop app opens more windows, each with its own connection.
   let canOpenWindow = $derived(isWails && typeof api.newWindow === 'function');
 
+  // Windows and Linux have no app menu with an About item: the logo opens it.
+  let canShowAbout = $derived(isWails && !isMac && typeof api.showAbout === 'function');
+
+  function showAbout() {
+    api.showAbout?.().catch((err: unknown) =>
+      toast.show({
+        title: "Couldn't open About",
+        body: err instanceof Error ? err.message : String(err),
+        tone: 'error',
+      }),
+    );
+  }
+
   function openNewWindow() {
     api.newWindow?.().catch((err: unknown) =>
       toast.show({
@@ -316,7 +329,13 @@
     >
     <header class="pane-header sidebar-header">
       <div class="brand">
-        <img class="app-icon" src={appMark} alt="" width="20" height="20" draggable="false" />
+        {#if canShowAbout}
+          <button type="button" class="app-icon-button" title="About Agent Sessions" aria-label="About Agent Sessions" onclick={showAbout}>
+            <img class="app-icon" src={appMark} alt="" width="20" height="20" draggable="false" />
+          </button>
+        {:else}
+          <img class="app-icon" src={appMark} alt="" width="20" height="20" draggable="false" />
+        {/if}
         <h1 class="app-title">Agent Sessions</h1>
       </div>
       <div class="header-actions">
@@ -752,6 +771,27 @@
     display: block;
     width: 20px;
     height: 20px;
+  }
+
+  /* The logo as the About button: no chrome, a faint lift on hover. */
+  .app-icon-button {
+    display: block;
+    margin: -3px;
+    padding: 3px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out);
+  }
+
+  .app-icon-button:hover {
+    background: var(--hover-bg);
+  }
+
+  .app-icon-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
   }
 
   .app-title {
