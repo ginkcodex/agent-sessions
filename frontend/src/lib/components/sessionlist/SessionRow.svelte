@@ -152,7 +152,7 @@
         />
       {/if}
     </span>
-    <span class="agent-name">{agentName}</span>
+    <span class="agent-name" class:subagent={Boolean(session.parentId)}>{agentName}</span>
     {#if childCount > 0}
       <button
         type="button"
@@ -346,6 +346,13 @@
     white-space: nowrap;
     color: var(--row-agent);
     background-color: color-mix(in srgb, var(--row-agent) 15%, transparent);
+  }
+
+  /* A subagent's name in the gray of its parent's subagent count, so the
+     colored names pick out the main sessions. */
+  .agent-name.subagent {
+    color: var(--text-secondary);
+    background-color: var(--segment-track);
   }
 
   .subagent-toggle {
