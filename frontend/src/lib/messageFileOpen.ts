@@ -64,6 +64,7 @@ export function messageFileRecovery(deps: MessageFileRecoveryDependencies, host:
         title: `Choose a file for ${requested}`,
         body: `Matches in ${cwd}${host ? ` on ${host}` : ''}. Select a path to open.${listing.truncated ? ' The listing is truncated; more matches may exist.' : ''}`,
         persistent: true,
+        choices: true,
         actions: candidates.map(path => ({ label: path, onSelect: () => finish(current() ? path : null) })),
         onDismiss: reason => { if (reason !== 'select') finish(null); },
       });
