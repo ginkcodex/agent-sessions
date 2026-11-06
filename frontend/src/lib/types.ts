@@ -763,7 +763,8 @@ export interface RestorePreviewItem {
   sourceRef: SessionRef;
   targetRef: SessionRef;
   targetCwd: string;
-  paths: string[];
+  /** Files the import writes; empty for OpenCode, null from older servers. */
+  paths: string[] | null;
   bytes: number;
   blocked?: string;
   warning?: string;

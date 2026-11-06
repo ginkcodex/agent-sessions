@@ -31,6 +31,14 @@
   }
 
   let restoreItem = $derived(importer.restorePreview?.items[0] ?? null);
+  // OpenCode imports through its own CLI into its database, so its preview
+  // lists no files; an older server sends null for that list.
+  let restoreSize = $derived.by(() => {
+    if (!restoreItem) return '';
+    const n = restoreItem.paths?.length ?? 0;
+    const size = formatBytes(restoreItem.bytes);
+    return n ? `Writes ${n} ${n === 1 ? 'file' : 'files'} (${size}).` : `Imports ${size} of session data.`;
+  });
   // OpenCode's own import keeps the session id, so it cannot import a copy.
   let copyAvailable = $derived(importer.bundle?.source.agent !== 'opencode');
 
@@ -166,9 +174,7 @@
                       <p class="restore-note restore-error">{restoreItem.blocked}</p>
                     {:else if restoreItem}
                       <p class="restore-note">
-                        {restoreItem.isCopy ? `Imported as a copy with the new id ${restoreItem.targetRef.id}. ` : ''}Writes
-                        {restoreItem.paths.length}
-                        {restoreItem.paths.length === 1 ? 'file' : 'files'} ({formatBytes(restoreItem.bytes)}).
+                        {restoreItem.isCopy ? `Imported as a copy with the new id ${restoreItem.targetRef.id}. ` : ''}{restoreSize}
                       </p>
                       {#if restoreItem.warning}
                         <p class="restore-note"><Icon name="triangle-alert" size={12} /> {restoreItem.warning}</p>

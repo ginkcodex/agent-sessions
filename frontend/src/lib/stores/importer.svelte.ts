@@ -209,6 +209,8 @@ export class ImporterStore {
     const seq = ++this.restoreSeq;
     this.restorePreview = null;
     this.restoreError = null;
+    // A superseded request no longer clears the flag, so clear it here.
+    this.loadingRestore = false;
     if (!req || !this.canRestore) return;
     this.loadingRestore = true;
     try {
