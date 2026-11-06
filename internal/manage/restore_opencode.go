@@ -99,9 +99,9 @@ func (om *opencodeManager) planRestore(
 			// `opencode session import` writes into OpenCode's own database, so
 			// there are no files to list. Empty, not nil: the client reads
 			// paths as an array, and a nil slice encodes as null.
-			Paths:     []string{},
-			Bytes:     totalBytes,
-			Blocked:   blockedReason,
+			Paths:   []string{},
+			Bytes:   totalBytes,
+			Blocked: blockedReason,
 		},
 		Files:     files,
 		OrigID:    origID,
