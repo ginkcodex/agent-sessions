@@ -22,6 +22,7 @@ export const APP_METHODS = [
   'CancelGitSync',
   'CancelSearch',
   'ChangeCodeDiagnosticDocument',
+  'CheckForUpdate',
   'ClearCodeCheckLogs',
   'ClearHandoffCache',
   'ClearNotification',

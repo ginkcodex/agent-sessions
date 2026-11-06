@@ -5,6 +5,7 @@ import type { GitHistoryTarget, GitHistoryRepositoryList, GitHistoryRefList, Git
 import type { PortForwardRequest, PortForwardState } from './portForward';
 import type { ManagedToolRequest, ManagedToolState } from './managedTools';
 import type { TerminalFileTarget } from './terminalFileOpen';
+import type { UpdateInfo } from './update';
 import type {
   AgentSettings,
   GroupMode,
@@ -128,6 +129,8 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   newWindow?(): Promise<void>;
   /** Opens the About window. Absent outside the desktop app. */
   showAbout?(): Promise<void>;
+  /** Compares the app with its latest GitHub release. Absent outside the desktop app. */
+  checkForUpdate?(): Promise<UpdateInfo>;
   restartApp?(): Promise<void>;
   /**
    * Brings the app's next window to the front, or the previous one when
@@ -337,6 +340,7 @@ export interface WailsAppBinding {
   ToggleFullscreen?(): Promise<void>;
   NewWindow(): Promise<void>;
   ShowAbout(): Promise<void>;
+  CheckForUpdate(): Promise<UpdateInfo>;
   RestartApp?(): Promise<void>;
   FocusNextWindow?(forward: boolean): Promise<void>;
   NotificationStatus(): Promise<NotificationStatus>;
@@ -779,6 +783,14 @@ class WailsBackendAPI implements BackendAPI {
   async showAbout(): Promise<void> {
     try {
       return await this.binding.ShowAbout();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async checkForUpdate(): Promise<UpdateInfo> {
+    try {
+      return await this.binding.CheckForUpdate();
     } catch (e) {
       throw normalizeError(e);
     }
@@ -1601,6 +1613,8 @@ const UNGUARDED = new Set<string>([
   // A new window is another app on this computer.
   'newWindow',
   'showAbout',
+  // Updates are for the app on this computer, whichever host is shown.
+  'checkForUpdate',
   'restartApp',
   'focusNextWindow',
   // Alerts are about panel tabs, which outlive a host switch.

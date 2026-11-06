@@ -56,6 +56,7 @@
   import { navigationButton, navigationShortcut, type NavDirection } from './lib/navHistory';
   import { api, subscribeMouseNavigate } from './lib/api';
   import { isDesktop } from './lib/desktopRuntime';
+  import { startUpdateChecks, updateToast, type UpdateInfo } from './lib/update';
   import { formatVersion } from './lib/format';
   import { themeButtonTitle } from './lib/theme';
   import { hostLabel } from './lib/hosts';
@@ -111,6 +112,29 @@
     );
   }
 
+  function openReleasePage(info: UpdateInfo) {
+    api.openURL(info.url).catch((err: unknown) =>
+      toast.show({
+        title: "Couldn't open the release page",
+        body: err instanceof Error ? err.message : String(err),
+        code: info.url,
+        tone: 'error',
+      }),
+    );
+  }
+
+  // The desktop app looks for a newer release once a day; the browser demo
+  // has nothing to update.
+  function checkForUpdates(): () => void {
+    const check = api.checkForUpdate?.bind(api);
+    if (!isWails || !check) return () => {};
+    return startUpdateChecks({
+      check,
+      notify: (info) => toast.show(updateToast(info, () => openReleasePage(info))),
+      storage: typeof localStorage === 'undefined' ? null : localStorage,
+    });
+  }
+
   function openNewWindow() {
     api.newWindow?.().catch((err: unknown) =>
       toast.show({
@@ -152,6 +176,7 @@
       .appVersion()
       .then((v) => (appVersion = formatVersion(v)))
       .catch(() => {});
+    const stopUpdateChecks = checkForUpdates();
 
     const go = (direction: NavDirection) => {
       if (stale) return;
@@ -267,6 +292,7 @@
     window.addEventListener('mousedown', onMouseButton);
     window.addEventListener('mouseup', onMouseButton);
     return () => {
+      stopUpdateChecks();
       unsubscribeMouseNavigate();
       window.removeEventListener('keydown', preventDesktopEscapeFullscreen, true);
       window.removeEventListener('keydown', onKeydown);
