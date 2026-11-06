@@ -29,7 +29,9 @@ env:
 jobs:
   test:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
-    runs-on: ubuntu-22.04
+    # Ubuntu 22.04 runners download from Azure's Ubuntu mirror at tens of
+    # KB/s, so an apt install there can take an hour; 24.04's is quick.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -43,6 +45,8 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - name: Windows installer compatibility DLL build
+        # A stalled mirror fails the job rather than holding it for an hour.
+        timeout-minutes: 10
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64
@@ -152,6 +156,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install GTK 4 and WebKitGTK 6.0 headers
+        timeout-minutes: 10
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev
