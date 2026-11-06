@@ -77,8 +77,11 @@ export function extractTerminalFileCandidates(text: string): TerminalFileCandida
     return results;
   }
 
-  // Quoted paths can include spaces. Unquoted whitespace separates candidates.
-  const tokens = /"[^"\r\n]+"(?::\d+(?::\d+)?)?|'[^'\r\n]+'(?::\d+(?::\d+)?)?|[^\s"']+/g;
+  // Quoted paths can include spaces. Unquoted whitespace separates candidates,
+  // and so do box-drawing and block characters (U+2500–U+259F): TUIs draw
+  // pane borders and gutters with them, often right against a path, as in
+  // "│src/app.ts". File names do not use them.
+  const tokens = /"[^"\r\n─-▟]+"(?::\d+(?::\d+)?)?|'[^'\r\n─-▟]+'(?::\d+(?::\d+)?)?|[^\s"'─-▟]+/g;
   for (const match of text.matchAll(tokens)) {
     if (results.length >= MAX_LINKS) break;
     // Strip location suffix before unquoting ("some file.ts":12).
