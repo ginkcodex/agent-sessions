@@ -23,9 +23,11 @@ func rbConfig(version string) string {
 }
 
 // writeRuby lays out a fake (never executed) interpreter at prefix/bin/ruby
-// with the rbconfig.rb a source build installs.
+// with the rbconfig.rb a source build installs. Like the other host tools it
+// is found by its executable bit, so it is Unix-only (see unixTools).
 func writeRuby(t *testing.T, prefix, version string) string {
 	t.Helper()
+	unixTools(t)
 	abi := strings.Join(strings.Split(version, ".")[:2], ".") + ".0"
 	writeTree(t, prefix, map[string]string{
 		"bin/ruby": fakeRubyBinary,
@@ -39,8 +41,12 @@ func writeRuby(t *testing.T, prefix, version string) string {
 	return bin
 }
 
+// rubyHost is an empty home for Ruby discovery, which serves RuboCop and
+// ruby-lsp, local live providers that run on darwin and linux only: the tests
+// using it skip on Windows (a Windows project is checked through WSL).
 func rubyHost(t *testing.T) (string, RubyEnvironment) {
 	t.Helper()
+	unixTools(t)
 	home, _ := filepath.EvalSymlinks(t.TempDir())
 	return home, RubyEnvironment{Home: home}
 }

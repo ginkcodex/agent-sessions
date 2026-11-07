@@ -1,10 +1,10 @@
 # Ruby Go to definition (ruby-lsp) — tasks
 
 - **Plan:** [code-diagnostics-ruby-lsp.md](../../plan/code-diagnostics-ruby-lsp.md)
-- **Progress:** 11/13 done
+- **Progress:** 12/14 done
 
 Planned 2026-11-07; RL-01…RL-09 are written from the spike's evidence; RL-10
-was found in RL-04, RL-11 in manual testing and RL-12 after it. Each
+was found in RL-04, RL-11 in manual testing, RL-12 after it and RL-13 in CI. Each
 task is at most four developer hours and ends with its tests passing:
 `go test ./internal/...`, `GOOS=windows` and `GOOS=linux`
 `go vet ./internal/... ./cmd/...`, and from `frontend/` `npm test` and
@@ -28,3 +28,4 @@ first release.
 | [RL-10](RL-10.md) | ✅ Done | Saved-file watching for projects without Go (found in RL-04) | 4 h | RL-04 |
 | [RL-11](RL-11.md) | ✅ Done | Long definition lists (found in manual testing) | 2 h | RL-05, RL-06 |
 | [RL-12](RL-12.md) | ✅ Done | Likely Ruby definition first | 2 h | RL-11 |
+| [RL-13](RL-13.md) | ✅ Done | Ruby discovery tests on Windows CI (found in CI) | 1 h | RL-01 |

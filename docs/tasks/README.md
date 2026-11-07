@@ -37,7 +37,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Git history | [git-history](../plan/git-history.md) | [git-history/](git-history/README.md) | 17/18 ✅ · 1 🟡 |
 | Code checks: choosing languages | [code-diagnostics-languages](../plan/code-diagnostics-languages.md) | [code-diagnostics-languages/](code-diagnostics-languages/README.md) | 8/8 ✅ |
 | Code checks: Ruby (RuboCop) | [code-diagnostics-ruby](../plan/code-diagnostics-ruby.md) | [code-diagnostics-ruby/](code-diagnostics-ruby/README.md) | 7/7 ✅ |
-| Ruby Go to definition (ruby-lsp) | [code-diagnostics-ruby-lsp](../plan/code-diagnostics-ruby-lsp.md) | [code-diagnostics-ruby-lsp/](code-diagnostics-ruby-lsp/README.md) | 11/13 ✅ · 1 🟡 · 1 ⬜ |
+| Ruby Go to definition (ruby-lsp) | [code-diagnostics-ruby-lsp](../plan/code-diagnostics-ruby-lsp.md) | [code-diagnostics-ruby-lsp/](code-diagnostics-ruby-lsp/README.md) | 12/14 ✅ · 1 🟡 · 1 ⬜ |
 | Performance M1: baselines and targeted reuse | [performance](../plan/performance.md) | [performance/](performance/README.md) | 13/15 ✅ · 1 🟡 · 1 ➖ |
 | Performance M2: incremental transcripts | [performance-m2](../plan/performance-m2.md) | [performance-m2/](performance-m2/README.md) | 12/12 ✅ |
 | Performance M3 | [performance-m3](../plan/performance-m3.md) | [performance-m3/](performance-m3/README.md) | 10/10 ✅ |
