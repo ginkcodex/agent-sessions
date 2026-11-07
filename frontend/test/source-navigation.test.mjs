@@ -334,35 +334,111 @@ test('hover card renders safe pre-rendered content, scroll limit and truncation 
 });
 
 
-test('history reads the live editor/source selection rather than an old landing, and blocked steps preserve stacks', () => {
-  const source = viewerSource.slice(viewerSource.indexOf('  function currentLocation()'), viewerSource.indexOf('  function openLocation('));
+function viewerHistory(context) {
+  const source = viewerSource.slice(viewerSource.indexOf('  function currentLocation()'), viewerSource.indexOf('  /**\n   * Definition or references'))
+    .replace(/let historyBlocked = \$derived\([^\n]*\n/, '').replace('export function goHistory', 'function goHistory');
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  return new Function('ctx', `with(ctx) { ${js}; return { currentLocation, openLocation, openPlace, goHistory }; }`)(context);
+}
+// The files store's history, as the viewer uses it; it notes whether an open ran inside withoutHistory.
+function historyFiles(tab) {
+  const history = new SourceHistory();
+  const files = { activeTab: tab, dir: '/p', paused: false, opened: [], kept: [], history,
+    visit: p => history.visit(p),
+    stepHistory: (direction, current) => (direction === 'back' ? history.goBack(current) : history.goForward(current)),
+    withoutHistory(open) { files.paused = true; try { return open(); } finally { files.paused = false; } },
+    keepTab: id => files.kept.push(id),
+    openExternal: path => files.opened.push({ path, external: true, paused: files.paused }) };
+  return files;
+}
+
+test('history reads the preview, the live editor/source selection, an old landing, else the file', () => {
   const tab = { path: 'a.ts' };
-  const ctx = { files: { activeTab: tab }, editing: true, editor: { caret: () => ({ line: 7, character: 9 }) },
-    landed: place('a.ts', 1), codeScroll: undefined, sourcePositions: new WeakMap(), symbolStart: at => ({ start: at, end: at }) };
-  const location = new Function('ctx', `with(ctx) { ${js}; return currentLocation; }`)(ctx);
-  assert.deepEqual(location().range.start, { line: 7, character: 9 });
+  const ctx = { files: historyFiles(tab), showPreview: false, editing: true, editor: { caret: () => ({ line: 7, character: 9 }) },
+    landed: place('a.ts', 1), codeScroll: undefined, symbolStart: at => ({ start: at, end: at }) };
+  const { currentLocation } = viewerHistory(ctx);
+  assert.deepEqual(currentLocation().range.start, { line: 7, character: 9 });
   ctx.editing = false;
   ctx.codeScroll = { ownerDocument: { getSelection: () => ({ anchorNode: {}, anchorOffset: 4 }) }, contains: () => true };
   ctx.sourcePosition = () => ({ line: 8, character: 4 });
-  assert.deepEqual(location().range.start, { line: 8, character: 4 });
+  assert.deepEqual(currentLocation().range.start, { line: 8, character: 4 });
   ctx.codeScroll = undefined;
-  assert.deepEqual(location(), ctx.landed, 'landing is only a fallback before source selection is available');
+  assert.deepEqual(currentLocation(), ctx.landed, 'landing is only a fallback before source selection is available');
+  ctx.landed = place('other.ts', 3);
+  assert.deepEqual(currentLocation(), { path: 'a.ts' }, 'otherwise the file itself, its tab keeps the scroll');
+  ctx.files.activeTab = { path: 'doc.md' };
+  ctx.showPreview = true;
+  assert.deepEqual(currentLocation(), { path: 'doc.md', preview: true }, 'the preview wins over any selection');
+  ctx.files.activeTab = { path: '/lib/x.ts', external: true };
+  ctx.showPreview = false;
+  assert.deepEqual(currentLocation(), { path: '/lib/x.ts', external: true });
+  ctx.files.activeTab = undefined;
+  assert.equal(currentLocation(), undefined);
+});
 
-  const historySource = viewerSource.slice(viewerSource.indexOf("  export function goHistory("), viewerSource.indexOf('  /**\n   * Definition or references'));
-  const historyJS = ts.transpileModule(historySource.replace('export ', ''), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  const history = new SourceHistory(); history.visit(place('before.ts'));
-  const opened = [];
-  const context = { history, historyBlocked: true, currentLocation: location, historyVersion: 0, openLocation: to => opened.push(to) };
-  const go = new Function('ctx', `with(ctx) { ${historyJS}; return goHistory; }`)(context);
-  go('back');
-  assert.equal(history.canGoBack, true, 'blocked back does not consume a place');
-  assert.equal(history.canGoForward, false);
-  assert.equal(opened.length, 0);
-  context.historyBlocked = false;
-  go('back');
-  assert.equal(opened[0].path, 'before.ts');
-  assert.equal(history.canGoForward, true);
+test('a definition records where it came from once; steps go back and forward, preview and skipped paths included', () => {
+  const tab = { path: 'a.ts' };
+  const files = historyFiles(tab);
+  const started = [], picked = [], notices = [];
+  const ctx = { files, showPreview: false, editing: false, codeScroll: undefined, landed: null, navigation: 'old', previewOn: false,
+    frozen: false, blocked: null, historyBlocked: true, symbolStart: at => ({ start: at, end: at }), tabId: t => t.path,
+    problemPath: p => !p.startsWith('gone'), filePreview: p => (p.endsWith('.md') ? 'markdown' : null),
+    notify: text => notices.push(text), NOTICES: { symbol: { open: 'cannot open' } },
+    startNavigation: (path, kind, range, _locate, keep, outside) => { started.push({ path, line: range.start.line, keep, outside, paused: files.paused }); files.activeTab = { path }; },
+    pick: path => { picked.push({ path, paused: files.paused }); files.activeTab = { path }; } };
+  const viewer = viewerHistory(ctx);
+
+  // Go to Definition: one place recorded (the one asked from), the open does not record again.
+  viewer.openLocation(place('b.ts', 4), { path: 'a.ts', range: place('a.ts', 2).range });
+  assert.deepEqual(files.kept, ['a.ts'], 'the file navigated from stays open');
+  assert.deepEqual(started, [{ path: 'b.ts', line: 4, keep: false, outside: undefined, paused: true }]);
+  assert.equal(files.history.canGoBack, true);
+  assert.equal(files.history.goBack(undefined).path, 'a.ts');
+  assert.equal(files.history.canGoBack, false, 'exactly one place for one jump');
+
+  // Blocked steps keep the stacks.
+  files.history.visit({ path: 'doc.md', preview: true });
+  files.activeTab = { path: 'b.ts' };
+  ctx.landed = place('b.ts', 4);
+  viewer.goHistory('back');
+  assert.equal(files.history.canGoBack, true, 'blocked back does not consume a place');
+  assert.equal(picked.length, 0);
+
+  // Back to a Markdown file left in preview shows the preview, without recording.
+  ctx.historyBlocked = false;
+  viewer.goHistory('back');
+  assert.deepEqual(picked, [{ path: 'doc.md', paused: true }]);
+  assert.equal(ctx.previewOn, true);
+  assert.equal(ctx.navigation, null);
+  assert.equal(ctx.landed, null);
+  assert.equal(files.history.canGoBack, false);
+  // Forward returns to where the step left, revealing the range.
+  ctx.showPreview = true;
+  viewer.goHistory('forward');
+  assert.deepEqual(started.at(-1), { path: 'b.ts', line: 4, keep: false, outside: undefined, paused: true });
+  assert.deepEqual(files.history.goBack(undefined), { path: 'doc.md', preview: true }, 'and back again finds the preview');
+  ctx.showPreview = false;
+
+  // A path no longer in the project is dropped and the step goes past it.
+  files.history.clear();
+  files.history.visit({ path: 'c.ts' });
+  files.history.visit({ path: 'gone.ts' });
+  files.activeTab = { path: 'b.ts' };
+  ctx.landed = null;
+  viewer.goHistory('back');
+  assert.deepEqual(picked.at(-1), { path: 'c.ts', paused: true });
+  assert.equal(ctx.previewOn, true, 'a source file leaves the preview toggle alone');
+  assert.equal(files.history.canGoBack, false);
+  assert.equal(files.history.goForward(undefined).path, 'b.ts', 'forward has the place the step left, not the dropped one');
+  assert.equal(files.history.canGoForward, false);
+
+  // An external place reopens read-only; a Markdown place left as source shows the source.
+  viewer.openPlace({ path: '/lib/x.ts', external: true });
+  assert.deepEqual(files.opened, [{ path: '/lib/x.ts', external: true, paused: true }]);
+  viewer.openPlace({ path: 'doc.md' });
+  assert.equal(ctx.previewOn, false);
+  viewer.openPlace({ path: 'gone.md' });
+  assert.deepEqual(notices, ['cannot open']);
 });
 
 test('viewer forwards the draft current guard and one-second sync bound, discarding changed draft answers', async () => {
