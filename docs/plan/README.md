@@ -36,6 +36,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [editor-essentials.md](editor-essentials.md) | [editor-essentials](../tasks/editor-essentials/README.md) | Project search and replace, new agent sessions and alerts, code navigation, Git changes |
 | [git-history.md](git-history.md) | [git-history](../tasks/git-history/README.md) | Read-only Git history: multi-pane layout, repository/branch selection, commit search, historical diffs |
 | [nested-repo-blame.md](nested-repo-blame.md) | [nested-repo-blame](../tasks/nested-repo-blame/README.md) | Line blame, changed-line markers and status tints for repositories under a non-Git directory |
+| [nested-repo-gitignore.md](nested-repo-gitignore.md) | [nested-repo-gitignore](../tasks/nested-repo-gitignore/README.md) | Files, search and blame follow each repository's Git ignore rules under a non-Git directory |
 | [performance.md](performance.md) | [performance](../tasks/performance/README.md) | Performance roadmap (milestones 1–5); Milestone 1 tasks: baselines and targeted reuse |
 | [performance-startup.md](performance-startup.md) | [performance-startup](../tasks/performance-startup/README.md) | Startup responsiveness, the priority package before performance Milestone 2 |
 | [performance-m2.md](performance-m2.md) | [performance-m2](../tasks/performance-m2/README.md) | Performance Milestone 2: incremental transcripts, byte-budgeted cache, FTS reuse, transcript deltas |
