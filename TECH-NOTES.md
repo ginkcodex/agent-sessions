@@ -131,8 +131,25 @@ so one press moves either the session list or the editor, never both.
   `deltaX = 0`, then one with `deltaX = +1` (back) or `-1` (forward). This
   matches Safari's convention.
 - So the monitor handles both: buttons 3/4, and swipes with a non-zero
-  `deltaX`. Zero-delta swipes are passed on. A side effect is that a
-  three-finger trackpad swipe also navigates, as it does in Safari.
+  `deltaX`. Zero-delta swipes are passed on. A three-finger trackpad swipe
+  sends the same swipe event only when *Trackpad → More Gestures → Swipe
+  between pages* is set to three fingers. By default macOS keeps three
+  fingers for its own gestures (spaces, Mission Control), and the app sees
+  nothing.
+- **Two-finger swipes** (the default *Swipe between pages*, and a Magic
+  Mouse's one-finger swipe) are no swipe event: they arrive as scroll
+  events with a gesture phase, and apps such as Safari recognise the page
+  swipe themselves. The monitor watches `NSEventTypeScrollWheel` too and
+  always passes it on. It adds up each gesture's movement, ignoring wheels
+  and momentum (no phase). Past `SWIPE_DISTANCE` sideways, and more than
+  twice the vertical, it sends `nav:swipe` once, when
+  `isSwipeTrackingFromScrollEventsEnabled`. Right is back, whatever the
+  scroll direction setting. WKWebView's own
+  `allowsBackForwardNavigationGestures` stays off: the app is one page.
+- A two-finger swipe is also a scroll, so the frontend drops `nav:swipe`
+  when the same gesture could move something sideways, such as a long code
+  line or a wide transcript block (`frontend/src/lib/swipeNavigation.ts`).
+  Otherwise `subscribeMouseNavigate` delivers it like a button.
 - Other mouse utilities (SteerMouse, BetterMouse, Mac Mouse Fix,
   SensibleSideButtons) may remap the buttons differently again, for example
   to ⌘[ / ⌘] keystrokes, which the keyboard shortcuts already cover.
