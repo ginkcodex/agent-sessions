@@ -44,6 +44,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [selection-translate.md](selection-translate.md) | [selection-translate](../tasks/selection-translate/README.md) | Copy/Translate menu for a transcript selection, with its sentence as context |
 | [terminal-maximize.md](terminal-maximize.md) | [terminal-maximize](../tasks/terminal-maximize/README.md) | Maximize and restore the internal terminal without restarting sessions |
 | [terminal-split.md](terminal-split.md) | [terminal-split](../tasks/terminal-split/README.md) | Several shells side by side in one terminal tab |
+| [font-settings.md](font-settings.md) | [font-settings](../tasks/font-settings/README.md) | Settings → Appearance: editor font family and size; one type scale (ratios of body text) for project docs and session content, scaled by a body size |
 
 ## Supporting documents
 
