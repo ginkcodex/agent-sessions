@@ -47,7 +47,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Native-tone dark surfaces | [dark-tone](../plan/dark-tone.md) | [dark-tone/](dark-tone/README.md) | 5/5 ✅ |
 | Centered dialog close buttons | [dialog-close](../plan/dialog-close.md) | [dialog-close/](dialog-close/README.md) | 2/2 ✅ |
 | Blame in nested repositories | [nested-repo-blame](../plan/nested-repo-blame.md) | [nested-repo-blame/](nested-repo-blame/README.md) | 4/4 ✅ |
-| Git ignore rules in nested repositories | [nested-repo-gitignore](../plan/nested-repo-gitignore.md) | [nested-repo-gitignore/](nested-repo-gitignore/README.md) | 1/5 ✅ · 4 ⬜ |
+| Git ignore rules in nested repositories | [nested-repo-gitignore](../plan/nested-repo-gitignore.md) | [nested-repo-gitignore/](nested-repo-gitignore/README.md) | 2/5 ✅ · 3 ⬜ |
 | Selected-text menu and contextual translation | [selection-translate](../plan/selection-translate.md) | [selection-translate/](selection-translate/README.md) | 5/5 ✅ |
 | Internal terminal maximization | [terminal-maximize](../plan/terminal-maximize.md) | [terminal-maximize/](terminal-maximize/README.md) | 2/2 ✅ |
 | Split terminals | [terminal-split](../plan/terminal-split.md) | [terminal-split/](terminal-split/README.md) | 4/4 ✅ |

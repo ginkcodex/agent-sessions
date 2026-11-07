@@ -67,10 +67,13 @@ type Listing struct {
 	// them dimmed. Ignored folders (node_modules, build output) are not
 	// looked into, so only files outside them are here, and the files of an
 	// ignored folder that is a Git worktree of its own, as its Git lists them.
+	// In a listing made without git, they are those of the repositories found
+	// below the root, each by its own rules.
 	Ignored []string `json:"ignored,omitempty"`
 	// IgnoredDirectories are those folders, and in a listing made without
-	// git the skipped dependency and build folders. ListDirectory reads one
-	// when it is opened in the tree.
+	// git the dependency and build folders skipped by name where no
+	// repository's Git decides. ListDirectory reads one when it is opened in
+	// the tree.
 	IgnoredDirectories []string `json:"ignoredDirectories,omitempty"`
 }
 
@@ -488,8 +491,16 @@ func walk(ctx context.Context, root string) (Listing, error) {
 	return out, nil
 }
 
+// walkPaths lists root, which is in no work tree, by walking it. Outside
+// any repository, folders named in skipDirs are not walked. Each repository
+// found below root (a folder with a .git marker of its own) is listed with
+// its own Git's ignore rules, as it would be if it were the project: ignored
+// files go to Ignored, wholly ignored folders to IgnoredDirectories without
+// being walked, and skipDirs no longer applies. A repository whose Git
+// cannot tell keeps the name rules (docs/plan/nested-repo-gitignore.md).
 func walkPaths(ctx context.Context, root string, repoFound func(string, string)) (Listing, error) {
 	out := Listing{Root: root, Files: []string{}}
+	scopes := newWalkScopes(ctx, root)
 	errFull := errors.New("full")
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -505,36 +516,48 @@ func walkPaths(ctx context.Context, root string, repoFound func(string, string))
 		if p == root {
 			return nil
 		}
-		// A .git directory, or a file for worktrees and submodules, marks
-		// its parent as a work tree.
-		if d.Name() == ".git" {
-			if parent := filepath.Dir(p); parent != root {
-				if rel, err := filepath.Rel(root, parent); err == nil {
-					out.Repositories = append(out.Repositories, filepath.ToSlash(rel))
-					if repoFound != nil {
-						repoFound(parent, filepath.ToSlash(rel))
-					}
+		// WalkDir joins every path to root, so this cannot fail.
+		r, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		rel := filepath.ToSlash(r)
+		// The ignores of the repository holding this entry, if Git told.
+		ignores := scopes.of(rel)
+		if d.IsDir() {
+			// Version control state is hidden, as in VS Code.
+			if vcsDirs[d.Name()] {
+				return fs.SkipDir
+			}
+			// Where Git does not decide, dependency and build folders are
+			// not walked; the rest can be opened.
+			if ignores == nil && skipDirs[d.Name()] {
+				out.IgnoredDirectories = append(out.IgnoredDirectories, rel)
+				return fs.SkipDir
+			}
+			// A repository is source even where an outer one ignores it.
+			if hasGitMarker(p) {
+				out.Repositories = append(out.Repositories, rel)
+				if repoFound != nil {
+					repoFound(p, rel)
 				}
+				scopes.enter(rel)
+			} else if ignores != nil && ignores.dirs[rel] {
+				out.IgnoredDirectories = append(out.IgnoredDirectories, rel)
+				return fs.SkipDir
 			}
 		}
-		if d.IsDir() && skipDirs[d.Name()] {
-			// Version control state is hidden, as in VS Code; the rest can be opened.
-			if rel, err := filepath.Rel(root, p); err == nil && !vcsDirs[d.Name()] {
-				out.IgnoredDirectories = append(out.IgnoredDirectories, filepath.ToSlash(rel))
-			}
-			return fs.SkipDir
-		}
-		if len(out.Files)+len(out.Directories) >= fileCap {
+		if len(out.Files)+len(out.Directories)+len(out.Ignored) >= fileCap {
 			out.Truncated = true
 			return errFull
 		}
-		rel, err := filepath.Rel(root, p)
-		if err == nil {
-			if d.IsDir() {
-				out.Directories = append(out.Directories, filepath.ToSlash(rel))
-			} else {
-				out.Files = append(out.Files, filepath.ToSlash(rel))
-			}
+		switch {
+		case d.IsDir():
+			out.Directories = append(out.Directories, rel)
+		case ignores != nil && ignores.files[rel]:
+			out.Ignored = append(out.Ignored, rel)
+		default:
+			out.Files = append(out.Files, rel)
 		}
 		return nil
 	})
@@ -542,8 +565,17 @@ func walkPaths(ctx context.Context, root string, repoFound func(string, string))
 		return Listing{}, err
 	}
 	slices.Sort(out.Files)
+	slices.Sort(out.Ignored)
 	slices.Sort(out.Repositories)
 	return out, nil
+}
+
+// hasGitMarker reports whether the folder full has a .git directory or file
+// of its own (a repository, worktree or submodule). A symlinked marker is
+// not one, as in nestedRepositoryFiles.
+func hasGitMarker(full string) bool {
+	info, err := os.Lstat(filepath.Join(full, ".git"))
+	return err == nil && (info.IsDir() || info.Mode().IsRegular())
 }
 
 // Resolve returns the file rel names under root. It refuses paths that leave

@@ -41,8 +41,9 @@ func TestWalkReportsNestedRepositoryStatus(t *testing.T) {
 			t.Errorf("status[%s] = %q, want %q (all: %v)", path, got.Status[path], s, got.Status)
 		}
 	}
-	// One status per repository found (api, apps/web, apps/web/inner, clean); nothing else.
-	if calls["status"] != 4 || len(calls) != 1 {
+	// One status and one ignore query per repository found (api, apps/web,
+	// apps/web/inner, clean); nothing else.
+	if calls["status"] != 4 || calls["ls-files"] != 4 || len(calls) != 2 {
 		t.Errorf("git work = %v", calls)
 	}
 }
