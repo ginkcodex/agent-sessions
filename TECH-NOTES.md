@@ -148,7 +148,17 @@ so one press moves either the session list or the editor, never both.
   after 200 ms also starts one; after that the gap is ignored, so fingers
   resting mid-swipe do not go a second step. Past `SWIPE_DISTANCE` (80 px; X11 wheel
   units × 40) sideways, more than twice the vertical, it sends `nav:swipe`
-  once. It follows the scroll, as Chrome does: toward the left is back,
+  once.
+- **The controller sees each scroll twice** (SN-07). The copy has the same
+  time and deltas and comes later, sometimes after the swipe's
+  `scroll-end`, probably WebKit handing back what the page did not use.
+  GTK even emits `scroll-begin` for it. Counted, the copies doubled every
+  swipe's distance and, once they came after the end, sent a second step.
+  So any scroll, begin or end no newer than the newest seen is skipped.
+- `AGENT_SESSIONS_TRACE_NAV=1` prints each gesture's begin, end, scrolls
+  (time, deltas, unit, device source) and sends to stderr, and each event
+  Go sends to a window. Run the app from a terminal with it to see what a
+  touchpad really sends. It follows the scroll, as Chrome does: toward the left is back,
   which is fingers right with natural scrolling (GNOME's and Plasma 6's
   touchpad default). GNOME has no *Swipe between pages* setting to honour.
 

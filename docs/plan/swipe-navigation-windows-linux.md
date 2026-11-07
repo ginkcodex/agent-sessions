@@ -42,6 +42,9 @@ always returns `FALSE`, so WebKit scrolls as before.
   scroll more than 200 ms after the last one also starts a gesture. Once
   `scroll-end` has come, fingers resting mid-swipe do not split the gesture
   (SN-06). Scrolls with Ctrl held are ignored.
+- The controller gets each scroll twice; the copy, with the same time,
+  can come after `scroll-end` and make GTK begin again. Anything no newer
+  than the newest event seen is skipped (SN-07).
 - Deltas add up in pixels: `GDK_SCROLL_UNIT_SURFACE` as is, wheel units
   (X11) times 40, WebKit's line step.
 - At `SWIPE_DISTANCE` (80 px) sideways, more than twice the vertical,
@@ -112,7 +115,11 @@ text field then never navigates, on any platform.
   easy or too hard there.
 - `mousenav_linux.c` compiles where the GTK 4 and WebKitGTK 6 headers are
   installed, and in the CI's `linux-build` job. Whether GTK sends
-  `scroll-end` on lift needs a real touchpad (SN-04).
+  `scroll-end` on lift needs a real touchpad (SN-04). One Wayland trace
+  shows it does.
+- Skipping copies by event time assumes the copies keep their time and
+  real events never share one. Two real scrolls in the same millisecond
+  would lose the second; touchpads send one about every 7 ms.
 - WebKitGTK may deliver momentum to the page after the fingers lift. That
   keeps the page's gesture going, which only makes it more careful.
 
