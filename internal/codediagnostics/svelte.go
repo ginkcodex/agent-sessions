@@ -194,16 +194,23 @@ func localTSConfig(v any) bool {
 }
 
 // Shared bounded metadata traversal. Symlinks are never followed during discovery;
-// ignored/capped scopes are explicitly partial, not a whole-repository claim.
+// skipped-by-name/capped scopes are explicitly partial, not a whole-repository
+// claim. Folders Git ignores are left out without partial (gitScope); files
+// come before folders.
 func walkContained(root AuthorizedRoot, visit func(string) error, partial *bool) error {
 	r, err := os.OpenRoot(root.Project().Root)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = r.Close() }()
+	scope := newGitScope(root)
 	entries := 0
 	var walk func(string, int) error
 	walk = func(dir string, depth int) error {
+		if entries >= 4096 {
+			*partial = true
+			return nil
+		}
 		f, err := r.Open(dir)
 		if err != nil {
 			*partial = true
@@ -215,7 +222,7 @@ func walkContained(root AuthorizedRoot, visit func(string) error, partial *bool)
 			*partial = true
 			return nil
 		}
-		slices.SortFunc(ds, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+		slices.SortFunc(ds, filesFirst)
 		for _, d := range ds {
 			entries++
 			if entries > 4096 {
@@ -234,6 +241,9 @@ func walkContained(root AuthorizedRoot, visit func(string) error, partial *bool)
 				}
 				if depth >= 32 {
 					*partial = true
+					continue
+				}
+				if scope.skip(r, rel) {
 					continue
 				}
 				if err := walk(rel, depth+1); err != nil {

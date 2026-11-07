@@ -104,7 +104,8 @@ type workspaceScan struct {
 	truncated bool
 }
 
-// scanLiveWorkspaces reads metadata only, never dependencies or linked trees.
+// scanLiveWorkspaces reads metadata only, never dependencies, linked trees or
+// folders Git ignores (gitScope); a folder's files come before its folders.
 func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 	var result workspaceScan
 	if err := root.Revalidate(); err != nil {
@@ -115,6 +116,7 @@ func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 		return result, err
 	}
 	defer r.Close()
+	scope := newGitScope(root)
 	entries := 0
 	var walk func(string, int)
 	walk = func(dir string, depth int) {
@@ -133,7 +135,7 @@ func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 			result.partial, result.truncated = true, true
 			return
 		}
-		slices.SortFunc(ds, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+		slices.SortFunc(ds, filesFirst)
 		d := workspaceDirectory{rel: filepath.ToSlash(dir)}
 		if dir == "." {
 			d.rel = ""
@@ -162,6 +164,9 @@ func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 				if strings.HasPrefix(e.Name(), ".") || depth >= 32 {
 					result.partial = true
 					result.truncated = result.truncated || depth >= 32
+					continue
+				}
+				if scope.skip(r, filepath.ToSlash(rel)) {
 					continue
 				}
 				children = append(children, rel)
