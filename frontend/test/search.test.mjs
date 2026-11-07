@@ -504,6 +504,56 @@ test('on Windows the guard spots a two-finger swipe in the wheel events, unless 
   assert.deepEqual(heard, []);
 });
 
+test('swipes in a row each navigate, even when the next starts in the last one\'s momentum', () => {
+  const mock = new MockBackendAPI();
+  const seen = [];
+  const scrollable = new Set();
+  const guard = new SwipeGuard((target, sign) => scrollable.has(`${target}:${sign}`), true);
+  let now = 0;
+  subscribeMouseNavigate((d) => seen.push(d), mock, guard, () => now);
+  // One stream, no pauses: events 8 ms apart, deltaX per event.
+  const stream = (deltas, target = 'page') => { for (const dx of deltas) { now += 8; guard.wheel({ deltaX: dx, deltaY: 0, deltaMode: 0, ctrlKey: false, timeStamp: now, target }); } };
+  const stroke = [-5, -10, -20, -25, -25, -25];
+  const momentum = [-22, -19, -16, -13, -10, -8, -6, -4];
+
+  stream(stroke); stream(momentum);
+  assert.deepEqual(seen, ['back'], 'momentum longer than a swipe does not swipe again');
+  stream([-12, -20, -25, -25, -25, -25]); stream(momentum);
+  stream(stroke); stream(momentum);
+  assert.deepEqual(seen, ['back', 'back', 'back'], 'each new stroke in the momentum goes back');
+
+  // One long swipe that keeps speeding up, or a coalesced spike in the momentum, is one stroke.
+  now += 1000;
+  stream([-5, -10, -15, -20, -30, -40, -50, -60, -70, -60]);
+  stream([-40, -30, -60, -22, -18, -14, -10, -6]);
+  assert.equal(seen.length, 4);
+
+  // The other way while the momentum still goes left.
+  stream([-5, -4, 6, 15, 25, 25, 25, 25, 25]);
+  assert.deepEqual(seen.slice(4), ['forward']);
+
+  // A stroke that scrolled code is a scroll; the next stroke over the page is a swipe.
+  now += 1000;
+  scrollable.add('code:-1');
+  stream(stroke, 'code'); stream(momentum, 'code');
+  scrollable.delete('code:-1');
+  assert.equal(seen.length, 5);
+  stream(stroke, 'page');
+  assert.deepEqual(seen.slice(5), ['back']);
+
+  // macOS and Linux: nav:swipe after a new stroke is not blocked by the last one's scroll.
+  const native = new SwipeGuard((target, sign) => scrollable.has(`${target}:${sign}`));
+  const heard = [];
+  subscribeMouseNavigate((d) => heard.push(d), mock, native, () => now);
+  scrollable.add('code:-1');
+  const feed = (deltas, target) => { for (const dx of deltas) { now += 8; native.wheel({ deltaX: dx, deltaY: 0, ctrlKey: false, timeStamp: now, target }); } };
+  feed(stroke, 'code'); feed(momentum, 'code');
+  mock.emit('nav:swipe', 'back');
+  feed([-12, -20, -25], 'page');
+  mock.emit('nav:swipe', 'back');
+  assert.deepEqual(heard, ['back']);
+});
+
 test('sideways scrolling counts only room left in that direction, in elements that scroll', () => {
   const el = (scrollLeft, scrollWidth, clientWidth, overflow, parentElement = null) => ({ scrollLeft, scrollWidth, clientWidth, overflow, parentElement });
   const overflowX = (e) => e.overflow;

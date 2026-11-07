@@ -52,7 +52,13 @@ messages, and the page's wheel events carry no phase and no device. So the
 page spots the swipe itself. `SwipeGuard` gets a detector, turned on only
 on Windows (`navigator.platform` starts with `Win`):
 
-- It uses the guard's gestures (wheel events less than 200 ms apart).
+- It uses the guard's strokes. Wheel events less than 200 ms apart are one
+  stream, but a stream may hold several swipes: the touchpad's momentum
+  after the fingers lift, or a quick lift and touch, joins the next swipe
+  to the last. So a stroke also ends when the fingers come back: the speed
+  fell to half its peak or less, then rose for two events in a row.
+  Momentum only slows down. Each stroke swipes once and is a scroll or not
+  on its own (SN-05).
 - A gesture is not a swipe if any event is Shift+wheel (a mouse scrolling
   sideways), counts in lines or pages (`deltaMode` not 0), or moves a whole
   wheel step at once (`|delta| ≥ 100` px). Ctrl+wheel (pinch) is ignored, as
@@ -92,7 +98,8 @@ text field then never navigates, on any platform.
 
 ## Risks
 
-- The Windows thresholds (3 events, 100 px wheel step) are guesses that
+- The Windows thresholds (3 events, 100 px wheel step, the stroke's
+  half-speed decay and two-event rise) are guesses that
   need a real touchpad and a real mouse to tune. A thumb wheel or a
   free-spinning wheel may still pass for a touchpad.
 - X11 touchpads report wheel units; the 40 px scale may make swipes too

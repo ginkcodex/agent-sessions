@@ -178,6 +178,12 @@ so one press moves either the session list or the editor, never both.
   vertical, with no Shift and no delta of a whole wheel step (100 px).
   Toward the left is back, as in Edge. A smooth sideways mouse wheel can
   pass for a touchpad.
+- Without a phase, the wheel stream does not say where one swipe ends: the
+  momentum after the fingers lift, or a quick lift and touch, runs straight
+  into the next swipe. The guard splits the stream into strokes: a new one
+  starts when the speed has fallen to half its peak or less and rises again
+  for two events. Momentum only slows down, so it never starts one. Each
+  stroke swipes once and has its own scrolled flag.
 
 ### How to debug
 

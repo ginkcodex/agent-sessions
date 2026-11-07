@@ -10,6 +10,9 @@
 
 /** Wheel events closer together than this (ms) are one gesture; momentum keeps it going. */
 export const SWIPE_GESTURE_GAP = 200;
+/** A new stroke needs the speed to fall to this share of its peak, then rise this many events in a row. */
+export const STROKE_DECAY = 0.5;
+export const STROKE_RISE_EVENTS = 2;
 /** How far (px) a gesture must go sideways to swipe, as SWIPE_DISTANCE in mousenav_darwin.m. */
 export const SWIPE_DISTANCE = 80;
 /** A touchpad sends many small deltas; a gesture swipes only after this many events. */
@@ -68,7 +71,12 @@ export function scrollsSideways(target: EventTarget | null, sign: number, overfl
 export class SwipeGuard {
   private last = -Infinity;
   private scrolled = false;
-  // The detector's gesture: how far it went, in how many events, whether a
+  // The stroke's speed (|deltaX| + |deltaY| per event): its peak, the lowest
+  // since that peak, and how many events in a row rose from that low.
+  private peak = 0;
+  private low = 0;
+  private rises = 0;
+  // The detector's stroke: how far it went, in how many events, whether a
   // mouse wheel took part, and whether it already swiped.
   private x = 0;
   private y = 0;
@@ -85,16 +93,35 @@ export class SwipeGuard {
     this.detect = detect;
   }
 
+  // Wheel events come as one stream while the fingers move, then as
+  // momentum after they lift; a quick next swipe joins the same stream. So a
+  // stroke ends after a pause, or when the fingers come back: the speed fell
+  // to half its peak or less, then rose again. Momentum only slows down.
   wheel(event: SwipeWheel): void {
     if (event.ctrlKey) return; // a pinch, not a scroll
-    if (event.timeStamp - this.last > SWIPE_GESTURE_GAP) {
-      this.scrolled = false;
-      this.x = this.y = this.events = 0;
-      this.wheeled = this.swiped = false;
-    }
+    const speed = Math.abs(event.deltaX) + Math.abs(event.deltaY ?? 0);
+    if (event.timeStamp - this.last > SWIPE_GESTURE_GAP || this.risesAgain(speed)) this.startStroke(speed);
     this.last = event.timeStamp;
     if (!this.scrolled && event.deltaX !== 0 && this.scrolls(event.target, Math.sign(event.deltaX))) this.scrolled = true;
     if (this.detect) this.track(event);
+  }
+
+  private startStroke(speed: number): void {
+    this.scrolled = false;
+    this.peak = this.low = speed;
+    this.rises = 0;
+    this.x = this.y = this.events = 0;
+    this.wheeled = this.swiped = false;
+  }
+
+  private risesAgain(speed: number): boolean {
+    if (speed === 0) return false;
+    // While it rises, the low it rose from stays the reference.
+    if (this.low <= this.peak * STROKE_DECAY && speed >= this.low * 1.5 + 3) return ++this.rises >= STROKE_RISE_EVENTS;
+    this.rises = 0;
+    if (speed > this.peak) this.peak = this.low = speed;
+    else if (speed < this.low) this.low = speed;
+    return false;
   }
 
   // A swipe follows the scroll, as in Chrome and Edge: toward the left is back.

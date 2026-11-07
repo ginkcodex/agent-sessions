@@ -55,6 +55,6 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Font settings: editor, docs and session content | [font-settings](../plan/font-settings.md) | [font-settings/](font-settings/README.md) | 10/11 ✅ · 1 🟡 |
 | Editor back and forward | [editor-history](../plan/editor-history.md) | [editor-history/](editor-history/README.md) | 3/4 ✅ · 1 🟡 |
 | Two-finger swipe back and forward | [swipe-navigation](../plan/swipe-navigation.md) | [swipe-navigation/](swipe-navigation/README.md) | 1/3 ✅ · 1 🟡 · 1 ⬜ |
-| Two-finger swipe on Windows and Linux | [swipe-navigation-windows-linux](../plan/swipe-navigation-windows-linux.md) | [swipe-navigation-windows-linux/](swipe-navigation-windows-linux/README.md) | 2/4 ✅ · 2 ⬜ |
+| Two-finger swipe on Windows and Linux | [swipe-navigation-windows-linux](../plan/swipe-navigation-windows-linux.md) | [swipe-navigation-windows-linux/](swipe-navigation-windows-linux/README.md) | 3/5 ✅ · 1 🟡 · 1 ⬜ |
 | Go to File editing | [file-editing](../plan/file-editing.md) | [file-editing/](file-editing/README.md) | 11/14 ✅ · 3 🟡 |
 | Wails v3 upgrade | [wails-v3-upgrade](../plan/wails-v3-upgrade.md) | [wails-v3-upgrade/](wails-v3-upgrade/README.md) | 1/2 ✅ · 1 ⬜ |
