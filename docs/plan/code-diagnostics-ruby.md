@@ -65,7 +65,9 @@ project approval as every other language.
     `.ruby-lsp/` in the project and runs `bundle install` to compose its
     bundle, so it would need an approved preparation step like Rust's, and it
     may use pull diagnostics, which the live bridge does not support. RB-00
-    records what we observe so that plan starts from evidence.
+    records what we observe so that plan starts from evidence. Now planned in
+    [code-diagnostics-ruby-lsp.md](code-diagnostics-ruby-lsp.md), which
+    avoids the composed bundle and add-ons (spike RL-00).
   - **Sorbet** (`srb tc --lsp`) only for projects with `sorbet/config`. A
     native binary and the only real type checker.
   - **A managed RuboCop**, installed with Bundler from an embedded `Gemfile`

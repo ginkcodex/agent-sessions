@@ -30,6 +30,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [code-diagnostics.md](code-diagnostics.md) | [code-diagnostics](../tasks/code-diagnostics/README.md) | Go to File diagnostics: project checks, live language servers, trust, Problems panel, local/remote lifecycle |
 | [code-diagnostics-languages.md](code-diagnostics-languages.md) | [code-diagnostics-languages](../tasks/code-diagnostics-languages/README.md) | Choose in Settings which languages get code checks and Go to Definition; language registry, filtered discovery |
 | [code-diagnostics-ruby.md](code-diagnostics-ruby.md) | [code-diagnostics-ruby](../tasks/code-diagnostics-ruby/README.md) | Ruby code checks with RuboCop: runtime resolution, Bundler, standalone mode |
+| [code-diagnostics-ruby-lsp.md](code-diagnostics-ruby-lsp.md) | [code-diagnostics-ruby-lsp](../tasks/code-diagnostics-ruby-lsp/README.md) | Ruby Go to definition, references and hover with ruby-lsp, beside RuboCop; add-ons not loaded |
 | [tool-installation.md](tool-installation.md) | [tool-installation](../tasks/tool-installation/README.md) | Consent-based managed language-server installation |
 | [editor-essentials.md](editor-essentials.md) | [editor-essentials](../tasks/editor-essentials/README.md) | Project search and replace, new agent sessions and alerts, code navigation, Git changes |
 | [git-history.md](git-history.md) | [git-history](../tasks/git-history/README.md) | Read-only Git history: multi-pane layout, repository/branch selection, commit search, historical diffs |

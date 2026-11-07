@@ -1,0 +1,2021 @@
+{
+ "tool": "ruby-lsp",
+ "provenance": "observed (driven by a Python stdio script that sends this app's initialize parameters, not by the Go adapter)",
+ "date": "2026-11-07",
+ "platform": "darwin/arm64",
+ "versions": {
+  "ruby-lsp": "0.26.11",
+  "ruby": "4.0.9 (mise)",
+  "bundler": "4.0.20 (in the interpreter)",
+  "language_server-protocol": "3.17.0.6",
+  "rbs": "4.2.0",
+  "prism": "1.9.0 (spike gem dir, installed by case A1) and the default gem",
+  "rubocop": "1.92.2 (user gem dir; ships a ruby-lsp add-on)"
+ },
+ "location": "gem install --install-dir into a disposable spike gem directory; nothing installed into the interpreter.",
+ "sanitization": "Disposable synthetic projects replaced with /fixture; temp HOME, spike gem dir and Ruby prefix replaced with placeholders. Hover markdown and log messages verbatim (no user content).",
+ "client": {
+  "capabilities": {
+   "general": {
+    "positionEncodings": [
+     "utf-16"
+    ]
+   },
+   "textDocument": {
+    "definition": {
+     "linkSupport": true
+    },
+    "references": {},
+    "hover": {
+     "contentFormat": [
+      "markdown",
+      "plaintext"
+     ]
+    }
+   }
+  },
+  "rootUri": "file:///fixture",
+  "workspaceFolders": [
+   {
+    "uri": "file:///fixture",
+    "name": "fixture"
+   }
+  ],
+  "serverRequests": "answered with -32601, as the app does; none observed"
+ },
+ "fixture": {
+  "lib/greeter.rb": "# frozen_string_literal: true\n\nclass Greeter\n  def initialize(name)\n    @name = name\n  end\n\n  def greet\n    \"Hello, #{@name}\"\n  end\nend\n",
+  "app.rb": "# frozen_string_literal: true\n\nrequire_relative \"lib/greeter\"\nrequire \"json\"\n\ng = Greeter.new(\"world\")\nputs g.greet\nputs JSON.generate({ a: 1 })\nputs \"x\".upcase\n",
+  "bundlerProject": {
+   "Gemfile": "source \"https://rubygems.org\"\n\ngem \"parallel\"\ngem \"rubocop\", group: :development\n",
+   "app.rb": "# frozen_string_literal: true\n\nrequire_relative \"lib/greeter\"\nrequire \"json\"\n\ng = Greeter.new(\"world\")\nputs g.greet\nputs JSON.generate({ a: 1 })\nputs \"x\".upcase\np Parallel.processor_count\np RuboCop::Version::STRING\n",
+   "ruby_lsp/marker/addon.rb": "File.write(File.join(Dir.pwd, \"ADDON_RAN\"), \"yes\")\n",
+   "Gemfile.lock": "bundle lock --local; specs include parallel 2.3.0, rubocop 1.92.2, json 3.1.0"
+  }
+ },
+ "wrapper.rb": "# RL-00 spike: start ruby-lsp without add-ons. ARGV[0] is the gem's lib directory.\n$stdin.sync = $stdout.sync = $stderr.sync = true\n[$stdin, $stdout, $stderr].each(&:binmode)\n$LOAD_PATH.unshift(ARGV.fetch(0))\nrequire \"ruby_lsp/internal\"\nRubyLsp::Server.prepend(Module.new { def load_addons(include_project_addons: true) = nil })\nserver = RubyLsp::Server.new\n$> = $stderr\nserver.start\n",
+ "cases": {
+  "A1-default-exe": {
+   "launch": "<ruby> <gem>/exe/ruby-lsp, no BUNDLE_GEMFILE, project without Gemfile",
+   "initializeSeconds": 44.437,
+   "writtenUnderWatchedDirs": [
+    "<empty temp dir>/.bundle/",
+    "/fixture/.ruby-lsp/",
+    "/fixture/.ruby-lsp/.gitignore",
+    "/fixture/.ruby-lsp/Gemfile",
+    "/fixture/.ruby-lsp/Gemfile.lock",
+    "<empty temp dir>/.bundle/cache/… (248 files)"
+   ],
+   "stderrHead": [
+    "Fetching gem metadata from https://rubygems.org/..........",
+    "Fetching gem metadata from https://rubygems.org/..........",
+    "Installing prettyprint 0.2.1",
+    "Installing pp 0.6.4",
+    "Installing tsort 0.2.0",
+    "Installing io-console 0.9.5 with native extensions"
+   ],
+   "notes": [
+    "The exe composes .ruby-lsp/Gemfile in the project, runs bundle install against rubygems.org (debug, irb, rdoc, prism 1.9.0 with native extensions) and only then execs bundle exec ruby-lsp.",
+    "An earlier driver version sent didChange without a range; the server (incremental sync) answered the next definition with -32602 InvalidLocationError. Later cases send a full-range change."
+   ]
+  },
+  "A2-exe-bundle-gemfile-missing": {
+   "launch": "<ruby> <gem>/exe/ruby-lsp, BUNDLE_GEMFILE=<workspace>/Gemfile that does not exist, project without Gemfile",
+   "argv": [
+    "<ruby prefix>/bin/ruby",
+    "<spike gem dir>/gems/ruby-lsp-0.26.11/exe/ruby-lsp"
+   ],
+   "env": {
+    "PATH": "<ruby prefix>/bin:/usr/bin:/bin",
+    "HOME": "<empty temp dir>",
+    "GEM_HOME": "<spike gem dir>",
+    "GEM_PATH": "<spike gem dir>",
+    "BUNDLE_GEMFILE": "/fixture/Gemfile"
+   },
+   "cwd": "/fixture",
+   "initializationOptions": null,
+   "initializeSeconds": 0.146,
+   "initialize": {
+    "capabilities": {
+     "positionEncoding": "utf-16",
+     "textDocumentSync": {
+      "openClose": true,
+      "change": 2
+     },
+     "completionProvider": {
+      "triggerCharacters": [
+       "/",
+       "\"",
+       "'",
+       ":",
+       "@",
+       ".",
+       "=",
+       "<",
+       "$"
+      ],
+      "resolveProvider": true,
+      "completionItem": {
+       "labelDetailsSupport": true
+      }
+     },
+     "hoverProvider": {},
+     "signatureHelpProvider": {
+      "triggerCharacters": [
+       "(",
+       " ",
+       ","
+      ]
+     },
+     "definitionProvider": true,
+     "referencesProvider": true,
+     "documentHighlightProvider": true,
+     "documentSymbolProvider": {},
+     "codeActionProvider": {
+      "documentSelector": null,
+      "resolveProvider": true
+     },
+     "codeLensProvider": {
+      "resolveProvider": true
+     },
+     "documentLinkProvider": {},
+     "workspaceSymbolProvider": true,
+     "documentRangeFormattingProvider": true,
+     "documentOnTypeFormattingProvider": {
+      "documentSelector": null,
+      "firstTriggerCharacter": "{",
+      "moreTriggerCharacter": [
+       "\n",
+       "|",
+       "d"
+      ]
+     },
+     "renameProvider": {
+      "prepareProvider": true
+     },
+     "foldingRangeProvider": true,
+     "selectionRangeProvider": true,
+     "semanticTokensProvider": {
+      "documentSelector": null,
+      "legend": {
+       "tokenTypes": [
+        "namespace",
+        "type",
+        "class",
+        "enum",
+        "interface",
+        "struct",
+        "typeParameter",
+        "parameter",
+        "variable",
+        "property",
+        "enumMember",
+        "event",
+        "function",
+        "method",
+        "macro",
+        "keyword",
+        "modifier",
+        "comment",
+        "string",
+        "number",
+        "regexp",
+        "operator",
+        "decorator"
+       ],
+       "tokenModifiers": [
+        "declaration",
+        "definition",
+        "readonly",
+        "static",
+        "deprecated",
+        "abstract",
+        "async",
+        "modification",
+        "documentation",
+        "defaultLibrary"
+       ]
+      },
+      "range": true,
+      "full": {
+       "delta": true
+      }
+     },
+     "typeHierarchyProvider": {},
+     "inlayHintProvider": {},
+     "diagnosticProvider": {
+      "documentSelector": null,
+      "interFileDependencies": false,
+      "workspaceDiagnostics": false
+     },
+     "experimental": {
+      "addon_detection": true,
+      "compose_bundle": true,
+      "go_to_relevant_file": true,
+      "full_test_discovery": true
+     }
+    },
+    "serverInfo": {
+     "name": "Ruby LSP",
+     "version": "0.26.11"
+    },
+    "formatter": "none",
+    "degraded_mode": false,
+    "bundle_env": null
+   },
+   "steps": [
+    {
+     "do": "open",
+     "path": "app.rb",
+     "version": 1
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.004,
+     "result": []
+    },
+    {
+     "do": "wait",
+     "seconds": 8.0
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.013,
+     "result": [
+      {
+       "targetUri": "file:///fixture/lib/greeter.rb",
+       "targetRange": {
+        "start": {
+         "line": 2,
+         "character": 0
+        },
+        "end": {
+         "line": 10,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 2,
+         "character": 6
+        },
+        "end": {
+         "line": 2,
+         "character": 13
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "greet\n",
+     "position": {
+      "line": 6,
+      "character": 7
+     },
+     "seconds": 0.01,
+     "result": [
+      {
+       "targetUri": "file:///fixture/lib/greeter.rb",
+       "targetRange": {
+        "start": {
+         "line": 7,
+         "character": 2
+        },
+        "end": {
+         "line": 9,
+         "character": 5
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 7,
+         "character": 6
+        },
+        "end": {
+         "line": 7,
+         "character": 11
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "JSON.generate",
+     "position": {
+      "line": 7,
+      "character": 5
+     },
+     "seconds": 0.002,
+     "result": [
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/json/common.rb",
+       "targetRange": {
+        "start": {
+         "line": 4,
+         "character": 0
+        },
+        "end": {
+         "line": 1097,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 4,
+         "character": 7
+        },
+        "end": {
+         "line": 4,
+         "character": 11
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/json/common.rb",
+       "targetRange": {
+        "start": {
+         "line": 1138,
+         "character": 2
+        },
+        "end": {
+         "line": 1140,
+         "character": 5
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 1138,
+         "character": 6
+        },
+        "end": {
+         "line": 1138,
+         "character": 10
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/json/ext/generator/state.rb",
+       "targetRange": {
+        "start": {
+         "line": 2,
+         "character": 0
+        },
+        "end": {
+         "line": 102,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 2,
+         "character": 7
+        },
+        "end": {
+         "line": 2,
+         "character": 11
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/json/ext.rb",
+       "targetRange": {
+        "start": {
+         "line": 4,
+         "character": 0
+        },
+        "end": {
+         "line": 44,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 4,
+         "character": 7
+        },
+        "end": {
+         "line": 4,
+         "character": 11
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/json/generic_object.rb",
+       "targetRange": {
+        "start": {
+         "line": 7,
+         "character": 0
+        },
+        "end": {
+         "line": 66,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 7,
+         "character": 7
+        },
+        "end": {
+         "line": 7,
+         "character": 11
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/json/version.rb",
+       "targetRange": {
+        "start": {
+         "line": 2,
+         "character": 0
+        },
+        "end": {
+         "line": 4,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 2,
+         "character": 7
+        },
+        "end": {
+         "line": 2,
+         "character": 11
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/json.rb",
+       "targetRange": {
+        "start": {
+         "line": 638,
+         "character": 0
+        },
+        "end": {
+         "line": 641,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 638,
+         "character": 7
+        },
+        "end": {
+         "line": 638,
+         "character": 11
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "generate",
+     "position": {
+      "line": 7,
+      "character": 10
+     },
+     "seconds": 0.001,
+     "result": [
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/json/common.rb",
+       "targetRange": {
+        "start": {
+         "line": 438,
+         "character": 2
+        },
+        "end": {
+         "line": 444,
+         "character": 5
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 438,
+         "character": 6
+        },
+        "end": {
+         "line": 438,
+         "character": 14
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "upcase",
+     "position": {
+      "line": 8,
+      "character": 9
+     },
+     "seconds": 0.001,
+     "result": [
+      {
+       "targetUri": "file://<spike gem dir>/gems/rbs-4.2.0/core/string.rbs",
+       "targetRange": {
+        "start": {
+         "line": 5449,
+         "character": 2
+        },
+        "end": {
+         "line": 5452,
+         "character": 46
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 5449,
+         "character": 2
+        },
+        "end": {
+         "line": 5452,
+         "character": 46
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "hover",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.006,
+     "result": {
+      "contents": {
+       "kind": "markdown",
+       "value": "```ruby\nGreeter\n```\n\n**Definitions**: [greeter.rb](file:///fixture/lib/greeter.rb#L3,1-11,4)"
+      }
+     }
+    },
+    {
+     "do": "hover",
+     "path": "app.rb",
+     "at": "upcase",
+     "position": {
+      "line": 8,
+      "character": 9
+     },
+     "seconds": 0.001,
+     "result": {
+      "contents": {
+       "kind": "markdown",
+       "value": "```ruby\nupcase()\n(+3 overloads)\n```\n\n**Definitions**: [string.rbs](file://<spike gem dir>/gems/rbs-4.2.0/core/string.rbs#L5450,3-5453,47)\n\n\n\n<!--\n  rdoc-file=string.c\n  - upcase(mapping = :ascii) -> new_string\n-->\nReturns a new string containing the upcased characters in `self`:\n\n    'hello'.upcase        # => \"HELLO\"\n    'straße'.upcase       # => \"STRASSE\"\n    'привет'.upcase       # => \"ПРИВЕТ\"\n    'RubyGems.org'.upcase # => \"RUBYGEMS.ORG\"\n\nThe sizes of `self` and the upcased result may differ:\n\n    s = 'Straße'\n    s.size        # => 6\n    s.upcase      # => \"STRASSE\"\n    s.upcase.size # => 7\n\nSome characters (and some character sets) do not have upcase and downcase\nversions; see [Case Mapping](rdoc-ref:case_mapping.rdoc):\n\n    s = '1, 2, 3, ...'\n    s.upcase == s # => true\n    s = 'こんにちは'\n    s.upcase == s # => true\n\nThe casing is affected by the given `mapping`, which may be\n<code>:ascii</code>, <code>:fold</code>, or <code>:turkic</code>; see [Case\nMappings](rdoc-ref:case_mapping.rdoc@Case+Mappings).\n\nRelated: see [Converting to New\nString](rdoc-ref:String@Converting+to+New+String)."
+      }
+     }
+    },
+    {
+     "do": "references",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.007,
+     "result": [
+      {
+       "uri": "file:///fixture/lib/greeter.rb",
+       "range": {
+        "start": {
+         "line": 2,
+         "character": 6
+        },
+        "end": {
+         "line": 2,
+         "character": 13
+        }
+       }
+      },
+      {
+       "uri": "file:///fixture/app.rb",
+       "range": {
+        "start": {
+         "line": 5,
+         "character": 4
+        },
+        "end": {
+         "line": 5,
+         "character": 11
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "change",
+     "path": "app.rb",
+     "version": 2,
+     "text": "# frozen_string_literal: true\n\nrequire_relative \"lib/greeter\"\nrequire \"json\"\n\ng = Greeter.new(\"world\")\nputs g.greet\nputs JSON.generate({ a: 1 })\nputs \"x\".upcase\n\ndef shout(s) = s.upcase\nshout(\"hi\")\n"
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "shout(\"hi\")",
+     "position": {
+      "line": 11,
+      "character": 0
+     },
+     "seconds": 0.002,
+     "result": []
+    },
+    {
+     "do": "wait",
+     "seconds": 1
+    }
+   ],
+   "serverMessages": [
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Initializing Ruby LSP v0.26.11 https://github.com/Shopify/ruby-lsp/releases/tag/v0.26.11...."
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Auto detected formatter: none (no formatter detected)"
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Auto detected linters: "
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Detected test library: unknown (no test library detected)"
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Finished initializing Ruby LSP!"
+     },
+     "jsonrpc": "2.0"
+    }
+   ],
+   "shutdown": {
+    "result": null,
+    "exitCode": 0
+   },
+   "writtenUnderWatchedDirs": [],
+   "stderr": [],
+   "notes": [
+    "No composed bundle, no writes, no network.",
+    "Definition before indexing answers [] within milliseconds; no $/progress since the client does not advertise window.workDoneProgress.",
+    "JSON.generate resolves into the Ruby prefix (default gem); upcase into core RBS inside the rbs gem.",
+    "A method defined only in the unsaved draft (shout) is not found: open documents are re-indexed only by combined requests (documentSymbol, foldingRange, documentLink, codeLens), which this client does not send."
+   ]
+  },
+  "B1-exe-bundler-project": {
+   "launch": "<ruby> <gem>/exe/ruby-lsp, BUNDLE_GEMFILE=<workspace>/Gemfile (exists), default initializationOptions",
+   "argv": [
+    "<ruby prefix>/bin/ruby",
+    "<spike gem dir>/gems/ruby-lsp-0.26.11/exe/ruby-lsp"
+   ],
+   "env": {
+    "PATH": "<ruby prefix>/bin:/usr/bin:/bin",
+    "HOME": "<empty temp dir>",
+    "GEM_HOME": "<spike gem dir>",
+    "GEM_PATH": "<spike gem dir>:<ruby prefix>/lib/ruby/gems/4.0.0",
+    "BUNDLE_GEMFILE": "/fixture/Gemfile"
+   },
+   "cwd": "/fixture",
+   "initializationOptions": null,
+   "initializeSeconds": 0.674,
+   "initialize": {
+    "capabilities": {
+     "positionEncoding": "utf-16",
+     "textDocumentSync": {
+      "openClose": true,
+      "change": 2
+     },
+     "completionProvider": {
+      "triggerCharacters": [
+       "/",
+       "\"",
+       "'",
+       ":",
+       "@",
+       ".",
+       "=",
+       "<",
+       "$"
+      ],
+      "resolveProvider": true,
+      "completionItem": {
+       "labelDetailsSupport": true
+      }
+     },
+     "hoverProvider": {},
+     "signatureHelpProvider": {
+      "triggerCharacters": [
+       "(",
+       " ",
+       ","
+      ]
+     },
+     "definitionProvider": true,
+     "referencesProvider": true,
+     "documentHighlightProvider": true,
+     "documentSymbolProvider": {},
+     "codeActionProvider": {
+      "documentSelector": null,
+      "resolveProvider": true
+     },
+     "codeLensProvider": {
+      "resolveProvider": true
+     },
+     "documentLinkProvider": {},
+     "workspaceSymbolProvider": true,
+     "documentFormattingProvider": true,
+     "documentRangeFormattingProvider": true,
+     "documentOnTypeFormattingProvider": {
+      "documentSelector": null,
+      "firstTriggerCharacter": "{",
+      "moreTriggerCharacter": [
+       "\n",
+       "|",
+       "d"
+      ]
+     },
+     "renameProvider": {
+      "prepareProvider": true
+     },
+     "foldingRangeProvider": true,
+     "selectionRangeProvider": true,
+     "semanticTokensProvider": {
+      "documentSelector": null,
+      "legend": {
+       "tokenTypes": [
+        "namespace",
+        "type",
+        "class",
+        "enum",
+        "interface",
+        "struct",
+        "typeParameter",
+        "parameter",
+        "variable",
+        "property",
+        "enumMember",
+        "event",
+        "function",
+        "method",
+        "macro",
+        "keyword",
+        "modifier",
+        "comment",
+        "string",
+        "number",
+        "regexp",
+        "operator",
+        "decorator"
+       ],
+       "tokenModifiers": [
+        "declaration",
+        "definition",
+        "readonly",
+        "static",
+        "deprecated",
+        "abstract",
+        "async",
+        "modification",
+        "documentation",
+        "defaultLibrary"
+       ]
+      },
+      "range": true,
+      "full": {
+       "delta": true
+      }
+     },
+     "typeHierarchyProvider": {},
+     "inlayHintProvider": {},
+     "diagnosticProvider": {
+      "documentSelector": null,
+      "interFileDependencies": false,
+      "workspaceDiagnostics": false
+     },
+     "experimental": {
+      "addon_detection": true,
+      "compose_bundle": true,
+      "go_to_relevant_file": true,
+      "full_test_discovery": true
+     }
+    },
+    "serverInfo": {
+     "name": "Ruby LSP",
+     "version": "0.26.11"
+    },
+    "formatter": "rubocop_internal",
+    "degraded_mode": false,
+    "bundle_env": null
+   },
+   "steps": [
+    {
+     "do": "open",
+     "path": "app.rb",
+     "version": 1
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.048,
+     "result": []
+    },
+    {
+     "do": "wait",
+     "seconds": 8.0
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.012,
+     "result": [
+      {
+       "targetUri": "file:///fixture/lib/greeter.rb",
+       "targetRange": {
+        "start": {
+         "line": 2,
+         "character": 0
+        },
+        "end": {
+         "line": 10,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 2,
+         "character": 6
+        },
+        "end": {
+         "line": 2,
+         "character": 13
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "greet\n",
+     "position": {
+      "line": 6,
+      "character": 7
+     },
+     "seconds": 0.01,
+     "result": [
+      {
+       "targetUri": "file:///fixture/lib/greeter.rb",
+       "targetRange": {
+        "start": {
+         "line": 7,
+         "character": 2
+        },
+        "end": {
+         "line": 9,
+         "character": 5
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 7,
+         "character": 6
+        },
+        "end": {
+         "line": 7,
+         "character": 11
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "JSON.generate",
+     "position": {
+      "line": 7,
+      "character": 5
+     },
+     "seconds": 0.0,
+     "result": []
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "generate",
+     "position": {
+      "line": 7,
+      "character": 10
+     },
+     "seconds": 0.002,
+     "result": [
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/bundler/installer/standalone.rb",
+       "targetRange": {
+        "start": {
+         "line": 8,
+         "character": 4
+        },
+        "end": {
+         "line": 25,
+         "character": 7
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 8,
+         "character": 8
+        },
+        "end": {
+         "line": 8,
+         "character": 16
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/bundler/lockfile_generator.rb",
+       "targetRange": {
+        "start": {
+         "line": 13,
+         "character": 4
+        },
+        "end": {
+         "line": 15,
+         "character": 7
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 13,
+         "character": 13
+        },
+        "end": {
+         "line": 13,
+         "character": 21
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/openssl/pkey.rb",
+       "targetRange": {
+        "start": {
+         "line": 132,
+         "character": 6
+        },
+        "end": {
+         "line": 138,
+         "character": 9
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 132,
+         "character": 10
+        },
+        "end": {
+         "line": 132,
+         "character": 18
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/openssl/pkey.rb",
+       "targetRange": {
+        "start": {
+         "line": 198,
+         "character": 6
+        },
+        "end": {
+         "line": 211,
+         "character": 9
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 198,
+         "character": 10
+        },
+        "end": {
+         "line": 198,
+         "character": 18
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/openssl/pkey.rb",
+       "targetRange": {
+        "start": {
+         "line": 380,
+         "character": 6
+        },
+        "end": {
+         "line": 385,
+         "character": 9
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 380,
+         "character": 10
+        },
+        "end": {
+         "line": 380,
+         "character": 18
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/gems/4.0.0/gems/racc-1.8.1/lib/racc/statetransitiontable.rb",
+       "targetRange": {
+        "start": {
+         "line": 69,
+         "character": 4
+        },
+        "end": {
+         "line": 80,
+         "character": 7
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 69,
+         "character": 8
+        },
+        "end": {
+         "line": 69,
+         "character": 16
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/gems/4.0.0/gems/racc-1.8.1/lib/racc/statetransitiontable.rb",
+       "targetRange": {
+        "start": {
+         "line": 267,
+         "character": 4
+        },
+        "end": {
+         "line": 288,
+         "character": 7
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 267,
+         "character": 8
+        },
+        "end": {
+         "line": 267,
+         "character": 16
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "upcase",
+     "position": {
+      "line": 8,
+      "character": 9
+     },
+     "seconds": 0.001,
+     "result": [
+      {
+       "targetUri": "file://<spike gem dir>/gems/rbs-4.2.0/core/string.rbs",
+       "targetRange": {
+        "start": {
+         "line": 5449,
+         "character": 2
+        },
+        "end": {
+         "line": 5452,
+         "character": 46
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 5449,
+         "character": 2
+        },
+        "end": {
+         "line": 5452,
+         "character": 46
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "hover",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.007,
+     "result": {
+      "contents": {
+       "kind": "markdown",
+       "value": "```ruby\nGreeter\n```\n\n**Definitions**: [greeter.rb](file:///fixture/lib/greeter.rb#L3,1-11,4)"
+      }
+     }
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "Parallel.processor_count",
+     "position": {
+      "line": 9,
+      "character": 2
+     },
+     "seconds": 0.001,
+     "result": [
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/gems/4.0.0/gems/parallel-2.3.0/lib/parallel/serializer.rb",
+       "targetRange": {
+        "start": {
+         "line": 4,
+         "character": 0
+        },
+        "end": {
+         "line": 55,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 4,
+         "character": 7
+        },
+        "end": {
+         "line": 4,
+         "character": 15
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/gems/4.0.0/gems/parallel-2.3.0/lib/parallel/version.rb",
+       "targetRange": {
+        "start": {
+         "line": 1,
+         "character": 0
+        },
+        "end": {
+         "line": 3,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 1,
+         "character": 7
+        },
+        "end": {
+         "line": 1,
+         "character": 15
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/gems/4.0.0/gems/parallel-2.3.0/lib/parallel.rb",
+       "targetRange": {
+        "start": {
+         "line": 5,
+         "character": 0
+        },
+        "end": {
+         "line": 808,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 5,
+         "character": 7
+        },
+        "end": {
+         "line": 5,
+         "character": 15
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "processor_count",
+     "position": {
+      "line": 9,
+      "character": 11
+     },
+     "seconds": 0.001,
+     "result": [
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/gems/4.0.0/gems/parallel-2.3.0/lib/parallel.rb",
+       "targetRange": {
+        "start": {
+         "line": 367,
+         "character": 4
+        },
+        "end": {
+         "line": 369,
+         "character": 7
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 367,
+         "character": 8
+        },
+        "end": {
+         "line": 367,
+         "character": 23
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "RuboCop::Version",
+     "position": {
+      "line": 10,
+      "character": 2
+     },
+     "seconds": 0.0,
+     "result": []
+    },
+    {
+     "do": "hover",
+     "path": "app.rb",
+     "at": "upcase",
+     "position": {
+      "line": 8,
+      "character": 9
+     },
+     "seconds": 0.001,
+     "result": {
+      "contents": {
+       "kind": "markdown",
+       "value": "```ruby\nupcase()\n(+3 overloads)\n```\n\n**Definitions**: [string.rbs](file://<spike gem dir>/gems/rbs-4.2.0/core/string.rbs#L5450,3-5453,47)\n\n\n\n<!--\n  rdoc-file=string.c\n  - upcase(mapping = :ascii) -> new_string\n-->\nReturns a new string containing the upcased characters in `self`:\n\n    'hello'.upcase        # => \"HELLO\"\n    'straße'.upcase       # => \"STRASSE\"\n    'привет'.upcase       # => \"ПРИВЕТ\"\n    'RubyGems.org'.upcase # => \"RUBYGEMS.ORG\"\n\nThe sizes of `self` and the upcased result may differ:\n\n    s = 'Straße'\n    s.size        # => 6\n    s.upcase      # => \"STRASSE\"\n    s.upcase.size # => 7\n\nSome characters (and some character sets) do not have upcase and downcase\nversions; see [Case Mapping](rdoc-ref:case_mapping.rdoc):\n\n    s = '1, 2, 3, ...'\n    s.upcase == s # => true\n    s = 'こんにちは'\n    s.upcase == s # => true\n\nThe casing is affected by the given `mapping`, which may be\n<code>:ascii</code>, <code>:fold</code>, or <code>:turkic</code>; see [Case\nMappings](rdoc-ref:case_mapping.rdoc@Case+Mappings).\n\nRelated: see [Converting to New\nString](rdoc-ref:String@Converting+to+New+String)."
+      }
+     }
+    },
+    {
+     "do": "references",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.009,
+     "result": [
+      {
+       "uri": "file:///fixture/lib/greeter.rb",
+       "range": {
+        "start": {
+         "line": 2,
+         "character": 6
+        },
+        "end": {
+         "line": 2,
+         "character": 13
+        }
+       }
+      },
+      {
+       "uri": "file:///fixture/app.rb",
+       "range": {
+        "start": {
+         "line": 5,
+         "character": 4
+        },
+        "end": {
+         "line": 5,
+         "character": 11
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "change",
+     "path": "app.rb",
+     "version": 2,
+     "text": "# frozen_string_literal: true\n\nrequire_relative \"lib/greeter\"\nrequire \"json\"\n\ng = Greeter.new(\"world\")\nputs g.greet\nputs JSON.generate({ a: 1 })\nputs \"x\".upcase\np Parallel.processor_count\np RuboCop::Version::STRING\n\ndef shout(s) = s.upcase\nshout(\"hi\")\n"
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "shout(\"hi\")",
+     "position": {
+      "line": 13,
+      "character": 0
+     },
+     "seconds": 0.001,
+     "result": []
+    },
+    {
+     "do": "wait",
+     "seconds": 1
+    }
+   ],
+   "serverMessages": [
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Initializing Ruby LSP v0.26.11 https://github.com/Shopify/ruby-lsp/releases/tag/v0.26.11...."
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Auto detected formatter: rubocop_internal (direct dependency matching /^rubocop/)"
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Auto detected linters: rubocop_internal (direct dependency matching /^rubocop/)"
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Detected test library: unknown (no test library detected)"
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Finished initializing Ruby LSP!"
+     },
+     "jsonrpc": "2.0"
+    }
+   ],
+   "shutdown": {
+    "result": null,
+    "exitCode": 0
+   },
+   "writtenUnderWatchedDirs": [
+    "/fixture/ADDON_RAN"
+   ],
+   "stderr": [
+    "[RuboCop] Activating RuboCop LSP addon 1.92.2.",
+    "[RuboCop] Initialized RuboCop LSP addon 1.92.2."
+   ],
+   "notes": [
+    "A project add-on (ruby_lsp/**/addon.rb under the workspace) ran: ADDON_RAN written. The RuboCop gem add-on activated from the user gem dir.",
+    "Formatter and linter auto-detected as rubocop_internal; diagnostics are pull-only.",
+    "Locked default-group gems (parallel) are indexed; development-group gems (rubocop) and their dependencies are not. The locked json gem displaced the default gem, so JSON.generate resolves to []."
+   ]
+  },
+  "C1-wrapper-navigation-only": {
+   "launch": "<ruby> -e <wrapper.rb> <gem>/lib, BUNDLE_GEMFILE=<workspace>/Gemfile, features off",
+   "argv": [
+    "<ruby prefix>/bin/ruby",
+    "-e",
+    "<wrapper.rb below>",
+    "<spike gem dir>/gems/ruby-lsp-0.26.11/lib"
+   ],
+   "env": {
+    "PATH": "<ruby prefix>/bin:/usr/bin:/bin",
+    "HOME": "<empty temp dir>",
+    "GEM_HOME": "<spike gem dir>",
+    "GEM_PATH": "<spike gem dir>:<ruby prefix>/lib/ruby/gems/4.0.0",
+    "BUNDLE_GEMFILE": "/fixture/Gemfile"
+   },
+   "cwd": "/fixture",
+   "initializationOptions": {
+    "enabledFeatures": {
+     "diagnostics": false,
+     "formatting": false,
+     "codeActions": false,
+     "completion": false,
+     "semanticHighlighting": false,
+     "inlayHint": false,
+     "onTypeFormatting": false,
+     "documentHighlights": false,
+     "foldingRanges": false,
+     "selectionRanges": false,
+     "documentSymbols": false,
+     "documentLink": false,
+     "codeLens": false,
+     "signatureHelp": false,
+     "typeHierarchy": false,
+     "workspaceSymbol": false
+    },
+    "linters": [],
+    "formatter": "none"
+   },
+   "initializeSeconds": 0.269,
+   "initialize": {
+    "capabilities": {
+     "positionEncoding": "utf-16",
+     "textDocumentSync": {
+      "openClose": true,
+      "change": 2
+     },
+     "hoverProvider": {},
+     "definitionProvider": true,
+     "referencesProvider": true,
+     "documentRangeFormattingProvider": true,
+     "renameProvider": {
+      "prepareProvider": true
+     },
+     "experimental": {
+      "addon_detection": true,
+      "compose_bundle": true,
+      "go_to_relevant_file": true,
+      "full_test_discovery": true
+     }
+    },
+    "serverInfo": {
+     "name": "Ruby LSP",
+     "version": "0.26.11"
+    },
+    "formatter": "none",
+    "degraded_mode": false,
+    "bundle_env": null
+   },
+   "steps": [
+    {
+     "do": "open",
+     "path": "app.rb",
+     "version": 1
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.039,
+     "result": []
+    },
+    {
+     "do": "wait",
+     "seconds": 8.0
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.015,
+     "result": [
+      {
+       "targetUri": "file:///fixture/lib/greeter.rb",
+       "targetRange": {
+        "start": {
+         "line": 2,
+         "character": 0
+        },
+        "end": {
+         "line": 10,
+         "character": 3
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 2,
+         "character": 6
+        },
+        "end": {
+         "line": 2,
+         "character": 13
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "greet\n",
+     "position": {
+      "line": 6,
+      "character": 7
+     },
+     "seconds": 0.011,
+     "result": [
+      {
+       "targetUri": "file:///fixture/lib/greeter.rb",
+       "targetRange": {
+        "start": {
+         "line": 7,
+         "character": 2
+        },
+        "end": {
+         "line": 9,
+         "character": 5
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 7,
+         "character": 6
+        },
+        "end": {
+         "line": 7,
+         "character": 11
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "JSON.generate",
+     "position": {
+      "line": 7,
+      "character": 5
+     },
+     "seconds": 0.0,
+     "result": []
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "generate",
+     "position": {
+      "line": 7,
+      "character": 10
+     },
+     "seconds": 0.002,
+     "result": [
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/bundler/installer/standalone.rb",
+       "targetRange": {
+        "start": {
+         "line": 8,
+         "character": 4
+        },
+        "end": {
+         "line": 25,
+         "character": 7
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 8,
+         "character": 8
+        },
+        "end": {
+         "line": 8,
+         "character": 16
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/bundler/lockfile_generator.rb",
+       "targetRange": {
+        "start": {
+         "line": 13,
+         "character": 4
+        },
+        "end": {
+         "line": 15,
+         "character": 7
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 13,
+         "character": 13
+        },
+        "end": {
+         "line": 13,
+         "character": 21
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/openssl/pkey.rb",
+       "targetRange": {
+        "start": {
+         "line": 132,
+         "character": 6
+        },
+        "end": {
+         "line": 138,
+         "character": 9
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 132,
+         "character": 10
+        },
+        "end": {
+         "line": 132,
+         "character": 18
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/openssl/pkey.rb",
+       "targetRange": {
+        "start": {
+         "line": 198,
+         "character": 6
+        },
+        "end": {
+         "line": 211,
+         "character": 9
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 198,
+         "character": 10
+        },
+        "end": {
+         "line": 198,
+         "character": 18
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/4.0.0/openssl/pkey.rb",
+       "targetRange": {
+        "start": {
+         "line": 380,
+         "character": 6
+        },
+        "end": {
+         "line": 385,
+         "character": 9
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 380,
+         "character": 10
+        },
+        "end": {
+         "line": 380,
+         "character": 18
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/gems/4.0.0/gems/racc-1.8.1/lib/racc/statetransitiontable.rb",
+       "targetRange": {
+        "start": {
+         "line": 69,
+         "character": 4
+        },
+        "end": {
+         "line": 80,
+         "character": 7
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 69,
+         "character": 8
+        },
+        "end": {
+         "line": 69,
+         "character": 16
+        }
+       }
+      },
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/gems/4.0.0/gems/racc-1.8.1/lib/racc/statetransitiontable.rb",
+       "targetRange": {
+        "start": {
+         "line": 267,
+         "character": 4
+        },
+        "end": {
+         "line": 288,
+         "character": 7
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 267,
+         "character": 8
+        },
+        "end": {
+         "line": 267,
+         "character": 16
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "upcase",
+     "position": {
+      "line": 8,
+      "character": 9
+     },
+     "seconds": 0.002,
+     "result": [
+      {
+       "targetUri": "file://<spike gem dir>/gems/rbs-4.2.0/core/string.rbs",
+       "targetRange": {
+        "start": {
+         "line": 5449,
+         "character": 2
+        },
+        "end": {
+         "line": 5452,
+         "character": 46
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 5449,
+         "character": 2
+        },
+        "end": {
+         "line": 5452,
+         "character": 46
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "hover",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.006,
+     "result": {
+      "contents": {
+       "kind": "markdown",
+       "value": "```ruby\nGreeter\n```\n\n**Definitions**: [greeter.rb](file:///fixture/lib/greeter.rb#L3,1-11,4)"
+      }
+     }
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "processor_count",
+     "position": {
+      "line": 9,
+      "character": 11
+     },
+     "seconds": 0.0,
+     "result": [
+      {
+       "targetUri": "file://<ruby prefix>/lib/ruby/gems/4.0.0/gems/parallel-2.3.0/lib/parallel.rb",
+       "targetRange": {
+        "start": {
+         "line": 367,
+         "character": 4
+        },
+        "end": {
+         "line": 369,
+         "character": 7
+        }
+       },
+       "targetSelectionRange": {
+        "start": {
+         "line": 367,
+         "character": 8
+        },
+        "end": {
+         "line": 367,
+         "character": 23
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "request",
+     "method": "textDocument/diagnostic",
+     "seconds": 0.0,
+     "result": {
+      "kind": "full",
+      "items": []
+     }
+    },
+    {
+     "do": "request",
+     "method": "textDocument/formatting",
+     "seconds": 0.0,
+     "result": null
+    },
+    {
+     "do": "hover",
+     "path": "app.rb",
+     "at": "upcase",
+     "position": {
+      "line": 8,
+      "character": 9
+     },
+     "seconds": 0.002,
+     "result": {
+      "contents": {
+       "kind": "markdown",
+       "value": "```ruby\nupcase()\n(+3 overloads)\n```\n\n**Definitions**: [string.rbs](file://<spike gem dir>/gems/rbs-4.2.0/core/string.rbs#L5450,3-5453,47)\n\n\n\n<!--\n  rdoc-file=string.c\n  - upcase(mapping = :ascii) -> new_string\n-->\nReturns a new string containing the upcased characters in `self`:\n\n    'hello'.upcase        # => \"HELLO\"\n    'straße'.upcase       # => \"STRASSE\"\n    'привет'.upcase       # => \"ПРИВЕТ\"\n    'RubyGems.org'.upcase # => \"RUBYGEMS.ORG\"\n\nThe sizes of `self` and the upcased result may differ:\n\n    s = 'Straße'\n    s.size        # => 6\n    s.upcase      # => \"STRASSE\"\n    s.upcase.size # => 7\n\nSome characters (and some character sets) do not have upcase and downcase\nversions; see [Case Mapping](rdoc-ref:case_mapping.rdoc):\n\n    s = '1, 2, 3, ...'\n    s.upcase == s # => true\n    s = 'こんにちは'\n    s.upcase == s # => true\n\nThe casing is affected by the given `mapping`, which may be\n<code>:ascii</code>, <code>:fold</code>, or <code>:turkic</code>; see [Case\nMappings](rdoc-ref:case_mapping.rdoc@Case+Mappings).\n\nRelated: see [Converting to New\nString](rdoc-ref:String@Converting+to+New+String)."
+      }
+     }
+    },
+    {
+     "do": "references",
+     "path": "app.rb",
+     "at": "Greeter.new",
+     "position": {
+      "line": 5,
+      "character": 4
+     },
+     "seconds": 0.008,
+     "result": [
+      {
+       "uri": "file:///fixture/lib/greeter.rb",
+       "range": {
+        "start": {
+         "line": 2,
+         "character": 6
+        },
+        "end": {
+         "line": 2,
+         "character": 13
+        }
+       }
+      },
+      {
+       "uri": "file:///fixture/app.rb",
+       "range": {
+        "start": {
+         "line": 5,
+         "character": 4
+        },
+        "end": {
+         "line": 5,
+         "character": 11
+        }
+       }
+      }
+     ]
+    },
+    {
+     "do": "change",
+     "path": "app.rb",
+     "version": 2,
+     "text": "# frozen_string_literal: true\n\nrequire_relative \"lib/greeter\"\nrequire \"json\"\n\ng = Greeter.new(\"world\")\nputs g.greet\nputs JSON.generate({ a: 1 })\nputs \"x\".upcase\np Parallel.processor_count\np RuboCop::Version::STRING\n\ndef shout(s) = s.upcase\nshout(\"hi\")\n"
+    },
+    {
+     "do": "definition",
+     "path": "app.rb",
+     "at": "shout(\"hi\")",
+     "position": {
+      "line": 13,
+      "character": 0
+     },
+     "seconds": 0.002,
+     "result": []
+    },
+    {
+     "do": "wait",
+     "seconds": 1
+    }
+   ],
+   "serverMessages": [
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Initializing Ruby LSP v0.26.11 https://github.com/Shopify/ruby-lsp/releases/tag/v0.26.11...."
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Using formatter specified by user: none"
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Using linters specified by user: "
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Detected test library: unknown (no test library detected)"
+     },
+     "jsonrpc": "2.0"
+    },
+    {
+     "method": "window/logMessage",
+     "params": {
+      "type": 4,
+      "message": "Finished initializing Ruby LSP!"
+     },
+     "jsonrpc": "2.0"
+    }
+   ],
+   "shutdown": {
+    "result": null,
+    "exitCode": 0
+   },
+   "writtenUnderWatchedDirs": [],
+   "stderr": [],
+   "notes": [
+    "No add-on ran (no ADDON_RAN), no RuboCop, no writes, stderr empty.",
+    "enabledFeatures:false removes completion, codeAction, formatting and diagnosticProvider from the capabilities; rename and documentRangeFormatting stay advertised. textDocument/diagnostic is still answered (empty full report); formatting answers null.",
+    "Navigation answers equal B1."
+   ]
+  }
+ },
+ "notChecked": [
+  "Index time on a real project and the $/progress sequence (window.workDoneProgress advertised): a further run was not approved in this session.",
+  "The wrapper on a project without a Gemfile and without BUNDLE_GEMFILE.",
+  "Forwarding saved-file changes (workspace/didChangeWatchedFiles) and re-indexing open drafts through documentSymbol.",
+  "ruby-lsp from a project bundle (Gemfile.lock listing ruby-lsp), Linux, SSH/WSL, Rails projects."
+ ]
+}
