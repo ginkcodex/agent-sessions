@@ -22,5 +22,5 @@ paint; those are checked by hand in FS-09.
 | [FS-06](FS-06.md) | ✅ Done | Editor and viewer font family and size | 4 h | FS-03 |
 | [FS-07](FS-07.md) | ✅ Done | Project docs preview size | 1 h | FS-01, FS-03 |
 | [FS-08](FS-08.md) | ✅ Done | Session text size and scroll position | 3 h | FS-02, FS-03 |
-| [FS-09](FS-09.md) | ⬜ Not started | Regression gate and manual check | 3 h | FS-05, FS-06, FS-07, FS-08, FS-10 |
+| [FS-09](FS-09.md) | 🟡 Partial: desktop apps not checked | Regression gate and manual check | 3 h | FS-05, FS-06, FS-07, FS-08, FS-10 |
 | [FS-10](FS-10.md) | ✅ Done | Keep the viewer's place when the editor or docs size changes | 1 h | FS-06, FS-07 |

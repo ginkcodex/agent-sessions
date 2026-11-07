@@ -1,6 +1,9 @@
 # Font settings: editor, project docs and session content
 
-Planned 2026-11-07. Tasks: [font-settings](../tasks/font-settings/README.md).
+Planned 2026-11-07. Status: **implemented in the frontend** (FS-01–FS-08,
+FS-10). The FS-09 gate is partial: tests and Chromium checks pass, but the
+manual pass in the WebKitGTK and WebView2 desktop apps has not been run.
+Tasks: [font-settings](../tasks/font-settings/README.md).
 
 Request: let the user change the font size of the code editor, the project
 docs preview and the session content in Settings, and choose the editor's
