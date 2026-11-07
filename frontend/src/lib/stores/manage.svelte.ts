@@ -22,7 +22,7 @@ import { translateSettings } from './translate.svelte';
 import { isDisconnectedError, isStaleReply } from '../link';
 
 /** The sections of the Settings dialog. */
-export type SettingsSection = 'general' | 'agents' | 'translation' | 'terminal' | 'management' | 'handoff' | 'checks';
+export type SettingsSection = 'general' | 'appearance' | 'agents' | 'translation' | 'terminal' | 'management' | 'handoff' | 'checks';
 
 export class ManageStore {
   settings = $state<ManageSettings>({

@@ -15,9 +15,11 @@
     hint: string;
     sampleLabel: string;
     sampleLines: string[];
+    /** The sample's font size, a CSS length; 13px by default. */
+    sampleSize?: string;
   }
 
-  let { heading, ariaLabel, value, onChange, hint, sampleLabel, sampleLines }: Props = $props();
+  let { heading, ariaLabel, value, onChange, hint, sampleLabel, sampleLines, sampleSize }: Props = $props();
 
   let fonts = $derived(installedFonts.fonts);
   let loading = $derived(installedFonts.loading);
@@ -41,7 +43,7 @@
   <p class="hint">{hint}</p>
   {#if selectedMissing}<p class="error">The selected font is no longer installed. A system monospace fallback will be used.</p>{/if}
   {#if error}<p class="error" role="alert">Could not list installed fonts: {error}</p>{/if}
-  <div class="sample" style:font-family={monoFontFamily(value, 'var(--font-mono)')} aria-label={sampleLabel}>
+  <div class="sample" style:font-family={monoFontFamily(value, 'var(--font-mono)')} style:font-size={sampleSize} aria-label={sampleLabel}>
     {#each sampleLines as line, i}{#if i > 0}<br />{/if}{line}{/each}
   </div>
 </div>

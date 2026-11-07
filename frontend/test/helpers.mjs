@@ -315,3 +315,22 @@ export async function loadRemoteCommandNote() {
   ]);
   return remoteCommandNoteModule;
 }
+
+let appearanceSettingsModule;
+
+/** Settings → Appearance with the real stepper, sample and font picker; `preferences` and `installedFonts` come from the fixture. */
+export function loadAppearanceSettings() {
+  const common = new URL('../src/lib/components/common/', import.meta.url);
+  const appearance = JSON.stringify(new URL('../src/lib/appearance.ts', import.meta.url).href);
+  appearanceSettingsModule ??= (async () => {
+    globalThis.__sizeStepper = (await loadServerComponent(new URL('SizeStepper.svelte', common), [["'../../appearance'", appearance]])).default;
+    globalThis.__typeSample = (await loadServerComponent(new URL('TypeSample.svelte', common), [])).default;
+    return loadServerComponent(new URL('AppearanceSettings.svelte', common), [
+      ["'../../appearance'", appearance],
+      ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
+      ["import SizeStepper from './SizeStepper.svelte';", 'const SizeStepper = globalThis.__sizeStepper;'],
+      ["import TypeSample from './TypeSample.svelte';", 'const TypeSample = globalThis.__typeSample;'],
+    ]);
+  })();
+  return appearanceSettingsModule;
+}

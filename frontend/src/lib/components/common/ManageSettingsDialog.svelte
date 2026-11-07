@@ -3,6 +3,7 @@
   import DialogCloseButton from './DialogCloseButton.svelte';
   import TerminalFontSetting from './TerminalFontSetting.svelte';
   import CodingAgentsSettings from './CodingAgentsSettings.svelte';
+  import AppearanceSettings from './AppearanceSettings.svelte';
   import { manage, type SettingsSection } from '../../stores/manage.svelte';
   import { launcher } from '../../stores/launcher.svelte';
   import { terminals } from '../../stores/terminals.svelte';
@@ -25,6 +26,7 @@
     (
       [
         { id: 'general', label: 'General' },
+        { id: 'appearance', label: 'Appearance' },
         { id: 'agents', label: 'Coding agents' },
         { id: 'translation', label: 'Translation' },
         { id: 'terminal', label: 'Terminal', hidden: !launcher.info.panel && !launcher.info.chooseTerminal },
@@ -141,6 +143,8 @@
               </div>
               <p class="hint">Used for message, session and list timestamps on every host. Local time follows this computer's time zone.</p>
             </section>
+          {:else if section === 'appearance'}
+            <AppearanceSettings />
           {:else if section === 'agents'}
             <CodingAgentsSettings />
           {:else if section === 'translation'}
