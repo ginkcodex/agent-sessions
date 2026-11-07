@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { openMode } from '../src/lib/terminal.ts';
-import { fixtureStore, loadServerComponent, renderWithFixture } from './helpers.mjs';
+import { fixtureStore, loadAppearanceSettings, loadServerComponent, loadTerminalFontSetting, renderWithFixture } from './helpers.mjs';
 
 const SETTINGS_DIALOG_URL = new URL('../src/lib/components/common/ManageSettingsDialog.svelte', import.meta.url);
 
@@ -22,13 +22,8 @@ async function renderSettingsDialog(
 ) {
   if (!settingsDialogModule) {
     globalThis.__dropdown = (await loadServerComponent(DROPDOWN_URL, [])).default;
-    const fontURL = new URL('./TerminalFontSetting.svelte', SETTINGS_DIALOG_URL);
-    globalThis.__terminalFontSetting = (await loadServerComponent(fontURL, [
-      ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
-      ["import { api } from '../../api';", 'const api = {};'],
-      ["'../../terminalFont'", JSON.stringify(new URL('../../terminalFont.ts', fontURL).href)],
-      ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
-    ])).default;
+    globalThis.__terminalFontSetting = (await loadTerminalFontSetting()).default;
+    globalThis.__appearanceSettings = (await loadAppearanceSettings()).default;
     const lib = (rel) => JSON.stringify(new URL(rel, SETTINGS_DIALOG_URL).href);
     settingsDialogModule = await loadServerComponent(SETTINGS_DIALOG_URL, [
       ["'../../format'", lib('../../format.ts')],
@@ -38,9 +33,11 @@ async function renderSettingsDialog(
       ["'../../date'", lib('../../date.ts')],
       ["'../../codeLanguages'", lib('../../codeLanguages.ts')],
       ["import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';", fixtureStore('codeDiagnostics')],
+      ["import { installedFonts } from '../../stores/installedFonts.svelte';", 'const installedFonts = { markStale() {} };'],
       ["import Dropdown from './Dropdown.svelte';", 'const Dropdown = globalThis.__dropdown;'],
       ["import TerminalFontSetting from './TerminalFontSetting.svelte';", 'const TerminalFontSetting = globalThis.__terminalFontSetting;'],
       ["import CodingAgentsSettings from './CodingAgentsSettings.svelte';", 'const CodingAgentsSettings = () => {};'],
+      ["import AppearanceSettings from './AppearanceSettings.svelte';", 'const AppearanceSettings = globalThis.__appearanceSettings;'],
       ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
       ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
       ["import { terminals } from '../../stores/terminals.svelte';", fixtureStore('terminals')],
@@ -155,7 +152,7 @@ test('Settings lists its sections in a side navigation', async () => {
   const info = { terminal: true, chooseTerminal: true, shell: 'posix' };
   const html = await renderSettingsDialog({ info });
   const tabs = [...html.matchAll(/role="tab"[^>]*>([^<]+)<\/button>/g)].map((m) => m[1]);
-  assert.deepEqual(tabs, ['General', 'Coding agents', 'Translation', 'Terminal', 'Session management', 'Handoff files', 'Code checks']);
+  assert.deepEqual(tabs, ['General', 'Appearance', 'Coding agents', 'Translation', 'Terminal', 'Session management', 'Handoff files', 'Code checks']);
   assert.match(html, /aria-selected="true"[^>]*>General</);
   assert.doesNotMatch(html, /Enable session management|Handoff files<\/h3>/);
 
@@ -164,6 +161,11 @@ test('Settings lists its sections in a side navigation', async () => {
   assert.match(management, /Allow permanent deletion/);
   assert.match(management, /Also remove deleted sessions from prompt history/);
   assert.doesNotMatch(management, /<h3[^>]*>Transcript<\/h3>/);
+
+  const appearance = await renderSettingsDialog({ info }, { editorFont: '', editorFontSize: null, docsFontSize: null, sessionFontSize: 18 }, { section: 'appearance' });
+  assert.match(appearance, /aria-selected="true"[^>]*>Appearance</);
+  assert.match(appearance, /<h3[^>]*>Session content<\/h3>/);
+  assert.match(appearance, /aria-live="polite">18px</);
 
   const handoff = await renderSettingsDialog({ info }, undefined, { section: 'handoff' });
   assert.match(handoff, /<h3[^>]*>Handoff files<\/h3>/);

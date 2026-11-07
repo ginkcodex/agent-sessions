@@ -11,6 +11,7 @@
   import { theme } from '../../stores/theme.svelte';
   import { preferences } from '../../stores/preferences.svelte';
   import { terminalFontFamily } from '../../terminalFont';
+  import { FONT_SIZES } from '../../appearance';
   import { TerminalResize } from '../../terminalResize';
   import { splitShortcutLabel, terminalFindShortcutLabel, terminalKeyAction, terminalKeySequence, terminalTabShortcut, terminalTheme } from '../../terminal';
   import { TERMINAL_FIND_LIMIT, TerminalFind } from '../../terminalFind.svelte';
@@ -62,10 +63,10 @@
     let cleanup = () => {};
     // Cells are measured when the terminal opens, so the font must be there.
     const font = terminalFontFamily(preferences.terminalFont, cssVar('--font-mono'));
-    const ready = document.fonts?.load ? document.fonts.load(`13px ${font}`).catch(() => {}) : Promise.resolve();
-    void ready.then(() => {
+    const size = terminalFontSize();
+    void loadFont(size, font).then(() => {
       if (disposed) return;
-      cleanup = create(font);
+      cleanup = create(font, size);
     });
     return () => {
       disposed = true;
@@ -73,10 +74,18 @@
     };
   });
 
-  function create(font: string): () => void {
+  function terminalFontSize(): number {
+    return preferences.terminalFontSize ?? FONT_SIZES.terminal.default;
+  }
+
+  function loadFont(size: number, font: string): Promise<unknown> {
+    return document.fonts?.load ? document.fonts.load(`${size}px ${font}`).catch(() => {}) : Promise.resolve();
+  }
+
+  function create(font: string, size: number): () => void {
     const t = new Terminal({
       fontFamily: font,
-      fontSize: 13,
+      fontSize: size,
       cursorBlink: true,
       cursorStyle: 'bar',
       scrollback: 5000,
@@ -270,15 +279,18 @@
     if (text && tab.status === 'running') term?.paste(text);
   }
 
+  // A new font or size (Settings → Terminal) measures the cells again; the
+  // refit tells the program its new columns and rows.
   $effect(() => {
     const font = terminalFontFamily(preferences.terminalFont, cssVar('--font-mono'));
+    const size = terminalFontSize();
     const t = term;
-    if (!t || t.options.fontFamily === font) return;
+    if (!t || (t.options.fontFamily === font && t.options.fontSize === size)) return;
     let current = true;
-    const ready = document.fonts?.load ? document.fonts.load(`13px ${font}`).catch(() => {}) : Promise.resolve();
-    void ready.then(() => {
+    void loadFont(size, font).then(() => {
       if (!current || term !== t) return;
       t.options.fontFamily = font;
+      t.options.fontSize = size;
       resize();
     });
     return () => { current = false; };

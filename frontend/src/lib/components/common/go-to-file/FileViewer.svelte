@@ -5,6 +5,7 @@
   import type { CodeDiagnostic, CodeDiagnosticRange } from '../../../codeDiagnostics';
   import { problemPath, problemLocation, fileLinkRange, rangeOffsets, revealSourceRange, matchesProblemNavigation, type ProblemNavigationRequest } from '../../../problemNavigation';
   import { firstVisibleSourceLine, type FilePosition } from '../../../filePosition';
+  import { firstVisibleRow, restoreRow, rowAnchor } from '../../../scrollAnchor';
   import type { EditorSymbols } from '../../../fileEditor';
   import { isBlameableLine, selectFileLine, type FileLineSelection } from '../../../fileSelection';
   import type { BlameLine } from '../../../types';
@@ -678,6 +679,32 @@
     getHtmlLines: () => htmlLines,
     getWrap: () => files.wrap,
     getPresentationFontSize: () => presentationFontSize,
+    getFontSetting: () => `${preferences.editorFont}\n${preferences.editorFontSize}\n${preferences.docsFontSize}`,
+  });
+
+  // A new editor font or size, or docs size, keeps the first visible source
+  // line or Markdown block in place. Taken before the new size lays out; put
+  // back after the update, which includes App's root properties.
+  $effect.pre(() => {
+    void preferences.editorFont; void preferences.editorFontSize; void preferences.docsFontSize;
+    untrack(() => {
+      const el = codeScroll;
+      if (!el?.isConnected || editing) return;
+      let row: HTMLElement | null;
+      if (showMarkdown) {
+        const blocks = find.previewEl?.querySelector('.markdown-doc')?.children;
+        row = blocks ? firstVisibleRow(el, blocks as HTMLCollectionOf<HTMLElement>) : null;
+      } else {
+        const lines = el.querySelectorAll<HTMLElement>('[data-source-line]');
+        row = lines[firstVisibleSourceLine(lines, el.getBoundingClientRect().top)] ?? null;
+      }
+      if (!row) return;
+      const anchor = rowAnchor(el, row);
+      const kept = row;
+      void tick().then(() => {
+        if (kept.isConnected && el.isConnected) restoreRow(el, kept, anchor);
+      });
+    });
   });
 
   let changeStarts = $derived(showDiff ? diffChangeStarts(rows) : []);
@@ -692,7 +719,7 @@
     changeCurrent = -1;
   });
   $effect(() => {
-    void rows; void htmlLines; void files.wrap; void presentationFontSize;
+    void rows; void htmlLines; void files.wrap; void presentationFontSize; void preferences.editorFont; void preferences.editorFontSize;
     changeLines = changeNavigationShown && find.codeEl ? [...find.codeEl.querySelectorAll<HTMLElement>('.line')] : [];
   });
   function stepChange(direction: number) {
@@ -1461,7 +1488,7 @@
       >
         {#if showMarkdown}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="markdown-preview" bind:this={find.previewEl} oncontextmenu={openPreviewMenu} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14.5px'}
+          <div class="markdown-preview" bind:this={find.previewEl} oncontextmenu={openPreviewMenu} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : 'var(--docs-font-size, 14.5px)'}
             onmouseover={(event) => hoveredPreviewLink = browserLinkDestination(event.target, event.currentTarget)}
             onmouseout={(event) => hoveredPreviewLink = browserLinkDestination(event.relatedTarget, event.currentTarget)}
             onmouseleave={() => hoveredPreviewLink = ''}

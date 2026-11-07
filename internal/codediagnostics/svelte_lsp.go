@@ -386,8 +386,9 @@ type svelteWorkspace struct {
 // that declares svelte or @sveltejs/kit (parsed as JSON, bounded). Companion
 // package/tsconfig/jsconfig/vite.config files bind into the approval
 // fingerprint. Parent
-// directories are never promoted; node_modules, hidden directories and
-// symlinks are skipped (hidden/symlink ⇒ partial).
+// directories are never promoted; node_modules, hidden directories,
+// symlinks and folders Git ignores are skipped (hidden/symlink ⇒ partial).
+// Files come before folders.
 func discoverSveltePackages(root AuthorizedRoot) (svelteWorkspace, error) {
 	var w svelteWorkspace
 	r, err := os.OpenRoot(root.Project().Root)
@@ -395,9 +396,14 @@ func discoverSveltePackages(root AuthorizedRoot) (svelteWorkspace, error) {
 		return w, failure("unauthorized", "Svelte discovery root cannot be opened")
 	}
 	defer func() { _ = r.Close() }()
+	scope := newGitScope(root)
 	entries := 0
 	var walk func(string, int)
 	walk = func(dir string, depth int) {
+		if entries >= maxSvelteEntries {
+			w.partial = true
+			return
+		}
 		f, err := r.Open(dir)
 		if err != nil {
 			w.partial = true
@@ -409,14 +415,15 @@ func discoverSveltePackages(root AuthorizedRoot) (svelteWorkspace, error) {
 			w.partial = true
 			return
 		}
-		slices.SortFunc(ds, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+		slices.SortFunc(ds, filesFirst)
 		var files []string
 		svelte := false
 		for _, d := range ds {
 			entries++
 			if entries > maxSvelteEntries {
+				// This folder still records the markers read so far.
 				w.partial = true
-				return
+				break
 			}
 			rel := filepath.Join(dir, d.Name())
 			portable := filepath.ToSlash(rel)
@@ -431,6 +438,9 @@ func discoverSveltePackages(root AuthorizedRoot) (svelteWorkspace, error) {
 				}
 				if strings.HasPrefix(n, ".") || depth >= 32 {
 					w.partial = true
+					continue
+				}
+				if scope.skip(r, portable) {
 					continue
 				}
 				walk(rel, depth+1)

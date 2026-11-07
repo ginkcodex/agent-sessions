@@ -2,8 +2,17 @@ import { isTranscriptMode, type TranscriptMode } from '../transcript';
 import { isTimeZoneMode, type TimeZoneMode } from '../date';
 import { isTerminalFont } from '../terminalFont';
 import { codeLanguageIds, type CodeLanguageId } from '../codeLanguages';
+import { fontSize, type FontSizeKind } from '../appearance';
 
 const TERMINAL_FONT_KEY = 'agent-sessions:terminal-font';
+const EDITOR_FONT_KEY = 'agent-sessions:editor-font';
+const FONT_SIZE_KEYS: Record<FontSizeKind, string> = {
+  editor: 'agent-sessions:editor-font-size',
+  docs: 'agent-sessions:docs-font-size',
+  session: 'agent-sessions:session-font-size',
+  terminal: 'agent-sessions:terminal-font-size',
+};
+const FONT_SIZE_FIELDS = { editor: 'editorFontSize', docs: 'docsFontSize', session: 'sessionFontSize', terminal: 'terminalFontSize' } as const;
 
 const STORAGE_KEY = 'agent-sessions:pane-widths';
 const TIME_ZONE_KEY = 'agent-sessions:time-zone';
@@ -33,6 +42,13 @@ export class PreferencesStore {
   // Zone for message and session timestamps.
   timeZone = $state<TimeZoneMode>('utc');
   terminalFont = $state('');
+  // Settings → Terminal; null is xterm.js's 13px.
+  terminalFontSize = $state<number | null>(null);
+  // Font settings (Settings → Appearance); '' and null keep the app defaults.
+  editorFont = $state('');
+  editorFontSize = $state<number | null>(null);
+  docsFontSize = $state<number | null>(null);
+  sessionFontSize = $state<number | null>(null);
   // Like Zed, download a missing language server a project needs without a click.
   autoInstallLanguageServers = $state(true);
   // Languages that get no code checks or navigation; every language is on by default.
@@ -75,6 +91,21 @@ export class PreferencesStore {
       if (isTerminalFont(font)) this.terminalFont = font;
     } catch {
       // Storage disabled; keep the app default.
+    }
+
+    try {
+      const font = localStorage.getItem(EDITOR_FONT_KEY);
+      if (isTerminalFont(font)) this.editorFont = font;
+    } catch {
+      // Storage disabled; keep the app default.
+    }
+
+    for (const kind of Object.keys(FONT_SIZE_KEYS) as FontSizeKind[]) {
+      try {
+        this[FONT_SIZE_FIELDS[kind]] = fontSize(kind, localStorage.getItem(FONT_SIZE_KEYS[kind]));
+      } catch {
+        // Storage disabled; keep the default size.
+      }
     }
 
     try {
@@ -151,6 +182,30 @@ export class PreferencesStore {
       localStorage.setItem(TERMINAL_FONT_KEY, font);
     } catch {
       // Storage disabled; selection still applies for this run.
+    }
+  }
+
+  setEditorFont(font: string): void {
+    if (!isTerminalFont(font)) return;
+    this.editorFont = font;
+    try {
+      if (font) localStorage.setItem(EDITOR_FONT_KEY, font);
+      else localStorage.removeItem(EDITOR_FONT_KEY);
+    } catch {
+      // Storage disabled; selection still applies for this run.
+    }
+  }
+
+  /** Sets a body text size; null goes back to the default. Invalid sizes are ignored. */
+  setFontSize(kind: FontSizeKind, size: number | null): void {
+    const valid = size === null ? null : fontSize(kind, size);
+    if (size !== null && valid === null) return;
+    this[FONT_SIZE_FIELDS[kind]] = valid;
+    try {
+      if (valid === null) localStorage.removeItem(FONT_SIZE_KEYS[kind]);
+      else localStorage.setItem(FONT_SIZE_KEYS[kind], String(valid));
+    } catch {
+      // Storage disabled; the size still applies for this run.
     }
   }
 

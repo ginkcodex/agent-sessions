@@ -1,52 +1,26 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { api } from '../../api';
+  import { FONT_SIZES } from '../../appearance';
   import { preferences } from '../../stores/preferences.svelte';
-  import { terminalFontFamily } from '../../terminalFont';
-  import Dropdown from './Dropdown.svelte';
-
-  let fonts = $state<string[]>([]);
-  let loading = $state(true);
-  let error = $state('');
-  let selectedMissing = $derived(Boolean(preferences.terminalFont) && !loading && !error && !fonts.includes(preferences.terminalFont));
-  let fontOptions = $derived([
-    { value: '', label: 'App default (JetBrains Mono)' },
-    ...(preferences.terminalFont && !fonts.includes(preferences.terminalFont) ? [{ value: preferences.terminalFont, label: selectedMissing ? `${preferences.terminalFont} (unavailable)` : preferences.terminalFont }] : []),
-    ...fonts.map(font => ({ value: font, label: font })),
-  ]);
-
-  async function refresh() {
-    loading = true;
-    error = '';
-    try { fonts = await api.terminalFonts(); }
-    catch (err) { error = err instanceof Error ? err.message : String(err); }
-    finally { loading = false; }
-  }
-
-  onMount(() => { void refresh(); });
+  import MonoFontSetting from './MonoFontSetting.svelte';
+  import SizeStepper from './SizeStepper.svelte';
 </script>
 
-<div class="font-setting">
-  <h4>Built-in terminal font</h4>
-  <div class="font-row">
-    <Dropdown ariaLabel="Built-in terminal font" options={fontOptions} value={preferences.terminalFont} disabled={loading} onChange={(font) => preferences.setTerminalFont(font)} />
-    <button type="button" onclick={() => void refresh()} disabled={loading} aria-label="Refresh installed fonts">{loading ? 'Loading…' : 'Refresh'}</button>
-  </div>
-  <p class="hint">Choose a monospace font installed on this computer, including Nerd Fonts. No additional fonts are bundled or downloaded. Applies immediately to all built-in terminals.</p>
-  {#if selectedMissing}<p class="error">The selected font is no longer installed. A system monospace fallback will be used.</p>{/if}
-  {#if error}<p class="error" role="alert">Could not list installed fonts: {error}</p>{/if}
-  <div class="sample" style:font-family={terminalFontFamily(preferences.terminalFont, 'var(--font-mono)')} aria-label="Terminal font preview">user@host ~/project ❯ git status<br />0123456789 ─│┌┐└┘   </div>
+<MonoFontSetting
+  heading="Built-in terminal font"
+  ariaLabel="Built-in terminal font"
+  value={preferences.terminalFont}
+  onChange={(font) => preferences.setTerminalFont(font)}
+  hint="Choose a monospace font installed on this computer, including Nerd Fonts. No additional fonts are bundled or downloaded. Applies immediately to all built-in terminals."
+  sampleLabel="Terminal font preview"
+  sampleLines={['user@host ~/project ❯ git status', '0123456789 ─│┌┐└┘ \uE0A0 \uE0B0 \uF115']}
+  sampleSize="{preferences.terminalFontSize ?? FONT_SIZES.terminal.default}px"
+/>
+<div class="size-setting">
+  <h4>Built-in terminal text size</h4>
+  <SizeStepper kind="terminal" label="Terminal text size" value={preferences.terminalFontSize} onChange={(size) => preferences.setFontSize('terminal', size)} />
 </div>
 
 <style>
-  .font-setting { margin-top: 20px; }
+  .size-setting { margin-top: 16px; }
   h4 { margin: 0 0 8px; font-size: 0.85rem; }
-  .font-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  button { flex-shrink: 0; height: 24px; padding: 0 10px; border: none; border-radius: var(--radius-sm); color: var(--text-primary); background: var(--btn-bg); font-size: 0.72rem; font-weight: 500; cursor: pointer; transition: background-color var(--dur-fast) var(--ease-out); }
-  button:hover:not(:disabled) { background: var(--btn-bg-hover); }
-  button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
-  button:disabled { opacity: 0.6; }
-  .hint, .error { font-size: 0.78rem; line-height: 1.5; margin: 8px 0; }
-  .hint { color: var(--text-muted); } .error { color: var(--danger, #ef4444); }
-  .sample { padding: 12px; border-radius: var(--radius-md); background: var(--bg-secondary); font-size: 13px; line-height: 1.6; overflow-x: auto; white-space: nowrap; }
 </style>

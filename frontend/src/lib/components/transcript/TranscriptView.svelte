@@ -22,6 +22,8 @@
   import { messageFileRecovery } from '../../messageFileOpen';
   import { browserLinkDestination } from '../../linkPreview';
   import { preferences } from '../../stores/preferences.svelte';
+  import { sessionFontVar } from '../../appearance';
+  import { firstVisibleMessage, restoreMessage, type MessageAnchor } from '../../transcriptAnchor';
   import { epoch, isStaleReply } from '../../link';
   import { mixesRevisions, TranscriptRefresher, windowOf, type TranscriptWindow } from '../../transcriptRefresh';
   import type { TranscriptMode } from '../../transcript';
@@ -394,13 +396,7 @@
 
   // The first message whose bottom is below the top of the view.
   function topMessageIndex(): number {
-    const el = containerEl;
-    if (!el) return -1;
-    const top = el.getBoundingClientRect().top;
-    for (const row of el.querySelectorAll<HTMLElement>('[data-message-index]')) {
-      if (row.getBoundingClientRect().bottom > top) return Number(row.dataset.messageIndex);
-    }
-    return -1;
+    return (containerEl && firstVisibleMessage(containerEl)?.index) ?? -1;
   }
 
   function toggleFind(): void {
@@ -580,6 +576,29 @@
     return () => observer.disconnect();
   });
 
+  // The session text size (Settings → Appearance); undefined at the default.
+  let sessionFontSize = $derived(sessionFontVar(preferences.sessionFontSize));
+  // A size change keeps the reader's place. Following or anchored, the
+  // ResizeObserver above keeps the end in view; otherwise the first visible
+  // message is taken before the new size renders and put back after.
+  let fontAnchor: MessageAnchor | null = null;
+  $effect.pre(() => {
+    void sessionFontSize;
+    untrack(() => {
+      fontAnchor = containerEl && !following && !anchoredToBottom ? firstVisibleMessage(containerEl) : null;
+    });
+  });
+  $effect(() => {
+    void sessionFontSize;
+    untrack(() => {
+      const anchor = fontAnchor;
+      fontAnchor = null;
+      if (!anchor || !containerEl) return;
+      restoreMessage(containerEl, anchor);
+      lastScrollTop = containerEl.scrollTop;
+    });
+  });
+
   // Jump directly to a recent page instead of downloading all intervening history.
   async function scrollToBottom() {
     const ref = appState.selectedSessionRef;
@@ -723,6 +742,7 @@
     <div
       bind:this={containerEl}
       class="messages-scroll-area"
+      style:--session-font-size={sessionFontSize}
       role="region"
       aria-label="Messages list"
       onscroll={handleScroll}

@@ -30,6 +30,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [code-diagnostics.md](code-diagnostics.md) | [code-diagnostics](../tasks/code-diagnostics/README.md) | Go to File diagnostics: project checks, live language servers, trust, Problems panel, local/remote lifecycle |
 | [code-diagnostics-languages.md](code-diagnostics-languages.md) | [code-diagnostics-languages](../tasks/code-diagnostics-languages/README.md) | Choose in Settings which languages get code checks and Go to Definition; language registry, filtered discovery |
 | [code-diagnostics-ruby.md](code-diagnostics-ruby.md) | [code-diagnostics-ruby](../tasks/code-diagnostics-ruby/README.md) | Ruby code checks with RuboCop: runtime resolution, Bundler, standalone mode |
+| [code-diagnostics-ignore-scope.md](code-diagnostics-ignore-scope.md) | [code-diagnostics-ignore-scope](../tasks/code-diagnostics-ignore-scope/README.md) | Project discovery leaves out what Git ignores, still walks ignored nested repositories, and always sees a root marker |
 | [code-diagnostics-ruby-lsp.md](code-diagnostics-ruby-lsp.md) | [code-diagnostics-ruby-lsp](../tasks/code-diagnostics-ruby-lsp/README.md) | Ruby Go to definition, references and hover with ruby-lsp, beside RuboCop; add-ons not loaded |
 | [tool-installation.md](tool-installation.md) | [tool-installation](../tasks/tool-installation/README.md) | Consent-based managed language-server installation |
 | [editor-essentials.md](editor-essentials.md) | [editor-essentials](../tasks/editor-essentials/README.md) | Project search and replace, new agent sessions and alerts, code navigation, Git changes |
@@ -44,6 +45,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [selection-translate.md](selection-translate.md) | [selection-translate](../tasks/selection-translate/README.md) | Copy/Translate menu for a transcript selection, with its sentence as context |
 | [terminal-maximize.md](terminal-maximize.md) | [terminal-maximize](../tasks/terminal-maximize/README.md) | Maximize and restore the internal terminal without restarting sessions |
 | [terminal-split.md](terminal-split.md) | [terminal-split](../tasks/terminal-split/README.md) | Several shells side by side in one terminal tab |
+| [font-settings.md](font-settings.md) | [font-settings](../tasks/font-settings/README.md) | Settings → Appearance: editor font family and size; one type scale (ratios of body text) for project docs and session content, scaled by a body size |
 
 ## Supporting documents
 

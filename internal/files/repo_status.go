@@ -105,7 +105,7 @@ func GitRepoStatus(ctx context.Context, root string) (RepoStatus, error) {
 		return RepoStatus{}, err
 	}
 	run := func(args ...string) ([]byte, error) {
-		cmd := exec.CommandContext(ctx, git, append([]string{"--no-optional-locks", "-C", root, "-c", "core.quotepath=off", "-c", "status.relativePaths=false"}, args...)...)
+		cmd := exec.CommandContext(ctx, git, append(append(append([]string{"--no-optional-locks", "-C", root}, gitNoFsmonitor...), "-c", "core.quotepath=off", "-c", "status.relativePaths=false"), args...)...)
 		// Git's messages in English, so a missing repository can be told apart.
 		cmd.Env = append(os.Environ(), "LC_ALL=C")
 		hideConsole(cmd)

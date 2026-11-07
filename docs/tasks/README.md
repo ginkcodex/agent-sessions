@@ -36,6 +36,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Editor essentials | [editor-essentials](../plan/editor-essentials.md) | [editor-essentials/](editor-essentials/README.md) | 23/23 ✅ |
 | Git history | [git-history](../plan/git-history.md) | [git-history/](git-history/README.md) | 17/18 ✅ · 1 🟡 |
 | Code checks: choosing languages | [code-diagnostics-languages](../plan/code-diagnostics-languages.md) | [code-diagnostics-languages/](code-diagnostics-languages/README.md) | 8/8 ✅ |
+| Code checks: Git ignore rules in discovery | [code-diagnostics-ignore-scope](../plan/code-diagnostics-ignore-scope.md) | [code-diagnostics-ignore-scope/](code-diagnostics-ignore-scope/README.md) | 4/6 ✅ · 1 🟡 · 1 ⬜ |
 | Code checks: Ruby (RuboCop) | [code-diagnostics-ruby](../plan/code-diagnostics-ruby.md) | [code-diagnostics-ruby/](code-diagnostics-ruby/README.md) | 7/7 ✅ |
 | Ruby Go to definition (ruby-lsp) | [code-diagnostics-ruby-lsp](../plan/code-diagnostics-ruby-lsp.md) | [code-diagnostics-ruby-lsp/](code-diagnostics-ruby-lsp/README.md) | 12/14 ✅ · 1 🟡 · 1 ⬜ |
 | Performance M1: baselines and targeted reuse | [performance](../plan/performance.md) | [performance/](performance/README.md) | 13/15 ✅ · 1 🟡 · 1 ➖ |
@@ -49,5 +50,6 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Selected-text menu and contextual translation | [selection-translate](../plan/selection-translate.md) | [selection-translate/](selection-translate/README.md) | 5/5 ✅ |
 | Internal terminal maximization | [terminal-maximize](../plan/terminal-maximize.md) | [terminal-maximize/](terminal-maximize/README.md) | 2/2 ✅ |
 | Split terminals | [terminal-split](../plan/terminal-split.md) | [terminal-split/](terminal-split/README.md) | 4/4 ✅ |
+| Font settings: editor, docs and session content | [font-settings](../plan/font-settings.md) | [font-settings/](font-settings/README.md) | 10/11 ✅ · 1 🟡 |
 | Go to File editing | [file-editing](../plan/file-editing.md) | [file-editing/](file-editing/README.md) | 11/14 ✅ · 3 🟡 |
 | Wails v3 upgrade | [wails-v3-upgrade](../plan/wails-v3-upgrade.md) | [wails-v3-upgrade/](wails-v3-upgrade/README.md) | 1/2 ✅ · 1 ⬜ |

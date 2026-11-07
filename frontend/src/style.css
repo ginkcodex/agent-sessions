@@ -71,6 +71,19 @@
      button and input. */
   --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", "Noto Sans", "DejaVu Sans", Arial, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  /* Type scale: ratios of the body size. Every text size in session content
+     and the project docs preview is body × one of these, so all of it scales
+     with the body size. Add no other sizes there; use the nearest token. */
+  --type-h1: 1.43;
+  --type-h2: 1.25;
+  --type-h3: 1.08;
+  --type-body: 1;
+  --type-code: 0.92;
+  --type-small: 0.83;
+  --type-label: 0.79;
+  --type-tag: 0.75;
+  /* Inline code is relative to the text around it (× 1em), not the body. */
+  --type-inline-code: 0.85;
   color-scheme: light;
 }
 

@@ -156,7 +156,7 @@ func parseBlameLine(out string, line int) (BlameLine, error) {
 func blameGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	argv := append([]string{"-C", dir, "--literal-pathspecs", "-c", "core.quotepath=off"}, args...)
+	argv := append(append(append([]string{"-C", dir, "--literal-pathspecs"}, gitNoFsmonitor...), "-c", "core.quotepath=off"), args...)
 	cmd := exec.CommandContext(ctx, "git", argv...) //nolint:gosec
 	hideConsole(cmd)
 	var stderr bytes.Buffer

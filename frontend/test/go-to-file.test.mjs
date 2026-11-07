@@ -321,6 +321,13 @@ test('source wraps number/text pairs and labels change markers without diff sign
   assert.match(html, />1<\/button>[\s\S]*?>one<\/span>[\s\S]*?>2<\/button>[\s\S]*?>two<\/span>/);
 });
 
+test('source text takes the editor font setting unless presentation mode sets its own size', async () => {
+  const props = { rows: [{ kind: 'line', index: 0 }], plainLines: ['one'] };
+  // No inline size outside presentation: the stylesheet's var(--editor-font-size, 0.78rem) applies.
+  assert.doesNotMatch(classTag(await renderSource({}, props), 'div', 'source'), /font-size/);
+  assert.match(classTag(await renderSource({}, { ...props, presentation: true }), 'div', 'source'), /font-size: 22px/);
+});
+
 test('source selection highlights the range and exposes accessible line buttons', async () => {
   const html = await renderSource({}, {
     rows: [0, 1, 2].map(index => ({ kind: 'line', index })),

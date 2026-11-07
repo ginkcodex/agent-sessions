@@ -50,6 +50,7 @@ export async function loadServerModule(url, replacements) {
 let dialogCloseModule;
 let iconModule;
 let dropdownModule;
+let monoFontModule;
 let agentIconModule;
 const goToFileModules = {};
 
@@ -87,6 +88,18 @@ async function importCompiled(filename, code, replacements) {
     globalThis.__sharedDropdown = (await dropdownModule).default;
     replacements.push([dropdownImport, 'const Dropdown = globalThis.__sharedDropdown;']);
   }
+  // Font settings render the real shared picker. Its installed-font list comes
+  // from the fixture's `installedFonts`, or is still loading without one.
+  const monoFontImport = "import MonoFontSetting from './MonoFontSetting.svelte';";
+  if (code.includes(monoFontImport) && !replacements.some(([from]) => from === monoFontImport)) {
+    monoFontModule ??= loadServerComponent(new URL('../src/lib/components/common/MonoFontSetting.svelte', import.meta.url), [
+      ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
+      ["'../../terminalFont'", JSON.stringify(new URL('../src/lib/terminalFont.ts', import.meta.url).href)],
+      ["import { installedFonts } from '../../stores/installedFonts.svelte';", "const installedFonts = new Proxy({}, { get: (_, key) => (globalThis.__componentFixture?.installedFonts ?? { fonts: [], loading: true, error: '', ensure() {}, refresh() {} })[key] });"],
+    ]);
+    globalThis.__monoFontSetting = (await monoFontModule).default;
+    replacements.push([monoFontImport, 'const MonoFontSetting = globalThis.__monoFontSetting;']);
+  }
   // Go to File renders the real problem ruler and the unplaced-problems line.
   for (const [name, file] of [['OverviewRuler', 'OverviewRuler'], ['UnplacedDiagnostics', 'UnplacedDiagnostics']]) {
     const statement = `import ${name} from './${file}.svelte';`;
@@ -102,7 +115,7 @@ async function importCompiled(filename, code, replacements) {
     replacements.push([agentIconImport, 'const AgentIcon = globalThis.__agentIcon;']);
   }
   // Pure display-label helpers shared by the diagnostics components resolve to the real module.
-  for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../problemOverview'", 'problemOverview'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools'], ["'../codeLanguages'", 'codeLanguages'], ["'../../../codeLanguages'", 'codeLanguages'], ["'../../../date'", 'date']]) {
+  for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../problemOverview'", 'problemOverview'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools'], ["'../codeLanguages'", 'codeLanguages'], ["'../../../codeLanguages'", 'codeLanguages'], ["'../../../date'", 'date'], ["'../appearance'", 'appearance']]) {
     if (code.includes(module) && !replacements.some(([from]) => from === module)) {
       replacements.push([module, JSON.stringify(new URL(`../src/lib/${file}.ts`, import.meta.url).href)]);
     }
@@ -301,4 +314,47 @@ export async function loadRemoteCommandNote() {
     ["'../../hosts'", JSON.stringify(new URL('../../hosts.ts', REMOTE_COMMAND_NOTE_URL).href)],
   ]);
   return remoteCommandNoteModule;
+}
+
+let appearanceSettingsModule;
+let sizeStepperModule;
+let terminalFontSettingModule;
+
+const commonComponents = new URL('../src/lib/components/common/', import.meta.url);
+const appearanceModule = JSON.stringify(new URL('../src/lib/appearance.ts', import.meta.url).href);
+
+/** The real size stepper, as `globalThis.__sizeStepper` for the components that use it. */
+async function loadSizeStepper() {
+  sizeStepperModule ??= loadServerComponent(new URL('SizeStepper.svelte', commonComponents), [["'../../appearance'", appearanceModule]]);
+  globalThis.__sizeStepper = (await sizeStepperModule).default;
+}
+
+/** Settings → Terminal's font and size, with the real picker and stepper; `preferences` comes from the fixture. */
+export function loadTerminalFontSetting() {
+  terminalFontSettingModule ??= (async () => {
+    await loadSizeStepper();
+    return loadServerComponent(new URL('TerminalFontSetting.svelte', commonComponents), [
+      ["'../../appearance'", appearanceModule],
+      ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
+      ["import SizeStepper from './SizeStepper.svelte';", 'const SizeStepper = globalThis.__sizeStepper;'],
+    ]);
+  })();
+  return terminalFontSettingModule;
+}
+
+/** Settings → Appearance with the real stepper, sample and font picker; `preferences` and `installedFonts` come from the fixture. */
+export function loadAppearanceSettings() {
+  const common = commonComponents;
+  const appearance = appearanceModule;
+  appearanceSettingsModule ??= (async () => {
+    await loadSizeStepper();
+    globalThis.__typeSample = (await loadServerComponent(new URL('TypeSample.svelte', common), [])).default;
+    return loadServerComponent(new URL('AppearanceSettings.svelte', common), [
+      ["'../../appearance'", appearance],
+      ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
+      ["import SizeStepper from './SizeStepper.svelte';", 'const SizeStepper = globalThis.__sizeStepper;'],
+      ["import TypeSample from './TypeSample.svelte';", 'const TypeSample = globalThis.__typeSample;'],
+    ]);
+  })();
+  return appearanceSettingsModule;
 }

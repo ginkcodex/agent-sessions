@@ -28,7 +28,7 @@
 
 <style>
   .text-part-container {
-    font-size: 14.5px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-body));
     line-height: 1.6;
     color: var(--text-primary);
     word-break: break-word;
@@ -54,9 +54,9 @@
     line-height: 1.3;
   }
 
-  :global(.text-part-container h1) { font-size: 20.7px; }
-  :global(.text-part-container h2) { font-size: 18.2px; }
-  :global(.text-part-container h3) { font-size: 15.7px; }
+  :global(.text-part-container h1) { font-size: calc(var(--session-font-size, 14.5px) * var(--type-h1)); }
+  :global(.text-part-container h2) { font-size: calc(var(--session-font-size, 14.5px) * var(--type-h2)); }
+  :global(.text-part-container h3) { font-size: calc(var(--session-font-size, 14.5px) * var(--type-h3)); }
 
   :global(.text-part-container ul, .text-part-container ol) {
     margin: 0.5em 0;
@@ -78,7 +78,7 @@
 
   :global(.text-part-container .inline-code) {
     font-family: var(--font-mono);
-    font-size: 0.825em;
+    font-size: calc(var(--type-inline-code) * 1em);
     padding: 1px 5px;
     border-radius: 5px;
     background-color: var(--segment-track);
@@ -104,7 +104,7 @@
   :global(.text-part-container table) {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13.3px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-code));
     line-height: 1.5;
     font-variant-numeric: tabular-nums;
   }
@@ -170,7 +170,7 @@
   }
 
   :global(.text-part-container .code-lang-tag) {
-    font-size: 10.88px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
     font-family: var(--font-mono);
     font-weight: 500;
     color: var(--text-muted);
@@ -178,7 +178,7 @@
   }
 
   :global(.text-part-container .copy-code-btn, .text-part-container .mermaid-toggle-btn, .text-part-container .mermaid-expand-btn) {
-    font-size: 10.88px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
     font-weight: 500;
     padding: 2px 8px;
     border-radius: var(--radius-sm);
@@ -230,7 +230,7 @@
 
   :global(.text-part-container code.hljs) {
     font-family: var(--font-mono);
-    font-size: 13.3px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-code));
     line-height: 1.45;
   }
 </style>

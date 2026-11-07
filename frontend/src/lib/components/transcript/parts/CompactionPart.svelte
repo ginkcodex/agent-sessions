@@ -59,7 +59,7 @@
     background-color: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     color: var(--text-muted);
-    font-size: 11.52px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -75,7 +75,7 @@
   }
 
   .pill-chevron {
-    font-size: 10.4px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
     opacity: 0.7;
   }
 
@@ -85,7 +85,7 @@
     border-radius: 6px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    font-size: 12.48px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
     color: var(--text-secondary);
     line-height: 1.45;
   }
@@ -93,7 +93,7 @@
   .summary-header {
     font-weight: 600;
     text-transform: uppercase;
-    font-size: 10.88px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
     color: var(--text-muted);
     margin-bottom: 4px;
   }

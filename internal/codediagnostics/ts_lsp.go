@@ -535,7 +535,9 @@ func matchesSkipPath(paths []string, portable string) bool {
 }
 
 // discoverProjectDirs is the bounded contained walk shared by adapters. Hidden
-// directories and symlinks are skipped and mark the result partial; marker
+// directories and symlinks are skipped and mark the result partial; folders
+// Git ignores are skipped without (gitScope). Files come before folders, so a
+// folder's markers are read before its subfolders spend the budget; marker
 // contents are never read here.
 func discoverProjectDirs(root AuthorizedRoot, markers projectMarkers) (tsWorkspace, error) {
 	var w tsWorkspace
@@ -544,9 +546,14 @@ func discoverProjectDirs(root AuthorizedRoot, markers projectMarkers) (tsWorkspa
 		return w, failure("unauthorized", "Project discovery root cannot be opened")
 	}
 	defer func() { _ = r.Close() }()
+	scope := newGitScope(root)
 	entries := 0
 	var walk func(string, int)
 	walk = func(dir string, depth int) {
+		if entries >= maxTSEntries {
+			w.partial = true
+			return
+		}
 		f, err := r.Open(dir)
 		if err != nil {
 			w.partial = true
@@ -558,14 +565,15 @@ func discoverProjectDirs(root AuthorizedRoot, markers projectMarkers) (tsWorkspa
 			w.partial = true
 			return
 		}
-		slices.SortFunc(ds, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+		slices.SortFunc(ds, filesFirst)
 		found := false
 		var files []string
 		for _, d := range ds {
 			entries++
 			if entries > maxTSEntries {
+				// This folder still records the markers read so far.
 				w.partial = true
-				return
+				break
 			}
 			rel := filepath.Join(dir, d.Name())
 			portable := filepath.ToSlash(rel)
@@ -583,6 +591,9 @@ func discoverProjectDirs(root AuthorizedRoot, markers projectMarkers) (tsWorkspa
 				}
 				if strings.HasPrefix(n, ".") || depth >= 32 {
 					w.partial = true
+					continue
+				}
+				if scope.skip(r, portable) {
 					continue
 				}
 				walk(rel, depth+1)

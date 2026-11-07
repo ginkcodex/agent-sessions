@@ -125,9 +125,16 @@ func (p *GoVetPlan) discover() error {
 		return failure("unauthorized", "Go discovery root cannot be opened")
 	}
 	defer func() { _ = r.Close() }()
+	// Folders Git ignores are left out; files come before folders so the
+	// root module is read before the budget can run out (gitScope).
+	scope := newGitScope(p.root)
 	entries := 0
 	var walk func(string, int) error
 	walk = func(dir string, depth int) error {
+		if entries >= 4096 {
+			p.partial = true
+			return nil
+		}
 		f, err := r.Open(dir)
 		if err != nil {
 			p.partial = true
@@ -140,7 +147,7 @@ func (p *GoVetPlan) discover() error {
 			p.partial = true
 			return nil
 		}
-		slices.SortFunc(ds, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+		slices.SortFunc(ds, filesFirst)
 		for _, d := range ds {
 			entries++
 			if entries > 4096 {
@@ -164,6 +171,9 @@ func (p *GoVetPlan) discover() error {
 				}
 				if depth >= 32 {
 					p.partial = true
+					continue
+				}
+				if scope.skip(r, portable) {
 					continue
 				}
 				if err := walk(rel, depth+1); err != nil {

@@ -3,6 +3,7 @@
   import DialogCloseButton from './DialogCloseButton.svelte';
   import TerminalFontSetting from './TerminalFontSetting.svelte';
   import CodingAgentsSettings from './CodingAgentsSettings.svelte';
+  import AppearanceSettings from './AppearanceSettings.svelte';
   import { manage, type SettingsSection } from '../../stores/manage.svelte';
   import { launcher } from '../../stores/launcher.svelte';
   import { terminals } from '../../stores/terminals.svelte';
@@ -13,6 +14,7 @@
   import { terminalOptions } from '../../terminal';
   import { preferences } from '../../stores/preferences.svelte';
   import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';
+  import { installedFonts } from '../../stores/installedFonts.svelte';
   import { CODE_LANGUAGES } from '../../codeLanguages';
   import { isTranscriptMode, transcriptModes } from '../../transcript';
   import { isTimeZoneMode, TIME_ZONE_OPTIONS } from '../../date';
@@ -24,6 +26,7 @@
     (
       [
         { id: 'general', label: 'General' },
+        { id: 'appearance', label: 'Appearance' },
         { id: 'agents', label: 'Coding agents' },
         { id: 'translation', label: 'Translation' },
         { id: 'terminal', label: 'Terminal', hidden: !launcher.info.panel && !launcher.info.chooseTerminal },
@@ -59,6 +62,11 @@
   // Permission can change in the system settings while the app runs.
   $effect(() => {
     if (manage.settingsDialogOpen && section === 'terminal' && launcher.info.panel) void alerts.refreshStatus();
+  });
+
+  // Installed fonts are listed once per opening, shared by the font pickers.
+  $effect(() => {
+    if (!manage.settingsDialogOpen) installedFonts.markStale();
   });
 
   let keyInputShown = $derived(!translateSettings.settings?.apiKeySet || replacingKey);
@@ -135,6 +143,8 @@
               </div>
               <p class="hint">Used for message, session and list timestamps on every host. Local time follows this computer's time zone.</p>
             </section>
+          {:else if section === 'appearance'}
+            <AppearanceSettings />
           {:else if section === 'agents'}
             <CodingAgentsSettings />
           {:else if section === 'translation'}

@@ -21,12 +21,12 @@
     border-radius: 4px;
     background-color: var(--bg-tertiary);
     border: 1px solid var(--border-color);
-    font-size: 11.52px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     color: var(--text-muted);
   }
 
   .notice-icon {
-    font-size: 12px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
     opacity: 0.7;
   }
 
