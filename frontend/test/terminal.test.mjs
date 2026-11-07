@@ -632,8 +632,9 @@ test('TerminalsStore tracks cwd independently for active and inactive tabs', asy
 test('workspace activation is wired to directory, session and transcript interactions without stealing focus', () => {
   const source = path => readFileSync(new URL(`../src/lib/components/${path}.svelte`, import.meta.url), 'utf8');
   assert.match(source('sidebar/GroupTree'), /const cwd = nodeDirectory\(appState\.groups, node\.key\);\s*if \(cwd\) terminals\.selectDirectory\(cwd, link\.dataHost \?\? ''\)/);
-  assert.match(source('sessionlist/SessionList'), /function handleSelectSession\(session: SessionMeta\) \{\s*if \(!session\.cwdMissing\) terminals\.selectDirectory\(session\.cwd, link\.dataHost \?\? ''\)/);
+  assert.match(source('sessionlist/SessionList'), /function handleSelectSession\(session: SessionMeta\) \{\s*if \(!session\.cwdMissing\) terminals\.selectDirectory\(session\.cwd, link\.dataHost \?\? '', session\)/);
   const transcript = source('transcript/TranscriptView');
+  assert.match(transcript, /terminals\.selectDirectory\(session\.cwd, link\.dataHost \?\? '', session\)/);
   assert.match(transcript, /onpointerdown=\{activateWorkspaceTerminal\}/);
   assert.match(transcript, /onfocusin=\{\(event\) => \{ activateWorkspaceTerminal\(\); focusedLink = browserLinkDestination/);
   assert.match(source('terminal/TerminalView'), /if \(focus && terminals\.focusOnActivation\) t\.focus\(\)/);
@@ -692,6 +693,49 @@ test('workspace activation picks the first running matching tab in display order
     assert.equal(store.active, first.id, 'no match leaves the active tab alone');
     store.selectDirectory('/b', '');
     assert.equal(store.active, other.id);
+  });
+});
+
+test('session activation prefers the session tab, then an agent tab, then any workspace tab', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [mine, other] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const dir = other.cwd;
+    const shell = await store.newShell(dir);
+    const otherAgent = await store.runResume(other.ref, dir);
+    const own = await store.runResume(mine.ref);
+    store.setOpen(false);
+
+    store.select(shell.id);
+    assert.equal(store.selectDirectory(dir, '', mine), true);
+    assert.equal(store.active, own.id, "the session's own tab wins over workspace tabs, whatever its launch directory");
+    assert.equal(store.focusOnActivation, false);
+    assert.equal(store.open, false);
+
+    store.select(shell.id);
+    store.selectDirectory(dir, '', { ref: { agent: mine.ref.agent, id: 'subagent' }, parentId: mine.ref.id });
+    assert.equal(store.active, own.id, "a subagent selects its parent's tab");
+
+    store.select(shell.id);
+    own.status = 'exited';
+    store.selectDirectory(dir, '', mine);
+    assert.equal(store.active, otherAgent.id, 'without it, an agent tab of the workspace wins over a matching active shell');
+
+    const secondAgent = await store.runNewSession(other.ref.agent, dir);
+    store.selectDirectory(dir, '', mine);
+    assert.equal(store.active, secondAgent.id, 'an active agent tab of the workspace stays');
+    store.select(shell.id);
+    store.selectDirectory(dir, '');
+    assert.equal(store.active, otherAgent.id, 'without a session, the first agent tab still comes before shells');
+
+    otherAgent.status = 'exited';
+    secondAgent.status = 'exited';
+    store.selectDirectory(dir, '', mine);
+    assert.equal(store.active, shell.id, 'with no agent tab, the first workspace tab');
+
+    own.status = 'running';
+    own.host = 'remote';
+    store.selectDirectory(dir, '', mine);
+    assert.equal(store.active, shell.id, 'a session tab on another host does not match');
   });
 });
 
