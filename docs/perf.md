@@ -3947,3 +3947,28 @@ open.
 
 **Result:** cap the viewer's pages by size (PC-02–PC-04). Not measured here:
 the time to transfer and render a page in the desktop app (PC-06).
+
+## PC-05 — Capped first pages on `plgl` (2026-11-07)
+
+`TestMeasureTranscriptLoad` now asks the engine for the first page as the
+viewer does (`GetMessagesCapped(-1, 50, {MaxBytes: 256 KB, Anchor: -1})`)
+and reports its JSON size and the `model.MessageBytes` size the cap counted.
+Run on `plgl:/home/haitran/Workspaces/be` as in PC-01 (binary in `/tmp`,
+deleted after), `AS_MEASURE_TOP=8`:
+
+| Provider | Newest 50 as JSON | Engine's capped page | Capped JSON vs counted |
+|---|---|---|---|
+| Codex (8 sessions with messages) | 0.44–1.29 MB | 4–34 messages, 0.20–0.29 MB | JSON up to 0.06 MB over (0.29 MB for 0.23 MB counted) |
+| OpenCode (top 8) | 0.08–1.56 MB | 9–50 messages, 0.08–0.25 MB | within 0.01 MB |
+| Claude (top 8) | 0.05–0.13 MB | unchanged, 50 messages | within 0.01 MB |
+
+The largest Codex first page (`01a07a0e…`) goes from 1.29 MB to 16 messages,
+0.26 MB; the slowest-loading one (`01a0c1cb…`, 19 MB) from 1.01 MB to 11
+messages, 0.27 MB. `MessageBytes` undercounts JSON where tool output has
+many escaped characters (JSON 0.29 MB for 0.23 MB counted, about 25%), so a
+page can be a little over 256 KB; all stay under 0.3 MB. Load times match
+PC-01 (Codex first loads 942 ms total, median 89 ms).
+
+**Result:** Codex and OpenCode first pages are now a fifth or less of their
+uncapped size; Claude's are unchanged. Not measured: transfer and render
+time in the desktop app (PC-06).

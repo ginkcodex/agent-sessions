@@ -1,4 +1,4 @@
-package all
+package all_test
 
 import (
 	"context"
@@ -12,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/provider/all"
 )
 
 // TestMeasureTranscriptLoad times every provider's transcript loads for the
@@ -26,7 +28,9 @@ import (
 // directory is the project or below it, the first Load on a fresh provider
 // (as after the server starts), a second Load, and an incremental load that
 // resumes the first one's state (as a reopened or live transcript does). It
-// reports totals and the AS_MEASURE_TOP (default 5) slowest first loads.
+// reports totals and the AS_MEASURE_TOP (default 5) slowest first loads, with
+// the size of the viewer's first page uncapped and as the engine caps it
+// (docs/plan/transcript-page-cap.md).
 func TestMeasureTranscriptLoad(t *testing.T) {
 	cwd := os.Getenv("AS_MEASURE_CWD")
 	if cwd == "" {
@@ -44,7 +48,7 @@ func TestMeasureTranscriptLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	for _, scanner := range Providers(roots, nil) {
+	for _, scanner := range all.Providers(roots, nil) {
 		began := time.Now()
 		cold, err := scanner.Scan(ctx, provider.ScanState{})
 		coldScan := time.Since(began)
@@ -67,7 +71,7 @@ func TestMeasureTranscriptLoad(t *testing.T) {
 			page                  int    // JSON bytes of the newest page the viewer asks for first
 			parts                 string // the page's bytes by part kind, largest first
 			largest               int    // JSON bytes of the session's largest message
-			capped                string // the newest messages within pageBudget
+			capped                string // the engine's capped first page
 			first, second, resume time.Duration
 		}
 		var samples []sample
@@ -81,7 +85,7 @@ func TestMeasureTranscriptLoad(t *testing.T) {
 			}
 			// A fresh provider per session: the first load pays what a first
 			// open after the server starts pays.
-			fresh, _ := Providers(roots, nil).Get(scanner.ID())
+			fresh, _ := all.Providers(roots, nil).Get(scanner.ID())
 			began := time.Now()
 			first, err := provider.LoadIncremental(ctx, fresh, meta.Ref, nil)
 			s.first = time.Since(began)
@@ -91,7 +95,10 @@ func TestMeasureTranscriptLoad(t *testing.T) {
 			}
 			s.messages = len(first.Transcript.Messages)
 			s.page, s.parts = pageWeight(first.Transcript.Messages)
-			s.largest, s.capped = cappedPage(first.Transcript.Messages)
+			s.largest = largestMessage(first.Transcript.Messages)
+			if s.capped, err = cappedPage(ctx, fresh, meta.Ref); err != nil {
+				t.Fatalf("%s %s: capped page: %v", scanner.ID(), meta.Ref.ID, err)
+			}
 			began = time.Now()
 			if _, err := provider.LoadIncremental(ctx, fresh, meta.Ref, nil); err != nil {
 				t.Fatalf("%s %s: second load: %v", scanner.ID(), meta.Ref.ID, err)
@@ -164,25 +171,32 @@ func pageWeight(messages []model.Message) (int, string) {
 	return len(raw), strings.Join(out, ", ")
 }
 
-// pageBudget is the first-page size cap under consideration
-// (docs/plan/transcript-page-cap.md).
+// pageBudget is the viewer's page cap (PAGE_BYTES in frontend/src/lib/pageCap.ts).
 const pageBudget = 256 << 10
 
-// cappedPage is the largest message's JSON size and the page the cap would
-// send: the newest messages, up to pageSize, while their JSON fits
-// pageBudget, and always at least one.
-func cappedPage(messages []model.Message) (int, string) {
-	largest, total, n := 0, 0, 0
-	open := true
-	for i := len(messages) - 1; i >= 0; i-- {
+// largestMessage is the JSON size of the largest message.
+func largestMessage(messages []model.Message) int {
+	largest := 0
+	for i := range messages {
 		raw, _ := json.Marshal(messages[i])
 		largest = max(largest, len(raw))
-		if open && n < pageSize && (n == 0 || total+len(raw) <= pageBudget) {
-			total += len(raw)
-			n++
-		} else {
-			open = false
-		}
 	}
-	return largest, fmt.Sprintf("%d messages, %.2f MB", n, float64(total)/(1<<20))
+	return largest
+}
+
+// cappedPage is the viewer's first page as the engine caps it: its message
+// count, its JSON size and the model.MessageBytes size the cap counted.
+func cappedPage(ctx context.Context, p provider.Provider, ref model.SessionRef) (string, error) {
+	svc := engine.NewService(nil, provider.Set{p})
+	page, err := svc.GetMessagesCapped(ctx, ref, -1, pageSize, engine.PageCap{MaxBytes: pageBudget, Anchor: -1})
+	if err != nil {
+		return "", err
+	}
+	raw, _ := json.Marshal(page.Messages)
+	var counted int64
+	for i := range page.Messages {
+		counted += model.MessageBytes(&page.Messages[i])
+	}
+	return fmt.Sprintf("%d messages, %.2f MB JSON (%.2f MB counted)", len(page.Messages),
+		float64(len(raw))/(1<<20), float64(counted)/(1<<20)), nil
 }
