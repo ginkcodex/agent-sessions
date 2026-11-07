@@ -2,7 +2,7 @@
 
 Status: planned 2026-10-24 on branch `feature/editor-essentials`, which starts
 from `feature/code-diagnostics`. Task briefs are in
-[docs/tasks](../tasks/README.md#editor-essentials) (PS, AG, NAV and GIT).
+[docs/tasks](../tasks/editor-essentials/README.md) (PS, AG, NAV and GIT).
 
 ## Goal
 

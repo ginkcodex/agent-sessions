@@ -2,8 +2,8 @@
 
 Date: 2026-10-22. **R01 complete (audit/decision only). R02 implemented (offline ownership seams/tests); R03 implemented (offline conservative transport-lifetime URI isolation/tests).**
 The map and exposed outcomes below record the pre-R02 audit; the decisions remain
-controlling. See [R02 implementation evidence](../tasks/CD-26.md#r02-concrete-ownership-2026-10-22)
-for corrected ownership boundaries and [R03 evidence](../tasks/CD-26.md#r03-conservative-uri-isolation-2026-10-22) for conservative rejection of reused-URI pushes.
+controlling. See [R02 implementation evidence](../tasks/code-diagnostics/CD-26.md#r02-concrete-ownership-2026-10-22)
+for corrected ownership boundaries and [R03 evidence](../tasks/code-diagnostics/CD-26.md#r03-conservative-uri-isolation-2026-10-22) for conservative rejection of reused-URI pushes.
 Parent progress remains **19/28**; CD-22…CD-26 remain partial. This is the
 controlling ownership/freshness decision for R02/R03, superseding any broader
 matching-version or close/reopen assurance in earlier evidence. No capability,

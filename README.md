@@ -434,7 +434,7 @@ npm --prefix frontend run build
 - [Product specification](SPEC.md) — design background; some original scope
   notes predate the current terminal and editing features.
 - [Task breakdown](TASKS.md) and [implementation plans](docs/plan/README.md).
-- [Wails v3 upgrade](docs/wails-v3-upgrade.md) — current desktop build,
+- [Wails v3 upgrade](docs/plan/wails-v3-upgrade.md) — current desktop build,
   supported Linux versions, and which native checks are still open.
 - [Windows setup and packaging](packaging/windows/README.md).
 - [Report a bug or request a feature](https://github.com/ginkcodex/agent-sessions/issues).

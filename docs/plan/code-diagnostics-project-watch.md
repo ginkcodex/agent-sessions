@@ -3,7 +3,7 @@
 Scope: one ~4h unit on `feature/code-diagnostics`. Real-time **saved-file** Go
 syntax diagnostics for every contained `.go` file, opened or not, driven by an
 approved, bounded, local fsnotify project watcher. This **revises the CD-25 policy**
-("Chosen policy: **no watchers**", [CD-25](../tasks/CD-25.md#evidence-and-remaining-work-2026-10-22))
+("Chosen policy: **no watchers**", [CD-25](../tasks/code-diagnostics/CD-25.md#evidence-and-remaining-work-2026-10-22))
 because the user explicitly asked for diagnostics that follow ANY project file
 changing on disk. The revision covers only the trusted app watcher described
 here. CD-19's rejection of every LSP dynamic registration (`client/registerCapability`

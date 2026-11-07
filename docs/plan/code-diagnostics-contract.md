@@ -8,7 +8,7 @@ fields are compatible; changes to required fields or semantics require a new
 unrelated and unchanged.
 
 Parent: [implementation plan](code-diagnostics.md). Task briefs:
-[CD-01](../tasks/CD-01.md), [task index](../tasks/README.md).
+[CD-01](../tasks/code-diagnostics/CD-01.md), [task index](../tasks/README.md).
 Fixtures and validation: `internal/codediagnostics/testdata/contract/` and
 `internal/codediagnostics/contract_test.go`. The fixtures use synthetic identities
 and source only, never real project contents or secrets.
@@ -127,7 +127,7 @@ backend/path tests: `internal/files/probe_test.go`; host epoch tests:
 
 ## Managed installation scope clarification (2026-10-22)
 
-The user-approved [managed-tools backlog](../tasks/tool-installation.md) is separate
+The user-approved [managed-tools backlog](../tasks/tool-installation/README.md) is separate
 from project execution approval. Its TI-01 core has no App/RPC/UI route and changes
 no v1 wire semantics/capabilities. Blanket no-download language in earlier plans
 is superseded only by explicit current host-bound managed Install consent; attach,

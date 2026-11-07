@@ -705,7 +705,7 @@ providers use standalone methods; wrapped `ErrStaleSource` triggers exactly one
 canonical fallback. Other errors propagate, and cancellation prevents fallback.
 The source value is an untrusted canonical metadata hint, not a capability.
 
-[Contract and Codex feasibility](tasks/performance-m1.md#pf-06-contract-and-pf-07-feasibility)
+[Contract and Codex feasibility](tasks/performance/PF-06.md#pf-06-contract-and-pf-07-feasibility)
 records path/ref validation, canonical overlays, freshness, cancellation, Blob key
 semantics, engine catalog ownership and FTS queued-revision ownership. Deep review
 of discovery, index loading, canonical scan selection and Load/Blob found that
@@ -3412,7 +3412,7 @@ requested.
 ## PF-10A — Decode once per scan (2026-10-25)
 
 First half of PF-10, reopened after Milestone 2
-([brief](tasks/performance-m1.md#pf-10a--decode-once-per-scan-skip-unchanged-re-encodes-3-h-pf-01)).
+([brief](tasks/performance/PF-10.md#pf-10a--decode-once-per-scan-skip-unchanged-re-encodes-3-h-pf-01)).
 Same host as IT-12: Apple M5 / 32 GiB, Darwin 27.0.0 arm64, Go 1.26.8,
 GOMAXPROCS 10. Generated fixtures in test temporary roots only.
 

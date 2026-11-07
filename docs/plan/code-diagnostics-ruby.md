@@ -1,6 +1,6 @@
 # Code checks: Ruby (RuboCop) (2026-11-07)
 
-**Status: implemented 2026-11-07** ([tasks RB-00…RB-06](../tasks/ruby.md);
+**Status: implemented 2026-11-07** ([tasks RB-00…RB-06](../tasks/code-diagnostics-ruby/README.md);
 wire details in the [contract, R12](code-diagnostics-contract.md#r12-additive-ruby-language-2026-11-07)).
 Parent plans: [code-diagnostics.md](code-diagnostics.md), the
 [editor (Zed) model](code-diagnostics-zed-model.md) and

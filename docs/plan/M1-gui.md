@@ -1,6 +1,6 @@
 # M1 — GUI: Wails v2 Desktop Shell & Svelte 5 Frontend: detailed plan
 
-Covers tasks M1-15 … M1-28 from [TASKS.md](../../TASKS.md). This document defines the
+Covers tasks M1-15 … M1-28 in the [M1 task group](../tasks/M1/README.md). This document defines the
 concrete implementation plan for the graphical desktop interface of `agent-sessions`.
 It builds on the authoritative contracts and data models specified in
 [docs/plan/M0.md](M0.md) and [SPEC.md](../../SPEC.md).

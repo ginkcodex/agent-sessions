@@ -45,7 +45,7 @@ Temporary build outputs used a `cd17-preflight-*` directory under the approved
 OpenCode temporary directory. Frontend generated build output is not committed.
 The CLI version smoke does not exercise diagnostics or user data. No native
 checker invocation against a disposable Go/Svelte QA project was performed.
-CD-16's [automated evidence](../tasks/CD-16.md#automated-evidence-2026-10-22)
+CD-16's [automated evidence](../tasks/code-diagnostics/CD-16.md#automated-evidence-2026-10-22)
 is complementary, not a substitute for the following matrix.
 
 ## Native host/client matrix — all unperformed

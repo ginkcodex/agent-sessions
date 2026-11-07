@@ -56,7 +56,7 @@ coding tools (Claude Code, Codex CLI, OpenCode, …).
 supported. Desktop builds are `go build -tags desktop,production`.
 
 > **Current (2026-11-03): Wails v3.1.0.** See
-> [docs/wails-v3-upgrade.md](docs/wails-v3-upgrade.md) for the build, the
+> [docs/plan/wails-v3-upgrade.md](docs/plan/wails-v3-upgrade.md) for the build, the
 > code boundaries and what has been verified.
 > - Only `cmd/agent-sessions` imports Wails. It adapts the Wails application
 >   to the `app.Desktop` callbacks, so `internal/app` stays toolkit-free.
