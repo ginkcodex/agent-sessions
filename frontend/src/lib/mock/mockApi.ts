@@ -15,6 +15,7 @@ import type {
   SessionMeta,
   SessionRef,
   MessagesPage,
+  PageCap,
   MessagesSinceRequest,
   MessagesSinceReply,
   SessionSearchRequest,
@@ -81,6 +82,7 @@ import type {
 } from '../types.js';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
+import { capPage } from '../pageCap';
 import { wslDistro } from '../hosts.js';
 import { GitSyncError } from '../gitSync';
 
@@ -512,10 +514,13 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   async getMessages(
     ref: SessionRef,
     offset: number,
-    limit: number
+    limit: number,
+    cap?: PageCap
   ): Promise<MessagesPage> {
     if (offset < -1 || limit <= 0) throw new Error(`Invalid page offset=${offset} limit=${limit}`);
-    return this.pageOf(ref, offset, limit).page;
+    if (cap && (cap.maxBytes < 0 || cap.anchor < -1)) throw new Error(`Invalid page cap maxBytes=${cap.maxBytes} anchor=${cap.anchor}`);
+    const { page } = this.pageOf(ref, offset, limit);
+    return cap ? capPage(page, cap, (m) => JSON.stringify(m).length) : page;
   }
 
   private pageOf(ref: SessionRef, offset: number, limit: number): { page: MessagesPage; start: number; json: string[] } {

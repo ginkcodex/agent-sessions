@@ -10,6 +10,11 @@ export interface TranscriptWindow {
   offset: number;
   hasMore: boolean;
   revision?: string;
+  /**
+   * The window began as a size-capped page, so it holds fewer messages than
+   * PAGE_SIZE on purpose; refreshes keep its length (refreshLimit).
+   */
+  capped?: boolean;
 }
 
 export interface TranscriptPager {
@@ -18,7 +23,18 @@ export interface TranscriptPager {
 }
 
 export function windowOf(page: MessagesPage): TranscriptWindow {
-  return { messages: page.messages || [], offset: page.offset, hasMore: page.hasMore, revision: page.revision };
+  const win: TranscriptWindow = { messages: page.messages || [], offset: page.offset, hasMore: page.hasMore, revision: page.revision };
+  if (page.capped) win.capped = true;
+  return win;
+}
+
+/**
+ * How many messages a refresh of win asks for: at least a page, so a short
+ * window fills as the transcript grows, except a capped window, which keeps
+ * its own length instead of fetching back what the cap left out.
+ */
+export function refreshLimit(win: TranscriptWindow, pageSize: number): number {
+  return win.capped ? Math.max(1, win.messages.length) : Math.max(win.messages.length, pageSize);
 }
 
 /**
@@ -77,8 +93,14 @@ export class TranscriptRefresher {
       });
       if (!reply.supported) this.unsupportedEpoch = started;
       const next = reply.supported && reply.delta ? applyDelta(win, reply.delta) : null;
-      if (next) return next;
+      if (next) return keepCapped(win, next);
     }
-    return windowOf(await this.api.getMessages(ref, offset, limit));
+    return keepCapped(win, windowOf(await this.api.getMessages(ref, offset, limit)));
   }
+}
+
+/** A refresh of a capped window is still one: it holds what the window held, moved. */
+function keepCapped(win: TranscriptWindow, next: TranscriptWindow): TranscriptWindow {
+  if (win.capped) next.capped = true;
+  return next;
 }

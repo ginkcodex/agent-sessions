@@ -25,7 +25,8 @@
   import { sessionFontVar } from '../../appearance';
   import { firstVisibleMessage, restoreMessage, type MessageAnchor } from '../../transcriptAnchor';
   import { epoch, isStaleReply } from '../../link';
-  import { mixesRevisions, TranscriptRefresher, windowOf, type TranscriptWindow } from '../../transcriptRefresh';
+  import { mixesRevisions, refreshLimit, TranscriptRefresher, windowOf, type TranscriptWindow } from '../../transcriptRefresh';
+  import { PAGE_SIZE, pageCap } from '../../pageCap';
   import type { TranscriptMode } from '../../transcript';
   import SessionHeader from './SessionHeader.svelte';
   import MessageBubble from './MessageBubble.svelte';
@@ -84,7 +85,6 @@
     });
   }
 
-  const PAGE_SIZE = 50;
   const SHOW_BOTTOM_BTN_PX = 400;
   // How near the end the view must be to follow new messages.
   const FOLLOW_SLACK_PX = 40;
@@ -121,6 +121,8 @@
   let pageOffset = $state(0);
   // The revision the window was refreshed to; spliced pages may be newer.
   let revision: string | undefined;
+  // The window began as a size-capped page; refreshes keep its length.
+  let windowCapped = false;
   const refresher = new TranscriptRefresher(api, epoch);
   let jumpLoading = $state(false);
   let jumpNotice = $state<string | null>(null);
@@ -200,7 +202,7 @@
   }
 
   function currentWindow(): TranscriptWindow {
-    return { messages, offset: pageOffset, hasMore, revision };
+    return { messages, offset: pageOffset, hasMore, revision, capped: windowCapped };
   }
 
   function setWindow(win: TranscriptWindow): void {
@@ -208,6 +210,7 @@
     pageOffset = win.offset;
     hasMore = win.hasMore;
     revision = win.revision;
+    windowCapped = Boolean(win.capped);
   }
 
   async function loadInitialMessages(ref: SessionRef) {
@@ -225,7 +228,7 @@
     fillFailed = false;
 
     try {
-      const page = await api.getMessages(ref, -1, PAGE_SIZE);
+      const page = await api.getMessages(ref, -1, PAGE_SIZE, pageCap(-1));
       // Ensure we are still looking at the same session and request.
       if (generation === loadGeneration && refsMatch(appState.selectedSessionRef, ref)) {
         setWindow(windowOf(page));
@@ -265,7 +268,7 @@
       // the host supports it; unchanged ones keep their objects and rows.
       const latest = anchoredToBottom || following;
       const win = currentWindow();
-      const next = await refresher.refresh(ref, win, latest ? -1 : win.offset, Math.max(win.messages.length, PAGE_SIZE));
+      const next = await refresher.refresh(ref, win, latest ? -1 : win.offset, refreshLimit(win, PAGE_SIZE));
       if (generation !== loadGeneration || !refsMatch(appState.selectedSessionRef, ref)) return;
       // The user may have scrolled into history while this request was in flight.
       if (latest && !anchoredToBottom && !following) {
@@ -321,7 +324,7 @@
       // Only the page around the target is requested; header metadata is
       // awaited too so its arrival doesn't shift the scroll after we land.
       const [page] = await Promise.all([
-        api.getMessages(jump.ref, offset, PAGE_SIZE),
+        api.getMessages(jump.ref, offset, PAGE_SIZE, pageCap(Math.max(jump.messageIndex, 0))),
         jump.ready?.catch(() => undefined),
       ]);
       if (generation !== loadGeneration || !refsMatch(appState.selectedSessionRef, jump.ref)) return;
@@ -442,13 +445,14 @@
     let mixed = false;
     isLoadingEarlier = true;
     try {
-      const page = await api.getMessages(ref, start, end - start);
+      // The cap keeps the messages next to the window; the page says where it starts.
+      const page = await api.getMessages(ref, start, end - start, pageCap(end - 1));
       // A page for another window position would not join this one.
       if (generation !== loadGeneration || !refsMatch(appState.selectedSessionRef, ref) || pageOffset !== end) return;
       mixed = mixesRevisions(currentWindow(), page);
       const before = containerEl ? containerEl.scrollHeight - containerEl.scrollTop : 0;
       messages = [...(page.messages || []), ...messages];
-      pageOffset = start;
+      pageOffset = page.offset;
       await tick();
       if (generation === loadGeneration && containerEl) {
         containerEl.scrollTop = following || anchoredToBottom
@@ -489,7 +493,7 @@
     isLoadingMore = true;
     pendingLoad = (async () => {
       try {
-        const page = await api.getMessages(ref, end, limit);
+        const page = await api.getMessages(ref, end, limit, pageCap(end));
         if (generation === loadGeneration && refsMatch(appState.selectedSessionRef, ref) && pageOffset + messages.length === end) {
           mixed = mixesRevisions(currentWindow(), page);
           messages = [...messages, ...(page.messages || [])];
@@ -609,7 +613,7 @@
     jumpLoading = false;
     try {
       if (pendingLoad) await pendingLoad;
-      const page = await api.getMessages(ref, -1, PAGE_SIZE);
+      const page = await api.getMessages(ref, -1, PAGE_SIZE, pageCap(-1));
       if (generation !== loadGeneration || !refsMatch(appState.selectedSessionRef, ref)) return;
       clearJumpHighlight();
       activeJump = null;

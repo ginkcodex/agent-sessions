@@ -100,8 +100,12 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   listSessions(groupKey: string, filter?: FilterOpts, sort?: SortOpts): Promise<SessionMeta[]>;
   agentCounts(filter?: FilterOpts): Promise<Record<string, number>>;
   getSessionMeta(ref: SessionRef): Promise<SessionMeta>;
-  /** Offset -1 requests the latest page; the response contains its actual offset. */
-  getMessages(ref: SessionRef, offset: number, limit: number): Promise<MessagesPage>;
+  /**
+   * Offset -1 requests the latest page; the response contains its actual offset.
+   * With a cap the page may hold fewer messages, from the offset it reports;
+   * hosts and Apps without the cap return the whole page.
+   */
+  getMessages(ref: SessionRef, offset: number, limit: number, cap?: PageCap): Promise<MessagesPage>;
   /** supported:false means the host (or an older App) has no deltas: use getMessages. */
   getMessagesSince(req: MessagesSinceRequest): Promise<MessagesSinceReply>;
   /** supported:false means the host (or an older App) cannot search a session. */
@@ -624,9 +628,12 @@ class WailsBackendAPI implements BackendAPI {
   async getMessages(
     ref: SessionRef,
     offset: number,
-    limit: number
+    limit: number,
+    cap?: PageCap
   ): Promise<MessagesPage> {
+    const capped = this.binding.GetMessagesCapped;
     try {
+      if (cap && capped) return await capped(ref, offset, limit, cap);
       return await this.binding.GetMessages(ref, offset, limit);
     } catch (e) {
       throw normalizeError(e);
