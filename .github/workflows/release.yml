@@ -469,3 +469,16 @@ jobs:
             gh release create "$TAG" dist/* --target "$GITHUB_SHA" \
               --title "Agent Sessions ${TAG#v}" --generate-notes "${channel[@]}"
           fi
+
+  # Arch Linux: agent-sessions-bin on the AUR repackages the .deb just
+  # published. Stable releases only: a pacman version cannot hold a '-', and
+  # the AUR follows the latest release. If it fails, the GitHub release stays
+  # published; fix it and run the AUR workflow by hand.
+  aur:
+    if: needs.version.outputs.publish == 'true' && !contains(needs.version.outputs.version, '-')
+    needs: [version, release]
+    uses: ./.github/workflows/aur.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+    secrets:
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}

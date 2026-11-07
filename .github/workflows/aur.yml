@@ -1,0 +1,97 @@
+# Publishes the AUR package agent-sessions-bin for a released stable version:
+# it repackages that GitHub release's .deb (packaging/arch/). Release runs it
+# after publishing a stable release. Run it by hand to publish a release
+# again, for example with a higher pkgrel after a packaging fix, or with
+# publish off to only build and check the package.
+#
+# Needs the repository secret AUR_SSH_PRIVATE_KEY: the private half of an
+# SSH key added to the AUR account that maintains agent-sessions-bin. Use a
+# key made for this alone; it can push to every package of that account.
+name: AUR
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Released version without the v, such as 1.3.1
+        required: true
+        type: string
+    secrets:
+      AUR_SSH_PRIVATE_KEY:
+        required: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Released version without the v, such as 1.3.1
+        required: true
+        type: string
+      pkgrel:
+        description: Package release; raise it to republish the same version
+        required: true
+        default: '1'
+        type: string
+      publish:
+        description: Push to the AUR (off builds and checks only)
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aur
+  cancel-in-progress: false
+
+jobs:
+  aur:
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ inputs.version }}
+      # Release calls have no pkgrel input: a new version starts at 1.
+      PKGREL: ${{ inputs.pkgrel || '1' }}
+      # Only a manual run with publish off skips the push.
+      PUBLISH: ${{ github.event_name != 'workflow_dispatch' || inputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Render, build and install the package in Arch Linux
+        # Downloads the release's SHA256SUMS and .deb files, so the release
+        # must already be published.
+        timeout-minutes: 25
+        run: make aur-package VERSION="$VERSION" PKGREL="$PKGREL" AUR_PKG_DIR="$RUNNER_TEMP/aur-pkg"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aur-agent-sessions-bin-${{ inputs.version }}
+          path: |
+            ${{ runner.temp }}/aur-pkg/PKGBUILD
+            ${{ runner.temp }}/aur-pkg/.SRCINFO
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Push to the AUR
+        if: env.PUBLISH == 'true'
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          # aur.archlinux.org's host keys, as published on its home page
+          # (checked 2026-11-08): ED25519 SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4,
+          # ECDSA SHA256:uTa/0PndEgPZTf76e1DFqXKJEXKsn7m9ivhLQtzGOCI,
+          # RSA SHA256:5s5cIyReIfNNVGRFdDbe3hdYiI5OelHGpw2rOUud3Q8.
+          AUR_KNOWN_HOSTS: |
+            aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN
+            aur.archlinux.org ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBLMiLrP8pVi5BFX2i3vepSUnpedeiewE5XptnUnau+ZoeUOPkpoCgZZuYfpaIQfhhJJI5qgnjJmr4hyJbe/zxow=
+            aur.archlinux.org ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDKF9vAFWdgm9Bi8uc+tYRBmXASBb5cB5iZsB7LOWWFeBrLp3r14w0/9S2vozjgqY5sJLDPONWoTTaVTbhe3vwO8CBKZTEt1AcWxuXNlRnk9FliR1/eNB9uz/7y1R0+c1Md+P98AJJSJWKN12nqIDIhjl2S1vOUvm7FNY43fU2knIhEbHybhwWeg+0wxpKwcAd/JeL5i92Uv03MYftOToUijd1pqyVFdJvQFhqD4v3M157jxS5FTOBrccAEjT+zYmFyD8WvKUa9vUclRddNllmBJdy4NyLB8SvVZULUPrP3QOlmzemeKracTlVOUG1wsDbxknF1BwSCU7CmU6UFP90kpWIyz66bP0bl67QAvlIc52Yix7pKJPbw85+zykvnfl2mdROsaT8p8R9nwCdFsBc9IiD0NhPEHcyHRwB8fokXTajk2QnGhL+zP5KnkmXnyQYOCUYo3EKMXIlVOVbPDgRYYT/XqvBuzq5S9rrU70KoI/S5lDnFfx/+lPLdtcnnEPk=
+        run: |
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "::error::set the AUR_SSH_PRIVATE_KEY secret to publish agent-sessions-bin, or run this workflow with publish off"
+            exit 1
+          fi
+          ssh_dir="$RUNNER_TEMP/aur-ssh"
+          install -d -m 700 "$ssh_dir"
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$ssh_dir/key"
+          chmod 600 "$ssh_dir/key"
+          printf '%s' "$AUR_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $ssh_dir/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$ssh_dir/known_hosts"
+          git clone -q ssh://aur@aur.archlinux.org/agent-sessions-bin.git "$RUNNER_TEMP/aur"
+          git -C "$RUNNER_TEMP/aur" config user.name ginkcode
+          git -C "$RUNNER_TEMP/aur" config user.email ginkcode@gmail.com
+          bash packaging/arch/publish-aur.sh --push "$RUNNER_TEMP/aur-pkg" "$RUNNER_TEMP/aur"
+          rm -rf -- "$ssh_dir"

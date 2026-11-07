@@ -85,4 +85,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Linux GPU rendering | [linux-gpu-rendering](docs/plan/linux-gpu-rendering.md) | [linux-gpu-rendering/](docs/tasks/linux-gpu-rendering/README.md) | 1/2 ✅ · 1 🟡 |
 | Go to File editing | [file-editing](docs/plan/file-editing.md) | [file-editing/](docs/tasks/file-editing/README.md) | 11/14 ✅ · 3 🟡 |
 | Wails v3 upgrade | [wails-v3-upgrade](docs/plan/wails-v3-upgrade.md) | [wails-v3-upgrade/](docs/tasks/wails-v3-upgrade/README.md) | 1/2 ✅ · 1 ⬜ |
-| Arch Linux AUR package | [aur-package](docs/plan/aur-package.md) | [aur-package/](docs/tasks/aur-package/README.md) | 3/7 ✅ · 4 ⬜ |
+| Arch Linux AUR package | [aur-package](docs/plan/aur-package.md) | [aur-package/](docs/tasks/aur-package/README.md) | 3/7 ✅ · 1 🟡 · 3 ⬜ |
