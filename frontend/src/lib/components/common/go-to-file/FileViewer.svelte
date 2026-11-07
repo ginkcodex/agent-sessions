@@ -124,7 +124,9 @@
   // The commit details card under the blame line; the line itself shows whenever one is selected.
   let blameOpen = $state(false);
   let blameRequest = 0;
-  // Files the host found .gitignore leaves out, by directory and path.
+  // Files the host found .gitignore leaves out, by directory and path: the
+  // listing did not say so (a file in a folder opened later), so the blame
+  // bar says it instead of closing.
   let ignoredFiles = $state<Record<string, true>>({});
   const fileKey = (dir: string, path: string) => JSON.stringify([dir, path]);
 
@@ -150,7 +152,7 @@
     blameLoading = true;
     try {
       const result = await api.blameFile(dir, path, line);
-      // Blame hides for the file, here and on every other line.
+      // Remembered for the file: every line then says so without asking again.
       if (result.ignored) ignoredFiles[fileKey(dir, path)] = true;
       else if (request === blameRequest) blame = result;
     } catch (error) {
@@ -425,7 +427,8 @@
   // Only files in a Git work tree (the listing's, or one nested below a plain
   // directory) can blame, unless .gitignore leaves them out; older hosts say
   // so instead of failing per line.
-  let gitIgnored = $derived(Boolean(files.selectedPath && (ignoredByGit(files.listing, files.selectedPath) || (files.dir && ignoredFiles[fileKey(files.dir, files.selectedPath)]))));
+  let gitIgnored = $derived(Boolean(files.selectedPath && ignoredByGit(files.listing, files.selectedPath)));
+  let blameIgnored = $derived(Boolean(files.selectedPath && files.dir && ignoredFiles[fileKey(files.dir, files.selectedPath)]));
   let blameShown = $derived(Boolean(selectedLines && isBlameableLine(plainLines, selectedLines.head) && !showPreview && files.selectedPath && inGitRepository(files.listing, files.selectedPath) && !gitIgnored && !external && !historical && !activeTab?.gitBasis));
   let canBlame = $derived(connectionStore.capabilities.blame === true && !blocked);
   // The selected line's blame loads by itself; another line, file or text starts over.
@@ -433,7 +436,7 @@
     const line = selectedLines?.head, dir = files.dir, path = files.selectedPath;
     void text; void editing;
     closeBlame();
-    if (!blameShown || !canBlame || editing || !line || !dir || !path) return;
+    if (!blameShown || !canBlame || blameIgnored || editing || !line || !dir || !path) return;
     untrack(() => void loadBlame(dir, path, line));
   });
   // Drawn as an image, so scripts in the SVG never run.
@@ -1458,6 +1461,7 @@
         <div class="line-actions" role="status" aria-live="polite">
           <span class="btn-icon icon-git" aria-hidden="true"></span>
           {#if !canBlame}<span>{blocked ? 'Blame unavailable while disconnected' : 'Blame is not supported on this host'}</span>
+          {:else if blameIgnored}<span>Ignored by Git — no blame</span>
           {:else if blameLoading}<span>Loading blame…</span>
           {:else if blameError}<span class="blame-error">{blameError}</span>
           {:else if blame?.uncommitted}<span>Not committed yet</span>
