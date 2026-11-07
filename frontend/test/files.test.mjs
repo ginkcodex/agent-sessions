@@ -650,3 +650,97 @@ test('mutable comparison tabs isolate drafts/history and refresh retires pending
     await new Promise(r => setImmediate(r)); assert.equal(foreign.content, null);
   } finally { delete globalThis.__storeFixture; }
 });
+
+test('FilesStore history: switching working tabs records the place left, per directory', async () => {
+  const { FilesStore, EDITOR_HISTORY_DIRS } = await loadFilesStore();
+  globalThis.__storeFixture = {
+    api: {
+      listFiles: async (dir) => ({ root: dir, files: ['a.ts', 'b.ts', 'c.ts', 'doc.md'] }),
+      readFile: async (_dir, path) => ({ path, size: 1, text: path }),
+    },
+  };
+  const step = (store, direction) => store.stepHistory(direction, undefined)?.path;
+  try {
+    const store = new FilesStore();
+    await store.show('/p');
+    store.openFile('a.ts', { keep: true });
+    assert.equal(store.canGoBack, false, 'the first file shown leaves from nowhere');
+    store.openFile('b.ts', { keep: true });
+    store.openFile('b.ts', { keep: true });
+    store.selectTab('a.ts');
+    store.selectTab('a.ts');
+    assert.equal(step(store, 'back'), 'b.ts', 'showing the same tab again records nothing');
+    assert.equal(step(store, 'back'), 'a.ts');
+    assert.equal(store.canGoBack, false);
+
+    // The viewer says where the user is; a reader that throws never stops the open.
+    const read = [];
+    const uninstall = store.setPlaceReader((tab) => { read.push(tab.path); return { path: tab.path, preview: true }; });
+    store.selectTab('b.ts');
+    assert.deepEqual(read, ['a.ts']);
+    assert.deepEqual(store.stepHistory('back', undefined), { path: 'a.ts', preview: true });
+    uninstall();
+    store.setPlaceReader(() => { throw new Error('no viewer'); });
+    store.selectTab('a.ts');
+    assert.equal(store.selected, 'a.ts');
+    assert.deepEqual(store.stepHistory('back', undefined), { path: 'b.ts' }, 'without a reader the file itself is the place');
+    store.setPlaceReader(() => ({ path: 'elsewhere.ts' }));
+    store.selectTab('b.ts');
+    assert.deepEqual(store.stepHistory('back', undefined), { path: 'a.ts' }, 'a place in another file is not believed');
+    store.setPlaceReader(() => undefined);
+
+    // Steps and opens that record themselves do not record again, even if they throw.
+    store.withoutHistory(() => store.selectTab('a.ts'));
+    assert.equal(store.canGoBack, false);
+    assert.throws(() => store.withoutHistory(() => { throw new Error('boom'); }));
+    store.selectTab('b.ts');
+    assert.equal(step(store, 'back'), 'a.ts', 'recording resumes after a throwing open');
+
+    // Closing the shown tab shows its neighbour without recording.
+    store.selectTab('a.ts');
+    store.stepHistory('back', undefined);
+    store.closeTab('a.ts');
+    assert.equal(store.selected, 'b.ts');
+    assert.equal(store.canGoBack, false);
+
+    // A Git review is not a place to leave from; the file before it is.
+    store.openFile('c.ts', { keep: true });
+    store.openGitDiff('c.ts', 'head');
+    store.selectTab('b.ts');
+    assert.equal(step(store, 'back'), 'b.ts', 'leaving the review records nothing');
+    assert.equal(store.canGoBack, false);
+
+    // Each directory has its own; closing and switching keep them.
+    store.selectTab('c.ts');
+    assert.equal(store.canGoBack, true);
+    store.close();
+    assert.equal(store.canGoBack, false, 'nothing to step while closed');
+    await store.show('/q');
+    assert.equal(store.canGoBack, false, 'another directory starts empty');
+    store.openFile('a.ts', { keep: true });
+    store.openFile('doc.md', { keep: true });
+    await store.show('/p');
+    assert.equal(store.canGoBack, true);
+    assert.equal(store.stepHistory('back', { path: 'c.ts' })?.path, 'b.ts');
+    await store.show('/q');
+    assert.equal(store.stepHistory('back', { path: 'doc.md' })?.path, 'a.ts');
+    await store.show('/p');
+    assert.equal(store.canGoForward, true, "/p's forward is still there");
+
+    // The least recently shown directory goes past the limit; the rest stay.
+    // Shown so far: /q, then /p; these fill the limit.
+    for (let i = 0; i < EDITOR_HISTORY_DIRS - 2; i++) await store.show(`/d${i}`);
+    await store.show('/q');
+    assert.equal(store.canGoForward, true, '/q is still kept');
+    await store.show('/d-last');
+    await store.show('/p');
+    assert.equal(store.canGoForward, false, '/p was the least recently shown and went');
+
+    await store.show('/q');
+    assert.equal(store.reset(), true);
+    await store.show('/q');
+    assert.equal(store.canGoForward, false, 'a host switch drops every history');
+  } finally {
+    delete globalThis.__storeFixture;
+  }
+});

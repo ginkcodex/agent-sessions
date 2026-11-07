@@ -67,8 +67,10 @@ The store records a place itself when the shown working tab changes:
 (`setPlaceReader`) before switching, and visit it. Not recorded:
 
 - the same tab shown again;
-- leaving from or to the Git History layout, a Git review (`gitBasis`) or a
-  comparison: those are not places in the working tree;
+- moves in or into the Git History layout, and leaving from a Git review
+  (`gitBasis`) or a comparison: those are not places in the working tree.
+  Opening a review from a working file records that file, so Back
+  returns to it;
 - closing a tab (its neighbour is shown), restoring a project, a rename;
 - a step through history itself, and opens that record their own place
   (`withoutHistory`).

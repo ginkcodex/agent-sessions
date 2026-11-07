@@ -7,6 +7,11 @@ import { canEditContent, editorText, serializedEditSize } from '../fileEditing';
 import { gitRepositoryOf, parentFolders } from '../files';
 import type { FileLinkLocation } from '../problemNavigation';
 import type { GitHistoryDiff, GitHistoryDiffRequest, GitHistoryCompareDiffRequest } from '../gitHistory';
+import { SourceHistory, type EditorPlace } from '../editorHistory';
+import type { NavDirection } from '../navHistory';
+
+/** How many directories keep their back/forward history, least recently shown dropped first. */
+export const EDITOR_HISTORY_DIRS = 20;
 
 /** Mutable saved-disk comparison, isolated from immutable commit tabs. */
 export interface ComparisonSource extends GitHistoryCompareDiffRequest {
@@ -289,6 +294,71 @@ export class FilesStore {
   setExternalReader(read: (path: string) => Promise<FileContent>): void { this.readExternal = read; }
   private savedReads = new WeakMap<FileTab, number>();
 
+  // Back and forward through the places shown, per directory, kept while
+  // the app runs like saved, in least-recently-shown order.
+  private histories = new Map<string, SourceHistory>();
+  /** Bumped on every change to a history, so its buttons follow. */
+  historyVersion = $state(0);
+  private historyPaused = 0;
+  private readPlace: ((tab: FileTab) => EditorPlace | undefined) | undefined;
+
+  /** Installs how the viewer says where the user is in the shown tab; returns an uninstall function. */
+  setPlaceReader(read: (tab: FileTab) => EditorPlace | undefined): () => void {
+    this.readPlace = read;
+    return () => { if (this.readPlace === read) this.readPlace = undefined; };
+  }
+
+  get canGoBack(): boolean { void this.historyVersion; return Boolean(this.dir && this.histories.get(this.dir)?.canGoBack); }
+  get canGoForward(): boolean { void this.historyVersion; return Boolean(this.dir && this.histories.get(this.dir)?.canGoForward); }
+
+  /** Records where the user leaves from in the shown directory; forward is dropped. */
+  visit(place: EditorPlace): void {
+    if (!this.dir) return;
+    if (!this.histories.has(this.dir)) this.touchHistory(this.dir);
+    this.histories.get(this.dir)!.visit(place);
+    this.historyVersion++;
+  }
+
+  /** One step back or forward from current; the place to show, if any. */
+  stepHistory(direction: NavDirection, current: EditorPlace | undefined): EditorPlace | undefined {
+    const history = this.dir ? this.histories.get(this.dir) : undefined;
+    if (!history) return undefined;
+    const to = direction === 'back' ? history.goBack(current) : history.goForward(current);
+    this.historyVersion++;
+    return to;
+  }
+
+  /** Opens that record their own place (or are a step) do not record another. */
+  withoutHistory<T>(open: () => T): T {
+    this.historyPaused++;
+    try { return open(); } finally { this.historyPaused--; }
+  }
+
+  /**
+   * Before another working tab is shown: records the place left. Only
+   * working-tree tabs are places; a Git review or the history layout is not.
+   */
+  private leaving(id: string, owner: FileTabOwner): void {
+    if (this.historyPaused || !this.dir || owner !== 'working' || this.selectionOwner !== 'working') return;
+    const from = this.activeTab;
+    if (!from || tabId(from) === id || tabOwner(from) !== 'working' || from.gitBasis || from.comparison) return;
+    let place: EditorPlace | undefined;
+    try { place = this.readPlace?.(from); } catch { /* Where the user was is a hint; the file still opens. */ }
+    this.visit(place?.path === from.path ? place : { path: from.path, ...(from.external ? { external: true } : {}) });
+  }
+
+  /** The shown directory's history becomes the most recent; the oldest beyond the limit go. */
+  private touchHistory(dir: string): void {
+    const history = this.histories.get(dir) ?? new SourceHistory();
+    this.histories.delete(dir);
+    this.histories.set(dir, history);
+    for (const old of this.histories.keys()) {
+      if (this.histories.size <= EDITOR_HISTORY_DIRS) break;
+      this.histories.delete(old);
+    }
+    this.historyVersion++;
+  }
+
   /** Installs the single lifecycle observer; returns an unsubscribe function. */
   observe(observer: FileLifecycleObserver | undefined): () => void {
     this.observer = observer;
@@ -489,6 +559,7 @@ export class FilesStore {
     this.save();
     this.clear();
     this.dir = dir;
+    this.touchHistory(dir);
     const key = listingKey(this.dataHost, dir);
     const cached = this.listings.get(key);
     if (cached) {
@@ -794,6 +865,8 @@ export class FilesStore {
         this.workingSelected = next ? tabId(next) : null;
       }
       this.expanded = new Set([...this.expanded].filter(p => !matches(p)));
+      this.histories.get(dir)?.forget(p => Boolean(p.external) || !matches(p.path));
+      this.historyVersion++;
       this.save();
       this.invalidateListings(dir, host);
       this.refreshing = true;
@@ -828,6 +901,8 @@ export class FilesStore {
       if (tab.content) tab.content = { ...tab.content, path: next };
     }
     this.expanded = new Set([...this.expanded].map(remap));
+    if (this.dir) this.histories.get(this.dir)?.remap(remap);
+    this.historyVersion++;
     this.save();
     const dir = this.dir;
     if (dir) this.notify(o => o.renamed(dir, path, destination));
@@ -899,6 +974,7 @@ export class FilesStore {
     const owner = opts.owner ?? 'working';
     const existing = this.tabs.find((t) => tabId(t) === id);
     if (existing && (existing.path !== path || tabOwner(existing) !== owner)) return;
+    this.leaving(id, owner);
     this.selectionOwner = owner;
     if (existing) {
       if (keep) existing.preview = false;
@@ -1075,6 +1151,7 @@ export class FilesStore {
   selectTab(id: string): void {
     const tab = this.tabs.find((t) => tabId(t) === id);
     if (tab) {
+      this.leaving(id, tabOwner(tab));
       this.selectionOwner = tabOwner(tab);
       if (!tab.external && tabOwner(tab) === 'working') this.revealPath(tab.path);
       this.selected = tabId(tab);
@@ -1434,6 +1511,8 @@ export class FilesStore {
     if (this.hasUnsaved || this.creating || this.renaming || this.deleting) return false;
     this.clear();
     this.saved.clear();
+    this.histories.clear();
+    this.historyVersion++;
     this.listings.clear();
     this.renameUncertain = null;
     this.deleteUncertain = null;

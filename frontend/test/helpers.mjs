@@ -63,6 +63,11 @@ async function importCompiled(filename, code, replacements) {
   if (code.includes(historyIdentityImport) && !replacements.some(([from]) => from === historyIdentityImport)) {
     replacements.push([historyIdentityImport, "const tabId = t => t.id ?? t.path; const tabOwner = t => t.owner ?? 'working';"]);
   }
+  // The files store keeps its back/forward history in a plain module.
+  const editorHistoryImport = "'../editorHistory'";
+  if (code.includes(editorHistoryImport) && !replacements.some(([from]) => from === editorHistoryImport)) {
+    replacements.push([editorHistoryImport, JSON.stringify(new URL('../src/lib/editorHistory.ts', import.meta.url).href)]);
+  }
   const tabIdImport = "import { tabId } from '../../../stores/files.svelte';";
   if (code.includes(tabIdImport)) replacements.push([tabIdImport, 'const tabId = t => t.id ?? t.path;']);
   // Dialog fixtures render the real shared close control, not a markup stub.

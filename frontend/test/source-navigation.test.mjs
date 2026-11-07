@@ -424,3 +424,26 @@ test('a reopened Ruby constant lists its own file first', () => {
   const same = at(['/a.rb']);
   assert.equal(rankRubyDefinitions(same, 'perform', ''), same);
 });
+
+test('history places: a preview or a missing range is its own place; rename and delete follow paths', () => {
+  const h = new SourceHistory();
+  h.visit({ path: 'a.md', preview: true });
+  h.visit({ path: 'a.md' });
+  h.visit({ path: 'a.md' });
+  h.visit(place('a.md', 3));
+  assert.deepEqual(h.goBack(undefined), place('a.md', 3));
+  assert.deepEqual(h.goBack(undefined), { path: 'a.md' }, 'the same file without a range merges');
+  assert.deepEqual(h.goBack(undefined), { path: 'a.md', preview: true }, 'the preview differs from the source');
+
+  const r = new SourceHistory();
+  for (const p of ['src/a.ts', 'src-old/b.ts', 'src/c.ts', 'x.ts']) r.visit({ path: p });
+  r.visit({ path: '/abs/src/d.ts', external: true });
+  r.remap((p) => (p === 'src' || p.startsWith('src/') ? 'lib' + p.slice(3) : p));
+  const paths = (history) => { const out = []; let p; while ((p = history.goBack(undefined))) out.push(p.path); return out; };
+  assert.deepEqual(paths(r), ['/abs/src/d.ts', 'x.ts', 'lib/c.ts', 'src-old/b.ts', 'lib/a.ts'], 'prefix boundaries hold; external places never move');
+
+  const d = new SourceHistory();
+  for (const p of ['a.ts', 'gone.ts', 'a.ts', 'b.ts']) d.visit({ path: p });
+  d.forget((p) => p.path !== 'gone.ts');
+  assert.deepEqual(paths(d), ['b.ts', 'a.ts'], 'neighbours that became the same place merge');
+});

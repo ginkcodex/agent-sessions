@@ -905,7 +905,7 @@
     if (historyBlocked) return;
     const to = direction === 'back' ? history.goBack(currentLocation()) : history.goForward(currentLocation());
     historyVersion++;
-    if (to) openLocation(to);
+    if (to?.range) openLocation({ ...to, range: to.range });
   }
 
   /**

@@ -2,6 +2,8 @@ import type { CodeDiagnosticPosition, CodeDiagnosticRange, CodeHoverText, CodeNa
 import { renderMarkdown } from './markdown';
 import { navigationShortcut, type NavDirection } from './navHistory';
 
+export { SOURCE_HISTORY_LIMIT, SourceHistory, type EditorPlace } from './editorHistory';
+
 /**
  * Code navigation in the file viewer: where the pointer is in the source,
  * the word it is over, the way back, and how an answer reads.
@@ -9,6 +11,7 @@ import { navigationShortcut, type NavDirection } from './navHistory';
 
 /** A place in a file: a project path, or an absolute host path outside it. */
 export interface SourceLocation { path: string; external?: boolean; range: CodeDiagnosticRange }
+
 
 /** A point in the viewport, where a popup about a symbol opens. */
 export interface ViewportPoint { x: number; y: number }
@@ -250,60 +253,4 @@ function hoverMarkdown(source: string): string {
 /** The hover text as HTML: Markdown through the transcript renderer, plain text escaped. */
 export function hoverHtml(hover: CodeHoverText): string {
   return hover.kind === 'markdown' ? renderMarkdown(hoverMarkdown(hover.value)) : `<pre class="hover-plain">${escapeHtml(hover.value)}</pre>`;
-}
-
-export const SOURCE_HISTORY_LIMIT = 50;
-
-/**
- * Back and forward through the places navigation went, for one project.
- * `visit` records where the user left from; going back records where they
- * are, so forward returns there.
- */
-export class SourceHistory {
-  private back: SourceLocation[] = [];
-  private forward: SourceLocation[] = [];
-  private readonly limit: number;
-
-  constructor(limit = SOURCE_HISTORY_LIMIT) { this.limit = limit; }
-
-  get canGoBack(): boolean { return this.back.length > 0; }
-  get canGoForward(): boolean { return this.forward.length > 0; }
-
-  /** Leaving from for somewhere else: forward is dropped. */
-  visit(from: SourceLocation): void {
-    const last = this.back[this.back.length - 1];
-    if (!last || !sameLocation(last, from)) this.back.push(from);
-    if (this.back.length > this.limit) this.back.shift();
-    this.forward = [];
-  }
-
-  goBack(current: SourceLocation | undefined): SourceLocation | undefined {
-    return this.step(this.back, this.forward, current);
-  }
-
-  goForward(current: SourceLocation | undefined): SourceLocation | undefined {
-    return this.step(this.forward, this.back, current);
-  }
-
-  /** A path closed for good (deleted) or renamed: its places go too. */
-  forget(keep: (location: SourceLocation) => boolean): void {
-    this.back = this.back.filter(keep);
-    this.forward = this.forward.filter(keep);
-  }
-
-  clear(): void { this.back = []; this.forward = []; }
-
-  private step(from: SourceLocation[], to: SourceLocation[], current: SourceLocation | undefined): SourceLocation | undefined {
-    const next = from.pop();
-    if (next && current) {
-      to.push(current);
-      if (to.length > this.limit) to.shift();
-    }
-    return next;
-  }
-}
-
-function sameLocation(a: SourceLocation, b: SourceLocation): boolean {
-  return a.path === b.path && Boolean(a.external) === Boolean(b.external)
-    && a.range.start.line === b.range.start.line && a.range.start.character === b.range.start.character;
 }
