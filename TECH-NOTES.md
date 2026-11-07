@@ -170,6 +170,14 @@ so one press moves either the session list or the editor, never both.
   navigation. This still needs testing on a real machine.
 - Logitech's Windows software may remap the buttons too; check what the
   app receives before assuming the handler is broken.
+- **Two-finger swipes:** WebView2 runs in its own process, so the app's
+  window never sees its scroll messages, and its own swipe navigation is
+  for touchscreens. The page spots the swipe from wheel events instead
+  (`SwipeGuard` with detect on, `frontend/src/lib/swipeNavigation.ts`): at
+  least 3 pixel-mode events, 80 px sideways and more than twice the
+  vertical, with no Shift and no delta of a whole wheel step (100 px).
+  Toward the left is back, as in Edge. A smooth sideways mouse wheel can
+  pass for a touchpad.
 
 ### How to debug
 

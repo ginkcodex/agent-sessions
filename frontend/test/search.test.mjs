@@ -449,6 +449,61 @@ test('a two-finger swipe navigates unless its gesture scrolled something sideway
   assert.equal(seen.length, 5, 'unsubscribing stops both');
 });
 
+test('on Windows the guard spots a two-finger swipe in the wheel events, unless it scrolled or came from a mouse', () => {
+  const mock = new MockBackendAPI();
+  const seen = [];
+  const scrollable = new Set();
+  const guard = new SwipeGuard((target, sign) => scrollable.has(`${target}:${sign}`), true);
+  let now = 0;
+  const off = subscribeMouseNavigate((d) => seen.push(d), mock, guard, () => now);
+  const wheel = (t, deltaX, deltaY = 0, extra = {}) => {
+    now = t;
+    guard.wheel({ deltaX, deltaY, deltaMode: 0, shiftKey: false, ctrlKey: false, timeStamp: t, target: 'page', ...extra });
+  };
+  // A touchpad gesture: many small deltas, once per gesture, as the scroll goes.
+  const swipe = (t, step, n = 6, extra = {}) => { for (let i = 0; i < n; i++) wheel(t + i * 16, step, 2, extra); };
+
+  swipe(0, -20);
+  assert.deepEqual(seen, ['back'], 'scrolling toward the left goes back, once per gesture');
+  swipe(1000, 20);
+  assert.deepEqual(seen, ['back', 'forward']);
+
+  // Too short, too few events, or mostly vertical: a scroll, not a swipe.
+  swipe(2000, -10, 6);
+  wheel(3000, -60); wheel(3016, -60);
+  for (let i = 0; i < 8; i++) wheel(4000 + i * 16, -15, -20);
+  assert.deepEqual(seen, ['back', 'forward']);
+
+  // A mouse: Shift+wheel, lines, or a whole wheel step in the gesture.
+  swipe(5000, -20, 6, { shiftKey: true });
+  swipe(6000, -20, 6, { deltaMode: 1 });
+  wheel(7000, -100); swipe(7016, -20);
+  wheel(8000, 0, 120); swipe(8016, -20);
+  assert.deepEqual(seen, ['back', 'forward'], 'mouse wheels never swipe');
+  // A pinch is ignored, not counted.
+  swipe(9000, -20, 6, { ctrlKey: true });
+  assert.deepEqual(seen, ['back', 'forward']);
+
+  // Something that can still scroll left: the gesture is a scroll, also at the edge.
+  scrollable.add('page:-1');
+  wheel(10000, -20); wheel(10016, -20);
+  scrollable.delete('page:-1');
+  swipe(10032, -20);
+  assert.deepEqual(seen, ['back', 'forward']);
+  swipe(11000, -20);
+  assert.deepEqual(seen, ['back', 'forward', 'back'], 'a new gesture from the edge goes back');
+
+  off();
+  swipe(12000, 20);
+  assert.equal(seen.length, 3, 'unsubscribing stops it');
+  // Off by default (macOS and Linux spot swipes natively).
+  const quiet = new SwipeGuard(() => false);
+  const heard = [];
+  quiet.onSwipe((d) => heard.push(d));
+  for (let i = 0; i < 6; i++) quiet.wheel({ deltaX: -20, deltaY: 0, deltaMode: 0, ctrlKey: false, timeStamp: i * 16, target: 'page' });
+  assert.deepEqual(heard, []);
+});
+
 test('sideways scrolling counts only room left in that direction, in elements that scroll', () => {
   const el = (scrollLeft, scrollWidth, clientWidth, overflow, parentElement = null) => ({ scrollLeft, scrollWidth, clientWidth, overflow, parentElement });
   const overflowX = (e) => e.overflow;
@@ -464,6 +519,9 @@ test('sideways scrolling counts only room left in that direction, in elements th
   assert.equal(scrollsSideways(span, -1, overflowX, page), false, 'overflow hidden does not scroll for the user');
   const wide = el(10, 2000, 1000, 'visible');
   assert.equal(scrollsSideways(el(0, 10, 10, 'visible', wide), -1, overflowX, wide), true, 'the page itself scrolls whatever its overflow says');
+  const field = { ...el(40, 600, 200, 'clip', page), tagName: 'INPUT' };
+  assert.equal(scrollsSideways(field, -1, overflowX, page), true, 'a text field scrolls through a long value whatever its overflow');
+  assert.equal(scrollsSideways({ ...el(0, 20, 20, 'clip', page), tagName: 'INPUT' }, 1, overflowX, page), false, 'a short value has no room');
   assert.equal(scrollsSideways(span, 0, overflowX, page), false);
   assert.equal(scrollsSideways(null, 1, overflowX, page), false);
 });
