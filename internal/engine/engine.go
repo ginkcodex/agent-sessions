@@ -453,6 +453,12 @@ func (e *Engine) GetMessages(ctx context.Context, ref model.SessionRef, offset i
 	return e.svc.GetMessages(ctx, ref, offset, limit)
 }
 
+// GetMessagesCapped returns one page of a session transcript within the size
+// budget of pc (see PageCap).
+func (e *Engine) GetMessagesCapped(ctx context.Context, ref model.SessionRef, offset int, limit int, pc PageCap) (MessagesPage, error) {
+	return e.svc.GetMessagesCapped(ctx, ref, offset, limit, pc)
+}
+
 // GetBlob returns provider-attached content referenced by a message part.
 func (e *Engine) GetBlob(ctx context.Context, ref model.SessionRef, key string) (BlobResponse, error) {
 	return e.svc.GetBlob(ctx, ref, key)

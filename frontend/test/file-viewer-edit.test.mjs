@@ -442,11 +442,17 @@ test('line blame loads with the selection and has no close buttons; its text ope
   assert.match(viewer, /onclearselection=\{clearSelection\}/);
 });
 
-test('line blame hides for a file .gitignore leaves out, whether the listing or the host tells', () => {
+test('line blame hides for a file the listing marks ignored; the host saying so keeps the bar with a note', () => {
   const viewer = readFileSync(new URL('../src/lib/components/common/go-to-file/FileViewer.svelte', import.meta.url), 'utf8');
-  assert.match(viewer, /let gitIgnored = \$derived\(Boolean\(files\.selectedPath && \(ignoredByGit\(files\.listing, files\.selectedPath\) \|\| \(files\.dir && ignoredFiles\[fileKey\(files\.dir, files\.selectedPath\)\]\)\)\)\);/);
-  // The host's answer is remembered for the file instead of shown as blame.
+  // Only the listing hides the bar.
+  assert.match(viewer, /let gitIgnored = \$derived\(Boolean\(files\.selectedPath && ignoredByGit\(files\.listing, files\.selectedPath\)\)\);/);
+  // The host's answer is remembered for the file instead of shown as blame…
   assert.match(viewer, /if \(result\.ignored\) ignoredFiles\[fileKey\(dir, path\)\] = true;\s*else if \(request === blameRequest\) blame = result;/);
+  assert.match(viewer, /let blameIgnored = \$derived\(Boolean\(files\.selectedPath && files\.dir && ignoredFiles\[fileKey\(files\.dir, files\.selectedPath\)\]\)\);/);
+  // …so every line of it says so, without asking the host again.
+  assert.match(viewer, /if \(!blameShown \|\| !canBlame \|\| blameIgnored \|\| editing \|\| !line \|\| !dir \|\| !path\) return;/);
+  assert.match(viewer, /\{:else if blameIgnored\}<span>Ignored by Git — no blame<\/span>\s*\{:else if blameLoading\}/);
+  assert.doesNotMatch(viewer, /!gitIgnored && !external[^\n]*ignoredFiles/);
 });
 
 test('a file outside the project is read-only, with no blame, diff or checks', async () => {

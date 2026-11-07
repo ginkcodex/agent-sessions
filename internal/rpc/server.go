@@ -482,6 +482,9 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
 		}
+		if p.Cap != nil {
+			return backend.GetMessagesCapped(ctx, p.Ref, p.Offset, p.Limit, *p.Cap)
+		}
 		return backend.GetMessages(ctx, p.Ref, p.Offset, p.Limit)
 
 	case "getMessagesSince":

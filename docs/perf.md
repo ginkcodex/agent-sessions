@@ -3858,3 +3858,117 @@ packaging, private-store QA script or push occurred. Watcher acceleration and
 uncapped Search index reuse remain deferred by the design. Sequential enumeration
 and immutable-copy overhead remain measured bottlenecks. Milestones 4/5 still
 need their own design and ≤4h briefs before implementation.
+
+
+## NG-04 — Walked listings with nested repositories (2026-11-07)
+
+`List` on a folder that is not a Git work tree walks it. Since NG-02 the walk
+asks each repository it finds which paths Git ignores
+(`git ls-files --others --ignored --exclude-standard --directory`), one at a
+time, in walk order. Before: 46fc020 (name rules only). After: NG-02/NG-03.
+
+Measured with `internal/files/walk_measure_test.go`, built once per commit
+(the file copied into a `git worktree` at 46fc020 for "before"):
+
+```sh
+go test -c -o /tmp/ng04-files-after.test ./internal/files/
+AS_MEASURE_ROOT=<root> /tmp/ng04-files-after.test -test.run TestMeasureList -test.v
+```
+
+One warm-up, then the median of 7 runs.
+
+### Synthetic tree (local, WSL2, Go 1.26, git 2.53.0)
+
+`/tmp/ng04-synth`: a plain root with 12 repositories (400 tracked files each;
+`node_modules/` 2,000 files, `dist/` 300 files and 20 `*.log` ignored) and a
+plain `notes/` folder; 32,702 files outside `.git`.
+
+| | Median (min–max) | Git per run | Files | Ignored files | Ignored folders | Repositories |
+|---|---|---|---|---|---|---|
+| Before | 8 ms (8–10), 9 ms (8–9) | 1 `ls-files`, 12 `status` | 5,102 | 0 | 24 | 12 |
+| After | 27 ms (22–29), 26 ms (24–27) | 13 `ls-files`, 12 `status` | 4,862 | 240 | 24 | 12 |
+
+The 240 `*.log` files move from `Files` to `Ignored`. The added ~18 ms is
+12 queries of ~1.5 ms each, run serially.
+
+### `plgl:/home/haitran/Workspaces/v2` (read only)
+
+The same two test binaries, copied to `plgl:/tmp`, run there, then deleted
+(28 CPUs, git 2.53.0). `git status --porcelain` of `cadence`, `cadence/ui`
+and `dtp4a` was identical before and after. Two rounds:
+
+| | Median (min–max) | Git per run | Files | Directories | Ignored files | Ignored folders | Repositories |
+|---|---|---|---|---|---|---|---|
+| Before | 25 ms (18–31), 20 ms (16–27) | 1 `ls-files`, 15 `status` | 3,178 | 540 | 0 | 219 | 15 |
+| After | 65 ms (54–73), 79 ms (39–93) | 14 `ls-files`, 13 `status` | 2,725 | 479 | 18 | 216 | 13 |
+
+The listing gets ~45–60 ms slower (median) for 13 extra queries. `Files`
+has 453 fewer entries (18 now in `Ignored`, the rest inside folders Git
+ignores, such as `cadence/devops/staging/`, which are no longer walked), and
+`Directories` has 61 fewer.
+Two repositories inside folders their parent ignores are no longer found
+(15 → 13), so two fewer `git status` run.
+
+A first estimate ran the same query by hand in a shell loop, one repository
+after another: ~27 ms each, ~350 ms in total. That overstated the cost; the
+loop's own process starts (`date`, `realpath`, subshells over SSH) were
+counted with each query. The end-to-end numbers above are the result.
+
+**Result:** ~45–60 ms added on `v2`, under NG-04's 250 ms limit; no
+follow-up needed. Not measured: Windows, a cold file cache.
+
+## PC-01 — Transcript first pages by provider (2026-11-07)
+
+`TestMeasureTranscriptLoad` (`internal/provider/all/measure_load_test.go`)
+on `plgl:/home/haitran/Workspaces/be`, read only: the test binary was copied
+to `plgl:/tmp`, run there and deleted. It loads every session of the project
+from each provider as a freshly started server would, and reports the JSON
+size of the newest 50 messages (the viewer's first page) and of the page a
+256 KB cap would send ([transcript-page-cap](plan/transcript-page-cap.md)).
+
+| Provider | Sessions, MB on disk | First loads total (median) | Newest 50 as JSON | Largest message | With a 256 KB cap |
+|---|---|---|---|---|---|
+| Claude | 64, 143 MB | 1.99 s (9 ms) | 0.05–0.13 MB (top 8 by load time) | 0.07 MB | unchanged, 50 messages |
+| Codex | 9, 44 MB | 0.92 s (81 ms) | 0.44–1.29 MB | 0.25 MB | 4–32 messages, ≤ 0.25 MB |
+| OpenCode | 80 (one 649 MB database) | 2.11 s (15 ms) | 0.08–1.56 MB | 0.29 MB | 9–50 messages, ≤ 0.25 MB |
+
+The slowest single loads: Claude 284 ms (24 MB file, 3,060 messages), Codex
+199–237 ms over three runs (19 MB, 85 messages). The largest first pages are
+mostly tool output: Codex 1.29 MB, of it `tool.output` 0.96 MB and
+`tool.input` 0.13 MB; OpenCode 1.56 MB, `tool.output` 1.33 MB. A Codex
+message is a whole turn with its tool calls, so 50 of them are most of a
+session; Claude splits turns into many small messages. The largest Claude
+first page is a subagent's, 0.39 MB.
+
+Sending 1.3 MB from `plgl` over SSH without compression takes about
+150–240 ms beyond the connection's latency, before the frontend parses and
+renders the page. The server-side load is not what makes Codex slower to
+open.
+
+**Result:** cap the viewer's pages by size (PC-02–PC-04). Not measured here:
+the time to transfer and render a page in the desktop app (PC-06).
+
+## PC-05 — Capped first pages on `plgl` (2026-11-07)
+
+`TestMeasureTranscriptLoad` now asks the engine for the first page as the
+viewer does (`GetMessagesCapped(-1, 50, {MaxBytes: 256 KB, Anchor: -1})`)
+and reports its JSON size and the `model.MessageBytes` size the cap counted.
+Run on `plgl:/home/haitran/Workspaces/be` as in PC-01 (binary in `/tmp`,
+deleted after), `AS_MEASURE_TOP=8`:
+
+| Provider | Newest 50 as JSON | Engine's capped page | Capped JSON vs counted |
+|---|---|---|---|
+| Codex (8 sessions with messages) | 0.44–1.29 MB | 4–34 messages, 0.20–0.29 MB | JSON up to 0.06 MB over (0.29 MB for 0.23 MB counted) |
+| OpenCode (top 8) | 0.08–1.56 MB | 9–50 messages, 0.08–0.25 MB | within 0.01 MB |
+| Claude (top 8) | 0.05–0.13 MB | unchanged, 50 messages | within 0.01 MB |
+
+The largest Codex first page (`01a07a0e…`) goes from 1.29 MB to 16 messages,
+0.26 MB; the slowest-loading one (`01a0c1cb…`, 19 MB) from 1.01 MB to 11
+messages, 0.27 MB. `MessageBytes` undercounts JSON where tool output has
+many escaped characters (JSON 0.29 MB for 0.23 MB counted, about 25%), so a
+page can be a little over 256 KB; all stay under 0.3 MB. Load times match
+PC-01 (Codex first loads 942 ms total, median 89 ms).
+
+**Result:** Codex and OpenCode first pages are now a fifth or less of their
+uncapped size; Claude's are unchanged. Not measured: transfer and render
+time in the desktop app (PC-06).

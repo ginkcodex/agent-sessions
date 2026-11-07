@@ -48,10 +48,20 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   return Boolean(target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'));
 }
 
+function openModals(root: ParentNode): Element[] {
+  return Array.from(root.querySelectorAll('[role="dialog"][aria-modal="true"]'))
+    .filter((dialog) => !dialog.closest('[hidden]'));
+}
+
 /** Any modal owns keyboard input while it is open, not while kept mounted but hidden. */
 export function hasOpenModal(root: ParentNode = document): boolean {
-  return Array.from(root.querySelectorAll('[role="dialog"][aria-modal="true"]'))
-    .some((dialog) => !dialog.closest('[hidden]'));
+  return openModals(root).length > 0;
+}
+
+/** Whether dialog is open and no other modal (a prompt, Settings) is open with it. */
+export function onlyOpenModal(dialog: Element, root: ParentNode = document): boolean {
+  const open = openModals(root);
+  return open.length === 1 && open[0] === dialog;
 }
 
 export function progressIncomplete(progress: FTSProgress | null): boolean {

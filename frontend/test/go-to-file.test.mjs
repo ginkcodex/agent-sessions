@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { fixtureStore, loadServerComponent, renderWithFixture } from './helpers.mjs';
+import { onlyOpenModal } from '../src/lib/search.ts';
+import { navigationButton } from '../src/lib/navHistory.ts';
 
 const base = new URL('../src/lib/components/common/go-to-file/', import.meta.url);
 const lib = (path) => JSON.stringify(new URL(path, base).href);
@@ -16,7 +20,9 @@ const dialog = await loadServerComponent(new URL('../GoToFileDialog.svelte', bas
   ["import { copyToClipboard } from '../../portable';", 'const copyToClipboard = async () => true;'],
   ["import { directoryName } from '../../tree';", 'const directoryName = (dir) => dir;'],
   ["import ContextMenu from './ContextMenu.svelte';", 'const ContextMenu = () => {};'],
-  ["import { api, subscribeCatalogChanged } from '../../api';", 'const api = {}; const subscribeCatalogChanged = () => () => {};'],
+  ["import { api, subscribeCatalogChanged, subscribeMouseNavigate } from '../../api';", 'const api = {}; const subscribeCatalogChanged = () => () => {}; const subscribeMouseNavigate = () => () => {};'],
+  ["'../../navHistory'", lib('../../../navHistory.ts')],
+  ["'../../search'", lib('../../../search.ts')],
   ["import { toast } from '../../stores/toast.svelte';", 'const toast = {};'],
   ["import { absoluteFilePath } from '../../fileActions';", 'const absoluteFilePath = () => "";'],
   ["import FilePicker from './go-to-file/FilePicker.svelte';", 'const FilePicker = () => {};'],
@@ -362,4 +368,44 @@ test('plain source escapes HTML and sizes the gutter from the original line coun
   assert.match(html, /&lt;script>bad &amp; worse&lt;\/script>/);
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /class="ln line-select mark-none[^\"]*"[^>]*>10<\/button>/);
+});
+
+test('mouse side buttons step the viewer only while Go to File is the one open modal', () => {
+  const dialogSource = readFileSync(new URL('../GoToFileDialog.svelte', base), 'utf8');
+  const fn = dialogSource.slice(dialogSource.indexOf('  function sideButton('), dialogSource.indexOf('  onMount(() => {\n    const onMouseUp'));
+  const js = ts.transpileModule(fn, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const steps = [];
+  const dialogElement = { closest: () => null };
+  const modals = [dialogElement];
+  const document = { querySelectorAll: () => modals };
+  const ctx = { files: { open: true }, fileActions: { busy: false, quitting: false }, renamePath: null, newEntry: null, dialogElement,
+    viewer: { goHistory: direction => steps.push(direction) }, onlyOpenModal: (el) => onlyOpenModal(el, document) };
+  const sideButton = new Function('ctx', `with(ctx) { ${js}; return sideButton; }`)(ctx);
+  sideButton('back');
+  sideButton('forward');
+  assert.deepEqual(steps, ['back', 'forward']);
+  modals.push({ closest: () => null });
+  sideButton('back');
+  assert.deepEqual(steps, ['back', 'forward'], 'a prompt or Settings over the dialog takes the press');
+  modals.pop();
+  for (const blocked of [{ files: { open: false } }, { fileActions: { busy: true } }, { renamePath: 'a.ts' }, { newEntry: {} }]) {
+    const saved = Object.fromEntries(Object.keys(blocked).map(k => [k, ctx[k]]));
+    Object.assign(ctx, blocked);
+    sideButton('back');
+    Object.assign(ctx, saved);
+  }
+  assert.equal(steps.length, 2, 'closed, busy or prompting: nothing');
+
+  // The DOM's buttons and the native event both reach it, on release only.
+  assert.match(dialogSource, /const direction = navigationButton\(event\.button\);\s*if \(direction\) sideButton\(direction\);/);
+  assert.match(dialogSource, /subscribeMouseNavigate\(sideButton\)/);
+  assert.match(dialogSource, /window\.addEventListener\('mouseup', onMouseUp\)/);
+  assert.doesNotMatch(dialogSource, /addEventListener\('mousedown'/);
+  assert.match(dialogSource, /role="dialog" aria-modal="true" aria-labelledby="goto-file-title" bind:this=\{dialogElement\}/);
+  assert.equal(navigationButton(3), 'back');
+  assert.equal(navigationButton(4), 'forward');
+  // App leaves the session list alone while a modal is open, so a press does one thing.
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  assert.match(app, /if \(event\.type === 'mouseup' && !hasOpenModal\(\)\) go\(direction\);/);
+  assert.match(app, /subscribeMouseNavigate\(\(direction\) => \{\s*if \(!hasOpenModal\(\)\) go\(direction\);/);
 });

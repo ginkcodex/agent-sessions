@@ -167,6 +167,9 @@ type GetMessagesParams struct {
 	Ref    model.SessionRef `json:"ref"`
 	Offset int              `json:"offset"`
 	Limit  int              `json:"limit"`
+	// Cap limits the page by size. Older servers ignore it and return the
+	// whole page, which is still a valid page.
+	Cap *engine.PageCap `json:"cap,omitempty"`
 }
 
 type GetMessagesSinceParams struct {

@@ -36,16 +36,21 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [editor-essentials.md](editor-essentials.md) | [editor-essentials](../tasks/editor-essentials/README.md) | Project search and replace, new agent sessions and alerts, code navigation, Git changes |
 | [git-history.md](git-history.md) | [git-history](../tasks/git-history/README.md) | Read-only Git history: multi-pane layout, repository/branch selection, commit search, historical diffs |
 | [nested-repo-blame.md](nested-repo-blame.md) | [nested-repo-blame](../tasks/nested-repo-blame/README.md) | Line blame, changed-line markers and status tints for repositories under a non-Git directory |
+| [nested-repo-gitignore.md](nested-repo-gitignore.md) | [nested-repo-gitignore](../tasks/nested-repo-gitignore/README.md) | Files, search and blame follow each repository's Git ignore rules under a non-Git directory |
 | [performance.md](performance.md) | [performance](../tasks/performance/README.md) | Performance roadmap (milestones 1–5); Milestone 1 tasks: baselines and targeted reuse |
 | [performance-startup.md](performance-startup.md) | [performance-startup](../tasks/performance-startup/README.md) | Startup responsiveness, the priority package before performance Milestone 2 |
 | [performance-m2.md](performance-m2.md) | [performance-m2](../tasks/performance-m2/README.md) | Performance Milestone 2: incremental transcripts, byte-budgeted cache, FTS reuse, transcript deltas |
 | [performance-m3.md](performance-m3.md) | [performance-m3](../tasks/performance-m3/README.md) | Performance Milestone 3: shared project index, bounded path snapshots, coalesced reconciliation |
+| [transcript-page-cap.md](transcript-page-cap.md) | [transcript-page-cap](../tasks/transcript-page-cap/README.md) | Transcript pages capped by size as well as count, so large Codex and OpenCode sessions open quickly |
 | [dark-tone.md](dark-tone.md) | [dark-tone](../tasks/dark-tone/README.md) | Dark surfaces layered around the native #2C2C2B tone |
 | [dialog-close.md](dialog-close.md) | [dialog-close](../tasks/dialog-close/README.md) | Centered shared close button for dialogs |
 | [selection-translate.md](selection-translate.md) | [selection-translate](../tasks/selection-translate/README.md) | Copy/Translate menu for a transcript selection, with its sentence as context |
 | [terminal-maximize.md](terminal-maximize.md) | [terminal-maximize](../tasks/terminal-maximize/README.md) | Maximize and restore the internal terminal without restarting sessions |
 | [terminal-split.md](terminal-split.md) | [terminal-split](../tasks/terminal-split/README.md) | Several shells side by side in one terminal tab |
 | [font-settings.md](font-settings.md) | [font-settings](../tasks/font-settings/README.md) | Settings → Appearance: editor font family and size; one type scale (ratios of body text) for project docs and session content, scaled by a body size |
+| [editor-history.md](editor-history.md) | [editor-history](../tasks/editor-history/README.md) | Back and forward through files and places in Go to File, per workspace, with the mouse's side buttons |
+| [swipe-navigation.md](swipe-navigation.md) | [swipe-navigation](../tasks/swipe-navigation/README.md) | Two-finger trackpad swipe back and forward on macOS, in the session list and Go to File |
+| [swipe-navigation-windows-linux.md](swipe-navigation-windows-linux.md) | [swipe-navigation-windows-linux](../tasks/swipe-navigation-windows-linux/README.md) | The same two-finger touchpad swipe on Windows (from wheel events) and Linux (GTK, native) |
 
 ## Supporting documents
 

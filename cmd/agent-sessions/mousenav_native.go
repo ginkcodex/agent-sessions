@@ -40,17 +40,28 @@ func hookWindowMouseNavigation(window *application.WebviewWindow) {
 
 //export goMouseNavigate
 func goMouseNavigate(window unsafe.Pointer, forward C.int) {
-	direction := "back"
-	if forward != 0 {
-		direction = "forward"
-	}
 	// Off the UI main loop: emitting runs script in the web view.
-	go navigateWindow(window, direction)
+	go navigateWindow(window, mouseNavigateEvent, navigateDirection(forward))
 }
 
-// navigateWindow sends direction to the app window whose native window is
-// native, or to the focused window when none matches.
-func navigateWindow(native unsafe.Pointer, direction string) {
+// goSwipeNavigate is a two-finger touchpad swipe (macOS and Linux; on
+// Windows the page spots swipes itself).
+//
+//export goSwipeNavigate
+func goSwipeNavigate(window unsafe.Pointer, forward C.int) {
+	go navigateWindow(window, swipeNavigateEvent, navigateDirection(forward))
+}
+
+func navigateDirection(forward C.int) string {
+	if forward != 0 {
+		return "forward"
+	}
+	return "back"
+}
+
+// navigateWindow sends event with direction to the app window whose native
+// window is native, or to the focused window when none matches.
+func navigateWindow(native unsafe.Pointer, event, direction string) {
 	app := application.Get()
 	if app == nil {
 		return
@@ -68,6 +79,6 @@ func navigateWindow(native unsafe.Pointer, direction string) {
 		target = app.Window.Current()
 	}
 	if target != nil {
-		target.DispatchWailsEvent(&application.CustomEvent{Name: mouseNavigateEvent, Data: direction})
+		target.DispatchWailsEvent(&application.CustomEvent{Name: event, Data: direction})
 	}
 }

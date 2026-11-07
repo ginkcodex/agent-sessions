@@ -387,6 +387,14 @@ func (c *Client) GetMessages(ctx context.Context, ref model.SessionRef, offset i
 	return out, err
 }
 
+// GetMessagesCapped needs no capability: a server without the cap ignores it
+// and returns the whole page.
+func (c *Client) GetMessagesCapped(ctx context.Context, ref model.SessionRef, offset int, limit int, pc engine.PageCap) (engine.MessagesPage, error) {
+	var out engine.MessagesPage
+	err := c.call(ctx, "getMessages", GetMessagesParams{Ref: ref, Offset: offset, Limit: limit, Cap: &pc}, &out)
+	return out, err
+}
+
 // GetMessagesSince is additive: hosts without the transcriptDelta capability
 // answer ErrUnsupportedAction, and their clients page with GetMessages.
 func (c *Client) GetMessagesSince(ctx context.Context, req engine.MessagesSinceRequest) (engine.MessagesDelta, error) {

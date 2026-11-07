@@ -21,6 +21,7 @@ type Backend interface {
 	AgentCounts(ctx context.Context, filter FilterOpts) (map[string]int, error)
 	GetSessionMeta(ctx context.Context, ref model.SessionRef) (model.SessionMeta, error)
 	GetMessages(ctx context.Context, ref model.SessionRef, offset int, limit int) (MessagesPage, error)
+	GetMessagesCapped(ctx context.Context, ref model.SessionRef, offset int, limit int, pc PageCap) (MessagesPage, error)
 	GetBlob(ctx context.Context, ref model.SessionRef, key string) (BlobResponse, error)
 
 	// Search

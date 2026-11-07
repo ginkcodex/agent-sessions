@@ -97,6 +97,10 @@ func (m *mockBackend) GetMessages(ctx context.Context, ref model.SessionRef, off
 	}, nil
 }
 
+func (m *mockBackend) GetMessagesCapped(ctx context.Context, ref model.SessionRef, offset int, limit int, _ engine.PageCap) (engine.MessagesPage, error) {
+	return m.GetMessages(ctx, ref, offset, limit)
+}
+
 func (m *mockBackend) GetBlob(ctx context.Context, ref model.SessionRef, key string) (engine.BlobResponse, error) {
 	if m.errToReturn != nil {
 		return engine.BlobResponse{}, m.errToReturn

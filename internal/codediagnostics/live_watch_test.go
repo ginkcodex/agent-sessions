@@ -150,6 +150,22 @@ func fireTimer(fs *fakeFS, timer chan time.Time) {
 	timer <- time.Now()
 }
 
+// fireTimerOrDone is fireTimer for a watcher that may end first: after a
+// revoke it can stop before it reads the queued events, or the tick.
+func fireTimerOrDone(fs *fakeFS, timer chan time.Time, done <-chan struct{}) {
+	for len(fs.events) > 0 || len(fs.errors) > 0 {
+		select {
+		case <-done:
+			return
+		case <-time.After(time.Millisecond):
+		}
+	}
+	select {
+	case timer <- time.Now():
+	case <-done:
+	}
+}
+
 // awaitWatched waits until the watcher has added the root watch (initial scan
 // done).
 func awaitWatched(t *testing.T, fs *fakeFS, dir string) {
@@ -283,7 +299,9 @@ func TestProjectWatcherLiveApproval(t *testing.T) {
 	}
 	writeTree(t, w.dir, map[string]string{"a.rb": "changed"})
 	w.event(fs, "a.rb", fsnotify.Write)
-	fireTimer(fs, timer)
+	// awaitWatched returns once the root is watched, which can be before the
+	// first publish: the watcher may see the revoke there and end unread.
+	fireTimerOrDone(fs, timer, pw.Done())
 	<-pw.Done()
 	if got := w.take(); len(got) != 0 {
 		t.Fatalf("reported after revoke: %v", got)

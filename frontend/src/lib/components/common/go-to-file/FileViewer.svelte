@@ -34,7 +34,7 @@
   import { emptyNavigationAnswer, externalLabel } from '../../../codeNavigation';
   import { languageOfPath } from '../../../codeLanguages';
   import type { CodeDiagnosticPosition, CodeNavigationLocation } from '../../../codeDiagnostics';
-  import { SourceHistory, historyKey, hoverHtml, locationList, navigationKey, rankRubyDefinitions, sourcePosition, wordRange, type SourceLocation, type SelectionHold, type SourceSymbols, type ViewportPoint } from '../../../sourceNavigation';
+  import { historyKey, hoverHtml, locationList, navigationKey, rankRubyDefinitions, sourcePosition, wordRange, type EditorPlace, type SourceLocation, type SelectionHold, type SourceSymbols, type ViewportPoint } from '../../../sourceNavigation';
   import ContextMenu, { type ContextMenuItem } from '../ContextMenu.svelte';
   import Dropdown from '../Dropdown.svelte';
   import HoverCard from './HoverCard.svelte';
@@ -124,7 +124,9 @@
   // The commit details card under the blame line; the line itself shows whenever one is selected.
   let blameOpen = $state(false);
   let blameRequest = 0;
-  // Files the host found .gitignore leaves out, by directory and path.
+  // Files the host found .gitignore leaves out, by directory and path: the
+  // listing did not say so (a file in a folder opened later), so the blame
+  // bar says it instead of closing.
   let ignoredFiles = $state<Record<string, true>>({});
   const fileKey = (dir: string, path: string) => JSON.stringify([dir, path]);
 
@@ -150,7 +152,7 @@
     blameLoading = true;
     try {
       const result = await api.blameFile(dir, path, line);
-      // Blame hides for the file, here and on every other line.
+      // Remembered for the file: every line then says so without asking again.
       if (result.ignored) ignoredFiles[fileKey(dir, path)] = true;
       else if (request === blameRequest) blame = result;
     } catch (error) {
@@ -425,7 +427,8 @@
   // Only files in a Git work tree (the listing's, or one nested below a plain
   // directory) can blame, unless .gitignore leaves them out; older hosts say
   // so instead of failing per line.
-  let gitIgnored = $derived(Boolean(files.selectedPath && (ignoredByGit(files.listing, files.selectedPath) || (files.dir && ignoredFiles[fileKey(files.dir, files.selectedPath)]))));
+  let gitIgnored = $derived(Boolean(files.selectedPath && ignoredByGit(files.listing, files.selectedPath)));
+  let blameIgnored = $derived(Boolean(files.selectedPath && files.dir && ignoredFiles[fileKey(files.dir, files.selectedPath)]));
   let blameShown = $derived(Boolean(selectedLines && isBlameableLine(plainLines, selectedLines.head) && !showPreview && files.selectedPath && inGitRepository(files.listing, files.selectedPath) && !gitIgnored && !external && !historical && !activeTab?.gitBasis));
   let canBlame = $derived(connectionStore.capabilities.blame === true && !blocked);
   // The selected line's blame loads by itself; another line, file or text starts over.
@@ -433,7 +436,7 @@
     const line = selectedLines?.head, dir = files.dir, path = files.selectedPath;
     void text; void editing;
     closeBlame();
-    if (!blameShown || !canBlame || editing || !line || !dir || !path) return;
+    if (!blameShown || !canBlame || blameIgnored || editing || !line || !dir || !path) return;
     untrack(() => void loadBlame(dir, path, line));
   });
   // Drawn as an image, so scripts in the SVG never run.
@@ -800,17 +803,19 @@
 
   // Code navigation from the source: Cmd/Ctrl+click and F12 go to a
   // definition, Shift+F12 finds references, resting on a word shows its
-  // hover. Back and forward retrace the places it went, for this project.
-  const history = new SourceHistory();
-  let historyVersion = $state(0);
-  let canGoBack = $derived.by(() => { void historyVersion; return history.canGoBack; });
-  let canGoForward = $derived.by(() => { void historyVersion; return history.canGoForward; });
+  // hover. Back and forward retrace the files and places the user went
+  // (other files shown, links followed, definitions), per project: the files
+  // store keeps them, and asks the viewer where the user is before it shows
+  // another tab.
+  let canGoBack = $derived(files.canGoBack);
+  let canGoForward = $derived(files.canGoForward);
   // Where the last step landed, so going back from there can come forward again.
-  let landed: SourceLocation | null = null;
+  let landed: EditorPlace | null = null;
   $effect(() => {
     void files.dir; void link.dataHost;
-    untrack(() => { history.clear(); landed = null; historyVersion++; });
+    untrack(() => { landed = null; });
   });
+  $effect(() => files.setPlaceReader(tab => (tab === files.activeTab ? currentLocation() : undefined)));
   let symbolBlocker = $derived(
     !files.selectedPath ? 'Open a file to use code navigation.'
       : historical || activeTab?.gitBasis ? 'Open the working file to use code navigation.'
@@ -866,43 +871,59 @@
   const DRAFT_SYNC_WAIT = 1000;
 
   /**
-   * Where the user is now: the editor's caret or the selection in the source
-   * (both follow the user once they move on), else the last place navigation
-   * landed in this file, else the top line shown.
+   * Where the user is now: the preview, if shown; else the editor's caret or
+   * the selection in the source (both follow the user once they move on),
+   * else the last place navigation landed in this file, else the file as
+   * shown (its tab keeps the scroll position).
    */
-  function currentLocation(): SourceLocation | undefined {
+  function currentLocation(): EditorPlace | undefined {
     const tab = files.activeTab;
     if (!tab) return undefined;
+    const file: EditorPlace = { path: tab.path, ...(tab.external ? { external: true } : {}) };
+    if (showPreview) return { ...file, preview: true };
     let at: CodeDiagnosticPosition | undefined;
     if (editing) at = editor?.caret();
     else {
       const selection = codeScroll?.ownerDocument.getSelection();
       at = selection?.anchorNode && codeScroll?.contains(selection.anchorNode) ? sourcePosition(codeScroll, selection.anchorNode, selection.anchorOffset) : undefined;
     }
-    if (at) return { path: tab.path, external: tab.external, range: symbolStart(at) };
+    if (at) return { ...file, range: symbolStart(at) };
     if (landed && landed.path === tab.path) return landed;
-    const top = sourcePositions.get(tab)?.line;
-    return { path: tab.path, external: tab.external, range: symbolStart({ line: Math.max(0, (top ?? 1) - 1), character: 0 }) };
+    return file;
   }
-  function openLocation(location: SourceLocation, from?: SourceLocation) {
+  /** Goes to a place with a range; from, when given, is recorded as the place left (the store does not record it again). */
+  function openLocation(location: SourceLocation, from?: EditorPlace) {
     if (frozen || blocked || !files.dir) return;
     if (from) {
-      history.visit(from);
-      historyVersion++;
+      files.visit(from);
       // The file navigated from stays open, as when following a Markdown link.
       const source = files.activeTab;
       if (source?.path === from.path) files.keepTab(tabId(source));
     }
     landed = location;
-    startNavigation(location.path, 'symbol', location.range, () => '', false, location.external);
+    files.withoutHistory(() => startNavigation(location.path, 'symbol', location.range, () => '', false, location.external));
+  }
+  /**
+   * A step back or forward. A place with a range is revealed in the source;
+   * one without shows the file as it was left, rendered or as source, at
+   * the scroll position its tab kept.
+   */
+  function openPlace(place: EditorPlace) {
+    if (place.range) { openLocation({ ...place, range: place.range }); return; }
+    if (!(place.external || problemPath(place.path)) || frozen || blocked || !files.dir) { notify(NOTICES.symbol.open); return; }
+    navigation = null;
+    landed = null;
+    files.withoutHistory(() => (place.external ? files.openExternal(place.path) : pick(place.path)));
+    if (filePreview(place.path)) previewOn = Boolean(place.preview);
   }
   // While files are busy or the link is blocked nothing can open, so a step is not taken (and lost).
   let historyBlocked = $derived(historical || frozen || Boolean(blocked) || !files.dir);
   export function goHistory(direction: 'back' | 'forward') {
     if (historyBlocked) return;
-    const to = direction === 'back' ? history.goBack(currentLocation()) : history.goForward(currentLocation());
-    historyVersion++;
-    if (to) openLocation(to);
+    let to = files.stepHistory(direction, currentLocation());
+    // A place no longer in the project is dropped, and the step goes on past it.
+    while (to && !(to.external || problemPath(to.path))) to = files.stepHistory(direction, undefined);
+    if (to) openPlace(to);
   }
 
   /**
@@ -1138,8 +1159,8 @@
   {:else}
     <div class="viewer-header">
       {#if !historical && (canGoBack || canGoForward)}
-        <button type="button" class="copy-btn icon-btn history-btn" aria-label="Back" title="Back to where code navigation came from ({backShortcut})" disabled={!canGoBack || historyBlocked} onclick={() => goHistory('back')}>←</button>
-        <button type="button" class="copy-btn icon-btn history-btn" aria-label="Forward" title="Forward ({forwardShortcut})" disabled={!canGoForward || historyBlocked} onclick={() => goHistory('forward')}>→</button>
+        <button type="button" class="copy-btn icon-btn history-btn" aria-label="Back" title="Back to the previous file or place ({backShortcut})" disabled={!canGoBack || historyBlocked} onclick={() => goHistory('back')}>←</button>
+        <button type="button" class="copy-btn icon-btn history-btn" aria-label="Forward" title="Forward to the next file or place ({forwardShortcut})" disabled={!canGoForward || historyBlocked} onclick={() => goHistory('forward')}>→</button>
       {/if}
       <span class="viewer-path" title={files.selectedPath}>{external ? externalLabel(files.selectedPath, files.dir) : files.selectedPath}</span>
       <button
@@ -1458,6 +1479,7 @@
         <div class="line-actions" role="status" aria-live="polite">
           <span class="btn-icon icon-git" aria-hidden="true"></span>
           {#if !canBlame}<span>{blocked ? 'Blame unavailable while disconnected' : 'Blame is not supported on this host'}</span>
+          {:else if blameIgnored}<span>Ignored by Git — no blame</span>
           {:else if blameLoading}<span>Loading blame…</span>
           {:else if blameError}<span class="blame-error">{blameError}</span>
           {:else if blame?.uncommitted}<span>Not committed yet</span>

@@ -96,6 +96,15 @@ The frontend subscribes through `subscribeMouseNavigate` in
 `frontend/src/lib/api.ts`. The shared Go side is
 `cmd/agent-sessions/mousenav_native.go`.
 
+Go to File uses the same buttons for the editor's back and forward through
+files and places (`sideButton` in
+`frontend/src/lib/components/common/GoToFileDialog.svelte`, history in
+`FilesStore`, per workspace). It listens to both paths, on `mouseup` and
+`nav:mouse`, only while it is the one open modal (`onlyOpenModal` in
+`frontend/src/lib/search.ts`). App keeps cancelling the webview's own
+navigation on every side button and ignores them while any modal is open,
+so one press moves either the session list or the editor, never both.
+
 ### Linux
 
 - GDK numbers the side buttons 8 (back) and 9 (forward), not 4/5. GDK's
@@ -110,6 +119,15 @@ The frontend subscribes through `subscribeMouseNavigate` in
   100 ms (up to 100 tries) until Wails has created it.
 - cgo: a Go file with `//export` can't define C functions in its preamble,
   so the C code lives in a `.c` file. Go honours its `//go:build` line.
+- **Two-finger swipes** are scrolls in GTK. The same web view also gets a
+  `GtkEventControllerScroll` (capture phase) that always returns `FALSE`,
+  so WebKit still scrolls. Only `GDK_SOURCE_TOUCHPAD` counts. A gesture runs
+  from `scroll-begin`, or a scroll after 200 ms (X11 may send no
+  `scroll-end`), to `scroll-end`. Past `SWIPE_DISTANCE` (80 px; X11 wheel
+  units × 40) sideways, more than twice the vertical, it sends `nav:swipe`
+  once. It follows the scroll, as Chrome does: toward the left is back,
+  which is fingers right with natural scrolling (GNOME's and Plasma 6's
+  touchpad default). GNOME has no *Swipe between pages* setting to honour.
 
 ### macOS
 
@@ -122,8 +140,25 @@ The frontend subscribes through `subscribeMouseNavigate` in
   `deltaX = 0`, then one with `deltaX = +1` (back) or `-1` (forward). This
   matches Safari's convention.
 - So the monitor handles both: buttons 3/4, and swipes with a non-zero
-  `deltaX`. Zero-delta swipes are passed on. A side effect is that a
-  three-finger trackpad swipe also navigates, as it does in Safari.
+  `deltaX`. Zero-delta swipes are passed on. A three-finger trackpad swipe
+  sends the same swipe event only when *Trackpad → More Gestures → Swipe
+  between pages* is set to three fingers. By default macOS keeps three
+  fingers for its own gestures (spaces, Mission Control), and the app sees
+  nothing.
+- **Two-finger swipes** (the default *Swipe between pages*, and a Magic
+  Mouse's one-finger swipe) are no swipe event: they arrive as scroll
+  events with a gesture phase, and apps such as Safari recognise the page
+  swipe themselves. The monitor watches `NSEventTypeScrollWheel` too and
+  always passes it on. It adds up each gesture's movement, ignoring wheels
+  and momentum (no phase). Past `SWIPE_DISTANCE` sideways, and more than
+  twice the vertical, it sends `nav:swipe` once, when
+  `isSwipeTrackingFromScrollEventsEnabled`. Right is back, whatever the
+  scroll direction setting. WKWebView's own
+  `allowsBackForwardNavigationGestures` stays off: the app is one page.
+- A two-finger swipe is also a scroll, so the frontend drops `nav:swipe`
+  when the same gesture could move something sideways, such as a long code
+  line or a wide transcript block (`frontend/src/lib/swipeNavigation.ts`).
+  Otherwise `subscribeMouseNavigate` delivers it like a button.
 - Other mouse utilities (SteerMouse, BetterMouse, Mac Mouse Fix,
   SensibleSideButtons) may remap the buttons differently again, for example
   to ⌘[ / ⌘] keystrokes, which the keyboard shortcuts already cover.
@@ -135,6 +170,20 @@ The frontend subscribes through `subscribeMouseNavigate` in
   navigation. This still needs testing on a real machine.
 - Logitech's Windows software may remap the buttons too; check what the
   app receives before assuming the handler is broken.
+- **Two-finger swipes:** WebView2 runs in its own process, so the app's
+  window never sees its scroll messages, and its own swipe navigation is
+  for touchscreens. The page spots the swipe from wheel events instead
+  (`SwipeGuard` with detect on, `frontend/src/lib/swipeNavigation.ts`): at
+  least 3 pixel-mode events, 80 px sideways and more than twice the
+  vertical, with no Shift and no delta of a whole wheel step (100 px).
+  Toward the left is back, as in Edge. A smooth sideways mouse wheel can
+  pass for a touchpad.
+- Without a phase, the wheel stream does not say where one swipe ends: the
+  momentum after the fingers lift, or a quick lift and touch, runs straight
+  into the next swipe. The guard splits the stream into strokes: a new one
+  starts when the speed has fallen to half its peak or less and rises again
+  for two events. Momentum only slows down, so it never starts one. Each
+  stroke swipes once and has its own scrolled flag.
 
 ### How to debug
 

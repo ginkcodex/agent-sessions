@@ -19,6 +19,7 @@ type (
 	SortOpts             = engine.SortOpts
 	GroupNode            = engine.GroupNode
 	MessagesPage         = engine.MessagesPage
+	PageCap              = engine.PageCap
 	MessagesSinceRequest = engine.MessagesSinceRequest
 	SessionSearchRequest = engine.SessionSearchRequest
 	BlobResponse         = engine.BlobResponse

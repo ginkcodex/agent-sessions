@@ -15,6 +15,7 @@ import type {
   SessionMeta,
   SessionRef,
   MessagesPage,
+  PageCap,
   MessagesSinceRequest,
   MessagesSinceReply,
   SessionSearchRequest,
@@ -85,6 +86,7 @@ import { MockBackendAPI } from './mock/mockApi';
 import { createAppBinding } from './appBinding';
 import { isDesktop, onDesktopEvent, onDesktopFileDrop, openDesktopURL } from './desktopRuntime';
 import { epoch, guardEpoch } from './link';
+import { windowSwipeGuard, type SwipeGuard } from './swipeNavigation';
 
 export interface BackendAPI extends CodeDiagnosticsAPI {
   /** Optional on older App bindings. Remote provisioning currently fails closed. */
@@ -99,8 +101,12 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   listSessions(groupKey: string, filter?: FilterOpts, sort?: SortOpts): Promise<SessionMeta[]>;
   agentCounts(filter?: FilterOpts): Promise<Record<string, number>>;
   getSessionMeta(ref: SessionRef): Promise<SessionMeta>;
-  /** Offset -1 requests the latest page; the response contains its actual offset. */
-  getMessages(ref: SessionRef, offset: number, limit: number): Promise<MessagesPage>;
+  /**
+   * Offset -1 requests the latest page; the response contains its actual offset.
+   * With a cap the page may hold fewer messages, from the offset it reports;
+   * hosts and Apps without the cap return the whole page.
+   */
+  getMessages(ref: SessionRef, offset: number, limit: number, cap?: PageCap): Promise<MessagesPage>;
   /** supported:false means the host (or an older App) has no deltas: use getMessages. */
   getMessagesSince(req: MessagesSinceRequest): Promise<MessagesSinceReply>;
   /** supported:false means the host (or an older App) cannot search a session. */
@@ -318,6 +324,8 @@ export interface WailsAppBinding {
   AgentCounts(filter: FilterOpts): Promise<Record<string, number>>;
   GetSessionMeta(ref: SessionRef): Promise<SessionMeta>;
   GetMessages(ref: SessionRef, offset: number, limit: number): Promise<MessagesPage>;
+  /** Absent on older App bindings. */
+  GetMessagesCapped?: (ref: SessionRef, offset: number, limit: number, cap: PageCap) => Promise<MessagesPage>;
   /** Absent on older App bindings. */
   GetMessagesSince?: (req: MessagesSinceRequest) => Promise<MessagesSinceReply>;
   /** Absent on older App bindings. */
@@ -621,9 +629,12 @@ class WailsBackendAPI implements BackendAPI {
   async getMessages(
     ref: SessionRef,
     offset: number,
-    limit: number
+    limit: number,
+    cap?: PageCap
   ): Promise<MessagesPage> {
+    const capped = this.binding.GetMessagesCapped;
     try {
+      if (cap && capped) return await capped(ref, offset, limit, cap);
       return await this.binding.GetMessages(ref, offset, limit);
     } catch (e) {
       throw normalizeError(e);
@@ -1650,6 +1661,10 @@ export const ASKPASS_PROMPT_EVENT = 'askpass:prompt';
 // event, "back" or "forward": its web view does not report them to the page
 // as buttons 3 and 4.
 export const MOUSE_NAVIGATE_EVENT = 'nav:mouse';
+// A two-finger touchpad swipe on macOS or Linux, "back" or "forward". It was
+// also a scroll: subscribeMouseNavigate drops it when that scroll moved
+// something. On Windows the swipe guard spots swipes itself.
+export const SWIPE_NAVIGATE_EVENT = 'nav:swipe';
 export const TERMINAL_DATA_EVENT = 'term:data';
 export const TERMINAL_EXIT_EVENT = 'term:exit';
 /** The user clicked an agent alert: { id } is the tab to show. */
@@ -1711,13 +1726,29 @@ export function subscribeCatalogChanged(
   });
 }
 
+/**
+ * The mouse's side buttons, as the desktop app sends them, and two-finger
+ * swipes unless the swipe scrolled something sideways (guard).
+ */
 export function subscribeMouseNavigate(
   fn: (direction: 'back' | 'forward') => void,
-  backend: BackendAPI = api
+  backend: BackendAPI = api,
+  guard: SwipeGuard | null = windowSwipeGuard(),
+  now: () => number = () => performance.now()
 ): () => void {
-  return backend.onEvent(MOUSE_NAVIGATE_EVENT, (direction: unknown) => {
-    if (direction === 'back' || direction === 'forward') fn(direction);
+  const valid = (direction: unknown): direction is 'back' | 'forward' => direction === 'back' || direction === 'forward';
+  const offMouse = backend.onEvent(MOUSE_NAVIGATE_EVENT, (direction: unknown) => {
+    if (valid(direction)) fn(direction);
   });
+  const offSwipe = backend.onEvent(SWIPE_NAVIGATE_EVENT, (direction: unknown) => {
+    if (valid(direction) && (!guard || guard.allows(now()))) fn(direction);
+  });
+  const offPage = guard?.onSwipe(fn) ?? (() => {});
+  return () => {
+    offMouse();
+    offSwipe();
+    offPage();
+  };
 }
 
 export function subscribeIndexProgress(

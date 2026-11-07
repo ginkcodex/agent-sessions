@@ -1,6 +1,7 @@
 //go:build linux && desktop
 
 #include <gtk/gtk.h>
+#include <math.h>
 #include <webkit/webkit.h>
 
 #include "_cgo_export.h"
@@ -8,6 +9,25 @@
 // GTK numbers the mouse's side buttons 8 (back) and 9 (forward).
 #define BUTTON_BACK 8
 #define BUTTON_FORWARD 9
+
+// A two-finger swipe goes back or forward once it has gone this far
+// sideways (in pixels), and more than twice as far as up or down, as on
+// macOS (mousenav_darwin.m).
+#define SWIPE_DISTANCE 80.0
+// Scrolls further apart than this (ms) are a new gesture: X11 may send no
+// scroll-end.
+#define SWIPE_GESTURE_GAP 200
+// Pixels per wheel unit (X11 touchpads), WebKit's line step.
+#define PIXELS_PER_WHEEL_UNIT 40.0
+
+// The touchpad gesture in progress on one web view: its window, how far it
+// went, when it last moved, and whether it already navigated.
+typedef struct {
+	void *window;
+	double x, y;
+	guint32 last;
+	gboolean active, sent;
+} Swipe;
 
 // Capture and claim side-button sequences before WebKit can turn them into
 // page clicks. Navigation happens only on release, not on press.
@@ -28,6 +48,47 @@ static void on_side_button_released(GtkGestureClick *gesture, int n_press,
 	}
 }
 
+static void on_scroll_begin(GtkEventControllerScroll *controller, Swipe *swipe) {
+	swipe->x = 0;
+	swipe->y = 0;
+	swipe->sent = FALSE;
+	swipe->active = TRUE;
+	swipe->last = gtk_event_controller_get_current_event_time(GTK_EVENT_CONTROLLER(controller));
+}
+
+static void on_scroll_end(GtkEventControllerScroll *controller, Swipe *swipe) {
+	swipe->active = FALSE;
+}
+
+// A two-finger touchpad swipe is a scroll in GTK. Only touchpads count, not
+// wheels or trackpoints. The scroll always goes on to WebKit; the page drops
+// the swipe if it scrolled something (swipeNavigation.ts). As in Chrome, the
+// swipe follows the scroll: toward the left is back.
+static gboolean on_scroll(GtkEventControllerScroll *controller, double dx, double dy, Swipe *swipe) {
+	GtkEventController *events = GTK_EVENT_CONTROLLER(controller);
+	GdkDevice *device = gtk_event_controller_get_current_event_device(events);
+	if (device == NULL || gdk_device_get_source(device) != GDK_SOURCE_TOUCHPAD ||
+	    (gtk_event_controller_get_current_event_state(events) & GDK_CONTROL_MASK)) {
+		return FALSE;
+	}
+	guint32 time = gtk_event_controller_get_current_event_time(events);
+	if (!swipe->active || time - swipe->last > SWIPE_GESTURE_GAP) {
+		on_scroll_begin(controller, swipe);
+	}
+	swipe->last = time;
+	if (swipe->sent) {
+		return FALSE;
+	}
+	double scale = gtk_event_controller_scroll_get_unit(controller) == GDK_SCROLL_UNIT_WHEEL ? PIXELS_PER_WHEEL_UNIT : 1;
+	swipe->x += dx * scale;
+	swipe->y += dy * scale;
+	if (fabs(swipe->x) >= SWIPE_DISTANCE && fabs(swipe->x) > 2 * fabs(swipe->y)) {
+		swipe->sent = TRUE;
+		goSwipeNavigate(swipe->window, swipe->x > 0);
+	}
+	return FALSE;
+}
+
 static WebKitWebView *find_web_view(GtkWidget *widget) {
 	if (WEBKIT_IS_WEB_VIEW(widget)) {
 		return WEBKIT_WEB_VIEW(widget);
@@ -46,8 +107,8 @@ static WebKitWebView *find_web_view(GtkWidget *widget) {
 // of each window once its page is ready.
 void hook_side_buttons(void) {}
 
-// Connects to the window's web view once; the released handler reports the
-// window, so the event goes to that window's page.
+// Connects to the window's web view once; the handlers report the window,
+// so the event goes to that window's page.
 void hook_window_side_buttons(void *window) {
 	WebKitWebView *view = find_web_view(GTK_WIDGET(window));
 	if (view == NULL || g_object_get_data(G_OBJECT(view), "agent-sessions-side-buttons") != NULL) {
@@ -59,5 +120,15 @@ void hook_window_side_buttons(void *window) {
 	g_signal_connect(gesture, "pressed", G_CALLBACK(on_side_button_pressed), NULL);
 	g_signal_connect(gesture, "released", G_CALLBACK(on_side_button_released), window);
 	gtk_widget_add_controller(GTK_WIDGET(view), GTK_EVENT_CONTROLLER(gesture));
+
+	Swipe *swipe = g_new0(Swipe, 1);
+	swipe->window = window;
+	g_object_set_data_full(G_OBJECT(view), "agent-sessions-swipe", swipe, g_free);
+	GtkEventController *scroll = gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
+	gtk_event_controller_set_propagation_phase(scroll, GTK_PHASE_CAPTURE);
+	g_signal_connect(scroll, "scroll-begin", G_CALLBACK(on_scroll_begin), swipe);
+	g_signal_connect(scroll, "scroll", G_CALLBACK(on_scroll), swipe);
+	g_signal_connect(scroll, "scroll-end", G_CALLBACK(on_scroll_end), swipe);
+	gtk_widget_add_controller(GTK_WIDGET(view), scroll);
 	g_object_set_data(G_OBJECT(view), "agent-sessions-side-buttons", GINT_TO_POINTER(1));
 }

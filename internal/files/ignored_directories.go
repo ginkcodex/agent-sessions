@@ -3,7 +3,6 @@ package files
 import (
 	"context"
 	"slices"
-	"strings"
 )
 
 // IgnoredDirectories lists the folders below dir that dir's Git ignores, as
@@ -24,16 +23,12 @@ func IgnoredDirectories(ctx context.Context, dir string) ([]string, bool) {
 	if err != nil || ctx.Err() != nil {
 		return nil, false
 	}
-	dirs := []string{}
-	for name := range strings.SplitSeq(string(out), "\x00") {
-		rel, isDir := strings.CutSuffix(name, "/")
-		if !isDir {
-			continue
-		}
-		if rel == "" || rel == "." {
-			return nil, false
-		}
-		dirs = append(dirs, rel)
+	_, dirs, ok := parseIgnored(out)
+	if !ok {
+		return nil, false
+	}
+	if dirs == nil {
+		dirs = []string{}
 	}
 	slices.Sort(dirs)
 	return dirs, true

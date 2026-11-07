@@ -43,13 +43,18 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Performance M2: incremental transcripts | [performance-m2](../plan/performance-m2.md) | [performance-m2/](performance-m2/README.md) | 12/12 ✅ |
 | Performance M3 | [performance-m3](../plan/performance-m3.md) | [performance-m3/](performance-m3/README.md) | 10/10 ✅ |
 | Startup responsiveness | [performance-startup](../plan/performance-startup.md) | [performance-startup/](performance-startup/README.md) | 10/10 ✅ |
+| Transcript page cap | [transcript-page-cap](../plan/transcript-page-cap.md) | [transcript-page-cap/](transcript-page-cap/README.md) | 5/6 ✅ · 1 ⬜ |
 | Consent-based managed tools | [tool-installation](../plan/tool-installation.md) | [tool-installation/](tool-installation/README.md) | 5/6 ✅ · 1 ⬜ |
 | Native-tone dark surfaces | [dark-tone](../plan/dark-tone.md) | [dark-tone/](dark-tone/README.md) | 5/5 ✅ |
 | Centered dialog close buttons | [dialog-close](../plan/dialog-close.md) | [dialog-close/](dialog-close/README.md) | 2/2 ✅ |
 | Blame in nested repositories | [nested-repo-blame](../plan/nested-repo-blame.md) | [nested-repo-blame/](nested-repo-blame/README.md) | 4/4 ✅ |
+| Git ignore rules in nested repositories | [nested-repo-gitignore](../plan/nested-repo-gitignore.md) | [nested-repo-gitignore/](nested-repo-gitignore/README.md) | 4/5 ✅ · 1 ⬜ |
 | Selected-text menu and contextual translation | [selection-translate](../plan/selection-translate.md) | [selection-translate/](selection-translate/README.md) | 5/5 ✅ |
 | Internal terminal maximization | [terminal-maximize](../plan/terminal-maximize.md) | [terminal-maximize/](terminal-maximize/README.md) | 2/2 ✅ |
 | Split terminals | [terminal-split](../plan/terminal-split.md) | [terminal-split/](terminal-split/README.md) | 4/4 ✅ |
 | Font settings: editor, docs and session content | [font-settings](../plan/font-settings.md) | [font-settings/](font-settings/README.md) | 10/11 ✅ · 1 🟡 |
+| Editor back and forward | [editor-history](../plan/editor-history.md) | [editor-history/](editor-history/README.md) | 3/4 ✅ · 1 🟡 |
+| Two-finger swipe back and forward | [swipe-navigation](../plan/swipe-navigation.md) | [swipe-navigation/](swipe-navigation/README.md) | 1/3 ✅ · 1 🟡 · 1 ⬜ |
+| Two-finger swipe on Windows and Linux | [swipe-navigation-windows-linux](../plan/swipe-navigation-windows-linux.md) | [swipe-navigation-windows-linux/](swipe-navigation-windows-linux/README.md) | 3/5 ✅ · 1 🟡 · 1 ⬜ |
 | Go to File editing | [file-editing](../plan/file-editing.md) | [file-editing/](file-editing/README.md) | 11/14 ✅ · 3 🟡 |
 | Wails v3 upgrade | [wails-v3-upgrade](../plan/wails-v3-upgrade.md) | [wails-v3-upgrade/](wails-v3-upgrade/README.md) | 1/2 ✅ · 1 ⬜ |
