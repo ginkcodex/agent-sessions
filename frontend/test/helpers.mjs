@@ -50,6 +50,7 @@ export async function loadServerModule(url, replacements) {
 let dialogCloseModule;
 let iconModule;
 let dropdownModule;
+let monoFontModule;
 let agentIconModule;
 const goToFileModules = {};
 
@@ -86,6 +87,18 @@ async function importCompiled(filename, code, replacements) {
     dropdownModule ??= loadServerComponent(new URL('../src/lib/components/common/Dropdown.svelte', import.meta.url), []);
     globalThis.__sharedDropdown = (await dropdownModule).default;
     replacements.push([dropdownImport, 'const Dropdown = globalThis.__sharedDropdown;']);
+  }
+  // Font settings render the real shared picker. Its installed-font list comes
+  // from the fixture's `installedFonts`, or is still loading without one.
+  const monoFontImport = "import MonoFontSetting from './MonoFontSetting.svelte';";
+  if (code.includes(monoFontImport) && !replacements.some(([from]) => from === monoFontImport)) {
+    monoFontModule ??= loadServerComponent(new URL('../src/lib/components/common/MonoFontSetting.svelte', import.meta.url), [
+      ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
+      ["'../../terminalFont'", JSON.stringify(new URL('../src/lib/terminalFont.ts', import.meta.url).href)],
+      ["import { installedFonts } from '../../stores/installedFonts.svelte';", "const installedFonts = new Proxy({}, { get: (_, key) => (globalThis.__componentFixture?.installedFonts ?? { fonts: [], loading: true, error: '', ensure() {}, refresh() {} })[key] });"],
+    ]);
+    globalThis.__monoFontSetting = (await monoFontModule).default;
+    replacements.push([monoFontImport, 'const MonoFontSetting = globalThis.__monoFontSetting;']);
   }
   // Go to File renders the real problem ruler and the unplaced-problems line.
   for (const [name, file] of [['OverviewRuler', 'OverviewRuler'], ['UnplacedDiagnostics', 'UnplacedDiagnostics']]) {

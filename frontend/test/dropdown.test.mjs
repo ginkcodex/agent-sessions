@@ -131,11 +131,12 @@ test('the trigger runs its own key and context-menu handlers first, and a disabl
   off.close();
 });
 
-test('the narrow Branch, Diff basis and terminal font pickers use the shared dropdown', () => {
+test('the narrow Branch, Diff basis and font pickers use the shared dropdown', () => {
   const read = (path) => readFileSync(new URL(`../src/lib/components/common/${path}`, import.meta.url), 'utf8');
-  for (const [file, label] of [['go-to-file/HistoryBranches.svelte', 'History branch'], ['go-to-file/FileViewer.svelte', 'Diff basis'], ['TerminalFontSetting.svelte', 'Built-in terminal font']]) {
+  for (const [file, label] of [['go-to-file/HistoryBranches.svelte', '"History branch"'], ['go-to-file/FileViewer.svelte', '"Diff basis"'], ['MonoFontSetting.svelte', '{ariaLabel}']]) {
     const source = read(file);
-    assert.match(source, new RegExp(`<Dropdown ariaLabel="${label}"`), file);
+    assert.ok(source.includes(`<Dropdown ariaLabel=${label}`), file);
     assert.doesNotMatch(source, /<select\b/, file);
   }
+  assert.match(read('TerminalFontSetting.svelte'), /ariaLabel="Built-in terminal font"/);
 });

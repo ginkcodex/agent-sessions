@@ -24,9 +24,6 @@ async function renderSettingsDialog(
     globalThis.__dropdown = (await loadServerComponent(DROPDOWN_URL, [])).default;
     const fontURL = new URL('./TerminalFontSetting.svelte', SETTINGS_DIALOG_URL);
     globalThis.__terminalFontSetting = (await loadServerComponent(fontURL, [
-      ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
-      ["import { api } from '../../api';", 'const api = {};'],
-      ["'../../terminalFont'", JSON.stringify(new URL('../../terminalFont.ts', fontURL).href)],
       ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
     ])).default;
     const lib = (rel) => JSON.stringify(new URL(rel, SETTINGS_DIALOG_URL).href);
@@ -38,6 +35,7 @@ async function renderSettingsDialog(
       ["'../../date'", lib('../../date.ts')],
       ["'../../codeLanguages'", lib('../../codeLanguages.ts')],
       ["import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';", fixtureStore('codeDiagnostics')],
+      ["import { installedFonts } from '../../stores/installedFonts.svelte';", 'const installedFonts = { markStale() {} };'],
       ["import Dropdown from './Dropdown.svelte';", 'const Dropdown = globalThis.__dropdown;'],
       ["import TerminalFontSetting from './TerminalFontSetting.svelte';", 'const TerminalFontSetting = globalThis.__terminalFontSetting;'],
       ["import CodingAgentsSettings from './CodingAgentsSettings.svelte';", 'const CodingAgentsSettings = () => {};'],

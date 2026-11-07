@@ -13,6 +13,7 @@
   import { terminalOptions } from '../../terminal';
   import { preferences } from '../../stores/preferences.svelte';
   import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';
+  import { installedFonts } from '../../stores/installedFonts.svelte';
   import { CODE_LANGUAGES } from '../../codeLanguages';
   import { isTranscriptMode, transcriptModes } from '../../transcript';
   import { isTimeZoneMode, TIME_ZONE_OPTIONS } from '../../date';
@@ -59,6 +60,11 @@
   // Permission can change in the system settings while the app runs.
   $effect(() => {
     if (manage.settingsDialogOpen && section === 'terminal' && launcher.info.panel) void alerts.refreshStatus();
+  });
+
+  // Installed fonts are listed once per opening, shared by the font pickers.
+  $effect(() => {
+    if (!manage.settingsDialogOpen) installedFonts.markStale();
   });
 
   let keyInputShown = $derived(!translateSettings.settings?.apiKeySet || replacingKey);
