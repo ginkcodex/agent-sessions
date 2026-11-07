@@ -59,4 +59,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Linux GPU rendering | [linux-gpu-rendering](../plan/linux-gpu-rendering.md) | [linux-gpu-rendering/](linux-gpu-rendering/README.md) | 1/2 ✅ · 1 🟡 |
 | Go to File editing | [file-editing](../plan/file-editing.md) | [file-editing/](file-editing/README.md) | 11/14 ✅ · 3 🟡 |
 | Wails v3 upgrade | [wails-v3-upgrade](../plan/wails-v3-upgrade.md) | [wails-v3-upgrade/](wails-v3-upgrade/README.md) | 1/2 ✅ · 1 ⬜ |
-| Arch Linux AUR package | [aur-package](../plan/aur-package.md) | [aur-package/](aur-package/README.md) | 1/7 ✅ · 6 ⬜ |
+| Arch Linux AUR package | [aur-package](../plan/aur-package.md) | [aur-package/](aur-package/README.md) | 2/7 ✅ · 5 ⬜ |

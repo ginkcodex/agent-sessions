@@ -1,7 +1,7 @@
 # AUR package — tasks
 
 - **Plan:** [aur-package.md](../../plan/aur-package.md)
-- **Progress:** 1/7 done
+- **Progress:** 2/7 done
 
 Planned 2026-11-08. AUR-01…03 build, check and publish `agent-sessions-bin`
 from a release's `.deb`; AUR-04 runs that from CI after each stable release;
@@ -11,7 +11,7 @@ account: the first push, and the CI secret.
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
 | [AUR-01](AUR-01.md) | ✅ Done | PKGBUILD template and render script | 1.5 h | — |
-| [AUR-02](AUR-02.md) | ⬜ Not started | Build, install and remove it in an Arch container; `make aur-package` | 2 h | AUR-01 |
+| [AUR-02](AUR-02.md) | ✅ Done | Build, install and remove it in an Arch container; `make aur-package` | 2 h | AUR-01 |
 | [AUR-03](AUR-03.md) | ⬜ Not started | Publish script for an AUR checkout | 1.5 h | AUR-02 |
 | [AUR-04](AUR-04.md) | ⬜ Not started | AUR workflow, called after stable releases | 1.5 h | AUR-03 |
 | [AUR-05](AUR-05.md) | ⬜ Not started | README install instructions | 0.5 h | AUR-01 |
