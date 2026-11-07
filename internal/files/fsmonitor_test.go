@@ -44,6 +44,7 @@ func TestGitReadsDoNotRunRepositoryFsmonitor(t *testing.T) {
 		}},
 		{"ListDirectory", func() error { _, err := ListDirectory(ctx, root, "dist"); return err }},
 		{"IgnoredDirectories", func() error { IgnoredDirectories(ctx, root); return nil }},
+		{"repositoryIgnored", func() error { repositoryIgnored(ctx, root); return nil }},
 		{"GitRepoStatus", func() error { _, err := GitRepoStatus(ctx, root); return err }},
 		{"ReadGitDiff", func() error { _, err := ReadGitDiff(ctx, EditPolicy{}, root, "main.go", GitDiffIndex); return err }},
 		{"BlameFile", func() error { _, err := BlameFile(ctx, root, "main.go", 1); return err }},

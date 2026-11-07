@@ -73,7 +73,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Native-tone dark surfaces | [dark-tone](docs/plan/dark-tone.md) | [dark-tone/](docs/tasks/dark-tone/README.md) | 5/5 ✅ |
 | Centered dialog close buttons | [dialog-close](docs/plan/dialog-close.md) | [dialog-close/](docs/tasks/dialog-close/README.md) | 2/2 ✅ |
 | Blame in nested repositories | [nested-repo-blame](docs/plan/nested-repo-blame.md) | [nested-repo-blame/](docs/tasks/nested-repo-blame/README.md) | 4/4 ✅ |
-| Git ignore rules in nested repositories | [nested-repo-gitignore](docs/plan/nested-repo-gitignore.md) | [nested-repo-gitignore/](docs/tasks/nested-repo-gitignore/README.md) | 0/5 ⬜ |
+| Git ignore rules in nested repositories | [nested-repo-gitignore](docs/plan/nested-repo-gitignore.md) | [nested-repo-gitignore/](docs/tasks/nested-repo-gitignore/README.md) | 1/5 ✅ · 4 ⬜ |
 | Selected-text menu and contextual translation | [selection-translate](docs/plan/selection-translate.md) | [selection-translate/](docs/tasks/selection-translate/README.md) | 5/5 ✅ |
 | Internal terminal maximization | [terminal-maximize](docs/plan/terminal-maximize.md) | [terminal-maximize/](docs/tasks/terminal-maximize/README.md) | 2/2 ✅ |
 | Split terminals | [terminal-split](docs/plan/terminal-split.md) | [terminal-split/](docs/tasks/terminal-split/README.md) | 4/4 ✅ |
