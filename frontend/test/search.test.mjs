@@ -554,6 +554,34 @@ test('swipes in a row each navigate, even when the next starts in the last one\'
   assert.deepEqual(heard, ['back']);
 });
 
+test('one swipe is one step, however its speed wobbles while the fingers are down', () => {
+  const seen = [];
+  const guard = new SwipeGuard(() => false, true);
+  guard.onSwipe((d) => seen.push(d));
+  let now = 0;
+  const stream = (deltas) => { for (const dx of deltas) { now += 8; guard.wheel({ deltaX: dx, deltaY: 0, deltaMode: 0, ctrlKey: false, timeStamp: now, target: 'page' }); } };
+  const momentum = [-22, -19, -16, -13, -10, -8, -6, -4, -3, -2, -1];
+  // Speed dips to under half and rises again, over and over: one stroke.
+  // (The half-speed rule of SN-05 swiped again at every dip.)
+  stream([-5, -10, -20, -26]);
+  for (let i = 0; i < 6; i++) stream([-12, -22, -25, -26]);
+  stream([-11, -24, -26, -10, -9, -25, -26]);
+  stream(momentum);
+  assert.deepEqual(seen, ['back']);
+
+  // The fingers touch down again in the momentum: it stops, then the next swipe.
+  now += 1000;
+  stream([-5, -10, -20, -26, -26, -26, -22, -19, -16, -13, -3, -10, -20, -26, -26, -26]);
+  assert.deepEqual(seen, ['back', 'back', 'back']);
+
+  // A swipe that runs straight into the next one, with no let-go between
+  // them, is at worst one step short, never one step too many.
+  now += 1000;
+  stream([-5, -10, -20, -26, -26, -26, -20, -16, -20, -26, -26, -26, -26]);
+  stream(momentum);
+  assert.equal(seen.length, 4);
+});
+
 test('sideways scrolling counts only room left in that direction, in elements that scroll', () => {
   const el = (scrollLeft, scrollWidth, clientWidth, overflow, parentElement = null) => ({ scrollLeft, scrollWidth, clientWidth, overflow, parentElement });
   const overflowX = (e) => e.overflow;

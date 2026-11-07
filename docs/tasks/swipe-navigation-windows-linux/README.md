@@ -1,17 +1,19 @@
 # Two-finger swipe on Windows and Linux — tasks
 
 - **Plan:** [swipe-navigation-windows-linux.md](../../plan/swipe-navigation-windows-linux.md)
-- **Progress:** 3/5 done
+- **Progress:** 4/6 done
 
 Planned 2026-11-07. Linux spots the swipe natively (SN-01) and sends
 `nav:swipe` as macOS does; Windows spots it from the page's wheel events
 (SN-02), which also makes text fields count as sideways scrollers. SN-03 and
 SN-04 check them on real touchpads. SN-05 came from SN-03: swipes in a row.
+SN-06 came after it: one swipe must be one step.
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
 | [SN-01](SN-01.md) | ✅ Done | Linux: spot two-finger touchpad swipes, send `nav:swipe` | 2 h | — |
 | [SN-02](SN-02.md) | ✅ Done | Frontend: Windows swipe from wheel events; text fields scroll | 3 h | — |
-| [SN-03](SN-03.md) | 🟡 Partial (swipes in a row failed; recheck after SN-05) | Check on Windows | 1 h | SN-02 |
+| [SN-03](SN-03.md) | 🟡 Partial (swipes in a row failed; recheck after SN-06) | Check on Windows | 1 h | SN-02 |
 | [SN-04](SN-04.md) | ⬜ Not started | Check on Linux | 1 h | SN-01 |
 | [SN-05](SN-05.md) | ✅ Done | Swipes in a row: split the wheel stream into strokes | 2 h | SN-02 |
+| [SN-06](SN-06.md) | ✅ Done | One swipe, one step: stricter strokes; Linux gestures end on lift | 2 h | SN-05 |

@@ -14,19 +14,21 @@
 // sideways (in pixels), and more than twice as far as up or down, as on
 // macOS (mousenav_darwin.m).
 #define SWIPE_DISTANCE 80.0
-// Scrolls further apart than this (ms) are a new gesture: X11 may send no
-// scroll-end.
+// Where GTK sends no scroll-end (X11), scrolls further apart than this (ms)
+// are a new gesture.
 #define SWIPE_GESTURE_GAP 200
 // Pixels per wheel unit (X11 touchpads), WebKit's line step.
 #define PIXELS_PER_WHEEL_UNIT 40.0
 
 // The touchpad gesture in progress on one web view: its window, how far it
-// went, when it last moved, and whether it already navigated.
+// went, when it last moved, and whether it already navigated. ends is set
+// once GTK has sent a scroll-end, which it does when the fingers lift
+// (Wayland).
 typedef struct {
 	void *window;
 	double x, y;
 	guint32 last;
-	gboolean active, sent;
+	gboolean active, sent, ends;
 } Swipe;
 
 // Capture and claim side-button sequences before WebKit can turn them into
@@ -58,12 +60,15 @@ static void on_scroll_begin(GtkEventControllerScroll *controller, Swipe *swipe) 
 
 static void on_scroll_end(GtkEventControllerScroll *controller, Swipe *swipe) {
 	swipe->active = FALSE;
+	swipe->ends = TRUE;
 }
 
 // A two-finger touchpad swipe is a scroll in GTK. Only touchpads count, not
 // wheels or trackpoints. The scroll always goes on to WebKit; the page drops
 // the swipe if it scrolled something (swipeNavigation.ts). As in Chrome, the
-// swipe follows the scroll: toward the left is back.
+// swipe follows the scroll: toward the left is back. One swipe is one step:
+// a gesture navigates once, and with scroll-end it lasts until the fingers
+// lift, even if they rest on the pad for a while.
 static gboolean on_scroll(GtkEventControllerScroll *controller, double dx, double dy, Swipe *swipe) {
 	GtkEventController *events = GTK_EVENT_CONTROLLER(controller);
 	GdkDevice *device = gtk_event_controller_get_current_event_device(events);
@@ -72,7 +77,7 @@ static gboolean on_scroll(GtkEventControllerScroll *controller, double dx, doubl
 		return FALSE;
 	}
 	guint32 time = gtk_event_controller_get_current_event_time(events);
-	if (!swipe->active || time - swipe->last > SWIPE_GESTURE_GAP) {
+	if (!swipe->active || (!swipe->ends && time - swipe->last > SWIPE_GESTURE_GAP)) {
 		on_scroll_begin(controller, swipe);
 	}
 	swipe->last = time;

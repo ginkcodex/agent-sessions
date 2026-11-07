@@ -10,8 +10,13 @@
 
 /** Wheel events closer together than this (ms) are one gesture; momentum keeps it going. */
 export const SWIPE_GESTURE_GAP = 200;
-/** A new stroke needs the speed to fall to this share of its peak, then rise this many events in a row. */
-export const STROKE_DECAY = 0.5;
+/**
+ * A new stroke needs the fingers to let go: the speed falls to this share of
+ * its peak, through this many falling events in a row. Then it must rise
+ * for STROKE_RISE_EVENTS events in a row.
+ */
+export const STROKE_DECAY = 0.25;
+export const STROKE_FALL_EVENTS = 3;
 export const STROKE_RISE_EVENTS = 2;
 /** How far (px) a gesture must go sideways to swipe, as SWIPE_DISTANCE in mousenav_darwin.m. */
 export const SWIPE_DISTANCE = 80;
@@ -72,9 +77,13 @@ export class SwipeGuard {
   private last = -Infinity;
   private scrolled = false;
   // The stroke's speed (|deltaX| + |deltaY| per event): its peak, the lowest
-  // since that peak, and how many events in a row rose from that low.
+  // since that peak, the last one, how many events in a row fell, whether
+  // the fingers let go, and how many events in a row rose since then.
   private peak = 0;
   private low = 0;
+  private speed = 0;
+  private falls = 0;
+  private released = false;
   private rises = 0;
   // The detector's stroke: how far it went, in how many events, whether a
   // mouse wheel took part, and whether it already swiped.
@@ -95,8 +104,12 @@ export class SwipeGuard {
 
   // Wheel events come as one stream while the fingers move, then as
   // momentum after they lift; a quick next swipe joins the same stream. So a
-  // stroke ends after a pause, or when the fingers come back: the speed fell
-  // to half its peak or less, then rose again. Momentum only slows down.
+  // stroke ends after a pause, or when the fingers come back after letting
+  // go. Fingers on the pad wobble: their speed dips and rises again all the
+  // time, and one swipe must still be one stroke, one step. Letting go is a
+  // steady fall to a quarter of the peak (the fingers slowing down, then
+  // momentum, or the stop when they touch down again); only a rise after it
+  // starts a new stroke. Momentum only slows down.
   wheel(event: SwipeWheel): void {
     if (event.ctrlKey) return; // a pinch, not a scroll
     const speed = Math.abs(event.deltaX) + Math.abs(event.deltaY ?? 0);
@@ -108,8 +121,9 @@ export class SwipeGuard {
 
   private startStroke(speed: number): void {
     this.scrolled = false;
-    this.peak = this.low = speed;
-    this.rises = 0;
+    this.peak = this.low = this.speed = speed;
+    this.falls = this.rises = 0;
+    this.released = false;
     this.x = this.y = this.events = 0;
     this.wheeled = this.swiped = false;
   }
@@ -117,10 +131,18 @@ export class SwipeGuard {
   private risesAgain(speed: number): boolean {
     if (speed === 0) return false;
     // While it rises, the low it rose from stays the reference.
-    if (this.low <= this.peak * STROKE_DECAY && speed >= this.low * 1.5 + 3) return ++this.rises >= STROKE_RISE_EVENTS;
+    if (this.released && speed >= this.low * 1.5 + 3) return ++this.rises >= STROKE_RISE_EVENTS;
     this.rises = 0;
-    if (speed > this.peak) this.peak = this.low = speed;
-    else if (speed < this.low) this.low = speed;
+    this.falls = speed <= this.speed ? this.falls + 1 : 0;
+    this.speed = speed;
+    if (speed > this.peak) {
+      this.peak = this.low = speed;
+      this.falls = 0;
+      this.released = false;
+    } else if (speed < this.low) {
+      this.low = speed;
+    }
+    if (this.falls >= STROKE_FALL_EVENTS && speed <= this.peak * STROKE_DECAY) this.released = true;
     return false;
   }
 

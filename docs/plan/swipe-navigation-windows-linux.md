@@ -37,9 +37,11 @@ always returns `FALSE`, so WebKit scrolls as before.
 
 - Only touchpads count: the event's device source is
   `GDK_SOURCE_TOUCHPAD`. Wheels, tilt wheels and trackpoints do not.
-- A gesture starts on `scroll-begin`, or on a scroll more than 200 ms after
-  the last one (X11 may send no `scroll-end`). `scroll-end` finishes it.
-  Scrolls with Ctrl held are ignored.
+- A gesture starts on `scroll-begin` and ends on `scroll-end`, when the
+  fingers lift (Wayland). Where GTK has never sent a `scroll-end` (X11), a
+  scroll more than 200 ms after the last one also starts a gesture. Once
+  `scroll-end` has come, fingers resting mid-swipe do not split the gesture
+  (SN-06). Scrolls with Ctrl held are ignored.
 - Deltas add up in pixels: `GDK_SCROLL_UNIT_SURFACE` as is, wheel units
   (X11) times 40, WebKit's line step.
 - At `SWIPE_DISTANCE` (80 px) sideways, more than twice the vertical,
@@ -55,10 +57,14 @@ on Windows (`navigator.platform` starts with `Win`):
 - It uses the guard's strokes. Wheel events less than 200 ms apart are one
   stream, but a stream may hold several swipes: the touchpad's momentum
   after the fingers lift, or a quick lift and touch, joins the next swipe
-  to the last. So a stroke also ends when the fingers come back: the speed
-  fell to half its peak or less, then rose for two events in a row.
-  Momentum only slows down. Each stroke swipes once and is a scroll or not
-  on its own (SN-05).
+  to the last. So a stroke also ends when the fingers come back after
+  letting go (SN-05, SN-06). Letting go means the speed fell to a quarter of
+  its peak, through at least three falling events in a row; coming back
+  means it then rose for two events in a row. Fingers on the pad wobble,
+  dipping to half speed and back, and that must not split a swipe: one
+  swipe is one step. Momentum only slows down. Each stroke swipes once and
+  is a scroll or not on its own. A swipe that runs into the next with no
+  let-go is one step short, never one too many.
 - A gesture is not a swipe if any event is Shift+wheel (a mouse scrolling
   sideways), counts in lines or pages (`deltaMode` not 0), or moves a whole
   wheel step at once (`|delta| ≥ 100` px). Ctrl+wheel (pinch) is ignored, as
@@ -99,13 +105,14 @@ text field then never navigates, on any platform.
 ## Risks
 
 - The Windows thresholds (3 events, 100 px wheel step, the stroke's
-  half-speed decay and two-event rise) are guesses that
+  quarter-speed decay over three falls and two-event rise) are guesses that
   need a real touchpad and a real mouse to tune. A thumb wheel or a
   free-spinning wheel may still pass for a touchpad.
 - X11 touchpads report wheel units; the 40 px scale may make swipes too
   easy or too hard there.
-- `mousenav_linux.c` cannot be compiled in this WSL environment (no GTK 4
-  headers, no sudo); the CI's `linux-build` job compiles it.
+- `mousenav_linux.c` compiles where the GTK 4 and WebKitGTK 6 headers are
+  installed, and in the CI's `linux-build` job. Whether GTK sends
+  `scroll-end` on lift needs a real touchpad (SN-04).
 - WebKitGTK may deliver momentum to the page after the fingers lift. That
   keeps the page's gesture going, which only makes it more careful.
 

@@ -122,8 +122,10 @@ so one press moves either the session list or the editor, never both.
 - **Two-finger swipes** are scrolls in GTK. The same web view also gets a
   `GtkEventControllerScroll` (capture phase) that always returns `FALSE`,
   so WebKit still scrolls. Only `GDK_SOURCE_TOUCHPAD` counts. A gesture runs
-  from `scroll-begin`, or a scroll after 200 ms (X11 may send no
-  `scroll-end`), to `scroll-end`. Past `SWIPE_DISTANCE` (80 px; X11 wheel
+  from `scroll-begin` to `scroll-end`, which GTK sends when the fingers lift
+  (Wayland). Until a `scroll-end` has come (X11 may send none), a scroll
+  after 200 ms also starts one; after that the gap is ignored, so fingers
+  resting mid-swipe do not go a second step. Past `SWIPE_DISTANCE` (80 px; X11 wheel
   units × 40) sideways, more than twice the vertical, it sends `nav:swipe`
   once. It follows the scroll, as Chrome does: toward the left is back,
   which is fingers right with natural scrolling (GNOME's and Plasma 6's
@@ -181,9 +183,14 @@ so one press moves either the session list or the editor, never both.
 - Without a phase, the wheel stream does not say where one swipe ends: the
   momentum after the fingers lift, or a quick lift and touch, runs straight
   into the next swipe. The guard splits the stream into strokes: a new one
-  starts when the speed has fallen to half its peak or less and rises again
-  for two events. Momentum only slows down, so it never starts one. Each
-  stroke swipes once and has its own scrolled flag.
+  starts only after the fingers let go (the speed fell to a quarter of its
+  peak through three falling events in a row) and then rises for two
+  events. Momentum only slows down, so it never starts one. Each stroke
+  swipes once and has its own scrolled flag.
+- **Don't loosen the let-go rule to "half speed, then a rise"** (SN-05). A
+  finger's speed dips that much within one swipe, so one swipe went several
+  steps (SN-06). Missing a step in a very fast double swipe is the lesser
+  fault.
 
 ### How to debug
 
