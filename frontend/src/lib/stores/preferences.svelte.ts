@@ -10,8 +10,9 @@ const FONT_SIZE_KEYS: Record<FontSizeKind, string> = {
   editor: 'agent-sessions:editor-font-size',
   docs: 'agent-sessions:docs-font-size',
   session: 'agent-sessions:session-font-size',
+  terminal: 'agent-sessions:terminal-font-size',
 };
-const FONT_SIZE_FIELDS = { editor: 'editorFontSize', docs: 'docsFontSize', session: 'sessionFontSize' } as const;
+const FONT_SIZE_FIELDS = { editor: 'editorFontSize', docs: 'docsFontSize', session: 'sessionFontSize', terminal: 'terminalFontSize' } as const;
 
 const STORAGE_KEY = 'agent-sessions:pane-widths';
 const TIME_ZONE_KEY = 'agent-sessions:time-zone';
@@ -41,6 +42,8 @@ export class PreferencesStore {
   // Zone for message and session timestamps.
   timeZone = $state<TimeZoneMode>('utc');
   terminalFont = $state('');
+  // Settings → Terminal; null is xterm.js's 13px.
+  terminalFontSize = $state<number | null>(null);
   // Font settings (Settings → Appearance); '' and null keep the app defaults.
   editorFont = $state('');
   editorFontSize = $state<number | null>(null);

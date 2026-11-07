@@ -1,8 +1,9 @@
 # Font settings: editor, project docs and session content
 
-Planned 2026-11-07. Status: **implemented in the frontend** (FS-01–FS-08,
-FS-10). The FS-09 gate is partial: tests and Chromium checks pass, but the
-manual pass in the WebKitGTK and WebView2 desktop apps has not been run.
+Planned 2026-11-07; the terminal text size was added the same day (FS-11).
+Status: **implemented in the frontend** (FS-01–FS-08, FS-10, FS-11). The FS-09 gate
+is partial: tests and Chromium checks pass, but the manual pass in the
+WebKitGTK and WebView2 desktop apps has not been run.
 Tasks: [font-settings](../tasks/font-settings/README.md).
 
 Request: let the user change the font size of the code editor, the project
@@ -10,7 +11,8 @@ docs preview and the session content in Settings, and choose the editor's
 font family as the terminal's font can be chosen today. In the transcript and
 the docs preview, the different kinds of text (headings, code, tables,
 labels) keep fixed ratios to the body text, and all of them scale with the
-body text size.
+body text size. Later the same day: let the user choose the built-in
+terminal's font size too.
 
 ## Goal
 
@@ -20,6 +22,9 @@ A new **Appearance** section in Settings with:
   and font size.
 - **Project docs preview:** body text size.
 - **Session content:** body text size.
+
+In Settings → Terminal, next to the terminal font: the **built-in terminal
+text size**.
 
 In the docs preview and session content every text size is a fixed ratio of
 the body size, from one type scale shared by both, so changing the body size
@@ -111,7 +116,7 @@ Rules:
 
 ### Preferences
 
-Four new fields in `PreferencesStore`, each in its own `localStorage` key as
+Four new fields in `PreferencesStore` (five with FS-11), each in its own `localStorage` key as
 the existing preferences are, validated on load and on set:
 
 | Field | Key | Default | Range |
@@ -120,6 +125,7 @@ the existing preferences are, validated on load and on set:
 | `editorFontSize` | `agent-sessions:editor-font-size` | `null` (14.04 px, today's size) | 10–28 px |
 | `docsFontSize` | `agent-sessions:docs-font-size` | `null` (14.5 px body) | 11–28 px |
 | `sessionFontSize` | `agent-sessions:session-font-size` | `null` (14.5 px body) | 11–24 px |
+| `terminalFontSize` (FS-11) | `agent-sessions:terminal-font-size` | `null` (13 px, today's size) | 9–28 px |
 
 `null` means "default": nothing is overridden and today's CSS applies, so the
 default look cannot drift. A stored value outside the range, non-numeric or
@@ -178,7 +184,9 @@ A new `appearance` section ("Appearance") between General and Coding agents:
   heading, body text, inline code and a small code block, so the ratios are
   visible while the size changes.
 
-The Terminal section keeps its own font picker.
+The Terminal section keeps its own font picker. Below it is a
+**Built-in terminal text size** stepper (9–28 px, default 13 px), and the
+font sample uses that size.
 
 ### Re-measuring after a change
 
@@ -195,6 +203,10 @@ while they are open:
 - `TranscriptView`: if the view follows the bottom, it stays at the bottom;
   otherwise the first visible message stays in place (WebKit has no scroll
   anchoring). Session find highlights are painted again.
+- `TerminalView`: xterm.js takes its size as an option, not from CSS. A
+  change sets `fontSize` on every open terminal, which measures its cells
+  again, and the terminal refits, so the program gets the new columns and
+  rows.
 
 ## Decisions
 
@@ -214,8 +226,12 @@ while they are open:
   editor's metrics today; splitting them would make the text jump between
   viewing and editing.
 - **Not covered:** the Problems, Search and Changes panes, hover cards, line
-  blame, the session header and list, and the terminal's size. Each can be a
-  later task if wanted.
+  blame, and the session header and list. Each can be a later task if
+  wanted.
+- **The terminal size sits with the terminal font** in Settings → Terminal,
+  not under Appearance, so both terminal settings stay in one place. It is a
+  font size in px for xterm.js, not a body size with ratios: a terminal has
+  one size for all text.
 - **Presentation mode stays separate:** it still starts at 20 px and is not
   saved; leaving it returns to the saved setting. In the docs preview it sets
   the body size, so the ratios hold there too.
@@ -259,6 +275,9 @@ while they are open:
   ratio between, e.g., a heading and body text is the same.
 - Viewer and editor show the same font and size; switching between them does
   not move the text; cursor and click positions are right after a change.
+- The built-in terminal size can be changed in Settings → Terminal. Open
+  terminals take it at once and report their new columns and rows to the
+  program, and new terminals open at it.
 - At the largest session size no session-content text is clipped, and a
   following transcript stays at the bottom.
 - `npm test`, `npm run check` (0 errors) and `npm run build` pass.

@@ -317,13 +317,37 @@ export async function loadRemoteCommandNote() {
 }
 
 let appearanceSettingsModule;
+let sizeStepperModule;
+let terminalFontSettingModule;
+
+const commonComponents = new URL('../src/lib/components/common/', import.meta.url);
+const appearanceModule = JSON.stringify(new URL('../src/lib/appearance.ts', import.meta.url).href);
+
+/** The real size stepper, as `globalThis.__sizeStepper` for the components that use it. */
+async function loadSizeStepper() {
+  sizeStepperModule ??= loadServerComponent(new URL('SizeStepper.svelte', commonComponents), [["'../../appearance'", appearanceModule]]);
+  globalThis.__sizeStepper = (await sizeStepperModule).default;
+}
+
+/** Settings → Terminal's font and size, with the real picker and stepper; `preferences` comes from the fixture. */
+export function loadTerminalFontSetting() {
+  terminalFontSettingModule ??= (async () => {
+    await loadSizeStepper();
+    return loadServerComponent(new URL('TerminalFontSetting.svelte', commonComponents), [
+      ["'../../appearance'", appearanceModule],
+      ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
+      ["import SizeStepper from './SizeStepper.svelte';", 'const SizeStepper = globalThis.__sizeStepper;'],
+    ]);
+  })();
+  return terminalFontSettingModule;
+}
 
 /** Settings → Appearance with the real stepper, sample and font picker; `preferences` and `installedFonts` come from the fixture. */
 export function loadAppearanceSettings() {
-  const common = new URL('../src/lib/components/common/', import.meta.url);
-  const appearance = JSON.stringify(new URL('../src/lib/appearance.ts', import.meta.url).href);
+  const common = commonComponents;
+  const appearance = appearanceModule;
   appearanceSettingsModule ??= (async () => {
-    globalThis.__sizeStepper = (await loadServerComponent(new URL('SizeStepper.svelte', common), [["'../../appearance'", appearance]])).default;
+    await loadSizeStepper();
     globalThis.__typeSample = (await loadServerComponent(new URL('TypeSample.svelte', common), [])).default;
     return loadServerComponent(new URL('AppearanceSettings.svelte', common), [
       ["'../../appearance'", appearance],

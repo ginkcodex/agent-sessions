@@ -110,6 +110,33 @@ test('font preferences persist, validate and reset', async () => {
   } finally { globalThis.localStorage = previous; }
 });
 
+test('the terminal size persists, validates and resets, and sets no root property', async () => {
+  const previous = globalThis.localStorage;
+  const values = new Map([['agent-sessions:terminal-font-size', 'abc']]);
+  try {
+    const PreferencesStore = await storeWith(values);
+    const prefs = new PreferencesStore();
+    prefs.init();
+    assert.equal(prefs.terminalFontSize, null, 'garbage is the default');
+    assert.deepEqual(FONT_SIZES.terminal, { min: 9, max: 28, default: 13 });
+    prefs.setFontSize('terminal', 16);
+    assert.equal(values.get('agent-sessions:terminal-font-size'), '16');
+    prefs.setFontSize('terminal', 8);
+    prefs.setFontSize('terminal', 29);
+    assert.equal(prefs.terminalFontSize, 16, 'outside 9–28px is ignored');
+
+    const restored = new PreferencesStore();
+    restored.init();
+    assert.equal(restored.terminalFontSize, 16);
+    // xterm.js takes the size as an option; nothing goes on the root.
+    assert.deepEqual(appearanceVars({ ...restored, editorFont: '', editorFontSize: null, docsFontSize: null }), {});
+
+    restored.setFontSize('terminal', null);
+    assert.equal(restored.terminalFontSize, null);
+    assert.equal(values.has('agent-sessions:terminal-font-size'), false);
+  } finally { globalThis.localStorage = previous; }
+});
+
 test('garbage in storage loads as the defaults', async () => {
   const previous = globalThis.localStorage;
   const values = new Map([

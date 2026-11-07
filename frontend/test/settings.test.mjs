@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { openMode } from '../src/lib/terminal.ts';
-import { fixtureStore, loadAppearanceSettings, loadServerComponent, renderWithFixture } from './helpers.mjs';
+import { fixtureStore, loadAppearanceSettings, loadServerComponent, loadTerminalFontSetting, renderWithFixture } from './helpers.mjs';
 
 const SETTINGS_DIALOG_URL = new URL('../src/lib/components/common/ManageSettingsDialog.svelte', import.meta.url);
 
@@ -22,10 +22,7 @@ async function renderSettingsDialog(
 ) {
   if (!settingsDialogModule) {
     globalThis.__dropdown = (await loadServerComponent(DROPDOWN_URL, [])).default;
-    const fontURL = new URL('./TerminalFontSetting.svelte', SETTINGS_DIALOG_URL);
-    globalThis.__terminalFontSetting = (await loadServerComponent(fontURL, [
-      ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
-    ])).default;
+    globalThis.__terminalFontSetting = (await loadTerminalFontSetting()).default;
     globalThis.__appearanceSettings = (await loadAppearanceSettings()).default;
     const lib = (rel) => JSON.stringify(new URL(rel, SETTINGS_DIALOG_URL).href);
     settingsDialogModule = await loadServerComponent(SETTINGS_DIALOG_URL, [

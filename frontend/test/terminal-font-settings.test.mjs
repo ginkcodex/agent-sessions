@@ -1,13 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixtureStore, loadServerComponent, renderWithFixture } from './helpers.mjs';
-
-const url = new URL('../src/lib/components/common/TerminalFontSetting.svelte', import.meta.url);
+import { fixtureStore, loadServerComponent, loadTerminalFontSetting, renderWithFixture } from './helpers.mjs';
 
 test('terminal font setting offers the app default, current selection and Nerd Font sample', async () => {
-  const component = await loadServerComponent(url, [
-    ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
-  ]);
+  const component = await loadTerminalFontSetting();
   const html = await renderWithFixture(component, { preferences: { terminalFont: 'FiraCode Nerd Font Mono' } });
   assert.match(html, /<h4[^>]*>Built-in terminal font<\/h4>/);
   // Until the installed fonts are listed, the chosen one is not called unavailable.
@@ -16,6 +12,26 @@ test('terminal font setting offers the app default, current selection and Nerd F
   assert.match(byDefault, /class="trigger-label[^"]*">App default \(JetBrains Mono\)<\/span>/);
   assert.match(html, /No additional fonts are bundled or downloaded/);
   assert.match(html, /Terminal font preview/);
+});
+
+test('the terminal text size steps from 13px and the sample shows it', async () => {
+  const component = await loadTerminalFontSetting();
+  const sample = (html) => html.match(/<div class="sample[^"]*" aria-label="Terminal font preview"[^>]*>/)?.[0] ?? '';
+  const stepper = (html) => html.match(/<div class="stepper[^"]*" role="group" aria-label="Terminal text size">[\s\S]*?<\/div>/)?.[0] ?? '';
+
+  const byDefault = await renderWithFixture(component, { preferences: { terminalFont: '', terminalFontSize: null } });
+  assert.match(byDefault, /<h4[^>]*>Built-in terminal text size<\/h4>/);
+  assert.match(stepper(byDefault), />13px \(default\)</);
+  assert.match(stepper(byDefault), /aria-label="Reset terminal text size" disabled/);
+  assert.match(sample(byDefault), /font-size: 13px;/);
+
+  const chosen = await renderWithFixture(component, { preferences: { terminalFont: '', terminalFontSize: 18 } });
+  assert.match(stepper(chosen), />18px</);
+  assert.doesNotMatch(stepper(chosen), /aria-label="Reset terminal text size" disabled/);
+  assert.match(sample(chosen), /font-size: 18px;/);
+
+  const largest = await renderWithFixture(component, { preferences: { terminalFont: '', terminalFontSize: 28 } });
+  assert.match(stepper(largest), /aria-label="Increase terminal text size"[^>]*disabled/);
 });
 
 const monoURL = new URL('../src/lib/components/common/MonoFontSetting.svelte', import.meta.url);

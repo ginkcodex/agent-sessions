@@ -1,10 +1,11 @@
-// Font settings (docs/plan/font-settings.md): the editor font and the body
-// text sizes of the editor, the project docs preview and session content.
+// Font settings (docs/plan/font-settings.md): the editor font, the body
+// text sizes of the editor, the project docs preview and session content,
+// and the built-in terminal's size (an xterm.js option, not a property).
 // `null` / '' mean "default": no custom property is set and the CSS
 // fallbacks apply, so the default look cannot drift.
 import { isTerminalFont, monoFontFamily } from './terminalFont';
 
-export type FontSizeKind = 'editor' | 'docs' | 'session';
+export type FontSizeKind = 'editor' | 'docs' | 'session' | 'terminal';
 
 export interface FontSizeRange {
   min: number;
@@ -18,6 +19,8 @@ export const FONT_SIZES: Record<FontSizeKind, FontSizeRange> = {
   editor: { min: 10, max: 28, default: 14.04 },
   docs: { min: 11, max: 28, default: 14.5 },
   session: { min: 11, max: 24, default: 14.5 },
+  // xterm.js's size before this setting.
+  terminal: { min: 9, max: 28, default: 13 },
 };
 
 /** Custom properties set on the document root; each is unset at its default. */
