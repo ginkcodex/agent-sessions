@@ -119,6 +119,15 @@ so one press moves either the session list or the editor, never both.
   100 ms (up to 100 tries) until Wails has created it.
 - cgo: a Go file with `//export` can't define C functions in its preamble,
   so the C code lives in a `.c` file. Go honours its `//go:build` line.
+- **Two-finger swipes** are scrolls in GTK. The same web view also gets a
+  `GtkEventControllerScroll` (capture phase) that always returns `FALSE`,
+  so WebKit still scrolls. Only `GDK_SOURCE_TOUCHPAD` counts. A gesture runs
+  from `scroll-begin`, or a scroll after 200 ms (X11 may send no
+  `scroll-end`), to `scroll-end`. Past `SWIPE_DISTANCE` (80 px; X11 wheel
+  units × 40) sideways, more than twice the vertical, it sends `nav:swipe`
+  once. It follows the scroll, as Chrome does: toward the left is back,
+  which is fingers right with natural scrolling (GNOME's and Plasma 6's
+  touchpad default). GNOME has no *Swipe between pages* setting to honour.
 
 ### macOS
 
