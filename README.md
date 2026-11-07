@@ -26,6 +26,10 @@
   <a href="#build-from-source">Build from source</a>
 </p>
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="Agent Sessions on macOS: a project tree and session list on the left, a live Claude Code session's transcript on the right, and the same session running in the built-in terminal below">
+</p>
+
 ---
 
 **Agent Sessions is a local-first desktop app for browsing and working with the
