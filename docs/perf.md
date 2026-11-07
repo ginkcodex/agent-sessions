@@ -3858,3 +3858,61 @@ packaging, private-store QA script or push occurred. Watcher acceleration and
 uncapped Search index reuse remain deferred by the design. Sequential enumeration
 and immutable-copy overhead remain measured bottlenecks. Milestones 4/5 still
 need their own design and ≤4h briefs before implementation.
+
+
+## NG-04 — Walked listings with nested repositories (2026-11-07)
+
+`List` on a folder that is not a Git work tree walks it. Since NG-02 the walk
+asks each repository it finds which paths Git ignores
+(`git ls-files --others --ignored --exclude-standard --directory`), one at a
+time, in walk order. Before: 46fc020 (name rules only). After: NG-02/NG-03.
+
+Measured with `internal/files/walk_measure_test.go`, built once per commit
+(the file copied into a `git worktree` at 46fc020 for "before"):
+
+```sh
+go test -c -o /tmp/ng04-files-after.test ./internal/files/
+AS_MEASURE_ROOT=<root> /tmp/ng04-files-after.test -test.run TestMeasureList -test.v
+```
+
+One warm-up, then the median of 7 runs.
+
+### Synthetic tree (local, WSL2, Go 1.26, git 2.53.0)
+
+`/tmp/ng04-synth`: a plain root with 12 repositories (400 tracked files each;
+`node_modules/` 2,000 files, `dist/` 300 files and 20 `*.log` ignored) and a
+plain `notes/` folder; 32,702 files outside `.git`.
+
+| | Median (min–max) | Git per run | Files | Ignored files | Ignored folders | Repositories |
+|---|---|---|---|---|---|---|
+| Before | 8 ms (8–10), 9 ms (8–9) | 1 `ls-files`, 12 `status` | 5,102 | 0 | 24 | 12 |
+| After | 27 ms (22–29), 26 ms (24–27) | 13 `ls-files`, 12 `status` | 4,862 | 240 | 24 | 12 |
+
+The 240 `*.log` files move from `Files` to `Ignored`. The added ~18 ms is
+12 queries of ~1.5 ms each, run serially.
+
+### `plgl:/home/haitran/Workspaces/v2` (read only)
+
+The same two test binaries, copied to `plgl:/tmp`, run there, then deleted
+(28 CPUs, git 2.53.0). `git status --porcelain` of `cadence`, `cadence/ui`
+and `dtp4a` was identical before and after. Two rounds:
+
+| | Median (min–max) | Git per run | Files | Directories | Ignored files | Ignored folders | Repositories |
+|---|---|---|---|---|---|---|---|
+| Before | 25 ms (18–31), 20 ms (16–27) | 1 `ls-files`, 15 `status` | 3,178 | 540 | 0 | 219 | 15 |
+| After | 65 ms (54–73), 79 ms (39–93) | 14 `ls-files`, 13 `status` | 2,725 | 479 | 18 | 216 | 13 |
+
+The listing gets ~45–60 ms slower (median) for 13 extra queries. `Files`
+has 453 fewer entries (18 now in `Ignored`, the rest inside folders Git
+ignores, such as `cadence/devops/staging/`, which are no longer walked), and
+`Directories` has 61 fewer.
+Two repositories inside folders their parent ignores are no longer found
+(15 → 13), so two fewer `git status` run.
+
+A first estimate ran the same query by hand in a shell loop, one repository
+after another: ~27 ms each, ~350 ms in total. That overstated the cost; the
+loop's own process starts (`date`, `realpath`, subshells over SSH) were
+counted with each query. The end-to-end numbers above are the result.
+
+**Result:** ~45–60 ms added on `v2`, under NG-04's 250 ms limit; no
+follow-up needed. Not measured: Windows, a cold file cache.
