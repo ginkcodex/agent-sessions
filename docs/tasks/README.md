@@ -49,6 +49,6 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Selected-text menu and contextual translation | [selection-translate](../plan/selection-translate.md) | [selection-translate/](selection-translate/README.md) | 5/5 ✅ |
 | Internal terminal maximization | [terminal-maximize](../plan/terminal-maximize.md) | [terminal-maximize/](terminal-maximize/README.md) | 2/2 ✅ |
 | Split terminals | [terminal-split](../plan/terminal-split.md) | [terminal-split/](terminal-split/README.md) | 4/4 ✅ |
-| Font settings: editor, docs and session content | [font-settings](../plan/font-settings.md) | [font-settings/](font-settings/README.md) | 7/9 ✅ · 2 ⬜ |
+| Font settings: editor, docs and session content | [font-settings](../plan/font-settings.md) | [font-settings/](font-settings/README.md) | 8/9 ✅ · 1 ⬜ |
 | Go to File editing | [file-editing](../plan/file-editing.md) | [file-editing/](file-editing/README.md) | 11/14 ✅ · 3 🟡 |
 | Wails v3 upgrade | [wails-v3-upgrade](../plan/wails-v3-upgrade.md) | [wails-v3-upgrade/](wails-v3-upgrade/README.md) | 1/2 ✅ · 1 ⬜ |

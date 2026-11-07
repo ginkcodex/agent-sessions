@@ -1,7 +1,7 @@
 # Font settings — tasks
 
 - **Plan:** [font-settings.md](../../plan/font-settings.md)
-- **Progress:** 7/9 done
+- **Progress:** 8/9 done
 
 Planned 2026-11-07. The type scale comes first (FS-01, FS-02): every text
 size in the docs preview and session content becomes body size × one of
@@ -21,5 +21,5 @@ paint; those are checked by hand in FS-09.
 | [FS-05](FS-05.md) | ✅ Done | Settings → Appearance section | 3 h | FS-03, FS-04 |
 | [FS-06](FS-06.md) | ✅ Done | Editor and viewer font family and size | 4 h | FS-03 |
 | [FS-07](FS-07.md) | ✅ Done | Project docs preview size | 1 h | FS-01, FS-03 |
-| [FS-08](FS-08.md) | ⬜ Not started | Session text size and scroll position | 3 h | FS-02, FS-03 |
+| [FS-08](FS-08.md) | ✅ Done | Session text size and scroll position | 3 h | FS-02, FS-03 |
 | [FS-09](FS-09.md) | ⬜ Not started | Regression gate and manual check | 3 h | FS-05, FS-06, FS-07, FS-08 |
