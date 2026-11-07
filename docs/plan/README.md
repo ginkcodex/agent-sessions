@@ -41,6 +41,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [performance-startup.md](performance-startup.md) | [performance-startup](../tasks/performance-startup/README.md) | Startup responsiveness, the priority package before performance Milestone 2 |
 | [performance-m2.md](performance-m2.md) | [performance-m2](../tasks/performance-m2/README.md) | Performance Milestone 2: incremental transcripts, byte-budgeted cache, FTS reuse, transcript deltas |
 | [performance-m3.md](performance-m3.md) | [performance-m3](../tasks/performance-m3/README.md) | Performance Milestone 3: shared project index, bounded path snapshots, coalesced reconciliation |
+| [transcript-page-cap.md](transcript-page-cap.md) | [transcript-page-cap](../tasks/transcript-page-cap/README.md) | Transcript pages capped by size as well as count, so large Codex and OpenCode sessions open quickly |
 | [dark-tone.md](dark-tone.md) | [dark-tone](../tasks/dark-tone/README.md) | Dark surfaces layered around the native #2C2C2B tone |
 | [dialog-close.md](dialog-close.md) | [dialog-close](../tasks/dialog-close/README.md) | Centered shared close button for dialogs |
 | [selection-translate.md](selection-translate.md) | [selection-translate](../tasks/selection-translate/README.md) | Copy/Translate menu for a transcript selection, with its sentence as context |

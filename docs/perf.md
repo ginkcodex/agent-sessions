@@ -3916,3 +3916,34 @@ counted with each query. The end-to-end numbers above are the result.
 
 **Result:** ~45–60 ms added on `v2`, under NG-04's 250 ms limit; no
 follow-up needed. Not measured: Windows, a cold file cache.
+
+## PC-01 — Transcript first pages by provider (2026-11-07)
+
+`TestMeasureTranscriptLoad` (`internal/provider/all/measure_load_test.go`)
+on `plgl:/home/haitran/Workspaces/be`, read only: the test binary was copied
+to `plgl:/tmp`, run there and deleted. It loads every session of the project
+from each provider as a freshly started server would, and reports the JSON
+size of the newest 50 messages (the viewer's first page) and of the page a
+256 KB cap would send ([transcript-page-cap](plan/transcript-page-cap.md)).
+
+| Provider | Sessions, MB on disk | First loads total (median) | Newest 50 as JSON | Largest message | With a 256 KB cap |
+|---|---|---|---|---|---|
+| Claude | 64, 143 MB | 1.99 s (9 ms) | 0.05–0.13 MB (top 8 by load time) | 0.07 MB | unchanged, 50 messages |
+| Codex | 9, 44 MB | 0.92 s (81 ms) | 0.44–1.29 MB | 0.25 MB | 4–32 messages, ≤ 0.25 MB |
+| OpenCode | 80 (one 649 MB database) | 2.11 s (15 ms) | 0.08–1.56 MB | 0.29 MB | 9–50 messages, ≤ 0.25 MB |
+
+The slowest single loads: Claude 284 ms (24 MB file, 3,060 messages), Codex
+199–237 ms over three runs (19 MB, 85 messages). The largest first pages are
+mostly tool output: Codex 1.29 MB, of it `tool.output` 0.96 MB and
+`tool.input` 0.13 MB; OpenCode 1.56 MB, `tool.output` 1.33 MB. A Codex
+message is a whole turn with its tool calls, so 50 of them are most of a
+session; Claude splits turns into many small messages. The largest Claude
+first page is a subagent's, 0.39 MB.
+
+Sending 1.3 MB from `plgl` over SSH without compression takes about
+150–240 ms beyond the connection's latency, before the frontend parses and
+renders the page. The server-side load is not what makes Codex slower to
+open.
+
+**Result:** cap the viewer's pages by size (PC-02–PC-04). Not measured here:
+the time to transfer and render a page in the desktop app (PC-06).

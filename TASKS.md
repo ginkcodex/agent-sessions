@@ -69,6 +69,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Performance M2: incremental transcripts | [performance-m2](docs/plan/performance-m2.md) | [performance-m2/](docs/tasks/performance-m2/README.md) | 12/12 ✅ |
 | Performance M3 | [performance-m3](docs/plan/performance-m3.md) | [performance-m3/](docs/tasks/performance-m3/README.md) | 10/10 ✅ |
 | Startup responsiveness | [performance-startup](docs/plan/performance-startup.md) | [performance-startup/](docs/tasks/performance-startup/README.md) | 10/10 ✅ |
+| Transcript page cap | [transcript-page-cap](docs/plan/transcript-page-cap.md) | [transcript-page-cap/](docs/tasks/transcript-page-cap/README.md) | 1/6 ✅ · 5 ⬜ |
 | Consent-based managed tools | [tool-installation](docs/plan/tool-installation.md) | [tool-installation/](docs/tasks/tool-installation/README.md) | 5/6 ✅ · 1 ⬜ |
 | Native-tone dark surfaces | [dark-tone](docs/plan/dark-tone.md) | [dark-tone/](docs/tasks/dark-tone/README.md) | 5/5 ✅ |
 | Centered dialog close buttons | [dialog-close](docs/plan/dialog-close.md) | [dialog-close/](docs/tasks/dialog-close/README.md) | 2/2 ✅ |
