@@ -20,17 +20,12 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/remote"
 )
 
-// init applies the WebKitGTK DMA-BUF renderer workaround before any GTK
-// initialization. On some Linux drivers (NVIDIA and certain Mesa versions)
-// WebKitGTK fails to allocate DMA-BUF textures and renders a blank or
-// black window. Disabling the DMABUF renderer falls back to shared-memory
-// rendering at a small performance cost. The user may opt out by exporting
-// the variable explicitly.
-func init() {
-	if os.Getenv("WEBKIT_DISABLE_DMABUF_RENDERER") == "" {
-		_ = os.Setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
-	}
-}
+// WebKitGTK's DMA-BUF renderer stays on: Wails turns it off itself where
+// WebKit renders on NVIDIA (isNVIDIAGPU in wails/v3/pkg/application), and an
+// exported WEBKIT_DISABLE_DMABUF_RENDERER wins over both. Turning it off
+// everywhere made the GTK main thread copy and composite every frame on the
+// CPU, which pinned it and stuttered on fractional scales
+// (docs/plan/linux-gpu-rendering.md).
 
 func main() {
 	if sock := os.Getenv("AGENT_SESSIONS_ASKPASS_SOCK"); sock != "" {

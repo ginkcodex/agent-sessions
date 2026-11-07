@@ -47,6 +47,27 @@ status). To reproduce a failure, open the index with `index.OpenReadOnly`,
 load the saved states with `LoadSnapshot` and run each provider's `Scan` with
 its state. This reads the live index in place, so nothing needs to be copied.
 
+## Linux rendering (DMA-BUF)
+
+**Don't set `WEBKIT_DISABLE_DMABUF_RENDERER=1` for everyone.** Without
+DMA-BUF, WebKitGTK hands every frame to the UI process in shared memory, and
+the GTK main thread copies and composites it with cairo/pixman. Any
+animation (a live session's pulse, a spinner) then keeps that thread busy.
+On a 1.5× GNOME Wayland laptop with an AMD GPU it sat at 100 % while idle,
+and the app stuttered. With DMA-BUF it idles around 10 %.
+
+The app used to force it from the Wails v2 days (blank windows on NVIDIA).
+Wails v3 now does it itself, only where WebKit renders on NVIDIA
+(`isNVIDIAGPU` in `wails/v3/pkg/application/gpu_linux.go`), before the app's
+own `init()`. A value the user exports wins either way: `=1` if some driver
+shows a blank window, `=0` to try DMA-BUF on NVIDIA. See
+[docs/plan/linux-gpu-rendering.md](docs/plan/linux-gpu-rendering.md).
+
+To see where the main thread goes when `perf` and `gdb -p` need root
+(`perf_event_paranoid` 4, `ptrace_scope` 1), start a copy under `gdb`
+(`gdb -batch -ex run -ex 'thread apply 1 bt' … --args <binary>`) and send
+SIGINT to that child only, never to a running app picked by name.
+
 ## Fullscreen shortcut
 
 Control+Command+F toggles fullscreen on macOS; other platforms use F11
