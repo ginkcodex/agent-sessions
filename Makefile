@@ -24,7 +24,7 @@ APPICON := frontend/assets/Icon-universal.png
 MACOS_APPICON := frontend/assets/Icon-macOS.png
 
 .PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps check-gui-linkage \
-	package-linux package-macos package-windows windows-app \
+	package-linux package-macos package-windows windows-app aur-package \
 	remote-servers conpty windows-setup version tags set-version tag untag release sync help check-app-icons
 
 # Headless servers the desktop app deploys over SSH. CGO stays off: these
@@ -193,6 +193,20 @@ package-linux: check-app-icons gui-build
 	mkdir -p dist
 	VERSION=$(VERSION) ARCH=$(ARCH) $(NFPM) pkg --config packaging/nfpm.yaml --packager deb --target dist/
 	VERSION=$(VERSION) ARCH=$(ARCH) $(NFPM) pkg --config packaging/nfpm.yaml --packager rpm --target dist/
+
+# The AUR package agent-sessions-bin for the published release v$(VERSION),
+# in AUR_PKG_DIR: PKGBUILD, .SRCINFO and LICENSE, built, installed and removed
+# in an Arch container (needs docker). It repackages that release's .deb, so
+# the release must exist on GitHub. Publish with packaging/arch/publish-aur.sh;
+# CI does it after each stable release (.github/workflows/aur.yml).
+RELEASES_URL ?= https://github.com/ginkcodex/agent-sessions/releases/download
+AUR_PKG_DIR ?= build/aur
+PKGREL ?= 1
+aur-package:
+	mkdir -p "$(AUR_PKG_DIR)"
+	curl -fsSL --retry 3 -o "$(AUR_PKG_DIR)/SHA256SUMS.release" "$(RELEASES_URL)/v$(VERSION)/SHA256SUMS"
+	bash packaging/arch/render-pkgbuild.sh --pkgrel "$(PKGREL)" "$(VERSION)" "$(AUR_PKG_DIR)/SHA256SUMS.release" "$(AUR_PKG_DIR)"
+	bash packaging/arch/verify-aur-package.sh "$(AUR_PKG_DIR)"
 
 # Universal macOS app wrapped in a .dmg in dist/. Runs on macOS only (cgo,
 # lipo, plutil, codesign, hdiutil) and needs jq. Each architecture is a plain
@@ -432,6 +446,7 @@ help:
 	@printf '  %-22s %s\n' 'package-macos' 'Universal .dmg (macOS only, needs jq; MACOS_SIGN_ID/MACOS_NOTARY_PROFILE)'
 	@printf '  %-22s %s\n' 'package-windows' 'amd64 .msi + _setup.exe (needs wixl, jq, python3)'
 	@printf '  %-22s %s\n' 'windows-setup MSI=...' 'Wrap an existing MSI (optional SETUP_OUT=...)'
+	@printf '  %-22s %s\n' 'aur-package' 'AUR agent-sessions-bin for released v$(VERSION) in build/aur (needs docker)'
 	@printf '\nReleases (current: v$(VERSION))\n'
 	@printf '  %-22s %s\n' 'version' 'Show the version and whether its tag exists'
 	@printf '  %-22s %s\n' 'tags' 'List release tags, newest first'
@@ -442,4 +457,4 @@ help:
 	@printf '  %-22s %s\n' 'sync' 'After a merge into main: switch to develop and fast-forward it to main'
 
 clean:
-	rm -rf bin build/bin build/darwin build/dmg build/remote build/windows dist frontend/dist "$(WINDOWS_SYSO)"
+	rm -rf bin build/aur build/bin build/darwin build/dmg build/remote build/windows dist frontend/dist "$(WINDOWS_SYSO)"

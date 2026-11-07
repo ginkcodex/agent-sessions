@@ -8,7 +8,7 @@ section: devel
 priority: optional
 maintainer: ginkcode <ginkcode@gmail.com>
 vendor: ginkcode
-homepage: https://github.com/ginkcode/agent-sessions
+homepage: https://github.com/ginkcodex/agent-sessions
 description: |-
   Desktop GUI to browse and manage agent coding sessions.
   Discovers, searches and manages sessions created by agentic coding

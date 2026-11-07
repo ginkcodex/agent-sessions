@@ -11,5 +11,6 @@ frontend/wailsjs/
 /testdata/private/
 .DS_Store
 /web/
+/aur/
 # Windows resources staged by make windows-app during a build
 cmd/agent-sessions/*.syso

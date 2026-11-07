@@ -52,6 +52,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [swipe-navigation.md](swipe-navigation.md) | [swipe-navigation](../tasks/swipe-navigation/README.md) | Two-finger trackpad swipe back and forward on macOS, in the session list and Go to File |
 | [swipe-navigation-windows-linux.md](swipe-navigation-windows-linux.md) | [swipe-navigation-windows-linux](../tasks/swipe-navigation-windows-linux/README.md) | The same two-finger touchpad swipe on Windows (from wheel events) and Linux (GTK, native) |
 | [linux-gpu-rendering.md](linux-gpu-rendering.md) | [linux-gpu-rendering](../tasks/linux-gpu-rendering/README.md) | Linux: keep WebKit's DMA-BUF GPU renderer; only NVIDIA (Wails' check) falls back to shared memory |
+| [aur-package.md](aur-package.md) | [aur-package](../tasks/aur-package/README.md) | Arch Linux: `agent-sessions-bin` on the AUR from each stable release's `.deb`, published by CI |
 
 ## Supporting documents
 
