@@ -1,7 +1,7 @@
 # Font settings — tasks
 
 - **Plan:** [font-settings.md](../../plan/font-settings.md)
-- **Progress:** 0/9 done
+- **Progress:** 1/9 done
 
 Planned 2026-11-07. The type scale comes first (FS-01, FS-02): every text
 size in the docs preview and session content becomes body size × one of
@@ -14,7 +14,7 @@ paint; those are checked by hand in FS-09.
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
-| [FS-01](FS-01.md) | ⬜ Not started | Type scale: tokens, message text and docs preview | 4 h | — |
+| [FS-01](FS-01.md) | ✅ Done | Type scale: tokens, message text and docs preview | 4 h | — |
 | [FS-02](FS-02.md) | ⬜ Not started | Type scale: other session parts, clipping audit, scan test | 4 h | FS-01 |
 | [FS-03](FS-03.md) | ⬜ Not started | Preferences and CSS custom properties | 3 h | — |
 | [FS-04](FS-04.md) | ⬜ Not started | Shared monospace font picker | 2 h | — |

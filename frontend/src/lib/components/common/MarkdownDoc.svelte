@@ -72,7 +72,7 @@
 
 <style>
   .markdown-doc {
-    font-size: var(--markdown-font-size, 13px);
+    font-size: calc(var(--markdown-font-size, 13px) * var(--type-body));
     line-height: 1.6;
     color: var(--text-primary);
     word-break: break-word;
@@ -95,9 +95,9 @@
     color: var(--text-primary);
   }
 
-  :global(.markdown-doc h1) { font-size: 1.428em; }
-  :global(.markdown-doc h2) { font-size: 1.255em; }
-  :global(.markdown-doc h3) { font-size: 1.083em; }
+  :global(.markdown-doc h1) { font-size: calc(var(--markdown-font-size, 13px) * var(--type-h1)); }
+  :global(.markdown-doc h2) { font-size: calc(var(--markdown-font-size, 13px) * var(--type-h2)); }
+  :global(.markdown-doc h3) { font-size: calc(var(--markdown-font-size, 13px) * var(--type-h3)); }
 
   :global(.markdown-doc ul, .markdown-doc ol) {
     margin: 0.5em 0;
@@ -121,7 +121,7 @@
      so match any code outside a code block. Same look as the transcript's. */
   :global(.markdown-doc :not(pre) > code) {
     font-family: var(--font-mono);
-    font-size: 0.825em;
+    font-size: calc(var(--type-inline-code) * 1em);
     padding: 1px 5px;
     border-radius: 5px;
     background-color: var(--segment-track);
@@ -156,7 +156,7 @@
   :global(.markdown-doc table) {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.923em;
+    font-size: calc(var(--markdown-font-size, 13px) * var(--type-code));
   }
 
   :global(.markdown-doc th, .markdown-doc td) {
@@ -199,7 +199,7 @@
   }
 
   :global(.markdown-doc .code-lang-tag) {
-    font-size: 10.88px;
+    font-size: calc(var(--markdown-font-size, 13px) * var(--type-tag));
     font-family: var(--font-mono);
     font-weight: 600;
     color: var(--text-muted);
@@ -207,7 +207,7 @@
   }
 
   :global(.markdown-doc .copy-code-btn, .markdown-doc .mermaid-toggle-btn, .markdown-doc .mermaid-expand-btn) {
-    font-size: 10.88px;
+    font-size: calc(var(--markdown-font-size, 13px) * var(--type-tag));
     padding: 2px 6px;
     border-radius: 3px;
     background-color: var(--bg-secondary);
@@ -258,7 +258,7 @@
 
   :global(.markdown-doc code.hljs) {
     font-family: var(--font-mono);
-    font-size: 0.923em;
+    font-size: calc(var(--markdown-font-size, 13px) * var(--type-code));
     line-height: 1.45;
   }
 </style>
