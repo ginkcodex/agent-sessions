@@ -429,7 +429,8 @@ type goBuildContext struct {
 }
 
 // discoverGoWorkspace walks only inside the authorized root with bounded,
-// rooted reads. The selected directory is never promoted to a parent module,
+// rooted reads, files before folders, leaving out folders Git ignores
+// (gitScope). The selected directory is never promoted to a parent module,
 // repository or go.work. A go.work entry (or local replace) that leaves the
 // root is reported as bounded partial coverage; GOWORK=off keeps gopls from
 // loading it, so no extra access is granted.
@@ -440,9 +441,14 @@ func discoverGoWorkspace(root AuthorizedRoot) (goWorkspace, error) {
 		return w, failure("unauthorized", "Go discovery root cannot be opened")
 	}
 	defer func() { _ = r.Close() }()
+	scope := newGitScope(root)
 	entries := 0
 	var walk func(string, int)
 	walk = func(dir string, depth int) {
+		if entries >= maxGoplsEntries {
+			w.partial = true
+			return
+		}
 		f, err := r.Open(dir)
 		if err != nil {
 			w.partial = true
@@ -454,7 +460,7 @@ func discoverGoWorkspace(root AuthorizedRoot) (goWorkspace, error) {
 			w.partial = true
 			return
 		}
-		slices.SortFunc(ds, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+		slices.SortFunc(ds, filesFirst)
 		for _, d := range ds {
 			entries++
 			if entries > maxGoplsEntries {
@@ -471,6 +477,9 @@ func discoverGoWorkspace(root AuthorizedRoot) (goWorkspace, error) {
 				n := d.Name()
 				if n == "vendor" || n == "node_modules" || n == "testdata" || strings.HasPrefix(n, ".") || strings.HasPrefix(n, "_") || depth >= 32 {
 					w.partial = true
+					continue
+				}
+				if scope.skip(r, portable) {
 					continue
 				}
 				walk(rel, depth+1)
