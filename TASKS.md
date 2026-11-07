@@ -62,7 +62,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Editor essentials | [editor-essentials](docs/plan/editor-essentials.md) | [editor-essentials/](docs/tasks/editor-essentials/README.md) | 23/23 ✅ |
 | Git history | [git-history](docs/plan/git-history.md) | [git-history/](docs/tasks/git-history/README.md) | 17/18 ✅ · 1 🟡 |
 | Code checks: choosing languages | [code-diagnostics-languages](docs/plan/code-diagnostics-languages.md) | [code-diagnostics-languages/](docs/tasks/code-diagnostics-languages/README.md) | 8/8 ✅ |
-| Code checks: Git ignore rules in discovery | [code-diagnostics-ignore-scope](docs/plan/code-diagnostics-ignore-scope.md) | [code-diagnostics-ignore-scope/](docs/tasks/code-diagnostics-ignore-scope/README.md) | 0/5 ✅ · 5 ⬜ |
+| Code checks: Git ignore rules in discovery | [code-diagnostics-ignore-scope](docs/plan/code-diagnostics-ignore-scope.md) | [code-diagnostics-ignore-scope/](docs/tasks/code-diagnostics-ignore-scope/README.md) | 1/5 ✅ · 4 ⬜ |
 | Code checks: Ruby (RuboCop) | [code-diagnostics-ruby](docs/plan/code-diagnostics-ruby.md) | [code-diagnostics-ruby/](docs/tasks/code-diagnostics-ruby/README.md) | 7/7 ✅ |
 | Ruby Go to definition (ruby-lsp) | [code-diagnostics-ruby-lsp](docs/plan/code-diagnostics-ruby-lsp.md) | [code-diagnostics-ruby-lsp/](docs/tasks/code-diagnostics-ruby-lsp/README.md) | 12/14 ✅ · 1 🟡 · 1 ⬜ |
 | Performance M1: baselines and targeted reuse | [performance](docs/plan/performance.md) | [performance/](docs/tasks/performance/README.md) | 13/15 ✅ · 1 🟡 · 1 ➖ |
