@@ -73,15 +73,19 @@ func TestGitScopeSkipsIgnoredFoldersAndEntersNestedRepositories(t *testing.T) {
 	root := ignoreTree(t)
 	r := openTestRoot(t, root)
 	s := newGitScope(root)
-	for rel, want := range map[string]bool{
-		"dist": true, "build": true, // ignored, no marker
-		"web":       false, // ignored, but a repository of its own
-		"web/build": true,  // ignored by web's own rules
-		"web/src":   false,
-		"tools":     false,
+	// In walk order: a walk asks about a folder before the folders inside it.
+	for _, c := range []struct {
+		rel  string
+		want bool
+	}{
+		{"build", true}, {"dist", true}, // ignored, no marker
+		{"tools", false},
+		{"web", false},      // ignored, but a repository of its own
+		{"web/build", true}, // ignored by web's own rules
+		{"web/src", false},
 	} {
-		if got := s.skip(r, rel); got != want {
-			t.Errorf("skip(%q) = %v, want %v", rel, got, want)
+		if got := s.skip(r, c.rel); got != c.want {
+			t.Errorf("skip(%q) = %v, want %v", c.rel, got, c.want)
 		}
 	}
 	if s.calls != 2 {

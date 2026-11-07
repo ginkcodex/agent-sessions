@@ -62,8 +62,11 @@ func (s *gitScope) ask(rel string) {
 }
 
 // skip reports whether the walk leaves out folder rel (slash-separated,
-// relative to the root), one it would otherwise enter. Skipping is not
-// partial coverage: the folder is out of the project's source on purpose.
+// relative to the root), one it would otherwise enter. Folders must be asked
+// in walk order, a folder before the folders inside it: a nested
+// repository's rules are only known once its own folder was asked. Skipping
+// is not partial coverage: the folder is out of the project's source on
+// purpose.
 func (s *gitScope) skip(r *os.Root, rel string) bool {
 	if hasGitMarker(r, rel) {
 		s.ask(rel)
