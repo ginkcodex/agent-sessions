@@ -11,8 +11,6 @@ void hook_window_side_buttons(void *window);
 import "C"
 
 import (
-	"fmt"
-	"os"
 	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -46,17 +44,13 @@ func goMouseNavigate(window unsafe.Pointer, forward C.int) {
 	go navigateWindow(window, mouseNavigateEvent, navigateDirection(forward))
 }
 
-// goSwipeNavigate is a two-finger touchpad swipe (macOS and Linux; on
-// Windows the page spots swipes itself).
+// goSwipeNavigate is a two-finger touchpad swipe (macOS and Linux; Windows
+// is in mousenav_windows.go).
 //
 //export goSwipeNavigate
 func goSwipeNavigate(window unsafe.Pointer, forward C.int) {
 	go navigateWindow(window, swipeNavigateEvent, navigateDirection(forward))
 }
-
-// AGENT_SESSIONS_TRACE_NAV=1 also prints each event sent to a window
-// (mousenav_linux.c traces the gestures).
-var traceNavigation = os.Getenv("AGENT_SESSIONS_TRACE_NAV") != "" && os.Getenv("AGENT_SESSIONS_TRACE_NAV") != "0"
 
 func navigateDirection(forward C.int) string {
 	if forward != 0 {
@@ -84,10 +78,5 @@ func navigateWindow(native unsafe.Pointer, event, direction string) {
 	if target == nil {
 		target = app.Window.Current()
 	}
-	if traceNavigation {
-		fmt.Fprintf(os.Stderr, "nav-trace dispatch %s %s to window %v (matched %v)\n", event, direction, target != nil, native != nil)
-	}
-	if target != nil {
-		target.DispatchWailsEvent(&application.CustomEvent{Name: event, Data: direction})
-	}
+	dispatchNavigation(target, event, direction, native != nil)
 }

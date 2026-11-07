@@ -205,23 +205,25 @@ so one press moves either the session list or the editor, never both.
   app receives before assuming the handler is broken.
 - **Two-finger swipes:** WebView2 runs in its own process, so the app's
   window never sees its scroll messages, and its own swipe navigation is
-  for touchscreens. The page spots the swipe from wheel events instead
-  (`SwipeGuard` with detect on, `frontend/src/lib/swipeNavigation.ts`): at
-  least 3 pixel-mode events, 80 px sideways and more than twice the
-  vertical, with no Shift and no delta of a whole wheel step (100 px).
-  Toward the left is back, as in Edge. A smooth sideways mouse wheel can
-  pass for a touchpad.
-- Without a phase, the wheel stream does not say where one swipe ends: the
-  momentum after the fingers lift, or a quick lift and touch, runs straight
-  into the next swipe. The guard splits the stream into strokes: a new one
-  starts only after the fingers let go (the speed fell to a quarter of its
-  peak through three falling events in a row) and then rises for two
-  events. Momentum only slows down, so it never starts one. Each stroke
-  swipes once and has its own scrolled flag.
-- **Don't loosen the let-go rule to "half speed, then a rise"** (SN-05). A
-  finger's speed dips that much within one swipe, so one swipe went several
-  steps (SN-06). Missing a step in a very fast double swipe is the lesser
-  fault.
+  for touchscreens. A message-only window on its own thread reads the
+  Precision Touchpad through Raw Input (`mousenav_windows.go`, usage page
+  `0x0D` / usage `0x05`, `RIDEV_INPUTSINK`) and parses the reports with
+  `HidP_*`; `internal/touchswipe` turns the contacts into one swipe per
+  touch: two fingers, 10 mm sideways, more than twice the vertical. Fingers
+  right is back, as on macOS. It goes to the app window under the cursor,
+  where Windows sends the scroll. Touchpads that are not Precision
+  Touchpads do not swipe.
+- **Don't spot swipes from the page's wheel events** (SN-02 to SN-08). They
+  carry no phase, and while the page is busy the renderer merges them into
+  a few large deltas and leaves gaps in the stream. On a real touchpad
+  swipes were missed for minutes after start, and stepped several times
+  after a step that was slow to draw. Splitting the stream by speed made
+  one swipe go several steps even when idle.
+- `AGENT_SESSIONS_TRACE_NAV=1` writes touchpad layouts, fingers down,
+  swipes and sends to `%TEMP%\agent-sessions-nav-trace.log` (the app has
+  no console). `mousenav_windows_test.go`, cross-compiled with
+  `GOOS=windows go test -c -tags desktop,production ./cmd/agent-sessions/`
+  and run from WSL, prints each touchpad's report layout.
 
 ### How to debug
 

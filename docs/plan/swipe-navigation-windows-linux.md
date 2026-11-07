@@ -50,42 +50,53 @@ always returns `FALSE`, so WebKit scrolls as before.
 - At `SWIPE_DISTANCE` (80 px) sideways, more than twice the vertical,
   `goSwipeNavigate` sends `nav:swipe` once per gesture, to that window.
 
-### Windows: from the page's wheel events
+### Windows: native, from the touchpad's contacts
 
 WebView2 runs in another process: the app's window never sees its scroll
-messages, and the page's wheel events carry no phase and no device. So the
-page spots the swipe itself. `SwipeGuard` gets a detector, turned on only
-on Windows (`navigator.platform` starts with `Win`):
+messages. The page's wheel events (the first design, SN-02 to SN-08) carry
+no phase and no device, and the renderer reshapes them under load: while
+the page is busy it merges them into a few large ones, and leaves gaps in
+the stream. A swipe guessed from them was missed while the app was busy
+(at startup, while it indexes) and went several steps after a step that
+took long to draw. So Windows reads the touchpad itself (SN-09):
 
-- It uses the guard's strokes. Wheel events less than 200 ms apart are one
-  stream, but a stream may hold several swipes: the touchpad's momentum
-  after the fingers lift, or a quick lift and touch, joins the next swipe
-  to the last. So a stroke also ends when the fingers come back after
-  letting go (SN-05, SN-06). Letting go means the speed fell to a quarter of
-  its peak, through at least three falling events in a row; coming back
-  means it then rose for two events in a row. Fingers on the pad wobble,
-  dipping to half speed and back, and that must not split a swipe: one
-  swipe is one step. Momentum only slows down. Each stroke swipes once and
-  is a scroll or not on its own. A swipe that runs into the next with no
-  let-go is one step short, never one too many.
-- A gesture is not a swipe if any event is Shift+wheel (a mouse scrolling
-  sideways), counts in lines or pages (`deltaMode` not 0), or moves a whole
-  wheel step at once (`|delta| ≥ 100` px). Ctrl+wheel (pinch) is ignored, as
-  today.
-- At `SWIPE_DISTANCE` (80 px) sideways, more than twice the vertical, over
-  at least 3 events, it fires once per gesture, unless the gesture scrolled
-  something. Listeners subscribed through `subscribeMouseNavigate` get it
-  like `nav:swipe`.
+- A message-only window on its own thread registers for Raw Input from
+  Precision Touchpads (HID usage page `0x0D`, usage `0x05`) with
+  `RIDEV_INPUTSINK`. It parses each report with the device's preparsed
+  data (`HidP_*`): contact count, and per finger its contact ID, tip
+  switch, X and Y. Reports in hybrid mode (a frame split over several
+  reports) are joined into frames.
+- A touch lasts from the first finger down to the last one up. While
+  exactly two fingers are down, their midpoint's movement since they came
+  down counts; three or more fingers are a system gesture and never swipe.
+  At `SwipeDistanceMM` (10 mm) sideways, more than twice the vertical, it
+  sends `nav:swipe` once per touch; a touch that first moves 10 mm up or
+  down is a scroll and never swipes. One touch is one step, whatever the
+  page does; the next step needs the fingers to lift.
+- The swipe goes to the app window under the cursor, as the scroll does
+  (Windows scrolls the window under the pointer). If that is not an app
+  window, nothing is sent.
+- A frame with no contacts ends the touch; so does a second without
+  reports, in case the lift was lost.
+- Touchpads that are not Precision Touchpads send no such reports and do
+  not swipe.
+- `AGENT_SESSIONS_TRACE_NAV=1` writes the touches and sends to
+  `%TEMP%\agent-sessions-nav-trace.log`: the app has no console.
+
+The page then treats `nav:swipe` as on macOS and Linux: `SwipeGuard` drops
+it while the same wheel gesture could scroll something sideways (SN-10). The
+page's own detector is removed.
 
 ### Direction
 
-On Windows and Linux the swipe follows the scroll, as Chrome and Edge do:
-a gesture that scrolls toward the left (negative `deltaX`) is back, toward
-the right is forward. With the touchpad's default direction on Windows,
-GNOME and Plasma 6 (content follows the fingers), that is fingers right =
-back, as on macOS. The scroll direction setting is not exposed to the page,
-nor read reliably on either system, so a user with the traditional
-direction gets the opposite, as in Chrome there.
+On Linux the swipe follows the scroll, as Chrome does: a gesture that
+scrolls toward the left (negative `deltaX`) is back, toward the right is
+forward. With the touchpad's default direction on GNOME and Plasma 6
+(content follows the fingers), that is fingers right = back, as on macOS.
+The scroll direction setting is not read, so a user with the traditional
+direction gets the opposite, as in Chrome there. On Windows the fingers
+themselves count (SN-09): fingers right = back, whatever the scroll
+direction setting, as on macOS.
 
 ### Text fields scroll too
 
@@ -95,10 +106,12 @@ text field then never navigates, on any platform.
 
 ## Decisions
 
-- Wheel heuristic on Windows, not Raw Input from the Precision Touchpad
-  (decided with the user 2026-11-07). It is small and unit-tested; the cost
-  is that a smooth sideways mouse wheel (such as a thumb wheel) can also
-  swipe.
+- Raw Input from the Precision Touchpad on Windows (decided with the user
+  2026-11-07, after SN-08). The first choice, also with the user, was a
+  heuristic on the page's wheel events: small and unit-tested, but on a
+  real touchpad it missed swipes while the app was busy and stepped several
+  times after slow steps, which no tuning of the wheel stream can fix. A
+  mouse, a thumb wheel or a touchscreen never swipes now.
 - No system setting gates it: neither Windows nor GNOME has *Swipe between
   pages*.
 - Same distance and ratio as macOS, so tuning one informs the other.
@@ -107,9 +120,14 @@ text field then never navigates, on any platform.
 
 ## Risks
 
-- The Windows thresholds (3 events, 100 px wheel step, the stroke's
-  quarter-speed decay over three falls and two-event rise) are guesses that
-  need a real touchpad and a real mouse to tune. A thumb wheel or a
+- On Windows, 10 mm and the touchpad's reported size are guesses to tune on
+  a real touchpad. A touchpad that reports no physical size is taken as
+  100 mm wide. The HID parsing is checked only by its unit tests until it
+  runs on real touchpads; reports from vendors that bend the PTP spec may
+  need fixes.
+- `nav:swipe` from Windows can reach the page before the wheel events of
+  the same gesture, while the page is busy; then a swipe over sideways
+  scrollable content may navigate. macOS and Linux share that race. A thumb wheel or a
   free-spinning wheel may still pass for a touchpad.
 - X11 touchpads report wheel units; the 40 px scale may make swipes too
   easy or too hard there.

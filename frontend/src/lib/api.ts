@@ -1661,9 +1661,8 @@ export const ASKPASS_PROMPT_EVENT = 'askpass:prompt';
 // event, "back" or "forward": its web view does not report them to the page
 // as buttons 3 and 4.
 export const MOUSE_NAVIGATE_EVENT = 'nav:mouse';
-// A two-finger touchpad swipe on macOS or Linux, "back" or "forward". It was
-// also a scroll: subscribeMouseNavigate drops it when that scroll moved
-// something. On Windows the swipe guard spots swipes itself.
+// A two-finger touchpad swipe, "back" or "forward". It was also a scroll:
+// subscribeMouseNavigate drops it when that scroll moved something.
 export const SWIPE_NAVIGATE_EVENT = 'nav:swipe';
 export const TERMINAL_DATA_EVENT = 'term:data';
 export const TERMINAL_EXIT_EVENT = 'term:exit';
@@ -1743,11 +1742,9 @@ export function subscribeMouseNavigate(
   const offSwipe = backend.onEvent(SWIPE_NAVIGATE_EVENT, (direction: unknown) => {
     if (valid(direction) && (!guard || guard.allows(now()))) fn(direction);
   });
-  const offPage = guard?.onSwipe(fn) ?? (() => {});
   return () => {
     offMouse();
     offSwipe();
-    offPage();
   };
 }
 
