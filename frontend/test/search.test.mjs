@@ -23,6 +23,7 @@ import {
   RequestSequence,
 } from '../src/lib/catalog.ts';
 import { subscribeCatalogChanged, subscribeIndexProgress, subscribeMouseNavigate } from '../src/lib/api.ts';
+import { SwipeGuard, scrollsSideways } from '../src/lib/swipeNavigation.ts';
 import { WINDOWS_DIRS } from './helpers.mjs';
 
 test('search jump outline follows the message card rather than its full-width anchor', () => {
@@ -396,4 +397,73 @@ test('mouse navigation events forward only back and forward', () => {
   subscribeMouseNavigate((d) => seen.push(d), mock);
   for (const payload of ['back', 'forward', 'up', null, { direction: 'back' }]) mock.emit('nav:mouse', payload);
   assert.deepEqual(seen, ['back', 'forward']);
+});
+
+test('a two-finger swipe navigates unless its gesture scrolled something sideways', () => {
+  const mock = new MockBackendAPI();
+  const seen = [];
+  const scrollable = new Set();
+  const guard = new SwipeGuard((target, sign) => scrollable.has(`${target}:${sign}`));
+  let now = 0;
+  const off = subscribeMouseNavigate((d) => seen.push(d), mock, guard, () => now);
+  const wheel = (t, deltaX, target = 'page', ctrlKey = false) => { now = t; guard.wheel({ deltaX, ctrlKey, timeStamp: t, target }); };
+
+  // Nothing sideways under the fingers: the swipe goes back.
+  wheel(0, -4); wheel(16, -20);
+  mock.emit('nav:swipe', 'back');
+  mock.emit('nav:swipe', 'sideways');
+  assert.deepEqual(seen, ['back']);
+
+  // A long code line that can still scroll left: this gesture is a scroll.
+  scrollable.add('code:-1');
+  wheel(1000, -6, 'code'); wheel(1016, -30, 'code');
+  scrollable.delete('code:-1'); // it reached the edge during the gesture
+  wheel(1032, -30, 'code');
+  mock.emit('nav:swipe', 'back');
+  assert.deepEqual(seen, ['back'], 'a gesture that started as a scroll never navigates');
+  // Momentum keeps the gesture going; after a pause a new one starts at the edge.
+  wheel(1200, -2, 'code');
+  mock.emit('nav:swipe', 'back');
+  assert.deepEqual(seen, ['back']);
+  wheel(1500, -8, 'code'); wheel(1516, -25, 'code');
+  mock.emit('nav:swipe', 'back');
+  assert.deepEqual(seen, ['back', 'back'], 'swiping again from the edge goes back');
+
+  // Content that can scroll only the other way, or vertically, does not block.
+  scrollable.add('code:1');
+  wheel(3000, -10, 'code'); wheel(3016, 0, 'code');
+  mock.emit('nav:swipe', 'back');
+  assert.deepEqual(seen, ['back', 'back', 'back']);
+  // A pinch (ctrlKey) is not a scroll; the side buttons are never guarded.
+  scrollable.add('page:1');
+  wheel(5000, 30, 'page', true);
+  mock.emit('nav:swipe', 'forward');
+  wheel(6000, 30, 'page');
+  mock.emit('nav:swipe', 'forward');
+  mock.emit('nav:mouse', 'forward');
+  assert.deepEqual(seen, ['back', 'back', 'back', 'forward', 'forward']);
+
+  off();
+  mock.emit('nav:swipe', 'back');
+  mock.emit('nav:mouse', 'back');
+  assert.equal(seen.length, 5, 'unsubscribing stops both');
+});
+
+test('sideways scrolling counts only room left in that direction, in elements that scroll', () => {
+  const el = (scrollLeft, scrollWidth, clientWidth, overflow, parentElement = null) => ({ scrollLeft, scrollWidth, clientWidth, overflow, parentElement });
+  const overflowX = (e) => e.overflow;
+  const page = el(0, 1000, 1000, 'visible');
+  const pre = el(0, 900, 300, 'auto', page);
+  const span = el(0, 50, 50, 'visible', pre);
+  assert.equal(scrollsSideways(span, -1, overflowX, page), false, 'at the left edge');
+  assert.equal(scrollsSideways(span, 1, overflowX, page), true, 'room to the right, found from a child');
+  pre.scrollLeft = 600;
+  assert.equal(scrollsSideways(span, 1, overflowX, page), false, 'at the right edge');
+  assert.equal(scrollsSideways(span, -1, overflowX, page), true);
+  pre.overflow = 'hidden';
+  assert.equal(scrollsSideways(span, -1, overflowX, page), false, 'overflow hidden does not scroll for the user');
+  const wide = el(10, 2000, 1000, 'visible');
+  assert.equal(scrollsSideways(el(0, 10, 10, 'visible', wide), -1, overflowX, wide), true, 'the page itself scrolls whatever its overflow says');
+  assert.equal(scrollsSideways(span, 0, overflowX, page), false);
+  assert.equal(scrollsSideways(null, 1, overflowX, page), false);
 });

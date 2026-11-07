@@ -86,6 +86,7 @@ import { MockBackendAPI } from './mock/mockApi';
 import { createAppBinding } from './appBinding';
 import { isDesktop, onDesktopEvent, onDesktopFileDrop, openDesktopURL } from './desktopRuntime';
 import { epoch, guardEpoch } from './link';
+import { windowSwipeGuard, type SwipeGuard } from './swipeNavigation';
 
 export interface BackendAPI extends CodeDiagnosticsAPI {
   /** Optional on older App bindings. Remote provisioning currently fails closed. */
@@ -1660,6 +1661,9 @@ export const ASKPASS_PROMPT_EVENT = 'askpass:prompt';
 // event, "back" or "forward": its web view does not report them to the page
 // as buttons 3 and 4.
 export const MOUSE_NAVIGATE_EVENT = 'nav:mouse';
+// A two-finger trackpad swipe on macOS, "back" or "forward". It was also a
+// scroll: subscribeMouseNavigate drops it when that scroll moved something.
+export const SWIPE_NAVIGATE_EVENT = 'nav:swipe';
 export const TERMINAL_DATA_EVENT = 'term:data';
 export const TERMINAL_EXIT_EVENT = 'term:exit';
 /** The user clicked an agent alert: { id } is the tab to show. */
@@ -1721,13 +1725,27 @@ export function subscribeCatalogChanged(
   });
 }
 
+/**
+ * The mouse's side buttons, as the desktop app sends them, and two-finger
+ * swipes unless the swipe scrolled something sideways (guard).
+ */
 export function subscribeMouseNavigate(
   fn: (direction: 'back' | 'forward') => void,
-  backend: BackendAPI = api
+  backend: BackendAPI = api,
+  guard: SwipeGuard | null = windowSwipeGuard(),
+  now: () => number = () => performance.now()
 ): () => void {
-  return backend.onEvent(MOUSE_NAVIGATE_EVENT, (direction: unknown) => {
-    if (direction === 'back' || direction === 'forward') fn(direction);
+  const valid = (direction: unknown): direction is 'back' | 'forward' => direction === 'back' || direction === 'forward';
+  const offMouse = backend.onEvent(MOUSE_NAVIGATE_EVENT, (direction: unknown) => {
+    if (valid(direction)) fn(direction);
   });
+  const offSwipe = backend.onEvent(SWIPE_NAVIGATE_EVENT, (direction: unknown) => {
+    if (valid(direction) && (!guard || guard.allows(now()))) fn(direction);
+  });
+  return () => {
+    offMouse();
+    offSwipe();
+  };
 }
 
 export function subscribeIndexProgress(
