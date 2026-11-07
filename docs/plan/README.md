@@ -49,6 +49,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [terminal-split.md](terminal-split.md) | [terminal-split](../tasks/terminal-split/README.md) | Several shells side by side in one terminal tab |
 | [font-settings.md](font-settings.md) | [font-settings](../tasks/font-settings/README.md) | Settings → Appearance: editor font family and size; one type scale (ratios of body text) for project docs and session content, scaled by a body size |
 | [editor-history.md](editor-history.md) | [editor-history](../tasks/editor-history/README.md) | Back and forward through files and places in Go to File, per workspace, with the mouse's side buttons |
+| [swipe-navigation.md](swipe-navigation.md) | [swipe-navigation](../tasks/swipe-navigation/README.md) | Two-finger trackpad swipe back and forward on macOS, in the session list and Go to File |
 
 ## Supporting documents
 

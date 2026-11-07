@@ -13,4 +13,4 @@ and `npm run check` passing.
 | [EH-01](EH-01.md) | ✅ Done | Per-workspace history of places in the files store | 3 h | — |
 | [EH-02](EH-02.md) | ✅ Done | Viewer places, preview-aware steps, one record per jump | 3 h | EH-01 |
 | [EH-03](EH-03.md) | ✅ Done | Mouse side buttons in Go to File | 2 h | EH-02 |
-| [EH-04](EH-04.md) | ⬜ Not started | Check in the desktop app | 1 h | EH-03 |
+| [EH-04](EH-04.md) | 🟡 Partial (macOS side buttons) | Check in the desktop app | 1 h | EH-03 |
