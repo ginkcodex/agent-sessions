@@ -1,12 +1,50 @@
 # Ruby Go to definition (ruby-lsp)
 
-**Status:** planned 2026-11-07; spike [RL-00](../tasks/code-diagnostics-ruby-lsp/RL-00.md)
-done, implementation not started ([tasks](../tasks/code-diagnostics-ruby-lsp/README.md)).
+**Status:** implemented 2026-11-07 except the real-server checks
+([tasks RL-00…RL-12](../tasks/code-diagnostics-ruby-lsp/README.md); wire details in the
+[contract, R13](code-diagnostics-contract.md#r13-additive-ruby-lsp-provider-2026-11-07)).
+The smoke test against the real gem (RL-07) and the optional indexing state
+(RL-08) are not started, so the release criteria are not met yet.
 Parent plans: [code-diagnostics-ruby.md](code-diagnostics-ruby.md) (RuboCop,
 Ruby resolution, gems and Bundler) and the
 [editor (Zed) model](code-diagnostics-zed-model.md). Closest precedent:
 Pyright beside Ruff for Python, where the language server answers navigation
 and the linter keeps its own diagnostics.
+
+Where the code differs from the plan below (details in each task's Outcome):
+
+- **Shared ownership needed a rule.** Only Ruff and Pyright could own one
+  document together; `sharedPairs` now also lets RuboCop and ruby-lsp do so,
+  each only in its own language (RL-03).
+- **Incompatible versions are found at discovery**, not only by the
+  wrapper's exit 3: discovery reads `lib/ruby_lsp/server.rb` for
+  `class Server` and `def load_addons`, and binds it into approval. Exit 3
+  still maps to `unsupported` for a gem changed after discovery (RL-02).
+- **`documentSymbols` stays enabled** beside definition and hover, as the
+  re-index request needs it; references has no feature switch (RL-02).
+- **`GEM_PATH` always ends with the user and interpreter gem directories**,
+  also with a `BUNDLE_PATH` first, since bundled gems such as `rbs` live in
+  the interpreter's directory. Dependencies count from `add_dependency` and
+  `add_runtime_dependency` lines, any platform (RL-01).
+- **External places are restricted for ruby-lsp only.** Other providers keep
+  every absolute place outside the project; ruby-lsp's are kept only under
+  `<prefix>/lib/ruby` and its `GEM_PATH`. `.rbs` files needed no frontend
+  change: unknown extensions already open as plain text. Hover links are not
+  granted (RL-05).
+- **Saved files reach ruby-lsp by provider**, not by extension, so RuboCop
+  gets none. The project watcher was the Go syntax check's alone; it now also
+  runs for ruby-lsp in projects without Go sources, tracking size and
+  modification time only (RL-04, RL-10).
+- **The frontend leaves lint-only providers out** when it picks a
+  navigation reason, so RuboCop's state never hides ruby-lsp's. Missing or
+  too-old ruby-lsp messages are the backend's notices (RL-06).
+- **Long answers.** A module reopened across a gem (`ActiveJob`: about 40
+  files) is answered with every reopening. The picker names the shared gem
+  folder once as its heading and scrolls inside the window (RL-11). For a
+  Ruby constant the file named after it by the Zeitwerk rule
+  (`active_job.rb`, `active_job/base.rb`) is listed first (RL-12).
+- More messages than planned: a missing dependency names the gem; a locked
+  ruby-lsp that is too old says `bundle update ruby-lsp` (RL-01, RL-02).
 
 ## Goal
 
@@ -120,11 +158,14 @@ cover them.
 - **Client unchanged** for the first release: no `window.workDoneProgress`,
   server requests still answered with MethodNotFound. An empty Ruby answer
   says the index may still be building.
-- **Index freshness.** Saved `.rb` transitions from the approved project
+- **Index freshness.** Saved Ruby file transitions from the approved project
   watcher are forwarded to ruby-lsp as `workspace/didChangeWatchedFiles`, as
-  they are for gopls. Before a navigation request, each open Ruby document
-  changed since its last re-index gets one `textDocument/documentSymbol`
-  request (result discarded), so drafts and open saved files are indexed.
+  they are for gopls. The watcher runs for an approved, available ruby-lsp
+  also in projects without Go sources (RL-10); there it tracks size and
+  modification time only and publishes no Go syntax results. Before a
+  navigation request, each open Ruby document changed since its last
+  re-index gets one `textDocument/documentSymbol` request (result
+  discarded), so drafts and open saved files are indexed.
 - **External locations**: Ruby's library directory, the gem directories and
   `.rbs` files in the `rbs` gem open read-only through `grantExternal`.
 - **Approval.** Tools bound: the interpreter, the ruby-lsp gemspec and

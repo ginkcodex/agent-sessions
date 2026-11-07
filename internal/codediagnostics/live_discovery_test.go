@@ -209,4 +209,32 @@ func TestDiscoveryResolverAllowsOnlyExplicitPythonPair(t *testing.T) {
 	if all := docs.ResolveAll(root, "source.py"); len(all) != 0 {
 		t.Fatal("arbitrary overlap allowed")
 	}
+
+	// RuboCop beside ruby-lsp is the reviewed Ruby pair; each provider only in
+	// its own language, and never with another language's provider.
+	for _, c := range []struct {
+		ids  [2]string
+		lang [2]string
+		want int
+	}{
+		{[2]string{"rubocop", "ruby-lsp"}, [2]string{"ruby", "ruby"}, 2},
+		{[2]string{"ruby-lsp", "rubocop"}, [2]string{"ruby", "ruby"}, 2},
+		{[2]string{"rubocop", "ruby-lsp"}, [2]string{"python", "python"}, 0},
+		{[2]string{"ruff", "ruby-lsp"}, [2]string{"ruby", "ruby"}, 0},
+		{[2]string{"ruff", "pyright"}, [2]string{"ruby", "ruby"}, 0},
+		{[2]string{"rubocop", "ruby-lsp"}, [2]string{"ruby", "python"}, 0},
+	} {
+		var regs []Registration
+		for i, id := range c.ids {
+			lang := c.lang[i]
+			regs = append(regs, liveRegistration(ProviderState{ProviderID: id, Availability: "available", Coverage: Coverage{Kind: "openedDocuments"}}, ServerConfig{ProviderID: id, Executable: tools[0].Executable, AdapterPolicy: "fixed"}, func(string) (string, bool) { return lang, true }))
+		}
+		docs, err := DiscoveryDocuments(root, regs, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if all := docs.ResolveAll(root, "source.py"); len(all) != c.want {
+			t.Errorf("%v %v: %d owners", c.ids, c.lang, len(all))
+		}
+	}
 }

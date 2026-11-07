@@ -2,6 +2,7 @@ package codediagnostics
 
 import (
 	"encoding/json"
+	"maps"
 	"path/filepath"
 	"strings"
 )
@@ -123,8 +124,8 @@ type LocalLiveEnvironment struct {
 
 // DiscoverLocalLive is the production local live route's discovery: gopls,
 // vtsls (CD-23), the Svelte language server (CD-24), Ruff and Pyright for
-// Python, rust-analyzer and RuboCop for Ruby, each with independent
-// availability. Metadata only.
+// Python, rust-analyzer, and RuboCop and ruby-lsp for Ruby, each with
+// independent availability. Metadata only.
 func DiscoverLocalLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Registration, error) {
 	if len(env.GoPath) > 64 || len(env.Path) > 64 {
 		return nil, failure("limitExceeded", "Reviewed executable search budget exceeded")
@@ -307,16 +308,10 @@ func DiscoveryDocuments(root AuthorizedRoot, registrations []Registration, sessi
 				result = append(result, *selected)
 			}
 		}
-		// Only the reviewed Python lint/type pair may share a document. Arbitrary
-		// overlapping registrations remain conflicts, never an order-based choice.
-		if !coverage && len(result) > 1 {
-			if len(result) != 2 || result[0].LanguageID != "python" || result[1].LanguageID != "python" {
-				return nil
-			}
-			a, b := result[0].Config.ProviderID, result[1].Config.ProviderID
-			if !((a == "ruff" && b == "pyright") || (a == "pyright" && b == "ruff")) {
-				return nil
-			}
+		// Only a reviewed pair may share a document. Arbitrary overlapping
+		// registrations remain conflicts, never an order-based choice.
+		if !coverage && len(result) > 1 && !sharedOwners(result) {
+			return nil
 		}
 		return result
 	}
@@ -334,6 +329,27 @@ func DiscoveryDocuments(root AuthorizedRoot, registrations []Registration, sessi
 	}}, nil
 }
 
+// sharedPairs are the reviewed providers that may own one document together:
+// a linter beside the language server that answers navigation. Order does
+// not matter; navigationRoute picks by capability.
+var sharedPairs = []struct{ language, a, b string }{
+	{"python", ruffProviderID, pyrightProviderID},
+	{"ruby", rubocopProviderID, rubyLspProviderID},
+}
+
+func sharedOwners(owners []DocumentServer) bool {
+	if len(owners) != 2 || owners[0].LanguageID != owners[1].LanguageID {
+		return false
+	}
+	a, b := owners[0].Config.ProviderID, owners[1].Config.ProviderID
+	for _, p := range sharedPairs {
+		if owners[0].LanguageID == p.language && (a == p.a && b == p.b || a == p.b && b == p.a) {
+			return true
+		}
+	}
+	return false
+}
+
 func cloneServer(cfg ServerConfig) ServerConfig {
 	cfg.Args = append([]string(nil), cfg.Args...)
 	cfg.Env = append([]string(nil), cfg.Env...)
@@ -342,6 +358,8 @@ func cloneServer(cfg ServerConfig) ServerConfig {
 	cfg.ApprovalTools = cloneTools(cfg.ApprovalTools)
 	cfg.Settings = append(json.RawMessage(nil), cfg.Settings...)
 	cfg.InitializationOptions = append(json.RawMessage(nil), cfg.InitializationOptions...)
+	cfg.ExitFailures = maps.Clone(cfg.ExitFailures)
+	cfg.ExternalRoots = append([]string(nil), cfg.ExternalRoots...)
 	return cfg
 }
 

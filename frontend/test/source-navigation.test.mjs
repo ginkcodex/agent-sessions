@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SourceHistory, wordRange, caretPoint, sourcePosition, sourceRange, linkModifier, contextPress, menuKey, navigationKey, historyKey, locationText, hoverHtml } from '../src/lib/sourceNavigation.ts';
+import { SourceHistory, wordRange, caretPoint, sourcePosition, sourceRange, linkModifier, contextPress, menuKey, navigationKey, historyKey, locationText, locationList, rankRubyDefinitions, rubyFileName, hoverHtml } from '../src/lib/sourceNavigation.ts';
+import { languageOfPath } from '../src/lib/codeLanguages.ts';
 import { loadServerComponent } from './helpers.mjs';
+import { emptyNavigationAnswer } from '../src/lib/codeNavigation.ts';
 import { render } from 'svelte/server';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
@@ -63,6 +65,24 @@ test('hover escapes plaintext and renders markdown through the safe transcript r
   assert.match(html, /code-block/);
   assert.doesNotMatch(html, /<script>/);
   assert.equal(locationText({ ...place('/home/a/lib.go', 3), external: true }, () => '~/lib.go'), '~/lib.go:4:3');
+});
+
+test('a list of places in one outside folder names the folder once', () => {
+  const ext = (path, line = 0) => ({ ...place(path, line), external: true });
+  const gem = '/Users/a/.local/share/mise/installs/ruby/4.0.9/lib/ruby/gems/4.0.0/gems/activejob-8.1.4.1';
+  const home = p => p.replace('/Users/a', '~');
+  // ActiveJob reopened across the gem: the gem folder is the heading.
+  assert.deepEqual(locationList([ext(`${gem}/lib/active_job/arguments.rb`, 5), ext(`${gem}/lib/active_job/queue_adapters/async_adapter.rb`, 7), ext(`${gem}/lib/active_job.rb`)], home), {
+    heading: home(gem) + '/lib',
+    labels: ['active_job/arguments.rb:6:3', 'active_job/queue_adapters/async_adapter.rb:8:3', 'active_job.rb:1:3'],
+  });
+  // A shared name prefix is not a folder.
+  assert.deepEqual(locationList([ext('/g/activejob-8/a.rb'), ext('/g/activerecord-8/b.rb')]), { heading: '/g', labels: ['activejob-8/a.rb:1:3', 'activerecord-8/b.rb:1:3'] });
+  assert.deepEqual(locationList([ext('C:\\Ruby\\lib\\a.rb'), ext('C:\\Ruby\\lib\\b.rb')]), { heading: 'C:\\Ruby\\lib', labels: ['a.rb:1:3', 'b.rb:1:3'] });
+  // Only a root in common, one place, or a place in the project: full paths, no heading.
+  for (const list of [[ext('/a/x.rb'), ext('/b/y.rb')], [ext('C:\\a\\x.rb'), ext('D:\\a\\y.rb')], [ext('C:\\a.rb'), ext('C:\\b.rb')], [ext(`${gem}/a.rb`)], [ext(`${gem}/a.rb`), place('app/a.rb')]]) {
+    assert.deepEqual(locationList(list, home), { labels: list.map(l => locationText(l, home)) }, JSON.stringify(list));
+  }
 });
 
 test('Python documentation hover renders entities, escaped identifiers and admonitions', () => {
@@ -229,8 +249,8 @@ test('setup disclosure is idempotent, reveals settings with existing findings an
 });
 const askSource = viewerSource.slice(viewerSource.indexOf('  async function askSymbol('), viewerSource.indexOf('  export function navigateReference('));
 const askJS = ts.transpileModule(askSource, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-function answers(navigate, blocker) {
-  const tab = { path: 'main.ts' }, opened = [], notices = [];
+function answers(navigate, blocker, path = 'main.ts') {
+  const tab = { path }, opened = [], notices = [];
   const context = {
     files: { selected: tab.path, selectedPath: tab.path, activeTab: tab }, codeDiagnostics: { navigate }, symbolSequence: 0,
     symbolBlocker: blocker, symbolPicker: null, editing: false, text: '\n\n   symbol', wordRange,
@@ -238,7 +258,7 @@ function answers(navigate, blocker) {
     closeSymbolPopups() { context.symbolSequence++; },
     showSymbolNotice: (...args) => notices.push(args),
     openLocation: (...args) => opened.push(args), symbolStart: p => ({ start: p, end: p }),
-    locationText, symbolLabel: p => p,
+    locationList, symbolLabel: p => p, emptyNavigationAnswer, languageOfPath, rankRubyDefinitions,
   };
   const ask = new Function('ctx', `with(ctx) { ${askJS}; return askSymbol; }`)(context);
   return { context, opened, notices, ask: op => ask(op, { line: 2, character: 3 }, { x: 10, y: 20 }) };
@@ -257,6 +277,36 @@ test('viewer opens a single definition, lists multiple results and explains empt
   await empty.ask('definition');
   assert.equal(empty.notices[0][0], 'No definition found');
   assert.equal(empty.notices[0][2], 2000);
+  // ruby-lsp answers nothing for symbols it has not indexed yet; the notice says so, for longer.
+  const ruby = answers(async () => ({ kind: 'result', result: { locations: [] } }), undefined, 'lib/app.rb');
+  await ruby.ask('references');
+  assert.deepEqual(ruby.notices[0].filter(x => typeof x !== 'object'), ['No references found. ruby-lsp may still be indexing the project; try again in a moment.', 4000]);
+  // Many definitions in one gem: the picker names the gem folder once.
+  const gem = '/h/gems/activejob-8.1.4.1/lib/active_job';
+  const many = answers(async () => ({ kind: 'result', result: { locations: [{ ...place(`${gem}/base.rb`, 16), external: true }, { ...place(`${gem}/core.rb`, 2), external: true }] } }), undefined, 'app/jobs/application_job.rb');
+  await many.ask('definition');
+  assert.equal(many.context.symbolPicker.heading, gem);
+  assert.deepEqual(many.context.symbolPicker.items.map(i => [i.label, i.title]), [['base.rb:17:3', `${gem}/base.rb (read-only, outside the project)`], ['core.rb:3:3', `${gem}/core.rb (read-only, outside the project)`]]);
+  many.context.symbolPicker.items[1].onSelect();
+  assert.equal(many.opened[0][0].path, `${gem}/core.rb`);
+  // A Ruby constant's own file comes first; other words, languages and references keep the server's order.
+  const reopened = [`${gem}/arguments.rb`, `${gem}/base.rb`, '/h/gems/activejob-8.1.4.1/lib/active_job.rb'].map(p => ({ ...place(p), external: true }));
+  const rubyAsk = async (path, text, op = 'definition') => {
+    const h = answers(async () => ({ kind: 'result', result: { locations: reopened } }), undefined, path);
+    h.context.text = text;
+    await h.ask(op);
+    return h;
+  };
+  const ranked = await rubyAsk('app/jobs/application_job.rb', '\n\nActiveJob::Base'), top = ranked.context.symbolPicker;
+  top.items[0].onSelect();
+  assert.equal(ranked.opened[0][0], reopened[2], 'each row opens its own place');
+  assert.equal(top.heading, '/h/gems/activejob-8.1.4.1/lib');
+  assert.deepEqual(top.items.map(i => i.label), ['active_job.rb:1:3', 'active_job/arguments.rb:1:3', 'active_job/base.rb:1:3']);
+  // The asked position (column 3) is on Base here.
+  assert.deepEqual((await rubyAsk('a.rb', '\n\n::Base')).context.symbolPicker.items.map(i => i.label)[0], 'active_job/base.rb:1:3');
+  assert.deepEqual((await rubyAsk('a.rb', '\n\nxx.base')).context.symbolPicker.items.map(i => i.label)[0], 'active_job/arguments.rb:1:3', 'a method is not a file name');
+  assert.deepEqual((await rubyAsk('a.ts', '\n\nActiveJob')).context.symbolPicker.items.map(i => i.label)[0], 'active_job/arguments.rb:1:3', 'Ruby files only');
+  assert.deepEqual((await rubyAsk('a.rb', '\n\nActiveJob', 'references')).context.references[1], reopened, 'references keep their order');
   const blocked = answers(() => assert.fail('must not request'), 'Install the language server first.');
   await blocked.ask('definition');
   assert.equal(blocked.notices[0][0], 'Install the language server first.');
@@ -328,4 +378,49 @@ test('viewer forwards the draft current guard and one-second sync bound, discard
   resolve({ kind: 'result', result: { locations: [place('target.ts')] } });
   await pending;
   assert.equal(h.opened.length, 0);
+});
+
+test('a long context menu scrolls inside the window and shows its heading', async () => {
+  const menu = await loadServerComponent(new URL('../src/lib/components/common/ContextMenu.svelte', import.meta.url), [
+    ["import { onMount } from 'svelte';", 'const onMount = () => {};'],
+  ]);
+  const items = [{ label: 'base.rb:17:9', onSelect() {} }, { label: 'core.rb:3:8', onSelect() {} }];
+  const html = render(menu.default, { props: { x: 0, y: 0, items, heading: '~/gems/activejob/lib', ariaLabel: 'Definitions', onClose() {} } }).body;
+  assert.match(html, /<div class="context-menu-heading[^"]*" title="~\/gems\/activejob\/lib">~\/gems\/activejob\/lib<\/div>/);
+  assert.equal(html.match(/role="menuitem"/g).length, 2);
+  assert.doesNotMatch(render(menu.default, { props: { x: 0, y: 0, items, ariaLabel: 'Definitions', onClose() {} } }).body, /context-menu-heading/);
+  const source = readFileSync(new URL('../src/lib/components/common/ContextMenu.svelte', import.meta.url), 'utf8');
+  assert.match(source, /max-height: calc\(100vh - 8px\);\s*overflow-y: auto;/);
+  // Scrolling the menu itself does not dismiss it.
+  assert.match(source, /onscrollcapture=\{handleScroll\}/);
+  assert.match(source, /function handleScroll\(e: Event\) \{\s*if \(!menu\?\.contains\(e\.target as Node\)\) close\(false\);/);
+});
+
+test('Ruby constants name their files the way ActiveSupport underscores them', () => {
+  for (const [name, file] of [['ActiveJob', 'active_job'], ['HTTPClient', 'http_client'], ['URI', 'uri'], ['JSONParser2', 'json_parser2'], ['Base64', 'base64'], ['String', 'string'], ['ID3Tag', 'id3_tag']]) {
+    assert.equal(rubyFileName(name), file, name);
+  }
+});
+
+test('a reopened Ruby constant lists its own file first', () => {
+  const at = paths => paths.map(path => ({ path }));
+  const order = (list, word, before = '') => rankRubyDefinitions(at(list), word, before).map(l => l.path);
+  const gem = ['/g/lib/active_job/queue_name.rb', '/g/lib/active_job_extra.rb', '/g/lib/active_job/base.rb', '/g/lib/active_job.rb', '/g/lib/other/base.rb'];
+  // The whole path, then the word alone, then the rest in the server's order.
+  assert.deepEqual(order(gem, 'ActiveJob'), ['/g/lib/active_job.rb', '/g/lib/active_job/queue_name.rb', '/g/lib/active_job_extra.rb', '/g/lib/active_job/base.rb', '/g/lib/other/base.rb']);
+  assert.deepEqual(order(gem, 'Base', 'class X < ActiveJob::'), ['/g/lib/active_job/base.rb', '/g/lib/other/base.rb', '/g/lib/active_job/queue_name.rb', '/g/lib/active_job_extra.rb', '/g/lib/active_job.rb']);
+  // The qualifier picks between files of one name; a name ends at a folder.
+  assert.deepEqual(order(['/g/other/base.rb', '/g/active_job/base.rb'], 'Base', 'ActiveJob::'), ['/g/active_job/base.rb', '/g/other/base.rb']);
+  assert.deepEqual(order(['/g/inactive_job.rb', '/g/x/active_job.rb'], 'ActiveJob'), ['/g/x/active_job.rb', '/g/inactive_job.rb']);
+  // A leading :: is ignored; a constant glued to a word is no qualifier.
+  assert.deepEqual(order(gem, 'Base', 'x = ::ActiveJob::')[0], '/g/lib/active_job/base.rb');
+  assert.deepEqual(order(['/g/other/base.rb', '/g/active_job/base.rb'], 'Base', 'xActiveJob::'), ['/g/other/base.rb', '/g/active_job/base.rb']);
+  // Project paths are relative; RBS signatures and Windows paths count too.
+  assert.deepEqual(order(['lib/a.rb', 'app/jobs/application_job.rb'], 'ApplicationJob')[0], 'app/jobs/application_job.rb');
+  assert.deepEqual(order(['/r/core/symbol.rbs', '/r/core/string.rbs'], 'String')[0], '/r/core/string.rbs');
+  assert.deepEqual(order(['C:\\g\\x.rb', 'C:\\g\\active_job\\base.rb'], 'Base', 'ActiveJob::')[0], 'C:\\g\\active_job\\base.rb');
+  // Lowercase words are methods or variables: the order is the server's.
+  assert.deepEqual(order(['/g/x.rb', '/g/perform.rb'], 'perform'), ['/g/x.rb', '/g/perform.rb']);
+  const same = at(['/a.rb']);
+  assert.equal(rankRubyDefinitions(same, 'perform', ''), same);
 });

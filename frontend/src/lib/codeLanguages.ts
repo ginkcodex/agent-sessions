@@ -20,7 +20,7 @@ export const CODE_LANGUAGES: readonly CodeLanguage[] = [
   { id: 'svelte', name: 'Svelte', providers: ['svelte', 'svelte-check'], extensions: ['.svelte'] },
   { id: 'python', name: 'Python', providers: ['ruff', 'pyright'], extensions: ['.py', '.pyi'] },
   { id: 'rust', name: 'Rust', providers: ['rust-analyzer', 'cargo-check'], extensions: ['.rs'] },
-  { id: 'ruby', name: 'Ruby', providers: ['rubocop'], extensions: ['.rb', '.rake', '.gemspec', '.ru'] },
+  { id: 'ruby', name: 'Ruby', providers: ['rubocop', 'ruby-lsp'], extensions: ['.rb', '.rake', '.gemspec', '.ru'] },
 ];
 
 export function isCodeLanguage(id: unknown): id is CodeLanguageId {

@@ -24,7 +24,7 @@ var languages = []Language{
 	{ID: "svelte", Name: "Svelte", Live: []string{svelteLSProviderID}, Saved: []string{"svelte-check"}, Tools: []string{"svelte-language-server"}},
 	{ID: "python", Name: "Python", Live: []string{ruffProviderID, pyrightProviderID}, Tools: []string{"ruff", "pyright"}},
 	{ID: "rust", Name: "Rust", Live: []string{rustAnalyzerProviderID}, Saved: []string{"cargo-check"}, Tools: []string{"rust-analyzer"}},
-	{ID: "ruby", Name: "Ruby", Live: []string{rubocopProviderID}},
+	{ID: "ruby", Name: "Ruby", Live: []string{rubocopProviderID, rubyLspProviderID}},
 }
 
 // languageFiles tells, by language ID, whether a file is one of its sources.

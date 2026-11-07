@@ -65,6 +65,15 @@ var workspaceProviders = []workspaceProvider{
 			}
 			return discoverRubocopWorkspace(root, env.Path, ruby, w)
 		}},
+	{rubyLspProviderID, RubyLanguageID, rubyDocumentExtensions,
+		func(name string) bool { return slices.Contains(rubyLspProjectMarkers.configs, name) },
+		func(root AuthorizedRoot, env LocalLiveEnvironment, w *tsWorkspace) (livePlan, error) {
+			ruby := env.Ruby
+			if ruby.Home == "" {
+				ruby.Home = env.Go.Home
+			}
+			return discoverRubyLspWorkspace(root, env.Path, ruby, w)
+		}},
 }
 
 func pythonRequirements(name string) bool { return name == "setup.cfg" || name == "requirements.txt" }
@@ -354,7 +363,7 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 	pyRoots = owningSources(pyRoots, PythonLanguageID)
 	tsRoots = owningSources(tsRoots, TSLanguageID)
 	rubyRoots = owningSources(rubyRoots, RubyLanguageID)
-	providerRoots := map[string][]string{tsProviderID: tsRoots, ruffProviderID: pyRoots, pyrightProviderID: pyRoots, rubocopProviderID: rubyRoots}
+	providerRoots := map[string][]string{tsProviderID: tsRoots, ruffProviderID: pyRoots, pyrightProviderID: pyRoots, rubocopProviderID: rubyRoots, rubyLspProviderID: rubyRoots}
 	var registrations []Registration
 	// Reserve sixteen contributions for the unchanged Go/Svelte registrations.
 	// Every instance stays atomic: never discard part of its approved toolchain.

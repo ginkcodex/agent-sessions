@@ -345,3 +345,234 @@ func TestFindRubocopRejected(t *testing.T) {
 		}
 	}
 }
+
+// rubyLspSpec is the dependency part of the installed ruby-lsp 0.26.11
+// gemspec observed in RL-00 (testdata/ruby-lsp/evidence.json), plus a
+// development dependency that must not count.
+const rubyLspSpec = `# -*- encoding: utf-8 -*-
+Gem::Specification.new do |s|
+  s.name = "ruby-lsp".freeze
+  s.required_ruby_version = Gem::Requirement.new(">= 3.0".freeze)
+  s.add_runtime_dependency(%q<language_server-protocol>.freeze, ["~> 3.17.0".freeze])
+  s.add_runtime_dependency(%q<prism>.freeze, [">= 1.2".freeze, "< 2.0".freeze])
+  s.add_dependency("rbs", [">= 3", "< 5"])
+  s.add_development_dependency(%q<minitest>.freeze, [">= 0".freeze])
+end
+`
+
+// rubyLspServer is the shape of lib/ruby_lsp/server.rb the wrapper relies
+// on: RubyLsp::Server with a public load_addons (0.26.11, line 183).
+const rubyLspServer = `# typed: strict
+module RubyLsp
+  class Server < BaseServer
+    #: (?include_project_addons: bool) -> void
+    def load_addons(include_project_addons: true)
+    end
+  end
+end
+`
+
+// writeRubyLsp installs a SYNTHETIC ruby-lsp with that gemspec and server.rb
+// and returns its entry file.
+func writeRubyLsp(t *testing.T, home, version string) string {
+	t.Helper()
+	entry := writeGem(t, home, "ruby-lsp", version)
+	writeTree(t, home, map[string]string{
+		"specifications/ruby-lsp-" + version + ".gemspec":      rubyLspSpec,
+		"gems/ruby-lsp-" + version + "/lib/ruby_lsp/server.rb": rubyLspServer,
+	})
+	return entry
+}
+
+// rubyLspHost is rubocopHost with ruby-lsp's dependencies as RL-00 found them:
+// prism a default gem, rbs a bundled gem in the interpreter's directory and
+// language_server-protocol in the user's.
+func rubyLspHost(t *testing.T) (rubyRuntime, RubyEnvironment) {
+	t.Helper()
+	rt, env := rubocopHost(t)
+	writeTree(t, rt.Prefix, map[string]string{
+		"lib/ruby/gems/4.0.0/specifications/default/prism-1.8.0.gemspec": "# synthetic\n",
+		"lib/ruby/gems/4.0.0/specifications/rbs-4.2.0.gemspec":           "# synthetic\n",
+	})
+	writeTree(t, env.Home, map[string]string{".gem/ruby/4.0.0/specifications/language_server-protocol-3.17.0.6.gemspec": "# synthetic\n"})
+	return rt, env
+}
+
+func findRubyLspFiles(t *testing.T, ws string, rt rubyRuntime, env RubyEnvironment) rubyLspInstall {
+	t.Helper()
+	lock, present, ok := readGemfileLock(filepath.Join(ws, "Gemfile.lock"), ws)
+	return findRubyLsp(ws, lock, present, ok, rt, env)
+}
+
+func lockRubyLsp(version string) string {
+	return "GEM\n  remote: https://rubygems.org/\n  specs:\n    ruby-lsp (" + version + ")\n      prism (>= 1.2)\n\nPLATFORMS\n  ruby\n"
+}
+
+func TestFindRubyLspNewest(t *testing.T) {
+	rt, env := rubyLspHost(t)
+	interpreter := filepath.Join(rt.Prefix, "lib/ruby/gems/4.0.0")
+	user := filepath.Join(env.Home, ".gem/ruby/4.0.0")
+	ws := rubyProject(t, map[string]string{"app.rb": ""})
+	if inst := findRubyLspFiles(t, ws, rt, env); inst.State != "missing" {
+		t.Fatal("none installed", inst)
+	}
+	writeRubyLsp(t, interpreter, "0.26.0")
+	newest := writeRubyLsp(t, user, "0.26.11")
+	writeRubyLsp(t, user, "0.27.0.beta1")
+	inst := findRubyLspFiles(t, ws, rt, env)
+	if inst.State != "" || inst.RubyLsp.Entry != newest || inst.RubyLsp.Version != "0.26.11" || inst.LockedVersion != "" ||
+		len(inst.GemDirs) != 2 || inst.GemDirs[0] != user || inst.GemDirs[1] != interpreter {
+		t.Fatal("newest", inst)
+	}
+	if want := filepath.Join(user, "gems/ruby-lsp-0.26.11/lib/ruby_lsp/internal.rb"); newest != want {
+		t.Fatal("entry is ruby_lsp/internal.rb, not exe/ruby-lsp:", newest)
+	}
+	// A Gemfile.lock without ruby-lsp also takes the newest.
+	locked := rubyProject(t, map[string]string{"Gemfile.lock": lockWith("1.92.2", "")})
+	if inst := findRubyLspFiles(t, locked, rt, env); inst.State != "" || inst.RubyLsp.Version != "0.26.11" {
+		t.Fatal("lockfile without ruby-lsp", inst)
+	}
+	deps, ok := gemspecDependencies(inst.RubyLsp)
+	if !ok || strings.Join(deps, ",") != "language_server-protocol,prism,rbs" {
+		t.Fatal("dependencies", deps, ok)
+	}
+}
+
+func TestFindRubyLspLocked(t *testing.T) {
+	rt, env := rubyLspHost(t)
+	user := filepath.Join(env.Home, ".gem/ruby/4.0.0")
+	writeRubyLsp(t, user, "0.26.11")
+	plain := rubyProject(t, map[string]string{"Gemfile.lock": lockRubyLsp("0.26.5")})
+	if inst := findRubyLspFiles(t, plain, rt, env); inst.State != "notInstalled" || inst.LockedVersion != "0.26.5" {
+		t.Fatal("locked not installed", inst)
+	}
+	exact := writeRubyLsp(t, user, "0.26.5")
+	if inst := findRubyLspFiles(t, plain, rt, env); inst.State != "" || inst.RubyLsp.Entry != exact {
+		t.Fatal("locked version wins over newest", inst)
+	}
+	// BUNDLE_PATH comes first; the shared directories stay on GEM_PATH.
+	vendored := rubyProject(t, map[string]string{"Gemfile.lock": lockRubyLsp("0.26.11"), ".bundle/config": "---\nBUNDLE_PATH: \"vendor/bundle\"\n"})
+	vendor := filepath.Join(vendored, "vendor/bundle/ruby/4.0.0")
+	entry := writeRubyLsp(t, vendor, "0.26.11")
+	inst := findRubyLspFiles(t, vendored, rt, env)
+	if inst.State != "" || inst.RubyLsp.Entry != entry || inst.BundlePath != vendor || len(inst.GemDirs) != 3 || inst.GemDirs[0] != vendor || inst.GemDirs[1] != user {
+		t.Fatal("vendor/bundle", inst)
+	}
+}
+
+func TestFindRubyLspRejected(t *testing.T) {
+	rt, env := rubyLspHost(t)
+	user := filepath.Join(env.Home, ".gem/ruby/4.0.0")
+	ws := rubyProject(t, map[string]string{"app.rb": ""})
+
+	writeRubyLsp(t, user, "0.25.9")
+	if inst := findRubyLspFiles(t, ws, rt, env); inst.State != "tooOld" || inst.RubyLsp.Version != "0.25.9" {
+		t.Fatal("too old", inst)
+	}
+	writeRubyLsp(t, user, "0.26.11")
+	server := filepath.Join(user, "gems/ruby-lsp-0.26.11/lib/ruby_lsp/server.rb")
+	if inst := findRubyLspFiles(t, ws, rt, env); inst.State != "" || inst.Server != server {
+		t.Fatal("baseline", inst)
+	}
+	// A server.rb without the method the wrapper replaces, without the class,
+	// missing, or linking out of the gem is incompatible.
+	outside := rubyProject(t, map[string]string{"server.rb": rubyLspServer})
+	for name, mutate := range map[string]func(){
+		"no load_addons": func() {
+			writeTree(t, user, map[string]string{"gems/ruby-lsp-0.26.11/lib/ruby_lsp/server.rb": strings.Replace(rubyLspServer, "def load_addons", "def load_plugins", 1)})
+		},
+		"no Server class": func() {
+			writeTree(t, user, map[string]string{"gems/ruby-lsp-0.26.11/lib/ruby_lsp/server.rb": strings.Replace(rubyLspServer, "class Server", "class Runner", 1)})
+		},
+		"missing": func() { _ = os.Remove(server) },
+		"link out": func() {
+			_ = os.Remove(server)
+			symlink(t, filepath.Join(outside, "server.rb"), server)
+		},
+		"oversized": func() {
+			writeTree(t, user, map[string]string{"gems/ruby-lsp-0.26.11/lib/ruby_lsp/server.rb": rubyLspServer + strings.Repeat("#", maxRubyLspServer)})
+		},
+	} {
+		mutate()
+		if inst := findRubyLspFiles(t, ws, rt, env); inst.State != "incompatible" || inst.Server != "" {
+			t.Errorf("%s: %+v", name, inst)
+		}
+		_ = os.Remove(server)
+		writeTree(t, user, map[string]string{"gems/ruby-lsp-0.26.11/lib/ruby_lsp/server.rb": rubyLspServer})
+	}
+	for name, c := range map[string]struct {
+		ws    string
+		state string
+	}{
+		"git source":         {rubyProject(t, map[string]string{"Gemfile.lock": "GIT\n  remote: x\n  specs:\n    ruby-lsp (0.26.11)\n"}), "unsupportedSource"},
+		"malformed lockfile": {rubyProject(t, map[string]string{"Gemfile.lock": "GEM\n  specs:\n    ruby-lsp\n"}), "invalidLockfile"},
+		"bundle path out":    {rubyProject(t, map[string]string{"Gemfile.lock": lockRubyLsp("0.26.11"), ".bundle/config": "BUNDLE_PATH: \"../x\"\n"}), "bundlePathOutside"},
+		"bad bundle config":  {rubyProject(t, map[string]string{"Gemfile.lock": lockRubyLsp("0.26.11"), ".bundle/config": "BUNDLE_PATH: *ref\n"}), "invalidBundleConfig"},
+	} {
+		if inst := findRubyLspFiles(t, c.ws, rt, env); inst.State != c.state {
+			t.Errorf("%s: %+v", name, inst)
+		}
+	}
+
+	// Ruby older than 3.0.
+	home, env2 := rubyHost(t)
+	prefix := filepath.Join(home, ".rbenv/versions/2.7.8")
+	writeRuby(t, prefix, "2.7.8")
+	rt2, _ := inspectRubyPrefix(prefix)
+	writeRubyLsp(t, filepath.Join(prefix, "lib/ruby/gems/2.7.0"), "0.26.11")
+	if inst := findRubyLspFiles(t, ws, rt2, env2); inst.State != "rubyTooOld" {
+		t.Fatal("ruby too old", inst)
+	}
+}
+
+func TestFindRubyLspDependencies(t *testing.T) {
+	ws := rubyProject(t, map[string]string{"app.rb": ""})
+	// A dependency removed from each place it was found.
+	for dep, file := range map[string]string{
+		"prism":                    "lib/ruby/gems/4.0.0/specifications/default/prism-1.8.0.gemspec",
+		"rbs":                      "lib/ruby/gems/4.0.0/specifications/rbs-4.2.0.gemspec",
+		"language_server-protocol": "",
+	} {
+		rt, env := rubyLspHost(t)
+		writeRubyLsp(t, filepath.Join(env.Home, ".gem/ruby/4.0.0"), "0.26.11")
+		path := filepath.Join(rt.Prefix, file)
+		if file == "" {
+			path = filepath.Join(env.Home, ".gem/ruby/4.0.0/specifications/language_server-protocol-3.17.0.6.gemspec")
+		}
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if inst := findRubyLspFiles(t, ws, rt, env); inst.State != "missingDependency" || inst.Dependency != dep {
+			t.Errorf("%s: %+v", dep, inst)
+		}
+	}
+	rt, env := rubyLspHost(t)
+	user := filepath.Join(env.Home, ".gem/ruby/4.0.0")
+	writeRubyLsp(t, user, "0.26.11")
+	// A similarly named gem does not satisfy a dependency; a platform gem does.
+	if err := os.Remove(filepath.Join(rt.Prefix, "lib/ruby/gems/4.0.0/specifications/default/prism-1.8.0.gemspec")); err != nil {
+		t.Fatal(err)
+	}
+	writeTree(t, user, map[string]string{"specifications/prism-ruby-1.0.0.gemspec": ""})
+	if inst := findRubyLspFiles(t, ws, rt, env); inst.State != "missingDependency" || inst.Dependency != "prism" {
+		t.Fatal("prefix name", inst)
+	}
+	writeTree(t, user, map[string]string{"specifications/prism-1.9.0-arm64-darwin.gemspec": ""})
+	if inst := findRubyLspFiles(t, ws, rt, env); inst.State != "" {
+		t.Fatal("platform gemspec", inst)
+	}
+	// A dependency gemspec linking out of its directory does not count.
+	outside := rubyProject(t, map[string]string{"x.gemspec": ""})
+	if err := os.Remove(filepath.Join(user, "specifications/prism-1.9.0-arm64-darwin.gemspec")); err != nil {
+		t.Fatal(err)
+	}
+	symlink(t, filepath.Join(outside, "x.gemspec"), filepath.Join(user, "specifications/prism-1.9.0.gemspec"))
+	if inst := findRubyLspFiles(t, ws, rt, env); inst.State != "missingDependency" {
+		t.Fatal("linked gemspec", inst)
+	}
+	// An oversized or unreadable ruby-lsp gemspec.
+	writeTree(t, user, map[string]string{"specifications/ruby-lsp-0.26.11.gemspec": strings.Repeat("#", maxGemspec+1)})
+	if inst := findRubyLspFiles(t, ws, rt, env); inst.State != "invalidGemspec" {
+		t.Fatal("oversized gemspec", inst)
+	}
+}

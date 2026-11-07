@@ -154,8 +154,12 @@ type rubyGem struct {
 
 // gemEntry is the file each gem is launched or required through.
 func gemEntry(name string) string {
-	if name == "bundler" {
+	switch name {
+	case "bundler":
 		return filepath.Join("lib", "bundler", "setup.rb")
+	case rubyLspGem:
+		// The app's wrapper requires ruby_lsp/internal; exe/ruby-lsp never runs.
+		return filepath.Join("lib", "ruby_lsp", "internal.rb")
 	}
 	return filepath.Join("exe", name)
 }
@@ -459,4 +463,171 @@ func configuredBundlePath(workspace string, rt rubyRuntime, env RubyEnvironment)
 		}
 	}
 	return "", ""
+}
+
+const (
+	rubyLspGem = "ruby-lsp"
+	// rubyLspMinVersion is the oldest ruby-lsp observed with the app's wrapper
+	// (RL-00, 0.26.11); rubyLspMinRuby its gemspec's required_ruby_version.
+	rubyLspMinVersion = "0.26"
+	rubyLspMinRuby    = "3.0"
+	maxGemspec        = 256 << 10
+	// maxRubyLspServer bounds lib/ruby_lsp/server.rb (57 KB in 0.26.11).
+	maxRubyLspServer = 1 << 20
+)
+
+// gemspecDependency matches the runtime dependency lines RubyGems writes into
+// an installed gemspec; add_development_dependency lines do not match.
+var (
+	gemspecDependency = regexp.MustCompile(`\badd_(?:runtime_)?dependency\(\s*(?:%q<([A-Za-z0-9][A-Za-z0-9._-]*)>|"([A-Za-z0-9][A-Za-z0-9._-]*)")`)
+	// The app's wrapper (ruby_lsp.go) replaces RubyLsp::Server#load_addons; a
+	// ruby-lsp whose server.rb no longer defines it is incompatible.
+	rubyLspServerClass = regexp.MustCompile(`(?m)^\s*class Server\b`)
+	rubyLspLoadAddons  = regexp.MustCompile(`(?m)^\s*def load_addons\b`)
+)
+
+// rubyLspInstall is the ruby-lsp found for one workspace. State is "" or one
+// of missing, notInstalled (the locked version is absent), unsupportedSource,
+// invalidLockfile, invalidBundleConfig, bundlePathOutside, tooOld (older
+// than rubyLspMinVersion), rubyTooOld, incompatible (lib/ruby_lsp/server.rb
+// does not define RubyLsp::Server#load_addons), invalidGemspec and
+// missingDependency (Dependency names it).
+type rubyLspInstall struct {
+	RubyLsp       rubyGem
+	Server        string   // lib/ruby_lsp/server.rb, which the wrapper patches
+	GemDirs       []string // GEM_PATH, in lookup order
+	LockedVersion string   // "" unless Gemfile.lock lists ruby-lsp
+	BundlePath    string
+	Dependency    string
+	State         string
+}
+
+// findRubyLsp takes the version Gemfile.lock locks, from BUNDLE_PATH or the
+// user and interpreter gem directories, else the newest ruby-lsp installed in
+// those directories. The server loads from GEM_PATH, never through the
+// project bundle, so GemDirs always ends with the user and interpreter
+// directories (bundled gems such as rbs live there). Each runtime dependency
+// named in the gemspec must be installed by name in GemDirs or be a default
+// gem; versions are not checked.
+func findRubyLsp(workspace string, lock gemLockfile, lockPresent, lockOK bool, rt rubyRuntime, env RubyEnvironment) rubyLspInstall {
+	if compareGemVersions(rt.Version, rubyLspMinRuby) < 0 {
+		return rubyLspInstall{State: "rubyTooOld"}
+	}
+	if lockPresent && !lockOK {
+		return rubyLspInstall{State: "invalidLockfile"}
+	}
+	interpreterGems := filepath.Join(rt.Prefix, "lib", "ruby", "gems", rt.ABI)
+	shared := append(userGemDirs(rt, env), interpreterGems)
+	var inst rubyLspInstall
+	locked, isLocked := lock.gems[rubyLspGem]
+	if lockPresent && isLocked {
+		inst.LockedVersion = locked.version
+		if locked.source != "GEM" {
+			inst.State = "unsupportedSource"
+			return inst
+		}
+		bundlePath, state := configuredBundlePath(workspace, rt, env)
+		if state != "" {
+			inst.State = state
+			return inst
+		}
+		inst.BundlePath = bundlePath
+		dirs := shared
+		if bundlePath != "" {
+			dirs = append([]string{bundlePath}, shared...)
+		}
+		inst.GemDirs = existingDirs(dirs)
+		g, ok := findGem(inst.GemDirs, rubyLspGem, locked.version)
+		if !ok {
+			inst.State = "notInstalled"
+			return inst
+		}
+		inst.RubyLsp = g
+	} else {
+		inst.GemDirs = existingDirs(shared)
+		g, ok := newestGem(inst.GemDirs, rubyLspGem)
+		if !ok {
+			inst.State = "missing"
+			return inst
+		}
+		inst.RubyLsp = g
+	}
+	if compareGemVersions(inst.RubyLsp.Version, rubyLspMinVersion) < 0 {
+		inst.State = "tooOld"
+		return inst
+	}
+	server := filepath.Join(inst.RubyLsp.Path, "lib", "ruby_lsp", "server.rb")
+	if data, _, ok := readBoundedFile(server, inst.RubyLsp.Path, maxRubyLspServer); !ok || !rubyLspServerClass.Match(data) || !rubyLspLoadAddons.Match(data) {
+		inst.State = "incompatible"
+		return inst
+	}
+	inst.Server = server
+	deps, ok := gemspecDependencies(inst.RubyLsp)
+	if !ok {
+		inst.State = "invalidGemspec"
+		return inst
+	}
+	defaults := filepath.Join(interpreterGems, "specifications", "default")
+	for _, name := range deps {
+		if !gemPresent(inst.GemDirs, defaults, name) {
+			inst.State, inst.Dependency = "missingDependency", name
+			return inst
+		}
+	}
+	return inst
+}
+
+// gemspecDependencies reads the runtime dependency names from an installed
+// gemspec (bounded, inside the gem directory), sorted and unique.
+func gemspecDependencies(g rubyGem) ([]string, bool) {
+	data, present, ok := readBoundedFile(g.Spec, g.Home, maxGemspec)
+	if !present || !ok {
+		return nil, false
+	}
+	var names []string
+	for _, m := range gemspecDependency.FindAllStringSubmatch(string(data), -1) {
+		name := m[1] + m[2]
+		if !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names, true
+}
+
+// gemPresent reports a gemspec for name, any version and platform, in one of
+// dirs (specifications/<name>-<v>.gemspec) or among the interpreter's default
+// gems.
+func gemPresent(dirs []string, defaults, name string) bool {
+	for _, specs := range append(gemSpecDirs(dirs), defaults) {
+		real, err := filepath.EvalSymlinks(specs)
+		if err != nil {
+			continue
+		}
+		f, err := os.Open(real)
+		if err != nil {
+			continue
+		}
+		entries, _ := f.ReadDir(maxGemDirEntries)
+		_ = f.Close()
+		for _, e := range entries {
+			rest, ok := strings.CutPrefix(e.Name(), name+"-")
+			if !ok || rest == "" || rest[0] < '0' || rest[0] > '9' || !strings.HasSuffix(rest, ".gemspec") {
+				continue
+			}
+			version, _, _ := strings.Cut(strings.TrimSuffix(rest, ".gemspec"), "-")
+			if gemVersionShape.MatchString(version) && regularWithin(real, filepath.Join(real, e.Name())) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func gemSpecDirs(dirs []string) []string {
+	out := make([]string, 0, len(dirs))
+	for _, d := range dirs {
+		out = append(out, filepath.Join(d, "specifications"))
+	}
+	return out
 }

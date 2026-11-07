@@ -15,6 +15,7 @@ const toolNames: Record<string, string> = {
   'rust-analyzer': 'Rust language server (rust-analyzer)',
   'cargo-check': 'Rust compiler check (Cargo)',
   rubocop: 'Ruby linter (RuboCop)',
+  'ruby-lsp': 'Ruby language server (ruby-lsp)',
 };
 
 export function toolName(providerId: string): string {

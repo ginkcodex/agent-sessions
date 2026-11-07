@@ -30,9 +30,10 @@
   import { connectionStore } from '../../../stores/connection.svelte';
   import { fileActions } from '../../../stores/fileActions.svelte';
   import { canEditContent, readOnlyText } from '../../../fileEditing';
-  import { externalLabel } from '../../../codeNavigation';
+  import { emptyNavigationAnswer, externalLabel } from '../../../codeNavigation';
+  import { languageOfPath } from '../../../codeLanguages';
   import type { CodeDiagnosticPosition, CodeNavigationLocation } from '../../../codeDiagnostics';
-  import { SourceHistory, historyKey, hoverHtml, locationText, navigationKey, sourcePosition, wordRange, type SourceLocation, type SelectionHold, type SourceSymbols, type ViewportPoint } from '../../../sourceNavigation';
+  import { SourceHistory, historyKey, hoverHtml, locationList, navigationKey, rankRubyDefinitions, sourcePosition, wordRange, type SourceLocation, type SelectionHold, type SourceSymbols, type ViewportPoint } from '../../../sourceNavigation';
   import ContextMenu, { type ContextMenuItem } from '../ContextMenu.svelte';
   import Dropdown from '../Dropdown.svelte';
   import HoverCard from './HoverCard.svelte';
@@ -792,7 +793,7 @@
   );
   let symbolNotice = $state<{ text: string; x: number; y: number } | null>(null);
   let symbolNoticeTimer: ReturnType<typeof setTimeout> | undefined;
-  let symbolPicker = $state<{ label: string; items: ContextMenuItem[]; x: number; y: number } | null>(null);
+  let symbolPicker = $state<{ label: string; heading?: string; items: ContextMenuItem[]; x: number; y: number } | null>(null);
   let symbolMenu = $state<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
   // Gives back a selection the open menu holds (SelectionHold).
   let releaseSelection: (() => void) | undefined;
@@ -894,11 +895,11 @@
     if (out.kind !== 'result') { showSymbolNotice(out.reason, at, 4000); return; }
     const { locations, truncated } = out.result;
     const from: SourceLocation = { path, external: tab.external, range: symbolStart(position) };
-    if (!locations.length) { showSymbolNotice(op === 'definition' ? 'No definition found' : 'No references found', at, 2000); return; }
+    if (!locations.length) { const none = emptyNavigationAnswer(op, path); showSymbolNotice(none, at, none.length > 20 ? 4000 : 2000); return; }
+    const source = editing ? tab.edit?.draft ?? text : text;
+    const line = source.split(/\r\n?|\n/)[position.line] ?? '';
+    const word = wordRange(line, position.character);
     if (op === 'references') {
-      const source = editing ? tab.edit?.draft ?? text : text;
-      const line = source.split(/\r\n?|\n/)[position.line] ?? '';
-      const word = wordRange(line, position.character);
       const name = word ? line.slice(word.start, word.end) : `${path}:${position.line + 1}`;
       const dir = files.dir!;
       void contentSearch.showReferences(name, locations, async location => {
@@ -910,13 +911,16 @@
       return;
     }
     if (locations.length === 1) { openLocation(locations[0], from); return; }
-    const items: ContextMenuItem[] = locations.map((location: CodeNavigationLocation) => ({
-      label: locationText(location, symbolLabel),
+    // A Ruby module or class comes back once per reopening: its own file first.
+    const places = word && languageOfPath(path)?.id === 'ruby' ? rankRubyDefinitions(locations, line.slice(word.start, word.end), line.slice(0, word.start)) : locations;
+    const list = locationList(places, symbolLabel);
+    const items: ContextMenuItem[] = places.map((location: CodeNavigationLocation, i: number) => ({
+      label: list.labels[i],
       title: location.external ? `${location.path} (read-only, outside the project)` : undefined,
       onSelect: () => { if (current?.() !== false) openLocation(location, from); },
     }));
     if (truncated) items.push({ label: 'The language server sent more; only these are shown', disabled: true, onSelect() {}, separator: true });
-    symbolPicker = { label: op === 'definition' ? 'Definitions' : 'References', items, ...at };
+    symbolPicker = { label: op === 'definition' ? 'Definitions' : 'References', heading: list.heading, items, ...at };
   }
   export function navigateReference(location: CodeNavigationLocation, keep = false) {
     openLocation(location, currentLocation());
@@ -1097,7 +1101,7 @@
       onenter={() => { hoverInside = true; clearTimeout(hoverCloseTimer); }} onleave={() => { hoverInside = false; hoverCard = null; }} />
   {/if}
   {#if symbolPicker}
-    <ContextMenu x={symbolPicker.x} y={symbolPicker.y} items={symbolPicker.items} ariaLabel={symbolPicker.label} onClose={() => (symbolPicker = null)} />
+    <ContextMenu x={symbolPicker.x} y={symbolPicker.y} heading={symbolPicker.heading} items={symbolPicker.items} ariaLabel={symbolPicker.label} onClose={() => (symbolPicker = null)} />
   {/if}
   {#if symbolMenu}
     <ContextMenu x={symbolMenu.x} y={symbolMenu.y} items={symbolMenu.items} ariaLabel="Code actions" onClose={closeSymbolMenu} />
@@ -1457,7 +1461,7 @@
       >
         {#if showMarkdown}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="markdown-preview" bind:this={find.previewEl} oncontextmenu={openPreviewMenu} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14px'}
+          <div class="markdown-preview" bind:this={find.previewEl} oncontextmenu={openPreviewMenu} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14.5px'}
             onmouseover={(event) => hoveredPreviewLink = browserLinkDestination(event.target, event.currentTarget)}
             onmouseout={(event) => hoveredPreviewLink = browserLinkDestination(event.relatedTarget, event.currentTarget)}
             onmouseleave={() => hoveredPreviewLink = ''}

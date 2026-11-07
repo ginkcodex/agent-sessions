@@ -13,6 +13,21 @@ Fixtures and validation: `internal/codediagnostics/testdata/contract/` and
 `internal/codediagnostics/contract_test.go`. The fixtures use synthetic identities
 and source only, never real project contents or secrets.
 
+## R13 additive ruby-lsp provider (2026-11-07)
+
+Ruby gets a second live provider, `ruby-lsp` (`openedDocuments`, the same
+`documentExtensions` as `rubocop`), one server per Ruby workspace. It answers
+`definition`, `references` and `hover` through the existing navigation
+methods and publishes no findings: RuboCop stays the source of Ruby
+diagnostics. Both providers own an opened Ruby file; navigation goes to
+ruby-lsp. Its definition and reference places outside the project are kept
+only under Ruby's library directory and the gem directories it loads, and
+open read-only through the existing external-file grant (`.rbs` files as
+plain text). Turning `ruby` off in `disabledLanguages` leaves out both
+providers. No new capability: an older server lists no `ruby-lsp` provider,
+and a Ruby file then gets the lint-only navigation reason. Contract version
+remains 1. Details: [code-diagnostics-ruby-lsp.md](code-diagnostics-ruby-lsp.md).
+
 ## R12 additive Ruby language (2026-11-07)
 
 `ruby` joins the `disabledLanguages` IDs of R11, with one live provider,

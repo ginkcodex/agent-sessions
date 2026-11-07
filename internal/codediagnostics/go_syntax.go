@@ -60,7 +60,9 @@ type goSyntaxEntry struct {
 }
 
 // GoSyntax is owned by exactly one goroutine (the project watcher loop). It
-// keeps per-file findings only, never file bodies.
+// keeps per-file findings only, never file bodies. Besides Go files it can
+// track other saved files (track) by size and modification time alone, for
+// the live servers told of saved-file transitions; those are never read.
 type GoSyntax struct {
 	root        AuthorizedRoot
 	limits      GoSyntaxLimits
@@ -68,11 +70,40 @@ type GoSyntax struct {
 	walkPartial bool
 	overflow    bool
 	canceled    func() bool
+	// analyze parses .go files; off when only tracked files are watched.
+	analyze bool
+	track   func(rel string) bool
+	saved   map[string]savedFile
+	// truncated: the last walk stopped at the entry limit, so a tracked file
+	// it did not reach is not reported deleted.
+	truncated bool
 }
 
-func NewGoSyntax(root AuthorizedRoot, limits GoSyntaxLimits) *GoSyntax {
-	return &GoSyntax{root: root, limits: limits.defaults(), cache: map[string]goSyntaxEntry{}, canceled: func() bool { return false }}
+type savedFile struct {
+	size int64
+	mod  time.Time
 }
+
+func (f savedFile) same(o savedFile) bool { return f.size == o.size && f.mod.Equal(o.mod) }
+
+func NewGoSyntax(root AuthorizedRoot, limits GoSyntaxLimits) *GoSyntax {
+	return newProjectScan(root, limits, true, nil)
+}
+
+// newProjectScan analyzes Go files when analyze is set and tracks the files
+// track accepts (never .go files while analyzing).
+func newProjectScan(root AuthorizedRoot, limits GoSyntaxLimits, analyze bool, track func(string) bool) *GoSyntax {
+	return &GoSyntax{root: root, limits: limits.defaults(), cache: map[string]goSyntaxEntry{}, canceled: func() bool { return false }, analyze: analyze, track: track, saved: map[string]savedFile{}}
+}
+
+// owns reports whether rel is analyzed or tracked.
+func (g *GoSyntax) owns(rel string) bool {
+	return g.goFile(rel) || g.tracks(rel)
+}
+
+func (g *GoSyntax) goFile(rel string) bool { return g.analyze && strings.HasSuffix(rel, ".go") }
+
+func (g *GoSyntax) tracks(rel string) bool { return g.track != nil && !g.goFile(rel) && g.track(rel) }
 
 // skipDirectory names are never walked or watched. Go tooling ignores ".", "_"
 // and testdata trees (not coverage loss). Dependency/generated trees are
@@ -107,12 +138,13 @@ type walkFile struct {
 	info fs.FileInfo
 }
 
-// walk enumerates contained directories and .go files. Symlinked directories
-// are never followed; symlinked files are read only through os.Root.
+// walk enumerates contained directories and owned files. Symlinked
+// directories are never followed; symlinked files are read only through os.Root.
 func (g *GoSyntax) walk(r *os.Root) ([]walkDir, []walkFile, bool) {
 	var dirs []walkDir
 	var files []walkFile
 	partial, entries := false, 0
+	g.truncated = false
 	queue := []walkDir{{rel: ""}}
 	for len(queue) > 0 && !g.canceled() {
 		d := queue[0]
@@ -137,6 +169,7 @@ func (g *GoSyntax) walk(r *os.Root) ([]walkDir, []walkFile, bool) {
 		for _, e := range list {
 			entries++
 			if entries > g.limits.Entries {
+				g.truncated = true
 				return dirs, files, true
 			}
 			rel := e.Name()
@@ -148,10 +181,10 @@ func (g *GoSyntax) walk(r *os.Root) ([]walkDir, []walkFile, bool) {
 				continue
 			}
 			switch {
-			case strings.HasSuffix(e.Name(), ".go") && skipDirectory(e.Name()):
-				continue // Go ignores "." and "_" files
+			case !e.IsDir() && skipDirectory(e.Name()) && g.owns(rel):
+				continue // Go ignores "." and "_" files; the watcher drops them too
 			case e.Type()&os.ModeSymlink != 0:
-				if strings.HasSuffix(e.Name(), ".go") {
+				if g.owns(rel) {
 					info, err := r.Stat(filepath.FromSlash(rel)) // os.Root refuses escapes
 					if err != nil || !info.Mode().IsRegular() {
 						partial = true
@@ -169,7 +202,7 @@ func (g *GoSyntax) walk(r *os.Root) ([]walkDir, []walkFile, bool) {
 					continue
 				}
 				queue = append(queue, walkDir{rel: rel, depth: d.depth + 1})
-			case e.Type().IsRegular() && strings.HasSuffix(e.Name(), ".go"):
+			case e.Type().IsRegular() && g.owns(rel):
 				info, err := e.Info()
 				if err != nil {
 					continue // raced deletion
@@ -203,9 +236,12 @@ func (g *GoSyntax) Full() (CheckerResult, []walkDir, []FileChange, error) {
 	old := g.cache
 	g.cache = map[string]goSyntaxEntry{}
 	g.overflow = false
-	var changes []FileChange
+	changes := g.trackAll(files)
 	var total int64
 	for _, f := range files {
+		if !g.goFile(f.rel) {
+			continue
+		}
 		if g.canceled() {
 			partial = true
 			break
@@ -241,7 +277,41 @@ func (g *GoSyntax) Full() (CheckerResult, []walkDir, []FileChange, error) {
 	return g.result(), dirs, changes, nil
 }
 
-// Update re-reads only the given contained paths. Non-Go and skipped paths are
+// trackAll replaces the tracked files' sizes and times with the walk's and
+// reports the transitions. Deletions are not claimed after a truncated walk.
+func (g *GoSyntax) trackAll(files []walkFile) []FileChange {
+	if g.track == nil {
+		return nil
+	}
+	old := g.saved
+	g.saved = map[string]savedFile{}
+	var changes []FileChange
+	for _, f := range files {
+		if !g.tracks(f.rel) {
+			continue
+		}
+		now := savedFile{f.info.Size(), f.info.ModTime()}
+		g.saved[f.rel] = now
+		if prev, known := old[f.rel]; !known {
+			changes = append(changes, FileChange{f.rel, 1})
+		} else if !prev.same(now) {
+			changes = append(changes, FileChange{f.rel, 2})
+		}
+	}
+	for rel, prev := range old {
+		if _, ok := g.saved[rel]; !ok {
+			if g.truncated || g.canceled() {
+				g.saved[rel] = prev
+				continue
+			}
+			changes = append(changes, FileChange{rel, 3})
+		}
+	}
+	return changes
+}
+
+// Update re-reads only the given contained paths: owned Go files are parsed
+// again, tracked files compared by size and time. Other and skipped paths are
 // ignored. A missing file drops its findings.
 func (g *GoSyntax) Update(paths []string) (CheckerResult, []FileChange, error) {
 	if err := g.root.Revalidate(); err != nil {
@@ -254,7 +324,16 @@ func (g *GoSyntax) Update(paths []string) (CheckerResult, []FileChange, error) {
 	defer func() { _ = r.Close() }()
 	var changes []FileChange
 	for _, rel := range paths {
-		if !strings.HasSuffix(rel, ".go") || ValidatePath(rel) != nil || skippedPath(rel) {
+		if ValidatePath(rel) != nil || skippedPath(rel) {
+			continue
+		}
+		if g.tracks(rel) {
+			if c, ok := g.update(r, rel); ok {
+				changes = append(changes, c)
+			}
+			continue
+		}
+		if !g.goFile(rel) {
 			continue
 		}
 		_, known := g.cache[rel]
@@ -278,6 +357,22 @@ func (g *GoSyntax) Update(paths []string) (CheckerResult, []FileChange, error) {
 		changes = append(changes, FileChange{rel, kind})
 	}
 	return g.result(), changes, nil
+}
+
+// update stats one tracked file; ok is false when nothing observable changed.
+func (g *GoSyntax) update(r *os.Root, rel string) (FileChange, bool) {
+	prev, known := g.saved[rel]
+	info, err := r.Stat(filepath.FromSlash(rel))
+	if err != nil || !info.Mode().IsRegular() {
+		delete(g.saved, rel)
+		return FileChange{rel, 3}, known
+	}
+	now := savedFile{info.Size(), info.ModTime()}
+	g.saved[rel] = now
+	if !known {
+		return FileChange{rel, 1}, true
+	}
+	return FileChange{rel, 2}, !prev.same(now)
 }
 
 // parse reads one bounded, contained file and converts syntax errors to

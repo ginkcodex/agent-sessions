@@ -38,7 +38,7 @@ closed list of servers the app knows and pins; adding one is a code change.
   | Svelte | `svelte`, `svelte-check` | svelte-language-server |
   | Python | `ruff`, `pyright` | Ruff, Pyright |
   | Rust | `rust-analyzer`, `cargo-check` | rust-analyzer |
-  | Ruby | `rubocop` | — |
+  | Ruby | `rubocop`, `ruby-lsp` | — |
 
   Node.js is only a runtime and follows the languages that need it.
 - **On by default.** Nothing changes until the user turns a language off. The

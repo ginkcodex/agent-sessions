@@ -236,7 +236,7 @@ func TestRuffDocumentResolutionThroughLocalLive(t *testing.T) {
 	_, goEnv := goplsHost(t, "v0.24.0", goplsModulePath)
 	tsPath, tsEnv := tsHost(t)
 	regs, err := DiscoverLocalLive(root, LocalLiveEnvironment{Path: append(path, tsPath...), Go: goEnv, TS: tsEnv, Ruff: env, Pyright: PyrightEnvironment{Home: tsEnv.Home, NodeDir: tsEnv.NodeDir}})
-	if err != nil || len(regs) != 7 || regs[3].ProviderID != ruffProviderID || regs[3].Availability != "available" {
+	if err != nil || len(regs) != 8 || regs[3].ProviderID != ruffProviderID || regs[3].Availability != "available" {
 		t.Fatal(err, regs)
 	}
 	// gopls is unaffected (no Go module); the TypeScript file enables vtsls.

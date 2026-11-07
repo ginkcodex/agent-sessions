@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -282,6 +283,9 @@ func (d SessionDocuments) Navigate(ctx context.Context, req NavigationRequest) (
 	}
 	cctx, cancel := s.deadline(ctx, navigationTimeout)
 	defer cancel()
+	if err := s.reindex(cctx, tr); err != nil {
+		return NavigationResult{}, navigationCallError(cctx, err)
+	}
 	raw, err := tr.Call(cctx, method, params)
 	if err != nil {
 		return NavigationResult{}, navigationCallError(cctx, err)
@@ -289,7 +293,7 @@ func (d SessionDocuments) Navigate(ctx context.Context, req NavigationRequest) (
 	if req.Op == NavigateHover {
 		return hoverResult(raw)
 	}
-	return locationResult(req.Root, raw)
+	return locationResult(req.Root, raw, server.Config.ExternalRoots)
 }
 
 const (
@@ -319,8 +323,9 @@ func navigationCallError(ctx context.Context, err error) error {
 // locationResult reads Location, Location[] or LocationLink[]. A link's
 // target selection range (the name) is used, else its target range. Places
 // that are not files, have bad ranges or cannot be resolved inside the root
-// are left out.
-func locationResult(root AuthorizedRoot, raw json.RawMessage) (NavigationResult, error) {
+// are left out, and so are external places outside externalRoots when the
+// adapter names any.
+func locationResult(root AuthorizedRoot, raw json.RawMessage, externalRoots []string) (NavigationResult, error) {
 	var out NavigationResult
 	var items []json.RawMessage
 	switch t := strings.TrimSpace(string(raw)); {
@@ -356,7 +361,7 @@ func locationResult(root AuthorizedRoot, raw json.RawMessage) (NavigationResult,
 			continue
 		}
 		path, external, ok := navigationPath(root, uri)
-		if !ok {
+		if !ok || external && len(externalRoots) > 0 && !slices.ContainsFunc(externalRoots, func(dir string) bool { return within(dir, path) }) {
 			continue
 		}
 		place := NavigationLocation{Path: path, Range: *rng, External: external}

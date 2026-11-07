@@ -1,4 +1,5 @@
 import type { CodeDiagnosticsProvider, CodeNavigationOp, CodeNavigationResult, LiveDocumentBasis } from './codeDiagnostics';
+import { languageOfPath } from './codeLanguages';
 
 /**
  * What asking about a symbol came to: an answer, a reason it cannot be asked
@@ -72,24 +73,35 @@ export function navigationBlocker(v: NavigationView): string | undefined {
   if (!v.live) return 'This host does not run language servers for open files, so code navigation is unavailable.';
   if (!v.navigation) return "This host's Agent Sessions server is older and does not offer code navigation.";
   // A file that only linters declare gets no navigation, approved or not.
-  const linter = v.servers.length && v.servers.every(p => LINT_ONLY.has(p.providerId)) ? LINT_ONLY.get(v.servers[0].providerId) : undefined;
+  // Beside a language server (ruby-lsp), a linter's state does not matter.
+  const navigators = v.servers.filter(p => !LINT_ONLY.has(p.providerId));
+  const linter = v.servers.length && !navigators.length ? LINT_ONLY.get(v.servers[0].providerId) : undefined;
   if (linter) return `No language server provides go to definition, references or hover for ${linter.language} files; ${linter.tool} reports lint and syntax problems only.`;
   if (!v.approved) return v.approvalBlocker ?? 'Approve code checks for this project in Code checks to use go to definition, references and hover.';
-  const servers = v.servers.filter(p => p.availability === 'available');
+  const servers = navigators.filter(p => p.availability === 'available');
   if (!servers.length) {
-    const missing = v.servers.find(p => p.availability === 'missingTool' || p.missingTool);
+    const missing = navigators.find(p => p.availability === 'missingTool' || p.missingTool);
     if (missing) return `${missing.providerId} is not installed on this host; Code checks shows how to get it.`;
     // An installed server that cannot serve this project says why, such as gopls with a too old Go.
-    const unusable = v.servers.find(p => p.availability === 'unsupported' && p.notice);
+    const unusable = navigators.find(p => p.availability === 'unsupported' && p.notice);
     return unusable?.notice ?? 'No language server for this file was found on this host.';
   }
   if (v.failure) return `This file is not synced with the language server: ${v.failure}`;
   if (servers.every(p => p.phase === 'failed')) {
     const failure = servers.find(p => p.failure)?.failure;
-    return `The language server is not running${failure ? `: ${failure.message}` : ''}. Open Code checks for details and recovery options.`;
+    return `The language server is not running${failure ? `: ${failure.message.replace(/\.$/, '')}` : ''}. Open Code checks for details and recovery options.`;
   }
   if (!v.basis) return 'The language server is still opening this file.';
   return undefined;
+}
+
+/**
+ * What an answer without places reads. ruby-lsp indexes the project after it
+ * starts and answers nothing for symbols it has not reached yet.
+ */
+export function emptyNavigationAnswer(op: 'definition' | 'references', path: string): string {
+  const none = op === 'definition' ? 'No definition found' : 'No references found';
+  return languageOfPath(path)?.id === 'ruby' ? `${none}. ruby-lsp may still be indexing the project; try again in a moment.` : none;
 }
 
 /** How a failed request reads, by its stable code. */

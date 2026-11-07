@@ -25,27 +25,27 @@
   // Other folders register muted Rust and Ruby rows; only Rust and Ruby projects get their setup guidance.
   const projectOf = (ids: string[]) => checks.providers.some(p => ids.includes(p.providerId) && (!['unsupported', 'disabled'].includes(p.availability) || (p.coverage.roots?.length ?? 0) > 0));
   let rustProject = $derived(projectOf(rustProviders));
-  let rubyProject = $derived(projectOf(['rubocop']));
+  let rubyProject = $derived(projectOf(['rubocop', 'ruby-lsp']));
   // Text names only the languages that are on in Settings.
   let off = $derived(checks.languagesOff ?? []);
   let languagesOn = $derived(CODE_LANGUAGES.filter(l => !off.includes(l.id)));
   let languagesOff = $derived(CODE_LANGUAGES.filter(l => off.includes(l.id)).map(l => l.name));
   let ignored = $derived((checks.languagesIgnored ?? []).map(l => l.name));
-  // Ruby has no navigation server: RuboCop is a linter only.
+  // Linters (Ruff, RuboCop) answer no navigation.
   const navigationServers: Partial<Record<CodeLanguageId, string>> = {
-    go: 'gopls for Go', typescript: 'vtsls for JavaScript/TypeScript (Node.js)', svelte: 'the Svelte language server for .svelte files', python: 'Pyright for Python', rust: "the app's pinned rust-analyzer for Rust",
+    go: 'gopls for Go', typescript: 'vtsls for JavaScript/TypeScript (Node.js)', svelte: 'the Svelte language server for .svelte files', python: 'Pyright for Python', rust: "the app's pinned rust-analyzer for Rust", ruby: 'ruby-lsp for Ruby',
   };
   const liveServers: Partial<Record<CodeLanguageId, string>> = {
-    go: 'gopls for Go', typescript: 'vtsls for TypeScript/JavaScript', svelte: 'the Svelte language server for .svelte files (macOS on Apple silicon only)', python: 'Ruff plus Pyright for Python (lint/syntax and type errors, respectively)', ruby: 'RuboCop for Ruby (lint and syntax problems)',
+    go: 'gopls for Go', typescript: 'vtsls for TypeScript/JavaScript', svelte: 'the Svelte language server for .svelte files (macOS on Apple silicon only)', python: 'Ruff plus Pyright for Python (lint/syntax and type errors, respectively)', ruby: 'RuboCop plus ruby-lsp for Ruby (lint/syntax problems and navigation, respectively)',
   };
   const manualInstall: Partial<Record<CodeLanguageId, { text: string; mono?: boolean }[]>> = {
     go: [{ text: 'gopls with your Go toolchain' }],
     typescript: [{ text: 'npm install -g @vtsls/language-server@0.3.0', mono: true }],
     python: [{ text: 'uv tool install ruff==0.15.20', mono: true }, { text: 'npm install -g pyright', mono: true }],
-    ruby: [{ text: 'bundle add rubocop --group development', mono: true }, { text: 'gem install rubocop', mono: true }],
+    ruby: [{ text: 'bundle add rubocop --group development', mono: true }, { text: 'gem install rubocop', mono: true }, { text: 'gem install ruby-lsp', mono: true }],
   };
   let navigationText = $derived(languageList(languagesOn.flatMap(l => navigationServers[l.id] ?? [])));
-  // Languages this app can download a missing server for; RuboCop is never downloaded.
+  // Languages this app can download a missing server for; RuboCop and ruby-lsp are never downloaded.
   let downloadable = $derived(languagesOn.filter(l => l.providers.some(id => Object.hasOwn(MANAGED_TOOL_FOR_PROVIDER, id))).map(l => l.name));
   let liveText = $derived(languageList(languagesOn.flatMap(l => liveServers[l.id] ?? [])));
   let manualSteps = $derived(languagesOn.flatMap(l => manualInstall[l.id] ?? []));
@@ -171,7 +171,7 @@
           {:else}
             <p>Runs {proposedRows.length === 1 ? 'one tool' : `${proposedRows.length} tools`} on this host with your account's permissions. This is not a sandbox; only approve projects you trust.</p>
           {/if}
-          {#if checks.liveEnabled && proposedLive && navigationText}<p class="muted">Approval also enables go to definition, references and hover with available language servers: {navigationText}.{off.includes('python') ? '' : ' Ruff alone does not provide navigation.'}{off.includes('ruby') ? '' : ' RuboCop does not provide navigation for Ruby.'} This works in opened files, including unsaved edits; running Check Project is not needed.</p>{/if}
+          {#if checks.liveEnabled && proposedLive && navigationText}<p class="muted">Approval also enables go to definition, references and hover with available language servers: {navigationText}.{off.includes('python') ? '' : ' Ruff alone does not provide navigation.'}{off.includes('ruby') ? '' : ' RuboCop alone does not provide navigation for Ruby.'} This works in opened files, including unsaved edits; running Check Project is not needed.</p>{/if}
           {#if rustProject && checks.providers.some(p => rustProviders.includes(p.providerId) && ['available', 'approvalRequired'].includes(p.availability))}<p>Rust approval permits build scripts and procedural macros to execute with your account's permissions and write build/cache output. Cargo uses offline + locked mode; that prevents Cargo downloads, not network access by project code.</p>{/if}
           {#if preparationSteps.length}<p>Approval first prepares the listed Rust toolchain and dependency cache. These steps may download tools or packages and write the reviewed output paths. Checks and live analysis stay inactive until preparation succeeds and discovery validates the result.</p>{/if}
           {#if checks.snapshot.approval.state === 'revoked'}<p>Permission revoked. Pending and running checks are being canceled; previous findings have been cleared.</p>{/if}
@@ -313,7 +313,7 @@
       <summary>Tools setup · language servers</summary>
       <p class="muted">Like Zed, each language server is looked up in the project first (node_modules/.bin, .venv), then on your login shell's PATH, then in this app's own install folder on {where}. {!checks.liveEnabled ? 'Live diagnostics are not available on this connection.' : liveText ? `Live diagnostics (experimental) use them for opened files only, after project approval: ${liveText}.` : ''}{downloadable.length ? ` For ${languageList(downloadable)}, a missing supported server that this project's files need is ${checks.autoInstall ? "downloaded into this app's folder automatically, at most once per app session" : "offered for download into this app's folder, for you to review"}.` : ''} Installing is separate from trusting this project: it never approves or starts a server. Revoking project approval also abandons a pending installation offer and cancels an owned installation.</p>
       {#if rustProject}<p class="muted">Rust live diagnostics and navigation require this app's pinned managed rust-analyzer on {where}; an unrelated installed server is not used for live analysis. Cargo workspaces must stay inside the opened folder. Review the listed preparation steps before approval: they may install an explicitly selected toolchain through existing rustup and fetch dependencies with <span class="mono">--locked</span>, never bootstrap rustup. Review missing Cargo.lock files separately. Check Project runs <span class="mono">cargo check --workspace --offline --locked --message-format=json</span> on saved files with default features and build-selected targets. Normal checks never silently download dependencies or change locks; live analysis covers opened .rs documents, including unsaved edits. Build scripts and procedural macros are not sandboxed.</p>{/if}
-      {#if rubyProject && !off.includes('ruby')}<p class="muted">RuboCop is never downloaded by this app. It runs with the Ruby the project asks for (.ruby-version, mise.toml, .tool-versions or Gemfile.lock) from the rbenv, mise, asdf, chruby or rvm install folders, else the first ruby on your login shell's PATH; version-manager shims are not run. A RuboCop locked in Gemfile.lock runs through Bundler, which loads the project's Gemfile, so approval covers that Ruby code; otherwise the newest installed rubocop gem is used. RuboCop reports lint and syntax problems in opened Ruby files, not type errors, and provides no navigation.</p>{/if}
+      {#if rubyProject && !off.includes('ruby')}<p class="muted">RuboCop is never downloaded by this app. It runs with the Ruby the project asks for (.ruby-version, mise.toml, .tool-versions or Gemfile.lock) from the rbenv, mise, asdf, chruby or rvm install folders, else the first ruby on your login shell's PATH; version-manager shims are not run. A RuboCop locked in Gemfile.lock runs through Bundler, which loads the project's Gemfile, so approval covers that Ruby code; otherwise the newest installed rubocop gem is used. RuboCop reports lint and syntax problems in opened Ruby files, not type errors, and provides no navigation. ruby-lsp, also never downloaded, answers go to definition, references and hover in opened Ruby files with the same Ruby. It loads the version Gemfile.lock locks, else the newest installed ruby-lsp gem, not through bundle exec, and without add-ons; it reads the project's Ruby files, Ruby's standard library and installed gems, evaluates the project's Gemfile, and reports no problems. Right after it starts it may answer nothing while it indexes the project.</p>{/if}
       {#if languagesOff.length}<p class="muted">{languageList(languagesOff)} {languagesOff.length === 1 ? 'is' : 'are'} off in Settings and {languagesOff.length === 1 ? 'gets' : 'get'} no code checks, navigation or downloads.</p>{/if}
       <p class="muted">The opened folder does not need Git. Nested Python and JavaScript/TypeScript projects use their own configuration and environments.</p>
       <p class="muted">Languages and automatic downloads are chosen in <button type="button" class="link" onclick={() => manage.openSettings('checks')}>Settings › Code checks</button>.</p>

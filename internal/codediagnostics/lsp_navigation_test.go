@@ -20,6 +20,7 @@ type navServer struct {
 	answers  map[string]string // method -> JSON-RPC result or error member
 	requests []map[string]any
 	cancels  int
+	init     string // initialize result; navigationInit when empty
 }
 
 func (n *navServer) set(method, answer string) {
@@ -45,7 +46,11 @@ func (n *navServer) script(f *fakeSrv) {
 		reply := func(member string) { f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,` + member + `}`) }
 		switch {
 		case method == "initialize":
-			reply(`"result":` + navigationInit)
+			init := navigationInit
+			if n.init != "" {
+				init = n.init
+			}
+			reply(`"result":` + init)
 		case method == "shutdown":
 			reply(`"result":null`)
 		case method == "exit":

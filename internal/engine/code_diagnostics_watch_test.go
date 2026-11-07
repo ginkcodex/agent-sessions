@@ -210,3 +210,135 @@ func TestCodeDiagnosticsAnalyzerOnlyApprovalStartsWatcher(t *testing.T) {
 	}
 	t.Fatalf("no syntax finding after approval: %+v", s)
 }
+
+// RL-10: a project without Go sources gets the watcher once its approved
+// proposal has ruby-lsp, for saved Ruby files; not before approval, not after
+// revoke or detach, and not when Ruby is off (vtsls, approved alone, takes no
+// saved files). The fake launcher starts nothing; codediagnostics tests cover
+// what reaches ruby-lsp.
+func TestCodeDiagnosticsRubyOnlyProjectWatcher(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"server", "app.rb", "main.ts"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("synthetic"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	catalog := scan.NewCatalog()
+	catalog.Reset([]model.SessionMeta{{Ref: model.SessionRef{Agent: model.AgentClaude, ID: "ruby-watch"}, CWD: dir, RepoRoot: dir}})
+	discover := func(root cd.AuthorizedRoot) ([]cd.Registration, error) {
+		var out []cd.Registration
+		for _, p := range []struct{ id, lang, ext string }{{"rubocop", "ruby", ".rb"}, {"ruby-lsp", "ruby", ".rb"}, {"vtsls", "typescript", ".ts"}} {
+			cfg := cd.ServerConfig{ProviderID: p.id, Executable: filepath.Join(root.Project().Root, "server"), AdapterPolicy: "fake-only"}
+			state := cd.ProviderState{ProviderID: p.id, Availability: "available", Phase: "idle", Freshness: "uncertain", Coverage: cd.Coverage{Kind: "openedDocuments", Roots: []string{""}, Partial: true, ExternalChanges: "unwatched"}}
+			out = append(out, cd.Registration{ProviderID: p.id, Availability: "available", Live: &cd.LiveRegistration{State: state, Server: cfg, Resolve: func(path string) (string, bool) { return p.lang, filepath.Ext(path) == p.ext }}})
+		}
+		return out, nil
+	}
+	owner, err := newDiagnosticsOwnerWithLive(t.TempDir(), "fake-host", anyLanguage(discover), cd.SessionOptions{Launch: func(cd.Invocation) (cd.SessionProcess, cd.SessionStreams, error) {
+		t.Error("the watcher started a server")
+		return nil, cd.SessionStreams{}, os.ErrInvalid
+	}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner.watch = cd.ProjectWatchOptions{Debounce: 20 * time.Millisecond}
+	e := NewEngine(WithService(NewService(catalog, nil)), WithCacheEnabled(false))
+	e.codeDiagnostics = owner
+	go owner.events(e)
+	t.Cleanup(func() { _ = e.Close() })
+	ctx := context.Background()
+	proposal := func(c cd.Context) cd.Snapshot {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			s, err := e.GetCodeDiagnosticsSnapshot(ctx, c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s.Proposal != nil {
+				return s
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		t.Fatal("discovery did not complete")
+		return cd.Snapshot{}
+	}
+	watchers := func(want int) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for owner.projectWatchers() != want && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+		if got := owner.projectWatchers(); got != want {
+			t.Fatalf("%d project watchers, want %d", got, want)
+		}
+	}
+	// The one watcher keeps running: a watcher that ends at once (no
+	// consumer for its transitions) and is restarted would count briefly.
+	stays := func() {
+		t.Helper()
+		watchers(1)
+		first := func() *cd.ProjectWatcher {
+			owner.mu.Lock()
+			defer owner.mu.Unlock()
+			for _, w := range owner.watchers {
+				return w
+			}
+			return nil
+		}
+		w := first()
+		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-w.Done():
+			t.Fatal("project watcher ended")
+		default:
+		}
+		if first() != w {
+			t.Fatal("project watcher restarted")
+		}
+	}
+	attached, err := e.AttachCodeDiagnostics(ctx, dir, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := proposal(attached.Context)
+	time.Sleep(50 * time.Millisecond)
+	watchers(0)
+	if _, err = e.ApproveCodeDiagnostics(ctx, s.Context, "session", s.Proposal.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	stays()
+	revoked, err := e.RevokeCodeDiagnostics(ctx, s.Context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	watchers(0)
+	if _, err = e.ApproveCodeDiagnostics(ctx, revoked.Context, "session", revoked.Proposal.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	stays()
+	if _, err = e.DetachCodeDiagnostics(ctx, revoked.Context); err != nil {
+		t.Fatal(err)
+	}
+	watchers(0)
+	// With Ruby off, ruby-lsp is not registered and nothing is watched.
+	off, err := e.AttachCodeDiagnosticsWithout(ctx, dir, 1, []string{"ruby"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s = proposal(off.Context)
+	for _, tool := range s.Proposal.Tools {
+		if tool.ProviderID != "vtsls" {
+			t.Fatalf("Ruby off proposes %s", tool.ProviderID)
+		}
+	}
+	if _, err = e.ApproveCodeDiagnostics(ctx, off.Context, "session", s.Proposal.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	watchers(0)
+	e.ResetCodeDiagnostics()
+	if owner.projectWatchers() != 0 || owner.manager.OwnedWorkers() != 0 {
+		t.Fatal("reset left owned work")
+	}
+}

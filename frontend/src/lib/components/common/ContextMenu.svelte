@@ -18,11 +18,13 @@
     x: number;
     y: number;
     items: ContextMenuItem[];
+    /** Text above the items, such as the folder a list of places shares. */
+    heading?: string;
     ariaLabel: string;
     onClose: () => void;
   }
 
-  let { x, y, items, ariaLabel, onClose }: Props = $props();
+  let { x, y, items, heading, ariaLabel, onClose }: Props = $props();
 
   const MARGIN = 4;
 
@@ -114,6 +116,11 @@
   function handleWindowDismiss() {
     close(false);
   }
+
+  // Scrolling a long menu keeps it; scrolling what is under it closes it.
+  function handleScroll(e: Event) {
+    if (!menu?.contains(e.target as Node)) close(false);
+  }
 </script>
 
 <svelte:window
@@ -121,7 +128,7 @@
   onresize={handleWindowDismiss}
   onblur={handleWindowDismiss}
 />
-<svelte:document onscrollcapture={handleWindowDismiss} />
+<svelte:document onscrollcapture={handleScroll} />
 
 <div
   bind:this={menu}
@@ -134,6 +141,7 @@
   onkeydown={handleKeydown}
   oncontextmenu={(e) => e.preventDefault()}
 >
+  {#if heading}<div class="context-menu-heading" title={heading}>{heading}</div>{/if}
   {#each items as item, i (item.label)}
     {#if item.separator && i > 0}<div class="context-menu-separator" role="separator"></div>{/if}
     <button
@@ -160,6 +168,10 @@
     min-width: 160px;
     /* Explanations wrap instead of stretching the menu across the window. */
     max-width: min(420px, calc(100vw - 16px));
+    /* A long list (40 definitions) scrolls inside the window. */
+    max-height: calc(100vh - 8px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm, 6px);
@@ -171,7 +183,22 @@
     outline: none;
   }
 
+  .context-menu-heading {
+    position: sticky;
+    top: -4px;
+    z-index: 1;
+    flex-shrink: 0;
+    margin: -4px -4px 2px;
+    padding: 8px 14px 6px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+  }
+
   .context-menu-item {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 8px;

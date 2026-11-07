@@ -390,7 +390,7 @@ func TestRubocopLocalLiveSingleRoot(t *testing.T) {
 	env, rt := rubocopLiveEnv(t)
 	root := goplsRoot(t, map[string]string{"Gemfile": "", ".ruby-version": "4.0.9\n", "lib/a.rb": "", "tmp/cache/b.rb": "", ".bundle/config": "---\n"})
 	regs, err := DiscoverLocalLive(root, env)
-	if err != nil || len(regs) != 1 || regs[0].ProviderID != rubocopProviderID || regs[0].Availability != "available" {
+	if err != nil || len(regs) != 2 || regs[0].ProviderID != rubocopProviderID || regs[0].Availability != "available" || regs[1].ProviderID != rubyLspProviderID {
 		t.Fatal(err, regs)
 	}
 	live := regs[0].Live
@@ -417,8 +417,14 @@ func TestRubocopLocalLiveSingleRoot(t *testing.T) {
 		t.Fatal(err, regs)
 	}
 	disabled := DisabledRegistrations(root, off.Disabled)
-	if len(disabled) != 1 || disabled[0].ProviderID != rubocopProviderID || disabled[0].Availability != "disabled" || disabled[0].Live.Server.Executable != "" {
+	// Turning Ruby off stops RuboCop and ruby-lsp alike.
+	if len(disabled) != 2 || disabled[0].ProviderID != rubocopProviderID || disabled[1].ProviderID != rubyLspProviderID {
 		t.Fatalf("%+v", disabled)
+	}
+	for _, r := range disabled {
+		if r.Availability != "disabled" || r.Live.Server.Executable != "" {
+			t.Fatalf("%+v", r)
+		}
 	}
 	// A Gemfile without Ruby sources (fastlane) reports nothing as disabled.
 	if regs := DisabledRegistrations(goplsRoot(t, map[string]string{"Gemfile": "", "Podfile": ""}), off.Disabled); len(regs) != 0 {
@@ -442,7 +448,7 @@ func TestRubocopLocalLiveNested(t *testing.T) {
 		"scripts/x.rb": "",
 	})
 	regs, err := DiscoverLocalLive(root, env)
-	if err != nil || len(regs) != 1 || regs[0].Availability != "available" {
+	if err != nil || len(regs) != 2 || regs[0].Availability != "available" {
 		t.Fatal(err, regs)
 	}
 	live := regs[0].Live

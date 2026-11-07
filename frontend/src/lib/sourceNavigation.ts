@@ -153,6 +153,58 @@ export function locationText(location: CodeNavigationLocation, label: (path: str
   return `${location.external ? label(location.path) : location.path}:${line + 1}:${character + 1}`;
 }
 
+/**
+ * How a list of places reads. When every place is outside the project and
+ * they share a folder, the folder is named once as the heading and each place
+ * reads from there: a Ruby module reopened in 40 files of one gem does not
+ * repeat the gem's path 40 times.
+ */
+export function locationList(locations: CodeNavigationLocation[], label: (path: string) => string = p => p): { heading?: string; labels: string[] } {
+  const dir = locations.length > 1 && locations.every(l => l.external) ? commonDirectory(locations.map(l => l.path)) : '';
+  if (!dir) return { labels: locations.map(l => locationText(l, label)) };
+  return { heading: label(dir), labels: locations.map(l => locationText({ ...l, external: false, path: l.path.slice(dir.length + 1) })) };
+}
+
+/** The deepest folder holding every path, or '' when that is only a root. */
+function commonDirectory(paths: string[]): string {
+  let end = paths[0].length;
+  for (const p of paths) {
+    end = Math.min(end, p.length);
+    for (let i = 0; i < end; i++) if (p[i] !== paths[0][i]) { end = i; break; }
+  }
+  const prefix = paths[0].slice(0, end);
+  const dir = prefix.slice(0, Math.max(prefix.lastIndexOf('/'), prefix.lastIndexOf('\\'), 0));
+  // "/" or "C:" says nothing about where the places are.
+  return /^([A-Za-z]:)?$/.test(dir) ? '' : dir;
+}
+
+/** A Ruby constant's file name, as ActiveSupport's underscore: HTTPClient → http_client. */
+export function rubyFileName(constant: string): string {
+  return constant.replace(/([A-Z\d]+)([A-Z][a-z])/g, '$1_$2').replace(/([a-z\d])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
+/**
+ * Definitions of a Ruby constant, the likely file first. A module or class
+ * is reopened in many files and ruby-lsp sends every reopening in index
+ * order; by the naming rule gems and Rails apps follow (Zeitwerk),
+ * `ActiveJob::Base` is defined in `active_job/base.rb`. So first the file
+ * named after the constant's whole path (the `A::B::` written before the
+ * word, then the word), then files named after the word alone, then the rest.
+ * Nothing is dropped.
+ */
+export function rankRubyDefinitions<T extends { path: string }>(locations: T[], word: string, before: string): T[] {
+  if (!/^[A-Z]/.test(word)) return locations;
+  const qualifier = before.match(/(?<![\p{L}\p{N}_$])(?:[A-Z][\p{L}\p{N}_]*::)+$/u)?.[0] ?? '';
+  const own = rubyFileName(word);
+  const full = [...qualifier.split('::').filter(Boolean).map(rubyFileName), own].join('/');
+  const rank = (path: string) => {
+    const stem = '/' + path.replace(/\\/g, '/').replace(/\.rbs?$/, '');
+    return stem.endsWith('/' + full) ? 0 : stem.endsWith('/' + own) ? 1 : 2;
+  };
+  // Array sort is stable, so ties keep the server's order.
+  return locations.map(l => ({ l, r: rank(l.path) })).sort((a, b) => a.r - b.r).map(x => x.l);
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

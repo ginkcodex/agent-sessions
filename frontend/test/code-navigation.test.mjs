@@ -4,7 +4,7 @@ import { fixtureStore, loadServerModule } from './helpers.mjs';
 import { desktopAPI, useDesktopApp } from './desktop-app.mjs';
 import { LiveDocumentBridge } from '../src/lib/liveDocuments.ts';
 import { CODE_DIAGNOSTICS_EVENT, CodeDiagnosticsError, codeDiagnosticsError } from '../src/lib/codeDiagnostics.ts';
-import { externalLabel, externalReadFailure, navigationBlocker, navigationFailure } from '../src/lib/codeNavigation.ts';
+import { emptyNavigationAnswer, externalLabel, externalReadFailure, navigationBlocker, navigationFailure } from '../src/lib/codeNavigation.ts';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
 const lib = name => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
@@ -68,6 +68,31 @@ test('each reason navigation is unavailable says what is missing', () => {
   assert.equal(navigationBlocker({ ...ready, servers: [rubocop, gopls] }), undefined);
   // One of two servers running is enough.
   assert.equal(navigationBlocker({ ...ready, servers: [{ ...gopls, providerId: 'ruff', phase: 'failed' }, gopls] }), undefined);
+
+  // Beside ruby-lsp the reason is ruby-lsp's own state; RuboCop's does not matter.
+  const rubyLsp = { ...gopls, providerId: 'ruby-lsp' };
+  const ruby = [
+    [[rubocop, rubyLsp], undefined],
+    [[{ ...rubocop, availability: 'missingTool' }, rubyLsp], undefined],
+    [[{ ...rubocop, phase: 'failed', failure: { code: 'toolFailed', message: 'rubocop exited' } }, rubyLsp], undefined],
+    [[rubocop, { ...rubyLsp, availability: 'missingTool' }], 'ruby-lsp is not installed on this host; Code checks shows how to get it.'],
+    [[rubocop, { ...rubyLsp, availability: 'unsupported', notice: 'ruby-lsp 0.25.0 is older than 0.26; run gem update ruby-lsp, then refresh.' }], 'ruby-lsp 0.25.0 is older than 0.26; run gem update ruby-lsp, then refresh.'],
+    // A missing or unusable RuboCop listed first does not stand in for ruby-lsp's reason.
+    [[{ ...rubocop, availability: 'missingTool' }, { ...rubyLsp, availability: 'unsupported', notice: 'ruby-lsp 0.25.0 is older than 0.26.' }], 'ruby-lsp 0.25.0 is older than 0.26.'],
+    [[{ ...rubocop, availability: 'unsupported', notice: 'RuboCop 1.0 is too old.' }, { ...rubyLsp, availability: 'unsupported', notice: 'ruby-lsp 0.25.0 is older than 0.26.' }], 'ruby-lsp 0.25.0 is older than 0.26.'],
+    [[rubocop, { ...rubyLsp, phase: 'failed', failure: { code: 'unsupported', message: 'ruby-lsp 0.26.11 is not compatible with this app: the app cannot start it without add-ons.' } }],
+      'The language server is not running: ruby-lsp 0.26.11 is not compatible with this app: the app cannot start it without add-ons. Open Code checks for details and recovery options.'],
+  ];
+  for (const [servers, reason] of ruby) assert.equal(navigationBlocker({ ...ready, servers }), reason, JSON.stringify(servers));
+  assert.match(navigationBlocker({ ...ready, servers: [rubocop, rubyLsp], approved: false }), /^Approve code checks/);
+});
+
+test('an empty answer says so; for Ruby, that ruby-lsp may still be indexing', () => {
+  assert.equal(emptyNavigationAnswer('definition', 'main.go'), 'No definition found');
+  assert.equal(emptyNavigationAnswer('references', 'a.py'), 'No references found');
+  for (const path of ['app/models/user.rb', 'lib/tasks/db.RAKE', 'x.gemspec', 'config.ru'])
+    assert.equal(emptyNavigationAnswer('definition', path), 'No definition found. ruby-lsp may still be indexing the project; try again in a moment.', path);
+  assert.equal(emptyNavigationAnswer('definition', 'Gemfile'), 'No definition found');
 });
 
 test('failed requests read by their code, never as a raw error', () => {

@@ -87,6 +87,11 @@ func (o ProjectWatchOptions) defaults() ProjectWatchOptions {
 // ProjectWatcher owns one goroutine and one fsnotify instance for one approved
 // attachment context. It never reads outside the authorized root, never writes,
 // and keeps no file bodies. Stop is idempotent and joins all owned work.
+//
+// It serves go-syntax (Go files parsed in process) and the live servers told
+// of saved-file transitions (watchedFileProviders, through OnChanges), either
+// or both: a project without Go sources still has its saved Ruby files
+// tracked, by size and time only, for ruby-lsp. It never starts a server.
 type ProjectWatcher struct {
 	manager *Manager
 	context Context
@@ -98,10 +103,33 @@ type ProjectWatcher struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	scanned bool // initial publication done
+	// goSyntax: go-syntax was approved at start, so results are published.
+	goSyntax bool
+	// live are the servers whose saved files are tracked (OnChanges set).
+	live []string
+	scan *GoSyntax
 }
 
+// watchedBy accepts the files any of the providers takes, or is nil.
+func watchedBy(providers []string) func(string) bool {
+	if len(providers) == 0 {
+		return nil
+	}
+	return func(path string) bool {
+		return slices.ContainsFunc(providers, func(id string) bool { return watchedFileFor(id, path) })
+	}
+}
+
+// Notes on the live servers' notices when saved changes may not reach them.
+const (
+	liveWatchUnavailable = "Saved changes to closed files are not passed to this server: project file watching is unavailable on this host."
+	liveWatchLimited     = "Watch limits reached: saved changes to some closed files are not passed to this server."
+	liveWatchStopped     = "Project file watching stopped: saved changes to closed files are no longer passed to this server."
+)
+
 // StartProjectWatcher starts the asynchronous initial scan and watching. It
-// returns immediately; nothing runs unless in-process analysis is approved for c.
+// returns immediately; nothing runs unless c is approved with go-syntax or,
+// when OnChanges is set, with a live server that takes saved files.
 func StartProjectWatcher(m *Manager, c Context, root AuthorizedRoot, options ProjectWatchOptions) *ProjectWatcher {
 	w := &ProjectWatcher{manager: m, context: c, root: root, options: options.defaults(), stop: make(chan struct{}), done: make(chan struct{})}
 	w.ctx, w.cancel = context.WithCancel(context.Background())
@@ -141,11 +169,16 @@ func (w *ProjectWatcher) run() {
 	defer close(w.done)
 	defer w.manager.ownedWork.Add(-1)
 	defer w.cancel()
-	if !w.manager.InProcessApproved(w.context, GoSyntaxProviderID) {
+	w.goSyntax = w.manager.InProcessApproved(w.context, GoSyntaxProviderID)
+	if w.options.OnChanges != nil {
+		w.live = w.manager.liveWatch(w.context, w.goSyntax)
+	}
+	if !w.goSyntax && len(w.live) == 0 {
 		return
 	}
-	g := NewGoSyntax(w.root, w.options.Limits)
+	g := newProjectScan(w.root, w.options.Limits, w.goSyntax, watchedBy(w.live))
 	g.canceled = w.stopped
+	w.scan = g
 	st := &watchState{watched: map[string]bool{}}
 	if fs, err := w.options.NewFS(); err == nil {
 		st.fs = fs
@@ -162,7 +195,7 @@ func (w *ProjectWatcher) run() {
 	var (
 		pending = map[string]bool{}
 		rescan  bool
-		touched bool // a contained non-Go file changed: republish so clients reconcile
+		touched bool // a contained unowned file changed: republish so clients reconcile
 		first   time.Time
 		timer   <-chan time.Time
 	)
@@ -190,14 +223,14 @@ func (w *ProjectWatcher) run() {
 			if !ok {
 				continue
 			}
-			goFile := strings.HasSuffix(rel, ".go")
+			owned := g.owns(rel)
 			// Directory topology changes need a rescan to (un)watch subtrees.
-			topology := (e.Has(fsnotify.Create) || e.Has(fsnotify.Remove) || e.Has(fsnotify.Rename)) && (st.watched[rel] || (!goFile && w.isDirectory(rel)))
+			topology := (e.Has(fsnotify.Create) || e.Has(fsnotify.Remove) || e.Has(fsnotify.Rename)) && (st.watched[rel] || (!owned && w.isDirectory(rel)))
 			switch {
 			case topology:
 				rescan = true
-			case !goFile:
-				if e.Op == fsnotify.Chmod || touched {
+			case !owned:
+				if !w.goSyntax || e.Op == fsnotify.Chmod || touched {
 					continue
 				}
 				touched = true
@@ -336,17 +369,29 @@ func mergeChanges(a, b []FileChange) []FileChange {
 }
 
 func (w *ProjectWatcher) publish(result CheckerResult, st *watchState, changes []FileChange) bool {
-	external := "watching"
-	if st.fs == nil || st.degraded != "" {
-		external = "unwatched"
-		result.Notice = goSyntaxNotice + " " + st.degraded
+	if w.goSyntax {
+		external := "watching"
+		if st.fs == nil || st.degraded != "" {
+			external = "unwatched"
+			result.Notice = goSyntaxNotice + " " + st.degraded
+		}
+		if st.limited {
+			result.Partial = true
+			result.Notice = goSyntaxNotice + " Watch limits reached; some directories are not watched and coverage is partial."
+		}
+		if err := w.manager.PublishInProcess(w.context, GoSyntaxProviderID, result, external); err != nil {
+			return false // stale context, revoked or closed: never publish again
+		}
+	} else if len(w.manager.liveWatch(w.context, false)) == 0 {
+		return false // stale context, revoked or closed: never report again
 	}
-	if st.limited {
-		result.Partial = true
-		result.Notice = goSyntaxNotice + " Watch limits reached; some directories are not watched and coverage is partial."
-	}
-	if err := w.manager.PublishInProcess(w.context, GoSyntaxProviderID, result, external); err != nil {
-		return false // stale context, revoked or closed: never publish again
+	if len(w.live) > 0 {
+		if st.fs == nil || st.degraded != "" {
+			w.manager.liveWatchNote(w.context, w.live, liveWatchUnavailable)
+		}
+		if st.limited || w.scan.truncated {
+			w.manager.liveWatchNote(w.context, w.live, liveWatchLimited)
+		}
 	}
 	if len(changes) > 0 && w.scanned && w.options.OnChanges != nil && !w.stopped() {
 		w.options.OnChanges(w.ctx, slices.Clone(changes))
@@ -356,7 +401,12 @@ func (w *ProjectWatcher) publish(result CheckerResult, st *watchState, changes [
 }
 
 func (w *ProjectWatcher) degrade(notice string) {
-	_ = w.manager.InProcessStatus(w.context, GoSyntaxProviderID, goSyntaxNotice+" "+notice)
+	if w.goSyntax {
+		_ = w.manager.InProcessStatus(w.context, GoSyntaxProviderID, goSyntaxNotice+" "+notice)
+	}
+	if len(w.live) > 0 {
+		w.manager.liveWatchNote(w.context, w.live, liveWatchStopped)
+	}
 }
 
 func (w *ProjectWatcher) absolute(rel string) string {

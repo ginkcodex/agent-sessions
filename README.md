@@ -201,7 +201,8 @@ or subscriptions.
   are available in the project UI.
 - Enable project-approved code checks and language-tool features such as
   diagnostics, hover, and definition/reference navigation for Go,
-  TypeScript/JavaScript, Svelte, Python and Rust, and RuboCop lint for Ruby.
+  TypeScript/JavaScript, Svelte, Python and Rust, and for Ruby RuboCop lint
+  with ruby-lsp navigation.
   Support depends on the language, platform, and available tools; this is a
   lightweight workbench, not a full IDE.
 

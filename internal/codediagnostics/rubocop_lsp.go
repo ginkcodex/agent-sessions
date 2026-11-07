@@ -35,7 +35,7 @@ const (
 	rubocopScopeNotice     = "RuboCop reports lint and syntax problems, not type errors, and gives no navigation. Plugins, inherit_from and inherit_gem targets and your user RuboCop configuration still apply but are not part of approval."
 	rubocopBundlerNotice   = "RuboCop runs through Bundler, which loads the project's Gemfile."
 	rubocopInstallHint     = "Add it to your Gemfile (bundle add rubocop --group development) and run bundle install, or run gem install rubocop, then refresh."
-	rubyInstallHint        = "Install Ruby 2.7 or newer (for example with mise, rbenv or Homebrew), then refresh."
+	rubocopMinRuby         = "2.7"
 	rubyShimHint           = "Version-manager shims are not run; add a .ruby-version file to the project, or activate the version manager in your login shell, then refresh."
 )
 
@@ -84,44 +84,18 @@ func discoverRubocopWorkspace(root AuthorizedRoot, reviewedPath []string, env Ru
 		p.availability, p.notice, p.partial = state, notice, true
 		return p, nil
 	}
-	w, err := workspaceMetadata(workspace, func() (tsWorkspace, error) { return discoverProjectDirs(root, rubocopProjectMarkers) })
+	rw, state, notice, err := inspectRubyWorkspace(root, reviewedPath, env, workspace, rubocopProjectMarkers, "RuboCop", rubocopMinRuby)
 	if err != nil {
 		return nil, err
 	}
-	p.partial = w.partial
-	if !w.sources {
-		return unavailable("unsupported", "No Ruby file was found in this project.")
+	p.partial = rw.w.partial
+	if rw.w.sources {
+		p.projects = []string{""}
 	}
-	p.projects = []string{""}
-	base := root.Project().Root
-	lock, lockPresent, lockOK := readGemfileLock(filepath.Join(base, "Gemfile.lock"), base)
-	locked := ""
-	if lockOK {
-		locked = lock.rubyVersion
+	if state != "" {
+		return unavailable(state, notice)
 	}
-	rt := resolveRuby(append([]string{base}, w.ancestors...), locked, reviewedPath, env)
-	requestedBy := func() string {
-		if rel, err := filepath.Rel(base, rt.RequestFile); err == nil && filepath.IsLocal(rel) {
-			return filepath.ToSlash(rel)
-		}
-		return rt.RequestFile
-	}
-	switch rt.State {
-	case "missing":
-		return unavailable("missingTool", "Ruby, required by RuboCop, is not installed. "+rubyInstallHint)
-	case "foreign":
-		return unavailable("unsupported", "The ruby commands found are version-manager shims, scripts or installations the app cannot identify. "+rubyShimHint)
-	case "notInstalled":
-		return unavailable("missingTool", "Ruby "+rt.Request+", requested by "+requestedBy()+", is not installed. Install it with your version manager, then refresh.")
-	case "invalidRequest":
-		return unavailable("unsupported", requestedBy()+" does not name a Ruby version the app can use; only plain CRuby versions such as 3.3.5 are read.")
-	case "tooOld":
-		notice := "Ruby " + rt.Version + " (" + rt.Interpreter + ") is too old for RuboCop; version 2.7 or newer is required."
-		if rt.ShimSkipped {
-			notice += " " + rubyShimHint
-		}
-		return unavailable("unsupported", notice)
-	}
+	w, base, lock, lockPresent, lockOK, rt := rw.w, rw.base, rw.lock, rw.lockPresent, rw.lockOK, rw.rt
 	p.rubyVersion = rt.Version
 	inst := findRubocop(base, lock, lockPresent, lockOK, rt, env)
 	switch inst.State {
@@ -171,24 +145,13 @@ func discoverRubocopWorkspace(root AuthorizedRoot, reviewedPath []string, env Ru
 			return unavailable("unsupported", "The Ruby or gem directory cannot be placed on a fixed search path.")
 		}
 	}
-	configs := slices.Clone(w.configs)
-	if inst.Mode == "bundler" && !slices.Contains(configs, "Gemfile") {
+	if inst.Mode == "bundler" && !slices.Contains(w.configs, "Gemfile") {
 		return unavailable("unsupported", "Gemfile.lock locks RuboCop, but the project has no Gemfile.")
 	}
-	if _, present, _ := readBoundedFile(filepath.Join(base, ".bundle", "config"), base, maxBundleConfig); present {
-		configs = append(configs, ".bundle/config")
+	configs, versionFile := rubyApprovalFiles(rw)
+	if versionFile != "" {
+		tools = append(tools, ToolInput{ProviderID: "rubocop-toolchain-version-file", Executable: versionFile, Policy: rubocopToolchainPolicy})
 	}
-	if rt.RequestFile != "" {
-		if rel, err := filepath.Rel(base, rt.RequestFile); err == nil && filepath.IsLocal(rel) {
-			if rel = filepath.ToSlash(rel); !slices.Contains(configs, rel) {
-				configs = append(configs, rel)
-			}
-		} else {
-			// An ancestor's version file, outside this workspace's root.
-			tools = append(tools, ToolInput{ProviderID: "rubocop-toolchain-version-file", Executable: rt.RequestFile, Policy: rubocopToolchainPolicy})
-		}
-	}
-	slices.Sort(configs)
 	p.config = ServerConfig{
 		ProviderID:    rubocopProviderID,
 		Executable:    rt.Interpreter,
@@ -247,6 +210,83 @@ func (p *RubocopPlan) Provider() ProviderState {
 }
 
 func (p *RubocopPlan) covers(file string) bool { return coversDir(p.projects, file) }
+
+// rubyWorkspace is a Ruby workspace's metadata and resolved interpreter,
+// shared by the RuboCop and ruby-lsp adapters.
+type rubyWorkspace struct {
+	w                   tsWorkspace
+	base                string
+	lock                gemLockfile
+	lockPresent, lockOK bool
+	rt                  rubyRuntime
+}
+
+// inspectRubyWorkspace reads the workspace's markers and lockfile and resolves
+// its Ruby. state and notice are set when the tool cannot run there; tool names
+// it in the notices ("RuboCop", "ruby-lsp") and minRuby is the oldest Ruby it
+// supports, named in them.
+func inspectRubyWorkspace(root AuthorizedRoot, reviewedPath []string, env RubyEnvironment, workspace *tsWorkspace, markers projectMarkers, tool, minRuby string) (rw rubyWorkspace, state, notice string, err error) {
+	rw.w, err = workspaceMetadata(workspace, func() (tsWorkspace, error) { return discoverProjectDirs(root, markers) })
+	if err != nil {
+		return rw, "", "", err
+	}
+	if !rw.w.sources {
+		return rw, "unsupported", "No Ruby file was found in this project.", nil
+	}
+	rw.base = root.Project().Root
+	rw.lock, rw.lockPresent, rw.lockOK = readGemfileLock(filepath.Join(rw.base, "Gemfile.lock"), rw.base)
+	locked := ""
+	if rw.lockOK {
+		locked = rw.lock.rubyVersion
+	}
+	rt := resolveRuby(append([]string{rw.base}, rw.w.ancestors...), locked, reviewedPath, env)
+	rw.rt = rt
+	requestedBy := func() string {
+		if rel, err := filepath.Rel(rw.base, rt.RequestFile); err == nil && filepath.IsLocal(rel) {
+			return filepath.ToSlash(rel)
+		}
+		return rt.RequestFile
+	}
+	switch rt.State {
+	case "missing":
+		return rw, "missingTool", "Ruby, required by " + tool + ", is not installed. Install Ruby " + minRuby + " or newer (for example with mise, rbenv or Homebrew), then refresh.", nil
+	case "foreign":
+		return rw, "unsupported", "The ruby commands found are version-manager shims, scripts or installations the app cannot identify. " + rubyShimHint, nil
+	case "notInstalled":
+		return rw, "missingTool", "Ruby " + rt.Request + ", requested by " + requestedBy() + ", is not installed. Install it with your version manager, then refresh.", nil
+	case "invalidRequest":
+		return rw, "unsupported", requestedBy() + " does not name a Ruby version the app can use; only plain CRuby versions such as 3.3.5 are read.", nil
+	case "tooOld":
+		notice := "Ruby " + rt.Version + " (" + rt.Interpreter + ") is too old for " + tool + "; version " + minRuby + " or newer is required."
+		if rt.ShimSkipped {
+			notice += " " + rubyShimHint
+		}
+		return rw, "unsupported", notice, nil
+	}
+	return rw, "", "", nil
+}
+
+// rubyApprovalFiles are the workspace files bound into a Ruby server's
+// approval: the markers found, .bundle/config when present and the version
+// file inside the workspace (sorted). versionFile is an ancestor's version
+// file outside the workspace, bound as a toolchain input instead.
+func rubyApprovalFiles(rw rubyWorkspace) (configs []string, versionFile string) {
+	configs = slices.Clone(rw.w.configs)
+	if _, present, _ := readBoundedFile(filepath.Join(rw.base, ".bundle", "config"), rw.base, maxBundleConfig); present {
+		configs = append(configs, ".bundle/config")
+	}
+	if rw.rt.RequestFile != "" {
+		if rel, err := filepath.Rel(rw.base, rw.rt.RequestFile); err == nil && filepath.IsLocal(rel) {
+			if rel = filepath.ToSlash(rel); !slices.Contains(configs, rel) {
+				configs = append(configs, rel)
+			}
+		} else {
+			versionFile = rw.rt.RequestFile
+		}
+	}
+	slices.Sort(configs)
+	return configs, versionFile
+}
 
 // RubyLanguageID is the extension ownership rule. Extensionless Ruby files
 // (Gemfile, Rakefile) and ERB templates are not owned.

@@ -1,5 +1,10 @@
 package codediagnostics
 
+import (
+	"slices"
+	"strings"
+)
+
 // InProcessApproved reports whether an in-process provider may analyze for this
 // exact context now: the attachment and generation are current, the provider is
 // registered as in-process, and project approval is current.
@@ -64,4 +69,55 @@ func (m *Manager) InProcessStatus(c Context, id, notice string) error {
 	p.Failure = &Error{"toolFailed", "Project watching stopped; retained findings are stale"}
 	m.commit(a)
 	return nil
+}
+
+// LiveWatched reports whether the project watcher has saved files to report
+// for this exact context: it is current and approved, and an available live
+// server takes saved-file transitions (watchedFileProviders).
+func (m *Manager) LiveWatched(c Context) bool {
+	return len(m.liveWatch(c, false)) > 0
+}
+
+// liveWatch lists the approved, available live servers told of saved-file
+// transitions. gopls is left out while go-syntax analyzes the Go files, since
+// those transitions come from that analysis.
+func (m *Manager) liveWatch(c Context, goSyntax bool) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil || a.snapshot.Approval.State != "approved" {
+		return nil
+	}
+	var out []string
+	for _, p := range a.snapshot.Providers {
+		if _, ok := watchedFileProviders[p.ProviderID]; ok && p.Availability == "available" && p.Coverage.Kind == "openedDocuments" && !(goSyntax && p.ProviderID == goplsProviderID) {
+			out = append(out, p.ProviderID)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// liveWatchNote adds a watcher note to live providers' notices, once, and
+// marks their coverage partial: some saved changes do not reach them.
+func (m *Manager) liveWatchNote(c Context, providers []string, note string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil || a.snapshot.Approval.State != "approved" {
+		return
+	}
+	changed := false
+	for i := range a.snapshot.Providers {
+		p := &a.snapshot.Providers[i]
+		if !slices.Contains(providers, p.ProviderID) || strings.Contains(p.Notice, note) {
+			continue
+		}
+		p.Notice = shorten(strings.TrimSpace(p.Notice+" "+note), 2048)
+		p.Coverage.Partial = true
+		changed = true
+	}
+	if changed {
+		m.commit(a)
+	}
 }
