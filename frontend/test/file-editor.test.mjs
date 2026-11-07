@@ -567,7 +567,7 @@ test('FileEditor remeasures when the editor font or size setting changes, not on
   assert.match(source, /if \(measuredFont !== undefined && measuredFont !== setting\) editor\.remeasure\(\);/);
   const viewer = readFileSync(new URL('lib/components/common/go-to-file/FileViewer.svelte', SRC), 'utf8');
   assert.match(viewer, /void presentationFontSize; void preferences\.editorFont; void preferences\.editorFontSize;/, 'change navigation gathers its lines again');
-  assert.match(viewer, /getEditorFont: \(\) => `\$\{preferences\.editorFont\}\\n\$\{preferences\.editorFontSize\}`/, 'find paints again');
+  assert.match(viewer, /getFontSetting: \(\) => `\$\{preferences\.editorFont\}\\n\$\{preferences\.editorFontSize\}\\n/, 'find paints again');
 });
 
 test('languages load lazily by extension, case-insensitively, with JS/TS/JSX dialects', async () => {

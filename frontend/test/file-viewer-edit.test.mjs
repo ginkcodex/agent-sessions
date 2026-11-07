@@ -71,6 +71,8 @@ const viewer = await loadServerComponent(VIEWER_URL, [
     findActive: false, findQuery: '', findCase: false, findCurrent: 0, found: { matches: [] },
     openFind() {}, closeFind() {}, stepMatch() {}, handleFindKey() {}, schedulePaint() {},
   });`],
+  // The preview toggle is the viewer's own state; a test can start with it on.
+  ['let previewOn = false;', 'let previewOn = globalThis.__fileViewerPreviewOn ?? false;'],
 ]);
 
 test('Markdown preview reuses contextual selection translation without changing source menus', () => {
@@ -84,6 +86,20 @@ test('Markdown preview reuses contextual selection translation without changing 
   assert.match(source, /range \? holdSelection\(range\)/);
   assert.match(source, /<SelectionTranslation selection=\{previewTranslation\}/);
   assert.match(source, /void files\.selected;\s*void showMarkdown;\s*void text;\s*void translateSettings\.language;\s*previewMenu = null;\s*previewTranslation = null;/);
+});
+
+test('the docs preview body is the docs size setting, or the presentation size while presenting', async () => {
+  const preview = (html) => html.match(/<div class="markdown-preview\b[^"]*"[^>]*>/)?.[0];
+  globalThis.__fileViewerPreviewOn = true;
+  try {
+    const files = { content: content('notes.md', '# Notes\n\nText') };
+    // The value is a variable, so a change in Settings applies without a render.
+    assert.match(preview(await render({ files })), /style="--markdown-font-size: var\(--docs-font-size, 14\.5px\);"/);
+    assert.match(preview(await render({ files }, { presentation: true, presentationFontSize: 26 })), /style="--markdown-font-size: 26px;"/);
+  } finally {
+    delete globalThis.__fileViewerPreviewOn;
+  }
+  assert.equal(preview(await render({ files: { content: content('notes.md', '# Notes') } })), undefined, 'source view by default');
 });
 
 test('print is offered only for readable Markdown outside editing', async () => {

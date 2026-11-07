@@ -678,7 +678,7 @@
     getHtmlLines: () => htmlLines,
     getWrap: () => files.wrap,
     getPresentationFontSize: () => presentationFontSize,
-    getEditorFont: () => `${preferences.editorFont}\n${preferences.editorFontSize}`,
+    getFontSetting: () => `${preferences.editorFont}\n${preferences.editorFontSize}\n${preferences.docsFontSize}`,
   });
 
   let changeStarts = $derived(showDiff ? diffChangeStarts(rows) : []);
@@ -1462,7 +1462,7 @@
       >
         {#if showMarkdown}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="markdown-preview" bind:this={find.previewEl} oncontextmenu={openPreviewMenu} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14.5px'}
+          <div class="markdown-preview" bind:this={find.previewEl} oncontextmenu={openPreviewMenu} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : 'var(--docs-font-size, 14.5px)'}
             onmouseover={(event) => hoveredPreviewLink = browserLinkDestination(event.target, event.currentTarget)}
             onmouseout={(event) => hoveredPreviewLink = browserLinkDestination(event.relatedTarget, event.currentTarget)}
             onmouseleave={() => hoveredPreviewLink = ''}
