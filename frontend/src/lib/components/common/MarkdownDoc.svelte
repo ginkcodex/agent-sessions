@@ -73,7 +73,7 @@
 <style>
   .markdown-doc {
     font-size: var(--markdown-font-size, 13px);
-    line-height: 1.55;
+    line-height: 1.6;
     color: var(--text-primary);
     word-break: break-word;
   }
@@ -95,9 +95,9 @@
     color: var(--text-primary);
   }
 
-  :global(.markdown-doc h1) { font-size: 1.385em; }
-  :global(.markdown-doc h2) { font-size: 1.231em; }
-  :global(.markdown-doc h3) { font-size: 1.077em; }
+  :global(.markdown-doc h1) { font-size: 1.428em; }
+  :global(.markdown-doc h2) { font-size: 1.255em; }
+  :global(.markdown-doc h3) { font-size: 1.083em; }
 
   :global(.markdown-doc ul, .markdown-doc ol) {
     margin: 0.5em 0;
