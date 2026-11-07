@@ -53,6 +53,7 @@ Expand **Assets** on the release page if the downloads are hidden.
 | **macOS** | Apple silicon + Intel | `agent-sessions_<version>_macos_universal.dmg` |
 | **Debian / Ubuntu** | amd64 or arm64 | `agent-sessions_<version>_<arch>.deb` |
 | **Fedora / RPM-based Linux** | x86_64 or aarch64 | `agent-sessions-<version>-1.<arch>.rpm` |
+| **Arch Linux** | x86_64 or aarch64 | [`agent-sessions-bin`](https://aur.archlinux.org/packages/agent-sessions-bin) on the AUR |
 
 On Linux, `uname -m` reports `x86_64` for amd64 or `aarch64` for arm64.
 Choose the matching package. Native Windows ARM64 installers are not currently
@@ -108,6 +109,16 @@ sudo apt install ./agent-sessions_<version>_amd64.deb
 
 ```sh
 sudo dnf install ./agent-sessions-<version>-1.x86_64.rpm
+```
+
+**Arch Linux**
+
+Install [`agent-sessions-bin`](https://aur.archlinux.org/packages/agent-sessions-bin)
+from the AUR with an AUR helper. It repackages the release's `.deb`, and each
+stable release updates it:
+
+```sh
+paru -S agent-sessions-bin    # or: yay -S agent-sessions-bin
 ```
 
 The packages declare their **GTK 4** and **WebKitGTK 6.0** runtime dependencies;
