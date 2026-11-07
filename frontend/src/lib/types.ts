@@ -294,6 +294,16 @@ export interface MessagesPage {
   hasMore: boolean;
   /** The transcript snapshot the page came from; pages of one revision fit together. */
   revision?: string;
+  /** Set when a PageCap left out messages the limit allowed; the page then starts at offset. */
+  capped?: boolean;
+}
+
+/** Limits a page by size as well as count (engine.PageCap). */
+export interface PageCap {
+  /** Size budget in bytes, as the server estimates messages; 0 is no cap. */
+  maxBytes: number;
+  /** Transcript index of the message to keep; the page grows from it. -1 is the page's last message. */
+  anchor: number;
 }
 
 /** A page wanted as for getMessages, given the window [haveOffset, haveOffset+haveCount) held from baseRevision. */

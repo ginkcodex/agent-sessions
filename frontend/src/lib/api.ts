@@ -15,6 +15,7 @@ import type {
   SessionMeta,
   SessionRef,
   MessagesPage,
+  PageCap,
   MessagesSinceRequest,
   MessagesSinceReply,
   SessionSearchRequest,
@@ -318,6 +319,8 @@ export interface WailsAppBinding {
   AgentCounts(filter: FilterOpts): Promise<Record<string, number>>;
   GetSessionMeta(ref: SessionRef): Promise<SessionMeta>;
   GetMessages(ref: SessionRef, offset: number, limit: number): Promise<MessagesPage>;
+  /** Absent on older App bindings. */
+  GetMessagesCapped?: (ref: SessionRef, offset: number, limit: number, cap: PageCap) => Promise<MessagesPage>;
   /** Absent on older App bindings. */
   GetMessagesSince?: (req: MessagesSinceRequest) => Promise<MessagesSinceReply>;
   /** Absent on older App bindings. */

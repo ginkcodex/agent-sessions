@@ -43,7 +43,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Performance M2: incremental transcripts | [performance-m2](../plan/performance-m2.md) | [performance-m2/](performance-m2/README.md) | 12/12 ✅ |
 | Performance M3 | [performance-m3](../plan/performance-m3.md) | [performance-m3/](performance-m3/README.md) | 10/10 ✅ |
 | Startup responsiveness | [performance-startup](../plan/performance-startup.md) | [performance-startup/](performance-startup/README.md) | 10/10 ✅ |
-| Transcript page cap | [transcript-page-cap](../plan/transcript-page-cap.md) | [transcript-page-cap/](transcript-page-cap/README.md) | 2/6 ✅ · 4 ⬜ |
+| Transcript page cap | [transcript-page-cap](../plan/transcript-page-cap.md) | [transcript-page-cap/](transcript-page-cap/README.md) | 3/6 ✅ · 3 ⬜ |
 | Consent-based managed tools | [tool-installation](../plan/tool-installation.md) | [tool-installation/](tool-installation/README.md) | 5/6 ✅ · 1 ⬜ |
 | Native-tone dark surfaces | [dark-tone](../plan/dark-tone.md) | [dark-tone/](dark-tone/README.md) | 5/5 ✅ |
 | Centered dialog close buttons | [dialog-close](../plan/dialog-close.md) | [dialog-close/](dialog-close/README.md) | 2/2 ✅ |

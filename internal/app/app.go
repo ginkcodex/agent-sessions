@@ -406,6 +406,13 @@ func (a *App) GetMessages(ref model.SessionRef, offset int, limit int) (Messages
 	return a.activeBackend().GetMessages(a.appCtx(), ref, offset, limit)
 }
 
+// GetMessagesCapped returns one page of a session transcript within the size
+// budget of pc (see engine.PageCap). A remote host too old for the cap
+// returns the whole page.
+func (a *App) GetMessagesCapped(ref model.SessionRef, offset int, limit int, pc PageCap) (MessagesPage, error) {
+	return a.activeBackend().GetMessagesCapped(a.appCtx(), ref, offset, limit, pc)
+}
+
 // GetBlob returns provider-attached content referenced by a message part.
 func (a *App) GetBlob(ref model.SessionRef, key string) (BlobResponse, error) {
 	return a.activeBackend().GetBlob(a.appCtx(), ref, key)

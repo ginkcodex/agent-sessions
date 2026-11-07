@@ -50,6 +50,7 @@ export const APP_METHODS = [
   'GetCodeDiagnosticsSnapshot',
   'GetHostEnv',
   'GetMessages',
+  'GetMessagesCapped',
   'GetMessagesSince',
   'GetSessionMeta',
   'GetSettings',

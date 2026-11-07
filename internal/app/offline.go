@@ -44,6 +44,10 @@ func (b offlineBackend) GetMessages(context.Context, model.SessionRef, int, int)
 	return engine.MessagesPage{}, b.err()
 }
 
+func (b offlineBackend) GetMessagesCapped(context.Context, model.SessionRef, int, int, engine.PageCap) (engine.MessagesPage, error) {
+	return engine.MessagesPage{}, b.err()
+}
+
 func (b offlineBackend) GetBlob(context.Context, model.SessionRef, string) (engine.BlobResponse, error) {
 	return engine.BlobResponse{}, b.err()
 }
