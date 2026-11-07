@@ -13,5 +13,5 @@ found while planning and is independent. Each task ends with
 | [IS-01](IS-01.md) | ✅ Done | `files.IgnoredDirectories`: hardened Git query | 2 h | — |
 | [IS-02](IS-02.md) | ✅ Done | Git scope for walks; gopls and go vet discovery | 4 h | IS-01 |
 | [IS-03](IS-03.md) | ✅ Done | TypeScript, Python, Ruby, nested-workspace and Svelte discovery | 3 h | IS-02 |
-| [IS-04](IS-04.md) | ⬜ Not started | Check discovery on this checkout | 1 h | IS-02, IS-03 |
+| [IS-04](IS-04.md) | 🟡 Partial: desktop app not checked | Check discovery on this checkout | 1 h | IS-02, IS-03 |
 | [IS-05](IS-05.md) | ⬜ Not started | Files, Changes and History: Git without `core.fsmonitor` | 2 h | — |
