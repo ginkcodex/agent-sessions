@@ -58,6 +58,20 @@ type MessagesPage struct {
 	// Revision identifies the transcript snapshot the page came from; pages of
 	// one revision fit together. Empty when the snapshot has none.
 	Revision string `json:"revision,omitempty"`
+	// Capped is set when a PageCap left out messages the count allowed; the
+	// page then holds fewer than the requested limit, from Offset.
+	Capped bool `json:"capped,omitempty"`
+}
+
+// PageCap limits a transcript page by size as well as by count.
+type PageCap struct {
+	// MaxBytes is the page's size budget, by model.MessageBytes; 0 is no cap.
+	MaxBytes int64 `json:"maxBytes,omitempty"`
+	// Anchor is the transcript index of the message the cap keeps: the page
+	// grows from it, within the uncapped page, while the next message fits.
+	// -1 is the uncapped page's last message. An index outside the page is
+	// clamped into it.
+	Anchor int `json:"anchor,omitempty"`
 }
 
 // BlobResponse is provider-attached content, returned as text or base64.

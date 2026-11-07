@@ -186,15 +186,21 @@ func (s *Service) GetSessionMeta(ref model.SessionRef) (model.SessionMeta, error
 // GetMessages returns one page of a session transcript.
 // An offset of -1 requests the latest limit messages, with their actual offset.
 func (s *Service) GetMessages(ctx context.Context, ref model.SessionRef, offset int, limit int) (MessagesPage, error) {
-	if offset < -1 || limit <= 0 {
-		return MessagesPage{}, fmt.Errorf("invalid page offset=%d limit=%d", offset, limit)
+	return s.GetMessagesCapped(ctx, ref, offset, limit, PageCap{})
+}
+
+// GetMessagesCapped returns one page of a session transcript, as GetMessages
+// does, then within the size budget of pc (see PageCap).
+func (s *Service) GetMessagesCapped(ctx context.Context, ref model.SessionRef, offset int, limit int, pc PageCap) (MessagesPage, error) {
+	if offset < -1 || limit <= 0 || pc.MaxBytes < 0 || pc.Anchor < -1 {
+		return MessagesPage{}, fmt.Errorf("invalid page offset=%d limit=%d maxBytes=%d anchor=%d", offset, limit, pc.MaxBytes, pc.Anchor)
 	}
 	all, rev, err := s.loadTranscriptRevision(ctx, ref)
 	if err != nil {
 		return MessagesPage{}, err
 	}
 	page, _ := pageOf(all, rev, offset, limit)
-	return page, nil
+	return capPage(page, pc), nil
 }
 
 // pageOf returns the page of all at a validated offset and limit, and the
@@ -216,6 +222,53 @@ func pageOf(all *model.Transcript, rev string, offset, limit int) (MessagesPage,
 		HasMore:    end < total,
 		Revision:   rev,
 	}, start
+}
+
+// capPage keeps the contiguous run of page's messages around pc.Anchor that
+// fits pc.MaxBytes: from the anchor it adds one message before and one after
+// in turn, stopping on each side at the first that does not fit. The anchor
+// is always kept, even alone over budget.
+func capPage(page MessagesPage, pc PageCap) MessagesPage {
+	n := len(page.Messages)
+	if pc.MaxBytes <= 0 || n == 0 {
+		return page
+	}
+	start := min(page.Offset, page.TotalCount) // index of page.Messages[0]
+	anchor := n - 1
+	if pc.Anchor >= 0 {
+		anchor = min(max(pc.Anchor-start, 0), n-1)
+	}
+	lo, hi := anchor, anchor+1 // kept: page.Messages[lo:hi]
+	used := model.MessageBytes(&page.Messages[anchor])
+	for before, after := lo > 0, hi < n; before || after; {
+		if before {
+			if b := model.MessageBytes(&page.Messages[lo-1]); used+b <= pc.MaxBytes {
+				used += b
+				lo--
+				before = lo > 0
+			} else {
+				before = false
+			}
+		}
+		if after {
+			if b := model.MessageBytes(&page.Messages[hi]); used+b <= pc.MaxBytes {
+				used += b
+				hi++
+				after = hi < n
+			} else {
+				after = false
+			}
+		}
+	}
+	if lo == 0 && hi == n {
+		return page
+	}
+	page.Messages = page.Messages[lo:hi:hi]
+	page.Offset = start + lo
+	page.Limit = hi - lo
+	page.HasMore = start+hi < page.TotalCount
+	page.Capped = true
+	return page
 }
 
 // GetBlob returns provider-attached content referenced by a message part.
