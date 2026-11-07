@@ -96,6 +96,15 @@ The frontend subscribes through `subscribeMouseNavigate` in
 `frontend/src/lib/api.ts`. The shared Go side is
 `cmd/agent-sessions/mousenav_native.go`.
 
+Go to File uses the same buttons for the editor's back and forward through
+files and places (`sideButton` in
+`frontend/src/lib/components/common/GoToFileDialog.svelte`, history in
+`FilesStore`, per workspace). It listens to both paths, on `mouseup` and
+`nav:mouse`, only while it is the one open modal (`onlyOpenModal` in
+`frontend/src/lib/search.ts`). App keeps cancelling the webview's own
+navigation on every side button and ignores them while any modal is open,
+so one press moves either the session list or the editor, never both.
+
 ### Linux
 
 - GDK numbers the side buttons 8 (back) and 9 (forward), not 4/5. GDK's

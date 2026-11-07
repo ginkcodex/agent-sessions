@@ -5,6 +5,7 @@ import { MockBackendAPI, highlightedSnippet } from '../src/lib/mock/mockApi.ts';
 import {
   LatestRequestGate,
   hasOpenModal,
+  onlyOpenModal,
   jumpOffset,
   progressIncomplete,
   safeSnippetHTML,
@@ -73,6 +74,13 @@ test('only open modals block global shortcuts, not dialogs kept mounted under a 
   assert.equal(hasOpenModal(root(dialog(false))), true);
   assert.equal(hasOpenModal(root(dialog(true), dialog(false))), true, 'another open modal still blocks shortcuts');
   assert.equal(hasOpenModal(root(dialog(true), dialog(true))), false);
+
+  const goToFile = dialog(false), prompt = dialog(false), hidden = dialog(true);
+  assert.equal(onlyOpenModal(goToFile, root(goToFile)), true);
+  assert.equal(onlyOpenModal(goToFile, root(goToFile, hidden)), true, 'a hidden modal does not count');
+  assert.equal(onlyOpenModal(goToFile, root(goToFile, prompt)), false, 'another modal over it');
+  assert.equal(onlyOpenModal(goToFile, root(prompt)), false);
+  assert.equal(onlyOpenModal(hidden, root(hidden)), false, 'Go to File hidden');
 });
 
 test('MockBackendAPI listGroups emits node kinds', async () => {

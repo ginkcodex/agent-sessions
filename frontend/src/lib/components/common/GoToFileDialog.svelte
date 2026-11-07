@@ -6,7 +6,9 @@
   import { copyToClipboard } from '../../portable';
   import { directoryName } from '../../tree';
   import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
-  import { api, subscribeCatalogChanged } from '../../api';
+  import { api, subscribeCatalogChanged, subscribeMouseNavigate } from '../../api';
+  import { navigationButton, type NavDirection } from '../../navHistory';
+  import { onlyOpenModal } from '../../search';
   import { toast } from '../../stores/toast.svelte';
   import { absoluteFilePath } from '../../fileActions';
   import FilePicker from './go-to-file/FilePicker.svelte';
@@ -44,6 +46,29 @@
     const refresh = () => { if (files.open) void gitChanges.refresh(); };
     window.addEventListener('focus', refresh);
     return () => window.removeEventListener('focus', refresh);
+  });
+  // The mouse's side buttons step the viewer's back and forward while Go to
+  // File is the one open modal: the DOM's buttons 3/4 (WebView2, browsers)
+  // and the native event (Linux, macOS). App still cancels the webview's
+  // own navigation and ignores them while a modal is open, so a press moves
+  // only the editor; with a prompt or Settings over the dialog, nothing.
+  let dialogElement: HTMLElement | undefined = $state();
+  function sideButton(direction: NavDirection) {
+    if (!files.open || fileActions.busy || fileActions.quitting || renamePath !== null || newEntry !== null) return;
+    if (!dialogElement || !onlyOpenModal(dialogElement)) return;
+    viewer?.goHistory(direction);
+  }
+  onMount(() => {
+    const onMouseUp = (event: MouseEvent) => {
+      const direction = navigationButton(event.button);
+      if (direction) sideButton(direction);
+    };
+    const unsubscribe = subscribeMouseNavigate(sideButton);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('mouseup', onMouseUp);
+    };
   });
   // Agents change files while they are open. While the dialog shows, check the
   // open tabs every two seconds; fetch the file list again when the window
@@ -445,7 +470,7 @@
   {#if context}
     <ContextMenu x={context.x} y={context.y} items={contextItems} ariaLabel="File actions" onClose={() => (context = null)} />
   {/if}
-  <div class="dialog" class:presentation role="dialog" aria-modal="true" aria-labelledby="goto-file-title">
+  <div class="dialog" class:presentation role="dialog" aria-modal="true" aria-labelledby="goto-file-title" bind:this={dialogElement}>
     <header class="dialog-header">
       <h2 id="goto-file-title">Go to File</h2>
       <button
