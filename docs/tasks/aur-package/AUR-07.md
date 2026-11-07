@@ -1,6 +1,6 @@
 # AUR-07 — CI secret and the first automated update
 
-- **Status:** ⬜ Not started
+- **Status:** 🟡 Partial (secret set; workflow not run, not on main yet)
 - **Estimate:** 1 h
 - **Depends on:** AUR-04, AUR-06
 - **Plan:** [aur-package.md](../../plan/aur-package.md)
@@ -21,3 +21,11 @@
 
 - The next stable release updates the AUR package without manual steps.
 - A pre-release leaves it alone.
+
+## Evidence
+
+- Steps 1–3 done by the maintainer on 2026-11-08: the CI key is on the AUR
+  account, and `gh secret list` shows `AUR_SSH_PRIVATE_KEY` (set
+  2026-11-07T19:29:57Z).
+- Not done: `aur.yml` is not on `main` yet (`develop` is not pushed), so the
+  workflow cannot run (steps 4–5).

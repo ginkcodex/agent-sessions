@@ -15,5 +15,5 @@ account: the first push, and the CI secret.
 | [AUR-03](AUR-03.md) | ✅ Done | Publish script for an AUR checkout | 1.5 h | AUR-02 |
 | [AUR-04](AUR-04.md) | 🟡 Partial (not run on GitHub yet; see AUR-07) | AUR workflow, called after stable releases | 1.5 h | AUR-03 |
 | [AUR-05](AUR-05.md) | ✅ Done | README install instructions | 0.5 h | AUR-01 |
-| [AUR-06](AUR-06.md) | ⬜ Not started | First push of the current release to the AUR | 0.5 h | AUR-03 |
-| [AUR-07](AUR-07.md) | ⬜ Not started | CI secret and the first automated update | 1 h | AUR-04, AUR-06 |
+| [AUR-06](AUR-06.md) | 🟡 Partial (on the AUR; paru on an Arch desktop and app start not checked) | First push of the current release to the AUR | 0.5 h | AUR-03 |
+| [AUR-07](AUR-07.md) | 🟡 Partial (secret set; workflow not run, not on main yet) | CI secret and the first automated update | 1 h | AUR-04, AUR-06 |
