@@ -96,8 +96,9 @@ Nothing below has been tested by hand on the v3 build. Treat each as open
 until someone records a result here.
 
 - **Linux (GTK 4 / WebKitGTK 6.0), real desktop session:** window shows
-  content (including the `WEBKIT_DISABLE_DMABUF_RENDERER` fallback and the
-  on-demand GPU policy), mouse side buttons, file drop onto the terminal,
+  content (including the `WEBKIT_DISABLE_DMABUF_RENDERER` fallback, now
+  left to Wails' NVIDIA check ([linux-gpu-rendering](linux-gpu-rendering.md)),
+  and the on-demand GPU policy), mouse side buttons, file drop onto the terminal,
   native open/save dialogs, notifications, printing, font rendering at
   fractional scaling, fullscreen (F11), close guard and quit.
 - **Linux packages:** install and launch the `.deb` and `.rpm` on clean

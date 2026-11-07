@@ -47,6 +47,27 @@ status). To reproduce a failure, open the index with `index.OpenReadOnly`,
 load the saved states with `LoadSnapshot` and run each provider's `Scan` with
 its state. This reads the live index in place, so nothing needs to be copied.
 
+## Linux rendering (DMA-BUF)
+
+**Don't set `WEBKIT_DISABLE_DMABUF_RENDERER=1` for everyone.** Without
+DMA-BUF, WebKitGTK hands every frame to the UI process in shared memory, and
+the GTK main thread copies and composites it with cairo/pixman. Any
+animation (a live session's pulse, a spinner) then keeps that thread busy.
+On a 1.5× GNOME Wayland laptop with an AMD GPU it sat at 100 % while idle,
+and the app stuttered. With DMA-BUF it idles around 10 %.
+
+The app used to force it from the Wails v2 days (blank windows on NVIDIA).
+Wails v3 now does it itself, only where WebKit renders on NVIDIA
+(`isNVIDIAGPU` in `wails/v3/pkg/application/gpu_linux.go`), before the app's
+own `init()`. A value the user exports wins either way: `=1` if some driver
+shows a blank window, `=0` to try DMA-BUF on NVIDIA. See
+[docs/plan/linux-gpu-rendering.md](docs/plan/linux-gpu-rendering.md).
+
+To see where the main thread goes when `perf` and `gdb -p` need root
+(`perf_event_paranoid` 4, `ptrace_scope` 1), start a copy under `gdb`
+(`gdb -batch -ex run -ex 'thread apply 1 bt' … --args <binary>`) and send
+SIGINT to that child only, never to a running app picked by name.
+
 ## Fullscreen shortcut
 
 Control+Command+F toggles fullscreen on macOS; other platforms use F11
@@ -122,10 +143,22 @@ so one press moves either the session list or the editor, never both.
 - **Two-finger swipes** are scrolls in GTK. The same web view also gets a
   `GtkEventControllerScroll` (capture phase) that always returns `FALSE`,
   so WebKit still scrolls. Only `GDK_SOURCE_TOUCHPAD` counts. A gesture runs
-  from `scroll-begin`, or a scroll after 200 ms (X11 may send no
-  `scroll-end`), to `scroll-end`. Past `SWIPE_DISTANCE` (80 px; X11 wheel
+  from `scroll-begin` to `scroll-end`, which GTK sends when the fingers lift
+  (Wayland). Until a `scroll-end` has come (X11 may send none), a scroll
+  after 200 ms also starts one; after that the gap is ignored, so fingers
+  resting mid-swipe do not go a second step. Past `SWIPE_DISTANCE` (80 px; X11 wheel
   units × 40) sideways, more than twice the vertical, it sends `nav:swipe`
-  once. It follows the scroll, as Chrome does: toward the left is back,
+  once.
+- **The controller sees each scroll twice** (SN-07). The copy has the same
+  time and deltas and comes later, sometimes after the swipe's
+  `scroll-end`, probably WebKit handing back what the page did not use.
+  GTK even emits `scroll-begin` for it. Counted, the copies doubled every
+  swipe's distance and, once they came after the end, sent a second step.
+  So any scroll, begin or end no newer than the newest seen is skipped.
+- `AGENT_SESSIONS_TRACE_NAV=1` prints each gesture's begin, end, scrolls
+  (time, deltas, unit, device source) and sends to stderr, and each event
+  Go sends to a window. Run the app from a terminal with it to see what a
+  touchpad really sends. It follows the scroll, as Chrome does: toward the left is back,
   which is fingers right with natural scrolling (GNOME's and Plasma 6's
   touchpad default). GNOME has no *Swipe between pages* setting to honour.
 
@@ -172,18 +205,25 @@ so one press moves either the session list or the editor, never both.
   app receives before assuming the handler is broken.
 - **Two-finger swipes:** WebView2 runs in its own process, so the app's
   window never sees its scroll messages, and its own swipe navigation is
-  for touchscreens. The page spots the swipe from wheel events instead
-  (`SwipeGuard` with detect on, `frontend/src/lib/swipeNavigation.ts`): at
-  least 3 pixel-mode events, 80 px sideways and more than twice the
-  vertical, with no Shift and no delta of a whole wheel step (100 px).
-  Toward the left is back, as in Edge. A smooth sideways mouse wheel can
-  pass for a touchpad.
-- Without a phase, the wheel stream does not say where one swipe ends: the
-  momentum after the fingers lift, or a quick lift and touch, runs straight
-  into the next swipe. The guard splits the stream into strokes: a new one
-  starts when the speed has fallen to half its peak or less and rises again
-  for two events. Momentum only slows down, so it never starts one. Each
-  stroke swipes once and has its own scrolled flag.
+  for touchscreens. A message-only window on its own thread reads the
+  Precision Touchpad through Raw Input (`mousenav_windows.go`, usage page
+  `0x0D` / usage `0x05`, `RIDEV_INPUTSINK`) and parses the reports with
+  `HidP_*`; `internal/touchswipe` turns the contacts into one swipe per
+  touch: two fingers, 10 mm sideways, more than twice the vertical. Fingers
+  right is back, as on macOS. It goes to the app window under the cursor,
+  where Windows sends the scroll. Touchpads that are not Precision
+  Touchpads do not swipe.
+- **Don't spot swipes from the page's wheel events** (SN-02 to SN-08). They
+  carry no phase, and while the page is busy the renderer merges them into
+  a few large deltas and leaves gaps in the stream. On a real touchpad
+  swipes were missed for minutes after start, and stepped several times
+  after a step that was slow to draw. Splitting the stream by speed made
+  one swipe go several steps even when idle.
+- `AGENT_SESSIONS_TRACE_NAV=1` writes touchpad layouts, fingers down,
+  swipes and sends to `%TEMP%\agent-sessions-nav-trace.log` (the app has
+  no console). `mousenav_windows_test.go`, cross-compiled with
+  `GOOS=windows go test -c -tags desktop,production ./cmd/agent-sessions/`
+  and run from WSL, prints each touchpad's report layout.
 
 ### How to debug
 

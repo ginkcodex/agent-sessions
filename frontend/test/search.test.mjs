@@ -449,109 +449,35 @@ test('a two-finger swipe navigates unless its gesture scrolled something sideway
   assert.equal(seen.length, 5, 'unsubscribing stops both');
 });
 
-test('on Windows the guard spots a two-finger swipe in the wheel events, unless it scrolled or came from a mouse', () => {
+test('nav:swipe is dropped while the gesture that scrolled goes on; wheel events alone never navigate', () => {
   const mock = new MockBackendAPI();
   const seen = [];
   const scrollable = new Set();
-  const guard = new SwipeGuard((target, sign) => scrollable.has(`${target}:${sign}`), true);
-  let now = 0;
-  const off = subscribeMouseNavigate((d) => seen.push(d), mock, guard, () => now);
-  const wheel = (t, deltaX, deltaY = 0, extra = {}) => {
-    now = t;
-    guard.wheel({ deltaX, deltaY, deltaMode: 0, shiftKey: false, ctrlKey: false, timeStamp: t, target: 'page', ...extra });
-  };
-  // A touchpad gesture: many small deltas, once per gesture, as the scroll goes.
-  const swipe = (t, step, n = 6, extra = {}) => { for (let i = 0; i < n; i++) wheel(t + i * 16, step, 2, extra); };
-
-  swipe(0, -20);
-  assert.deepEqual(seen, ['back'], 'scrolling toward the left goes back, once per gesture');
-  swipe(1000, 20);
-  assert.deepEqual(seen, ['back', 'forward']);
-
-  // Too short, too few events, or mostly vertical: a scroll, not a swipe.
-  swipe(2000, -10, 6);
-  wheel(3000, -60); wheel(3016, -60);
-  for (let i = 0; i < 8; i++) wheel(4000 + i * 16, -15, -20);
-  assert.deepEqual(seen, ['back', 'forward']);
-
-  // A mouse: Shift+wheel, lines, or a whole wheel step in the gesture.
-  swipe(5000, -20, 6, { shiftKey: true });
-  swipe(6000, -20, 6, { deltaMode: 1 });
-  wheel(7000, -100); swipe(7016, -20);
-  wheel(8000, 0, 120); swipe(8016, -20);
-  assert.deepEqual(seen, ['back', 'forward'], 'mouse wheels never swipe');
-  // A pinch is ignored, not counted.
-  swipe(9000, -20, 6, { ctrlKey: true });
-  assert.deepEqual(seen, ['back', 'forward']);
-
-  // Something that can still scroll left: the gesture is a scroll, also at the edge.
-  scrollable.add('page:-1');
-  wheel(10000, -20); wheel(10016, -20);
-  scrollable.delete('page:-1');
-  swipe(10032, -20);
-  assert.deepEqual(seen, ['back', 'forward']);
-  swipe(11000, -20);
-  assert.deepEqual(seen, ['back', 'forward', 'back'], 'a new gesture from the edge goes back');
-
-  off();
-  swipe(12000, 20);
-  assert.equal(seen.length, 3, 'unsubscribing stops it');
-  // Off by default (macOS and Linux spot swipes natively).
-  const quiet = new SwipeGuard(() => false);
-  const heard = [];
-  quiet.onSwipe((d) => heard.push(d));
-  for (let i = 0; i < 6; i++) quiet.wheel({ deltaX: -20, deltaY: 0, deltaMode: 0, ctrlKey: false, timeStamp: i * 16, target: 'page' });
-  assert.deepEqual(heard, []);
-});
-
-test('swipes in a row each navigate, even when the next starts in the last one\'s momentum', () => {
-  const mock = new MockBackendAPI();
-  const seen = [];
-  const scrollable = new Set();
-  const guard = new SwipeGuard((target, sign) => scrollable.has(`${target}:${sign}`), true);
+  const guard = new SwipeGuard((target, sign) => scrollable.has(`${target}:${sign}`));
   let now = 0;
   subscribeMouseNavigate((d) => seen.push(d), mock, guard, () => now);
   // One stream, no pauses: events 8 ms apart, deltaX per event.
-  const stream = (deltas, target = 'page') => { for (const dx of deltas) { now += 8; guard.wheel({ deltaX: dx, deltaY: 0, deltaMode: 0, ctrlKey: false, timeStamp: now, target }); } };
+  const stream = (deltas, target = 'page') => { for (const dx of deltas) { now += 8; guard.wheel({ deltaX: dx, ctrlKey: false, timeStamp: now, target }); } };
   const stroke = [-5, -10, -20, -25, -25, -25];
-  const momentum = [-22, -19, -16, -13, -10, -8, -6, -4];
+  const momentum = [-22, -19, -16, -13, -10, -8, -6, -4, -3, -2, -1];
 
-  stream(stroke); stream(momentum);
-  assert.deepEqual(seen, ['back'], 'momentum longer than a swipe does not swipe again');
-  stream([-12, -20, -25, -25, -25, -25]); stream(momentum);
-  stream(stroke); stream(momentum);
-  assert.deepEqual(seen, ['back', 'back', 'back'], 'each new stroke in the momentum goes back');
-
-  // One long swipe that keeps speeding up, or a coalesced spike in the momentum, is one stroke.
-  now += 1000;
-  stream([-5, -10, -15, -20, -30, -40, -50, -60, -70, -60]);
-  stream([-40, -30, -60, -22, -18, -14, -10, -6]);
-  assert.equal(seen.length, 4);
-
-  // The other way while the momentum still goes left.
+  // However a sideways stream goes, the page never steps by itself.
+  for (let i = 0; i < 5; i++) { stream(stroke); stream(momentum); now += 1000; }
   stream([-5, -4, 6, 15, 25, 25, 25, 25, 25]);
-  assert.deepEqual(seen.slice(4), ['forward']);
+  assert.deepEqual(seen, []);
 
-  // A stroke that scrolled code is a scroll; the next stroke over the page is a swipe.
+  // A gesture that scrolled code is a scroll to its end, even over the page.
   now += 1000;
   scrollable.add('code:-1');
-  stream(stroke, 'code'); stream(momentum, 'code');
+  stream(stroke, 'code');
   scrollable.delete('code:-1');
-  assert.equal(seen.length, 5);
+  stream(momentum, 'code'); stream(stroke, 'page');
+  mock.emit('nav:swipe', 'back');
+  assert.deepEqual(seen, []);
+  now += 1000;
   stream(stroke, 'page');
-  assert.deepEqual(seen.slice(5), ['back']);
-
-  // macOS and Linux: nav:swipe after a new stroke is not blocked by the last one's scroll.
-  const native = new SwipeGuard((target, sign) => scrollable.has(`${target}:${sign}`));
-  const heard = [];
-  subscribeMouseNavigate((d) => heard.push(d), mock, native, () => now);
-  scrollable.add('code:-1');
-  const feed = (deltas, target) => { for (const dx of deltas) { now += 8; native.wheel({ deltaX: dx, deltaY: 0, ctrlKey: false, timeStamp: now, target }); } };
-  feed(stroke, 'code'); feed(momentum, 'code');
   mock.emit('nav:swipe', 'back');
-  feed([-12, -20, -25], 'page');
-  mock.emit('nav:swipe', 'back');
-  assert.deepEqual(heard, ['back']);
+  assert.deepEqual(seen, ['back']);
 });
 
 test('sideways scrolling counts only room left in that direction, in elements that scroll', () => {

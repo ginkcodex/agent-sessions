@@ -44,8 +44,8 @@ func goMouseNavigate(window unsafe.Pointer, forward C.int) {
 	go navigateWindow(window, mouseNavigateEvent, navigateDirection(forward))
 }
 
-// goSwipeNavigate is a two-finger touchpad swipe (macOS and Linux; on
-// Windows the page spots swipes itself).
+// goSwipeNavigate is a two-finger touchpad swipe (macOS and Linux; Windows
+// is in mousenav_windows.go).
 //
 //export goSwipeNavigate
 func goSwipeNavigate(window unsafe.Pointer, forward C.int) {
@@ -78,7 +78,5 @@ func navigateWindow(native unsafe.Pointer, event, direction string) {
 	if target == nil {
 		target = app.Window.Current()
 	}
-	if target != nil {
-		target.DispatchWailsEvent(&application.CustomEvent{Name: event, Data: direction})
-	}
+	dispatchNavigation(target, event, direction, native != nil)
 }
