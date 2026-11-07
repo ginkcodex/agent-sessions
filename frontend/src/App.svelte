@@ -62,6 +62,7 @@
   import { startUpdateChecks, updateToast, type UpdateInfo } from './lib/update';
   import { formatVersion } from './lib/format';
   import { themeButtonTitle } from './lib/theme';
+  import { appearanceVars, applyRootVars } from './lib/appearance';
   import { hostLabel } from './lib/hosts';
   import {
     isNewSessionShortcut,
@@ -158,6 +159,12 @@
     void portForward.refresh();
     const timer = setInterval(() => void portForward.refresh(), 2000);
     return () => clearInterval(timer);
+  });
+
+  // Editor font and the editor and docs text sizes, as custom properties on
+  // the root; the session text size is set by TranscriptView.
+  $effect(() => {
+    applyRootVars(document.documentElement.style, appearanceVars(preferences));
   });
 
   onMount(() => {

@@ -75,6 +75,6 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Selected-text menu and contextual translation | [selection-translate](docs/plan/selection-translate.md) | [selection-translate/](docs/tasks/selection-translate/README.md) | 5/5 ✅ |
 | Internal terminal maximization | [terminal-maximize](docs/plan/terminal-maximize.md) | [terminal-maximize/](docs/tasks/terminal-maximize/README.md) | 2/2 ✅ |
 | Split terminals | [terminal-split](docs/plan/terminal-split.md) | [terminal-split/](docs/tasks/terminal-split/README.md) | 4/4 ✅ |
-| Font settings: editor, docs and session content | [font-settings](docs/plan/font-settings.md) | [font-settings/](docs/tasks/font-settings/README.md) | 2/9 ✅ · 7 ⬜ |
+| Font settings: editor, docs and session content | [font-settings](docs/plan/font-settings.md) | [font-settings/](docs/tasks/font-settings/README.md) | 3/9 ✅ · 6 ⬜ |
 | Go to File editing | [file-editing](docs/plan/file-editing.md) | [file-editing/](docs/tasks/file-editing/README.md) | 11/14 ✅ · 3 🟡 |
 | Wails v3 upgrade | [wails-v3-upgrade](docs/plan/wails-v3-upgrade.md) | [wails-v3-upgrade/](docs/tasks/wails-v3-upgrade/README.md) | 1/2 ✅ · 1 ⬜ |

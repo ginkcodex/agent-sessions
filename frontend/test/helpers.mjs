@@ -102,7 +102,7 @@ async function importCompiled(filename, code, replacements) {
     replacements.push([agentIconImport, 'const AgentIcon = globalThis.__agentIcon;']);
   }
   // Pure display-label helpers shared by the diagnostics components resolve to the real module.
-  for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../problemOverview'", 'problemOverview'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools'], ["'../codeLanguages'", 'codeLanguages'], ["'../../../codeLanguages'", 'codeLanguages'], ["'../../../date'", 'date']]) {
+  for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../problemOverview'", 'problemOverview'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools'], ["'../codeLanguages'", 'codeLanguages'], ["'../../../codeLanguages'", 'codeLanguages'], ["'../../../date'", 'date'], ["'../appearance'", 'appearance']]) {
     if (code.includes(module) && !replacements.some(([from]) => from === module)) {
       replacements.push([module, JSON.stringify(new URL(`../src/lib/${file}.ts`, import.meta.url).href)]);
     }
