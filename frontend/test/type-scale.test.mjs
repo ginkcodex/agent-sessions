@@ -45,10 +45,82 @@ function scaleOf(size, bodyVar) {
 /** Size in px at a body size, or em for inline code. */
 const sizeAt = (scale, body) => scale.inline ? SCALE[scale.token] : SCALE[scale.token] * body;
 
+const T = 'lib/components/transcript/';
+const session = (path) => ({ path: T + path, bodyVar: '--session-font-size', body: 14.5 });
+
 const SURFACES = [
-  { path: 'lib/components/transcript/parts/TextPart.svelte', bodyVar: '--session-font-size', body: 14.5 },
+  session('parts/TextPart.svelte'),
   { path: 'lib/components/common/MarkdownDoc.svelte', bodyVar: '--markdown-font-size', body: 13 },
+  session('MessageBubble.svelte'),
+  ...['ToolPart', 'PatchPart', 'ReasoningPart', 'CompactionPart', 'NoticePart', 'ImagePart', 'SubagentLink'].map((name) => session(`parts/${name}.svelte`)),
 ];
+
+// Sizes that stay fixed on purpose: not text, so not part of the scale.
+const EXCEPTIONS = {
+  [T + 'MessageBubble.svelte']: {
+    '.reset-level': 'icon glyph in a fixed 20px button',
+  },
+};
+
+// Which token takes over each of today's sizes (the plan's type scale table).
+const TOKEN_FOR_PX = {
+  13.7: '--type-code', 12.8: '--type-code',
+  12.48: '--type-small', 12: '--type-small',
+  11.52: '--type-label', 11.2: '--type-label',
+  10.88: '--type-tag', 10.4: '--type-tag',
+};
+
+// Session part sizes before the type scale (FS-02), per selector.
+const SESSION_PX = {
+  'MessageBubble.svelte': {
+    '.message-meta-header': 11.52,
+    '.model-tag': 10.88,
+    '.sidechain-tag': 10.4,
+    '.translation-tag': 10.4,
+    '.file-attachment-pill': 12,
+  },
+  'parts/ToolPart.svelte': {
+    '.tool-name': 12.8,
+    '.tool-call-id': 11.2,
+    '.tool-status-badge': 10.88,
+    '.section-summary': 11.52,
+    '.code-wrapper pre': 12,
+    '.output-label': 11.52,
+    '.output-content': 12,
+    '.truncated-banner': 11.52,
+    '.load-blob-btn': 11.2,
+    '.mini-copy-btn': 10.88,
+    '.blob-error-msg': 11.52,
+  },
+  'parts/PatchPart.svelte': {
+    '.patch-title': 12.48,
+    '.patch-count': 11.2,
+    '.toggle-diff-btn': 11.2,
+    '.patch-file-item': 12,
+    '.diff-code': 11.52,
+  },
+  'parts/ReasoningPart.svelte': {
+    '.reasoning-summary': 12,
+    '.reasoning-body': 13.7,
+  },
+  'parts/CompactionPart.svelte': {
+    '.compaction-pill': 11.52,
+    '.pill-chevron': 10.4,
+    '.compaction-details': 12.48,
+    '.summary-header': 10.88,
+  },
+  'parts/NoticePart.svelte': {
+    '.notice-pill': 11.52,
+    '.notice-icon': 12,
+  },
+  'parts/ImagePart.svelte': {
+    '.image-loading': 12,
+    '.image-failed': 12,
+  },
+  'parts/SubagentLink.svelte': {
+    '.subagent-link-btn': 12,
+  },
+};
 
 test('style.css declares exactly the planned type scale', () => {
   assert.deepEqual(typeTokens(), SCALE);
@@ -58,7 +130,9 @@ for (const { path, bodyVar, body } of SURFACES) {
   test(`${path.split('/').pop()} sizes every text as body × a type-scale ratio`, () => {
     const rules = fontSizes(path);
     assert.ok(rules.length > 0);
+    const exceptions = EXCEPTIONS[path] ?? {};
     for (const { selector, size } of rules) {
+      if (selector in exceptions) continue;
       const scale = scaleOf(size, bodyVar);
       assert.ok(scale, `${selector}: font-size ${size} is not body × a --type-* ratio`);
       if (!scale.inline) assert.equal(scale.fallback, body, `${selector}: default body`);
@@ -99,5 +173,31 @@ test('block text is sized from the body, so nesting does not compound', () => {
     for (const { selector, size } of fontSizes(path)) {
       if (/\b(table|code\.hljs|h[1-3])\)/.test(selector)) assert.doesNotMatch(size, /em\b/, `${selector}: ${size}`);
     }
+  }
+});
+
+test('fixed sizes are only the listed non-text exceptions', () => {
+  for (const [path, exceptions] of Object.entries(EXCEPTIONS)) {
+    const selectors = new Set(fontSizes(path).map(({ selector }) => selector));
+    for (const selector of Object.keys(exceptions)) assert.ok(selectors.has(selector), `${path}: stale exception ${selector}`);
+  }
+});
+
+// The largest move is the tool name, 12.8 → 13.34px; code is its nearest token.
+const MAX_DRIFT = 0.55;
+
+test('session parts take the token planned for their old size, within 0.55px', () => {
+  for (const [file, expected] of Object.entries(SESSION_PX)) {
+    const rules = Object.fromEntries(fontSizes(T + file).map(({ selector, size }) => [selector, scaleOf(size, '--session-font-size')]));
+    for (const [selector, px] of Object.entries(expected)) {
+      const scale = rules[selector];
+      assert.ok(scale, `${file} ${selector}: not on the type scale`);
+      assert.equal(scale.token, TOKEN_FOR_PX[px], `${file} ${selector}: was ${px}px`);
+      const now = sizeAt(scale, 14.5);
+      assert.ok(Math.abs(now - px) <= MAX_DRIFT + 1e-9, `${file} ${selector}: ${now}px, was ${px}px`);
+    }
+    // Every scaled rule in the file is accounted for.
+    const exceptions = EXCEPTIONS[T + file] ?? {};
+    assert.deepEqual(Object.keys(rules).filter((s) => !(s in exceptions)).sort(), Object.keys(expected).sort(), file);
   }
 });

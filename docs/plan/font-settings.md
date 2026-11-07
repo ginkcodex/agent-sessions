@@ -65,8 +65,9 @@ Before any setting is added, each text size in the docs preview and session
 content becomes **body size × one of eight ratios**. The fourteen sizes in use
 today (the seven below the body are left over from old `rem` values, four of
 them less than 1 px apart) are merged into this short scale. No visible size
-moves by more than 0.5 px at the 14.5 px default body, except inline code,
-which is made slightly larger on purpose. The tokens live once in `style.css`
+moves by more than 0.55 px at the 14.5 px default body (the largest move is
+the tool name, +0.54 px), except inline code, which is made slightly larger
+on purpose. The tokens live once in `style.css`
 as unitless custom properties and are used by `TextPart`, `MarkdownDoc` and
 the session parts:
 
@@ -76,7 +77,7 @@ the session parts:
 | `--type-h2` | 1.25 | 18.1 px | 18.2 px heading 2 |
 | `--type-h3` | 1.08 | 15.7 px | 15.7 px heading 3 |
 | `--type-body` | 1 | 14.5 px | 14.5 px message and doc text, heading 4 |
-| `--type-code` | 0.92 | 13.3 px | 13.3 px code blocks and tables (docs: 0.923em); 13.7 px reasoning text (−0.4); 12.8 px tool name (+0.5) |
+| `--type-code` | 0.92 | 13.3 px | 13.3 px code blocks and tables (docs: 0.923em); 13.7 px reasoning text (−0.4); 12.8 px tool name (+0.54) |
 | `--type-small` | 0.83 | 12 px | 12 px tool input and output, file attachment pill, patch file list, reasoning summary, subagent link, image messages; 12.48 px patch title and compaction details (−0.5) |
 | `--type-label` | 0.79 | 11.5 px | 11.52 px message header, compaction and notice pills, diff code, section summaries, output label, banners, errors; 11.2 px call id, counts, Show diff and Load blob buttons (+0.3) |
 | `--type-tag` | 0.75 | 10.9 px | 10.88 px model and status tags, code language tag, Copy buttons, summary header; 10.4 px sidechain and translation tags, chevrons (+0.5) |
@@ -196,7 +197,7 @@ while they are open:
 - **Ratios first.** The type scale lands as its own step with no setting
   attached. The settings then only change the body size.
 - **Simplicity over exact sizes.** Eight ratios replace fourteen sizes; the
-  merge moves sizes by up to 0.5 px. Reasoning text drops from 13.7 to
+  merge moves sizes by up to 0.55 px. Reasoning text drops from 13.7 to
   13.3 px, the code size; it stays distinct by color and indent. Sizes follow
   the ratios only: no per-component overrides or extra steps.
 - **Inline code grows to 0.85em** (from 0.825em) in both surfaces.
@@ -227,7 +228,7 @@ while they are open:
   (icons, view controls).
 - **The default look drifts** more than planned while converting. A test
   checks that each converted rule uses the token the plan's table assigns to
-  its old px value, and that its default size is within 0.5 px of today's
+  its old px value, and that its default size is within 0.55 px of today's
   (inline code excepted).
 - **Fixed heights clip larger text** (badges, tool headers, one-line
   summaries with `px` heights or line heights). The audit covers heights and
@@ -247,7 +248,7 @@ while they are open:
   eight `--type-*` ratios, or inline code's 0.85em (scan test passes); the
   ratios are the same in both surfaces.
 - With no setting changed, the editor and viewer render as before, and docs
-  preview and session text is within 0.5 px of today's sizes (inline code
+  preview and session text is within 0.55 px of today's sizes (inline code
   excepted).
 - The three sizes and the editor font can be changed in Settings → Appearance,
   apply at once to open views, and survive a restart; at any body size the

@@ -346,7 +346,7 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 4px 10px;
-    font-size: 11.52px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     color: var(--text-muted);
   }
 
@@ -381,16 +381,16 @@
   .model-tag {
     font-family: var(--font-mono);
     color: var(--text-muted);
-    font-size: 10.88px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
   }
 
   .sidechain-tag {
-    font-size: 10.4px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
     color: #a855f7;
   }
 
   .translation-tag {
-    font-size: 10.4px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
     color: var(--text-muted);
   }
 
@@ -419,6 +419,8 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* An icon glyph in a fixed 20px button, so it keeps its size: not part
+     of the type scale (docs/plan/font-settings.md). */
   .reset-level {
     display: inline-flex;
     align-items: center;
@@ -454,7 +456,7 @@
     padding: 4px 8px;
     border-radius: var(--radius-sm);
     background: var(--segment-track);
-    font-size: 12px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
     font-family: var(--font-mono);
     margin: 4px 0;
   }

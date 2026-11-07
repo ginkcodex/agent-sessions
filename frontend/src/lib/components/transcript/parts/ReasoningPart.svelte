@@ -52,7 +52,7 @@
     gap: 6px;
     padding: 6px 10px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
     font-weight: 500;
     color: var(--text-secondary);
     user-select: none;
@@ -70,7 +70,7 @@
   .reasoning-body {
     padding: 10px 14px;
     border-top: 1px solid var(--border-color);
-    font-size: 13.7px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-code));
     color: var(--text-secondary);
     line-height: 1.5;
     background-color: var(--bg-primary);

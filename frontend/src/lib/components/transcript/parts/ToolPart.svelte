@@ -190,20 +190,20 @@
   }
 
   .tool-name {
-    font-size: 12.8px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-code));
     font-weight: 600;
     font-family: var(--font-mono);
     color: var(--text-primary);
   }
 
   .tool-call-id {
-    font-size: 11.2px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     font-family: var(--font-mono);
     color: var(--text-muted);
   }
 
   .tool-status-badge {
-    font-size: 10.88px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
     font-weight: 600;
     padding: 1px 6px;
     border-radius: 4px;
@@ -236,7 +236,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 6px 10px;
-    font-size: 11.52px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     color: var(--text-secondary);
     font-weight: 500;
     cursor: pointer;
@@ -257,7 +257,7 @@
 
   .code-wrapper pre {
     margin: 0;
-    font-size: 12px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
     font-family: var(--font-mono);
   }
 
@@ -273,7 +273,7 @@
   }
 
   .output-label {
-    font-size: 11.52px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     font-weight: 600;
     color: var(--text-secondary);
   }
@@ -284,7 +284,7 @@
     border-radius: var(--radius-sm);
     background: var(--bg-primary);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
     line-height: 1.4;
     white-space: pre-wrap;
     word-break: break-all;
@@ -311,13 +311,13 @@
     background: rgba(245, 158, 11, 0.1);
     border: 1px dashed rgba(245, 158, 11, 0.4);
     border-radius: 4px;
-    font-size: 11.52px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     color: var(--text-secondary);
   }
 
   .load-blob-btn {
     padding: 2px 8px;
-    font-size: 11.2px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     font-weight: 500;
     border-radius: 4px;
     background: var(--accent-color);
@@ -332,7 +332,7 @@
 
   .mini-copy-btn {
     padding: 1px 8px;
-    font-size: 10.88px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
     font-weight: 500;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -348,7 +348,7 @@
 
   .blob-error-msg {
     margin-top: 6px;
-    font-size: 11.52px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     color: var(--danger);
   }
 

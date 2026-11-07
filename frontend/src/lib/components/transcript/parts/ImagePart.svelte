@@ -122,7 +122,7 @@
     border: 1px dashed var(--border-color);
     border-radius: 6px;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
   }
 
   .image-failed {
@@ -133,7 +133,7 @@
     margin: 4px 0;
     border-radius: 4px;
     background: var(--bg-tertiary);
-    font-size: 12px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
     font-family: var(--font-mono);
   }
 

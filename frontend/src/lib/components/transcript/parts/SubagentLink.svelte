@@ -42,7 +42,7 @@
     background-color: rgba(168, 85, 247, 0.12);
     border: 1px solid rgba(168, 85, 247, 0.3);
     color: #a855f7;
-    font-size: 12px;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
