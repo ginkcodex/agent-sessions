@@ -8,16 +8,41 @@ fields are compatible; changes to required fields or semantics require a new
 unrelated and unchanged.
 
 Parent: [implementation plan](code-diagnostics.md). Task briefs:
-[CD-01](../tasks/CD-01.md), [task index](../tasks/README.md).
+[CD-01](../tasks/code-diagnostics/CD-01.md), [task index](../tasks/README.md).
 Fixtures and validation: `internal/codediagnostics/testdata/contract/` and
 `internal/codediagnostics/contract_test.go`. The fixtures use synthetic identities
 and source only, never real project contents or secrets.
+
+## R13 additive ruby-lsp provider (2026-11-07)
+
+Ruby gets a second live provider, `ruby-lsp` (`openedDocuments`, the same
+`documentExtensions` as `rubocop`), one server per Ruby workspace. It answers
+`definition`, `references` and `hover` through the existing navigation
+methods and publishes no findings: RuboCop stays the source of Ruby
+diagnostics. Both providers own an opened Ruby file; navigation goes to
+ruby-lsp. Its definition and reference places outside the project are kept
+only under Ruby's library directory and the gem directories it loads, and
+open read-only through the existing external-file grant (`.rbs` files as
+plain text). Turning `ruby` off in `disabledLanguages` leaves out both
+providers. No new capability: an older server lists no `ruby-lsp` provider,
+and a Ruby file then gets the lint-only navigation reason. Contract version
+remains 1. Details: [code-diagnostics-ruby-lsp.md](code-diagnostics-ruby-lsp.md).
+
+## R12 additive Ruby language (2026-11-07)
+
+`ruby` joins the `disabledLanguages` IDs of R11, with one live provider,
+`rubocop` (`openedDocuments`, `documentExtensions` `.rb`, `.rake`, `.gemspec`,
+`.ru`). Its pushes are unversioned, so its findings carry
+`basis.observedVersion` and freshness `uncertain`, as vtsls's do, but keep
+their range. It offers no navigation, completion or code actions. No new
+capability: an older server ignores `ruby` and lists no `rubocop` provider.
+Contract version remains 1.
 
 ## R11 additive language settings (2026-10-30)
 
 Optional `disabledLanguages: string[]` on `attachCodeDiagnostics` names the
 languages turned off in Settings: `go`, `typescript`, `svelte`, `python`,
-`rust` (`internal/codediagnostics/languages.go`; the frontend keeps the same
+`rust`, and since R12 `ruby` (`internal/codediagnostics/languages.go`; the frontend keeps the same
 IDs in `frontend/src/lib/codeLanguages.ts`). At most 16 entries, each 1–32
 bytes, else `invalidArgument`; unknown IDs are ignored. The App wrapper is
 `AttachCodeDiagnostics(dir, contractVersion, expectedHostId, disabledLanguages)`
@@ -117,7 +142,7 @@ backend/path tests: `internal/files/probe_test.go`; host epoch tests:
 
 ## Managed installation scope clarification (2026-10-22)
 
-The user-approved [managed-tools backlog](../tasks/tool-installation.md) is separate
+The user-approved [managed-tools backlog](../tasks/tool-installation/README.md) is separate
 from project execution approval. Its TI-01 core has no App/RPC/UI route and changes
 no v1 wire semantics/capabilities. Blanket no-download language in earlier plans
 is superseded only by explicit current host-bound managed Install consent; attach,

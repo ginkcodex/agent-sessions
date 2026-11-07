@@ -35,7 +35,7 @@
 
   function activateWorkspaceTerminal() {
     const session = appState.selectedSessionMeta;
-    if (session && !session.cwdMissing) terminals.selectDirectory(session.cwd, link.dataHost ?? '');
+    if (session && !session.cwdMissing) terminals.selectDirectory(session.cwd, link.dataHost ?? '', session);
   }
 
   const fileOpener = createTerminalFileOpener({

@@ -19,9 +19,9 @@ code of their date, not the current code.
 
 | Performance milestone | Scope | Status |
 |---|---|---|
-| 1 | Synthetic baselines; correct/coalesced transcript loads; validated Codex source fast paths; unchanged checkpoint reuse; frontend listing retention; directory ignore-check batching; [briefs](../tasks/performance-m1.md) | Gate closed at 12/15; now 13/15 after PF-10. PF-07 partial (production opt-out, no further work planned); PF-08 superseded by M2; **PF-10A/B complete** |
-| Startup priority | Startup responsiveness slice pulled forward from M4; [plan](performance-startup.md), [briefs](../tasks/performance-startup.md) | Complete 6/6, plus the ST-06A/B large-index follow-up |
-| 2 | Incremental transcripts: provider-owned resumable state, immutable snapshots, byte-bounded cache, shared FTS loading, transcript deltas; [design](performance-m2.md), [briefs](../tasks/performance-m2.md) | Complete 12/12 ([gate](../perf.md#it-12--integrated-evidence-and-milestone-gate-2026-10-25)) |
+| 1 | Synthetic baselines; correct/coalesced transcript loads; validated Codex source fast paths; unchanged checkpoint reuse; frontend listing retention; directory ignore-check batching; [briefs](../tasks/performance/README.md) | Gate closed at 12/15; now 13/15 after PF-10. PF-07 partial (production opt-out, no further work planned); PF-08 superseded by M2; **PF-10A/B complete** |
+| Startup priority | Startup responsiveness slice pulled forward from M4; [plan](performance-startup.md), [briefs](../tasks/performance-startup/README.md) | Complete 6/6, plus the ST-06A/B large-index follow-up |
+| 2 | Incremental transcripts: provider-owned resumable state, immutable snapshots, byte-bounded cache, shared FTS loading, transcript deltas; [design](performance-m2.md), [briefs](../tasks/performance-m2/README.md) | Complete 12/12 ([gate](../perf.md#it-12--integrated-evidence-and-milestone-gate-2026-10-25)) |
 | 3 | Shared per-root project index, separate Git-status freshness, coalesced refresh and safe invalidation | Complete 10/10 automated gate ([evidence](../perf.md#pi-10--integrated-milestone-gate-2026-10-25)); native checks unperformed |
 | 4 | Per-source persistent checkpoints, targeted scans, progressive cold discovery, catalog deltas/paging, bounded fair FTS job batches | Roadmap only |
 | 5 | Lazy expensive content, bounded rendering memoization, transcript/tree/source virtualization | Roadmap only |
@@ -37,7 +37,7 @@ implement them wholesale.
 ## Next
 
 1. **PF-10A, then PF-10B: Codex checkpoint reuse**
-   ([briefs](../tasks/performance-m1.md#pf-10--codex-checkpoint-reuse)). Every
+   ([briefs](../tasks/performance/PF-10.md)). Every
    Codex scan decodes each unchanged rollout's checkpoint three times and
    re-encodes it once. Since M2's resolver scans on every Codex load and append,
    this is now on the live path: a warm append costs 16.6 ms, 19 MB and 285k
@@ -50,7 +50,7 @@ implement them wholesale.
    ([evidence](../perf.md#pf-10b--cross-scan-checkpoint-cache-2026-10-25)):
    unchanged scans do zero decodes; the 64-extra append now takes 2.36 ms.
 2. **Milestone 3: shared project index.** [Design](performance-m3.md) and
-   [≤4h briefs](../tasks/performance-m3.md) complete (10/10 automated gate). Mandatory reconciliation preserves external-change
+   [≤4h briefs](../tasks/performance-m3/README.md) complete (10/10 automated gate). Mandatory reconciliation preserves external-change
    correctness; retained paths are explicitly unverified, status is separate,
    and concurrent requests coalesce. Project watchers and uncapped Search reuse
    are deferred explicitly, not assumed.
@@ -68,7 +68,7 @@ Not assigned to a milestone yet, from the M2 gate:
 ## Milestone 1
 
 Briefs, dependencies and acceptance criteria:
-[performance-m1.md](../tasks/performance-m1.md). Evidence for each task is
+[performance-m1.md](../tasks/performance/README.md). Evidence for each task is
 linked from its brief; the gate is
 [PF-15](../perf.md#pf-15--integrated-evidence-and-milestone-gate-2026-10-24).
 

@@ -117,6 +117,8 @@ func setupTestService(t *testing.T) (*Service, *providertest.Fake) {
 	fake.Blobs["claude-code:s1:binary-blob"] = []byte{0x00, 0x01, 0x02, 0xff}
 
 	svc := NewService(catalog, provider.Set{fake})
+	// Keep the developer's registered workspaces out of the group tree.
+	svc.SetDataDir(t.TempDir())
 	return svc, fake
 }
 
@@ -279,6 +281,9 @@ func TestListSessionsResolvesEveryTreeKey(t *testing.T) {
 	}
 	catalog.Apply(provider.ScanResult{Changed: []model.SessionMeta{parent, child, other}})
 	svc := NewService(catalog, nil)
+	// Without its own data dir the service lists the developer's registered
+	// workspaces, and an empty one has no sessions to return.
+	svc.SetDataDir(t.TempDir())
 
 	for _, mode := range []GroupMode{GroupModeDirAgent, GroupModeAgentDir, GroupModeFlat} {
 		groups, err := svc.ListGroups(mode, FilterOpts{})

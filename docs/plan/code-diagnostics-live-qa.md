@@ -23,7 +23,7 @@ were used. Only documentation is changed.
 
 The full CD-26 suite was **not rerun** for CD-27. Its recorded Go/race, frontend
 438/438, check/build and repeated fake lifecycle results remain attributed to
-[CD-26](../tasks/CD-26.md#evidence-and-precise-remaining-gaps-2026-10-22), not new
+[CD-26](../tasks/code-diagnostics/CD-26.md#evidence-and-precise-remaining-gaps-2026-10-22), not new
 live evidence. Before executing the live matrix, rerun that suite in a prepared
 QA environment with existing dependencies and approval for any configuration
 execution; do not fetch tools/dependencies implicitly.
@@ -44,7 +44,7 @@ Each blocker must be resolved and evidenced, not hidden by enabling a flag.
 | P4 — server approval / versions | Obtain explicit approval for preinstalled host/project executables and disposable contained fixtures; record fixed argv, runtime/packages, fingerprint, initialize/sync/encoding, push version behavior and crashes through the Go adapters. Go spike: gopls v0.24.0 darwin/arm64 only. TS: no approved installed LSP wrapper verified; private Zed vtsls 0.3.0 + TS 5.9.3 observation is provisional and unversioned, not production support. Svelte: installed server missing, no version verified; `svelte-check` 4.7.6 is a checker, not an LSP server. Obtain approved preinstalled `svelte-language-server` plus Svelte/TypeScript packages and verify before changing its empty support list. No installs as part of this task. |
 | P5 — reconciliation | Complete CD-25 authoritative external rename/delete/delete-recreate discovery and deleted checker-set clearing through the production route without guessing deletion from read failures. Preserve dirty/uncertain drafts. All three adapter seams are `unwatched`; reject watches and visibly mark unopened-file coverage stale until reconciliation, never continuous synchronization. |
 | P6 — native environment | Runnable native builds and an interactive operator, including separate investigation of the macOS UTType link failure; real Linux and Windows WebViews and Windows/WSL distro. Provide disposable clean/finding/missing-tool/unsupported fixtures with Unicode/CRLF, nested roots and owned descendants. |
-| P7 — remote identity / compatibility | Complete CD-09 authenticated canonical SSH/WSL host/root identity activation (see [identity split](../tasks/CD-09-identity.md)), then supply approved disposable remote targets, installed host-side tools and controlled older servers. Client SSH executable presence is not a remote identity or connectivity test. Never copy projects locally or tunnel LSP to simulate remote QA. |
+| P7 — remote identity / compatibility | Complete CD-09 authenticated canonical SSH/WSL host/root identity activation (see [identity split](../tasks/code-diagnostics/CD-09-identity.md)), then supply approved disposable remote targets, installed host-side tools and controlled older servers. Client SSH executable presence is not a remote identity or connectivity test. Never copy projects locally or tunnel LSP to simulate remote QA. |
 
 ## Prioritized host/platform × server matrix — all live cells unperformed
 

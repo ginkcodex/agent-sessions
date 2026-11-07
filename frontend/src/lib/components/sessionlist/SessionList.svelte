@@ -218,7 +218,7 @@
   }
 
   function handleSelectSession(session: SessionMeta) {
-    if (!session.cwdMissing) terminals.selectDirectory(session.cwd, link.dataHost ?? '');
+    if (!session.cwdMissing) terminals.selectDirectory(session.cwd, link.dataHost ?? '', session);
     appState.selectSession(session.ref, 'push');
   }
 

@@ -8,7 +8,7 @@ import (
 )
 
 func TestLanguagesCoverEveryProviderAndTool(t *testing.T) {
-	providers := []string{goplsProviderID, "go-vet", GoSyntaxProviderID, tsProviderID, svelteLSProviderID, "svelte-check", ruffProviderID, pyrightProviderID, rustAnalyzerProviderID, "cargo-check"}
+	providers := []string{goplsProviderID, "go-vet", GoSyntaxProviderID, tsProviderID, svelteLSProviderID, "svelte-check", ruffProviderID, pyrightProviderID, rustAnalyzerProviderID, "cargo-check", rubocopProviderID, rubyLspProviderID}
 	seen := map[string]string{}
 	for _, l := range Languages() {
 		for _, id := range append(slices.Clone(l.Live), l.Saved...) {
@@ -33,7 +33,7 @@ func TestLanguagesCoverEveryProviderAndTool(t *testing.T) {
 	if want := managedtools.ProposableTools(); len(tools) != len(want) || !slices.Equal(slices.Sorted(slices.Values(tools)), slices.Sorted(slices.Values(want))) {
 		t.Fatalf("managed tools %v, proposable %v", tools, want)
 	}
-	if got := LiveProviderIDs(); !slices.Equal(got, []string{"gopls", "typescript", "svelte", "ruff", "pyright", "rust-analyzer"}) {
+	if got := LiveProviderIDs(); !slices.Equal(got, []string{"gopls", "typescript", "svelte", "ruff", "pyright", "rust-analyzer", "rubocop", "ruby-lsp"}) {
 		t.Fatalf("live providers %v", got)
 	}
 	// Callers cannot change the table.
@@ -43,13 +43,15 @@ func TestLanguagesCoverEveryProviderAndTool(t *testing.T) {
 	}
 }
 
+// Every live provider publishes through a bridge, except ruby-lsp: it only
+// answers navigation, and its pushes (none are expected) are dropped.
 func TestLiveBridgeCoversEveryLiveProvider(t *testing.T) {
 	for _, id := range LiveProviderIDs() {
-		if liveBridge(id, AuthorizedRoot{}, nil, nil) == nil {
+		if liveBridge(id, AuthorizedRoot{}, nil, nil) == nil && id != rubyLspProviderID {
 			t.Errorf("live provider %q has no bridge", id)
 		}
 	}
-	for _, id := range []string{"", "lsp", "go-vet", "cargo-check"} {
+	for _, id := range []string{"", "lsp", "go-vet", "cargo-check", rubyLspProviderID} {
 		if liveBridge(id, AuthorizedRoot{}, nil, nil) != nil {
 			t.Errorf("provider %q should be ignored", id)
 		}
@@ -101,7 +103,7 @@ func TestDisabledLanguagesLeaveDiscovery(t *testing.T) {
 		for _, r := range regs {
 			ids = append(ids, r.ProviderID)
 		}
-		if !slices.Equal(ids, []string{goplsProviderID, tsProviderID, svelteLSProviderID}) {
+		if !slices.Equal(ids, []string{goplsProviderID, tsProviderID, svelteLSProviderID, rubocopProviderID, rubyLspProviderID}) {
 			t.Errorf("%s: %v", name, ids)
 		}
 		// Python has sources, Rust none: only Python is reported, as disabled

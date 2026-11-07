@@ -14,6 +14,7 @@ var pushSpecs = map[string]pushSpec{
 	ruffProviderID:         {partialRuffNotice, func(file string) bool { _, ok := PythonLanguageID(file); return ok }},
 	pyrightProviderID:      {partialPyrightNotice, func(file string) bool { _, ok := PythonLanguageID(file); return ok }},
 	rustAnalyzerProviderID: {partialRustNotice, func(file string) bool { return strings.HasSuffix(file, ".rs") }},
+	rubocopProviderID:      {partialRubocopNotice, func(file string) bool { _, ok := RubyLanguageID(file); return ok }},
 }
 
 // PushBridge turns one provider's publishDiagnostics for the files it owns into

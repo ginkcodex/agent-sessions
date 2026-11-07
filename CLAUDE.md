@@ -7,6 +7,46 @@ AI/agent attribution to commit messages. Likewise, do not add AI/agent
 attribution to pull request descriptions. Preserve this rule for all new
 changes, including amended or rewritten commits.
 
+## Docs: plans and tasks
+
+Every new feature request follows the same steps, before any code is written:
+
+1. **Plan:** write `docs/plan/<feature>.md` (goal, design, decisions, risks,
+   release criteria) and add it to the Features table in
+   `docs/plan/README.md`. Contracts, spikes, QA records and other supporting
+   notes for one plan sit beside it, flat, as `docs/plan/<feature>-<topic>.md`.
+2. **Task group:** create `docs/tasks/<feature>/`, named after the plan.
+   - `README.md` starts with `# <Feature> — tasks`, then
+     `- **Plan:** [<feature>.md](../../plan/<feature>.md)` and
+     `- **Progress:** N/M done`, then a table:
+     `| Task | Status | Scope | Est | Depends on |`, one row per task, each
+     linking to its file.
+   - One `<ID>.md` per task. IDs use a short prefix for the group plus a number
+     (`RB-01`). Each file starts with `# <ID> — <title>`, then a block of
+     `- **Status:**`, `- **Estimate:**`, `- **Depends on:**` and
+     `- **Plan:**` (a link to the plan), then the details: scope, likely
+     files, acceptance criteria and tests. Tasks are at most 4 h; split
+     larger work into more tasks before starting.
+3. **Indexes:** add the group to the Features tables in `TASKS.md` and
+   `docs/tasks/README.md`.
+
+While implementing, keep the progress current in the same change as the code:
+
+- Set the task file's Status and add what was done and how it was verified
+  (an `## Evidence` section: tests run, results, what was not checked).
+- Update the group README's table row and `**Progress:**` line, and the
+  Progress cells for the group in `TASKS.md` and `docs/tasks/README.md`.
+- Status values: ✅ Done · 🟡 Partial (say what is missing) · ⛔ Blocked
+  (say on what) · ⬜ Not started · ➖ Superseded. Planned QA is not a pass;
+  mark only what actually ran.
+- New work found along the way becomes a new task file and row, not an
+  untracked note.
+
+Milestones M0–M8 follow the same layout (`docs/plan/M*.md`,
+`docs/tasks/M*/`). Reference docs that are not plans stay in `docs/`
+(`formats.md`, `perf.md`). When moving or renaming a doc, `git grep` for its
+path and fix every link.
+
 ## Windows test builds
 
 Development runs in WSL2 on Windows. When the user asks for a Windows test

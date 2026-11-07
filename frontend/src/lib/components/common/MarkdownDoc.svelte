@@ -73,7 +73,7 @@
 <style>
   .markdown-doc {
     font-size: var(--markdown-font-size, 13px);
-    line-height: 1.55;
+    line-height: 1.6;
     color: var(--text-primary);
     word-break: break-word;
   }
@@ -95,9 +95,9 @@
     color: var(--text-primary);
   }
 
-  :global(.markdown-doc h1) { font-size: 1.385em; }
-  :global(.markdown-doc h2) { font-size: 1.231em; }
-  :global(.markdown-doc h3) { font-size: 1.077em; }
+  :global(.markdown-doc h1) { font-size: 1.428em; }
+  :global(.markdown-doc h2) { font-size: 1.255em; }
+  :global(.markdown-doc h3) { font-size: 1.083em; }
 
   :global(.markdown-doc ul, .markdown-doc ol) {
     margin: 0.5em 0;
@@ -117,14 +117,15 @@
     border-radius: 0 4px 4px 0;
   }
 
-  :global(.markdown-doc .inline-code) {
+  /* Marked writes inline code as a bare <code> and sanitizing strips classes,
+     so match any code outside a code block. Same look as the transcript's. */
+  :global(.markdown-doc :not(pre) > code) {
     font-family: var(--font-mono);
     font-size: 0.825em;
-    padding: 1px 4px;
-    border-radius: 4px;
-    background-color: var(--bg-tertiary);
+    padding: 1px 5px;
+    border-radius: 5px;
+    background-color: var(--segment-track);
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
   }
 
   :global(.markdown-doc img) {
@@ -162,6 +163,8 @@
     border: 1px solid var(--border-color);
     padding: 4px 8px;
     text-align: left;
+    /* A short cell lines up with the first line of a long one beside it. */
+    vertical-align: top;
     /* The inherited break-word lets columns shrink to one letter; keep whole
        words so each column fits its longest one and the table scrolls. */
     word-break: normal;
@@ -171,6 +174,11 @@
   :global(.markdown-doc th) {
     background-color: var(--bg-secondary);
     font-weight: 600;
+    vertical-align: bottom;
+  }
+
+  :global(.markdown-doc :is(th, td).nowrap) {
+    white-space: nowrap;
   }
 
   :global(.markdown-doc .code-block-container) {

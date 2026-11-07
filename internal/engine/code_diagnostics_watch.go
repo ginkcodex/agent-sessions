@@ -10,6 +10,10 @@ import (
 // syncWatcher starts the approved project watcher for one attachment, or stops
 // it when the attachment is no longer approved. It is idempotent: a watcher for
 // the same exact context is kept. Watchers are joined outside o.mu.
+//
+// One watcher serves both go-syntax and the live servers told of saved files
+// (gopls, ruby-lsp), so a project without Go sources is watched once its
+// approved proposal has such a server.
 func (o *diagnosticsOwner) syncWatcher(id string) {
 	o.watchMu.Lock()
 	defer o.watchMu.Unlock()
@@ -19,7 +23,7 @@ func (o *diagnosticsOwner) syncWatcher(id string) {
 	current := o.watchers[id]
 	closed := o.closed
 	o.mu.Unlock()
-	approved := attached && !closed && o.manager.InProcessApproved(c, cd.GoSyntaxProviderID)
+	approved := attached && !closed && (o.manager.InProcessApproved(c, cd.GoSyntaxProviderID) || o.live != nil && o.manager.LiveWatched(c))
 	if current != nil {
 		select {
 		case <-current.Done():
@@ -43,7 +47,8 @@ func (o *diagnosticsOwner) syncWatcher(id string) {
 	if o.live != nil {
 		live := o.live
 		options.OnChanges = func(parent context.Context, changes []cd.FileChange) {
-			// Approved gopls session only: saved-file transitions, never text.
+			// Running gopls and ruby-lsp sessions only: saved-file transitions,
+			// never text, and never a server start.
 			ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 			defer cancel()
 			_ = live.WatchedFiles(ctx, root, changes)

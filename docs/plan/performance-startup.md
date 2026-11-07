@@ -1,8 +1,8 @@
 # Startup responsiveness — priority package before Milestone 2
 
 Status: original package **complete** 2026-10-24 (6/6); ST-06A/B large-index follow-up complete after the user retest (synthetic evidence only). Original gate: ST-00 documentation, ST-01 measurement, ST-02 (ST-02A engine, ST-02B adapters), ST-03, ST-04 and the ST-05 integrated gate. Native GUI, real SSH and Windows execution were not performed.
-[Sequential task briefs](../tasks/performance-startup.md) ·
-[Performance roadmap](performance.md) · [Task tracker](../../TASKS.md#startup-priority-package).
+[Sequential task briefs](../tasks/performance-startup/README.md) ·
+[Performance roadmap](performance.md) · [Task tracker](../tasks/performance-startup/README.md).
 
 ## Scope and evidence boundary
 
@@ -88,7 +88,7 @@ Windows were not exercised. Next: Milestone 2 design and task breakdown.
 ST-02 settles concrete DTO, event and capability names with tests before
 ST-03 consumes them. The following behavior is implemented across the engine
 and adapters; ST-03 now provides frontend presentation. ST-02A owns the engine snapshot/event
-contract; [the ST-02 brief](../tasks/performance-startup.md#st-02--backend-discovery-readiness-contract)
+contract; [the ST-02 brief](../tasks/performance-startup/ST-02.md)
 fixes DTO/event/capability names and documents outcome rules and test evidence.
 ST-02B implements optional Backend/App/RPC negotiation, unavailable fallback,
 route-scoped Wails events and local/RPC parity; ST-03 consumes that contract. The split
@@ -148,7 +148,7 @@ counts distinguish true agent absence from empty history. Existing catalog queue
 groups-before-sessions reconciliation, selection and observation hooks remain.
 Fourteen new deterministic tests; frontend tests **697/697**, check **0 errors**
 (one existing config warning), build **PASS** (existing chunk-size warning).
-[Full ST-03 evidence](../tasks/performance-startup.md#st-03--truthful-frontend-startup-states).
+[Full ST-03 evidence](../tasks/performance-startup/ST-03.md).
 Native GUI/remote use unverified; no backend changes or startup speedup claimed.
 ST-04 later resolved its measurement gate (see ST-04 result); M1 blockers unchanged.
 
@@ -224,7 +224,7 @@ separately exercised.
 ## Large-index follow-up (2026-10-24)
 
 The retest still shows >10 s locally. ST-01/ST-05 used small databases and did not
-exclude database-size-dependent integrity costs. [ST-06A/B](../tasks/performance-startup.md#st-06a--reproduce-large-index-startup-cost)
+exclude database-size-dependent integrity costs. [ST-06A/B](../tasks/performance-startup/ST-06A.md)
 measure a generated large FTS index first, then validate early read-only cached-hint
 publication while retaining mandatory writer integrity checking and recovery. This
 extends startup work before M2, not the completed historical small-fixture gate.
@@ -232,7 +232,7 @@ extends startup work before M2, not the completed historical small-fixture gate.
 
 ## Remote startup follow-up — ST-07 (2026-10-24)
 
-[Sequential briefs](../tasks/performance-startup.md#st-07--remote-startup-responsiveness-2026-10-24).
+[Sequential briefs](../tasks/performance-startup/ST-07.md).
 Remote initialize currently waits for full Engine.Start, hiding ST-06B cached hints.
 Prepare capabilities/diagnostics identity first, then track startup under RPC Serve;
 reply at current-lifetime catalog readiness and gate noncatalog operations until
@@ -242,4 +242,4 @@ opt-in content-free observers; generated evidence is not native SSH/UI verificat
 
 ST-07A–F complete: [generated integration evidence](../perf.md#st-07--remote-early-catalog-handshake-2026-10-24). Real SSH/native timing remains unverified.
 
-ST-08 correctness follow-up: [startup connection snapshot rollback](../tasks/performance-startup.md#st-08--startup-connection-snapshot-rollback-2026-10-24). Newer connection events must outrank delayed initial Local snapshots; preserve catalog epoch guards.
+ST-08 correctness follow-up: [startup connection snapshot rollback](../tasks/performance-startup/ST-08.md). Newer connection events must outrank delayed initial Local snapshots; preserve catalog epoch guards.

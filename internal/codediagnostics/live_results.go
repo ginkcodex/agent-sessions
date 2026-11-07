@@ -64,9 +64,10 @@ func normalizeLiveDiagnostic(in Diagnostic, d *documentState, documentID string,
 	if in.LocationIssue == "invalidRange" {
 		partial = true
 	}
-	// vtsls omits the optional publication version. Keep its ranges as uncertain
-	// observations of this mirror, never as server-confirmed current results.
-	observed := version == nil && d.owner.ProviderID == tsProviderID
+	// vtsls and RuboCop omit the optional publication version. Keep their ranges
+	// as uncertain observations of this mirror, never as server-confirmed
+	// current results.
+	observed := version == nil && (d.owner.ProviderID == tsProviderID || d.owner.ProviderID == rubocopProviderID)
 	if observed {
 		v := d.version
 		in.Basis.ObservedVersion = &v

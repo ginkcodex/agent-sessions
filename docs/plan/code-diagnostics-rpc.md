@@ -75,7 +75,7 @@ snapshot. No frontend store or live/document operation was added.
   ./internal/rpc/... ./internal/app/...` passes (0 issues). Focused diagnostics
   RPC tests also pass 20 consecutive race-enabled runs.
 - No real SSH/WSL identity acquisition or native Windows/Linux runtime QA claimed.
-  [Explicitly split identity activation work](../tasks/CD-09-identity.md) records
+  [Explicitly split identity activation work](../tasks/code-diagnostics/CD-09-identity.md) records
   launcher evidence, trust requirements and four-hour work packages. CD-09 remains
   blocked. Progress is 10/28 for CD-01…CD-08 + CD-10…CD-11 only; frontend work proceeded
 locally against committed contracts/tests under an explicit dependency exception.

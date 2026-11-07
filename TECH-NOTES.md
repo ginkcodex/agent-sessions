@@ -71,7 +71,7 @@ History: under Wails v2, Control+Command+F entered fullscreen but pressing it
 again did not leave it. After the Wails v3 upgrade the user verified on a
 macOS desktop build that fullscreen enters and exits. F11 on Linux and
 Windows, and maximised-window restore on Windows, have not been tested on
-real machines (see [docs/wails-v3-upgrade.md](docs/wails-v3-upgrade.md)).
+real machines (see [docs/plan/wails-v3-upgrade.md](docs/plan/wails-v3-upgrade.md)).
 Unit tests cover the frontend and toggle logic, not native shortcut delivery.
 
 ## Mouse side buttons (back / forward)

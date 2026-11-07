@@ -2,7 +2,7 @@
 
 - Status: planned; implementation not started.
 - Agreed layout: IntelliJ-inspired history browser inside Go to File.
-- Task breakdown: [GH-01…GH-18](../tasks/git-history.md).
+- Task breakdown: [GH-01…GH-18](../tasks/git-history/README.md).
 
 ## Goal and scope
 
@@ -178,7 +178,7 @@ instructions to duplicate infrastructure.
 
 ## Delivery and verification
 
-See the [task backlog](../tasks/git-history.md) for dependencies and acceptance
+See the [task backlog](../tasks/git-history/README.md) for dependencies and acceptance
 criteria. All tasks start unimplemented. Contract/backend work precedes
 transport; revision-safe identity precedes viewer integration. Layout work can
 use contract fixtures while backend integration proceeds.

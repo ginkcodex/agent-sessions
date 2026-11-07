@@ -124,7 +124,7 @@ viewing and editing keeps the gutter width and does not move the text.
 
 412 frontend tests pass; check/build pass with existing warnings. Native tooltip,
 gutter, keyboard/screen-reader and theme QA remain CD-17. See
-[CD-15 evidence](../tasks/CD-15.md#completion-evidence). No next task started.
+[CD-15 evidence](../tasks/code-diagnostics/CD-15.md#completion-evidence). No next task started.
 
 ## CD-14 source indicators
 
@@ -137,7 +137,7 @@ find offsets or selection. Accessible gutter labels coexist with Git/line select
 keyboard activation opens messages. Unsupported WebViews retain gutters/messages.
 Diff, blame, rendered previews and images never receive source overlays. Directory,
 active-path and attachment gates prevent cross-file markers; empty replacement clears.
-No CodeMirror static imports. See [CD-14 evidence](../tasks/CD-14.md#completion-evidence).
+No CodeMirror static imports. See [CD-14 evidence](../tasks/code-diagnostics/CD-14.md#completion-evidence).
 Validation: **409/409 frontend tests**, check 0 errors (existing configuration warning),
 build passed with existing chunk advisory and lazy editor chunk. Native paint/theme,
 wrap/layout, focus and screen-reader QA remains CD-17; no next task started.
@@ -151,7 +151,7 @@ of expansion, filtering, listing truncation or tabs. Provider originals survive
 shared grouping and single-provider clearing. Tree/search badges expose severity,
 stale/uncertain and partial/truncated context independently of Git and ignored tags;
 no discovery changes or diagnostic-only nodes are introduced. See
-[completion evidence](../tasks/CD-13.md#completion-evidence). Frontend validation:
+[completion evidence](../tasks/code-diagnostics/CD-13.md#completion-evidence). Frontend validation:
 **403/403 tests**, check 0 errors (existing configuration warning), build passed
 (existing chunk-size advisory). Native layout/theme/screen-reader QA remains CD-17.
 
@@ -169,7 +169,7 @@ unverified saved ranges stay panel-only; no saves, reloads or destructive guards
 bypassed. Markdown/SVG/diff locations switch to source. CodeMirror selection is a
 selection-only transaction preserving document/undo history.
 
-See [CD-12 completion evidence](../tasks/CD-12.md#completion-evidence). Frontend
+See [CD-12 completion evidence](../tasks/code-diagnostics/CD-12.md#completion-evidence). Frontend
 validation: **399/399 tests**, check 0 errors (existing config warning), build passed.
 Node async/store/controller/SSR and keyboard-handler fixtures are not native QA;
 focus/paint/scroll and native activation verification remain CD-16/CD-17 work.
@@ -182,7 +182,7 @@ The dialog calls asynchronous `show(dir)` and `hide()` on visibility/route chang
 with no check execution on attach, approval, dismissal, save or context changes.
 `CodeChecks.svelte` consumes shared selectors and store-owned mutation gating,
 including ack/event-gap ownership and immediate fail-closed revocation.
-See [CD-11 completion evidence](../tasks/CD-11.md#completion-evidence) for tests
+See [CD-11 completion evidence](../tasks/code-diagnostics/CD-11.md#completion-evidence) for tests
 and limitations. Manual keyboard/focus QA has not been performed.
 
 

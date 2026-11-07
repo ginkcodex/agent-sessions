@@ -1,6 +1,6 @@
 # Code checks: choosing languages (2026-10-30)
 
-**Status: implemented 2026-10-30** ([tasks CL-01…CL-08](../tasks/code-languages.md);
+**Status: implemented 2026-10-30** ([tasks CL-01…CL-08](../tasks/code-diagnostics-languages/README.md);
 wire details in the [contract, R11](code-diagnostics-contract.md#r11-additive-language-settings-2026-10-30)).
 Where the code differs from the plan below:
 
@@ -38,6 +38,7 @@ closed list of servers the app knows and pins; adding one is a code change.
   | Svelte | `svelte`, `svelte-check` | svelte-language-server |
   | Python | `ruff`, `pyright` | Ruff, Pyright |
   | Rust | `rust-analyzer`, `cargo-check` | rust-analyzer |
+  | Ruby | `rubocop`, `ruby-lsp` | — |
 
   Node.js is only a runtime and follows the languages that need it.
 - **On by default.** Nothing changes until the user turns a language off. The

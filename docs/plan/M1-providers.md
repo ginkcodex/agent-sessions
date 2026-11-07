@@ -1,6 +1,6 @@
 # M1 — OpenCode, Codex and scan/group core: detailed plan
 
-Covers M1-01 … M1-14 in [TASKS.md](../../TASKS.md). The Wails app and UI
+Covers M1-01 … M1-14 in the [M1 task group](../tasks/M1/README.md). The Wails app and UI
 (M1-15 … M1-28) are planned separately. The shared contracts in [M0.md](M0.md)
 are authoritative: module `github.com/ginkcode/agent-sessions`, `model` types,
 `provider.Provider`, `ScanState`/`ScanResult`, `Diagnostics`, `jsonl.Reader`,

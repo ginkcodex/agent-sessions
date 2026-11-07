@@ -157,21 +157,37 @@ func (d *LiveDocuments) Navigate(ctx context.Context, req NavigationRequest) (Na
 	return p.documents.Navigate(ctx, req)
 }
 
-// WatchedFiles notifies the current gopls session (only) of saved Go file
-// transitions observed by the approved project watcher. Non-Go paths and
-// projects without a running session are ignored.
+// watchedFileProviders are the live servers told of saved-file transitions,
+// each for its own files: gopls for Go, ruby-lsp for Ruby (it re-indexes
+// closed files from them). Other servers, RuboCop included, get none.
+var watchedFileProviders = map[string]func(path string) bool{
+	goplsProviderID:   func(path string) bool { return strings.HasSuffix(path, ".go") },
+	rubyLspProviderID: func(path string) bool { _, ok := RubyLanguageID(path); return ok },
+}
+
+func watchedFileFor(providerID, path string) bool {
+	accept, ok := watchedFileProviders[providerID]
+	return ok && accept(path)
+}
+
+// WatchedFiles notifies the current gopls and ruby-lsp sessions (only) of
+// saved Go and Ruby file transitions observed by the approved project watcher.
+// Other paths and projects without a running session are ignored.
 func (d *LiveDocuments) WatchedFiles(ctx context.Context, root AuthorizedRoot, changes []FileChange) error {
 	p, ok := d.project(root)
 	if !ok {
 		return failure("unsupported", "Live discovery is unavailable")
 	}
-	var goChanges []FileChange
+	var watched []FileChange
 	for _, c := range changes {
-		if strings.HasSuffix(c.Path, ".go") {
-			goChanges = append(goChanges, c)
+		for _, accept := range watchedFileProviders {
+			if accept(c.Path) {
+				watched = append(watched, c)
+				break
+			}
 		}
 	}
-	return p.documents.WatchedFiles(ctx, root, goChanges)
+	return p.documents.watchedFiles(ctx, root, watched, watchedFileFor)
 }
 
 func (d *LiveDocuments) notification(n SessionNotification) {

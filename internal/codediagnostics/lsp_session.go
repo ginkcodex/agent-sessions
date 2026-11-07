@@ -114,6 +114,25 @@ type ServerConfig struct {
 	// follows symlinks out of the project (a DMG staging link to /Applications),
 	// and exits when macOS refuses the watch handles. Bound into the policy.
 	AcknowledgeWatchers bool
+	// ExitFailures is fixed, adapter-owned text for a failed server that exited
+	// with one of these codes (the ruby-lsp wrapper exits 3 for an
+	// incompatible gem). It replaces the generic failure as an "unsupported"
+	// error. Display only: it changes no launch input, so it is not in the
+	// policy.
+	ExitFailures map[int]string `json:"-"`
+	// Reindex is a read-only document request (ruby-lsp:
+	// textDocument/documentSymbol) sent, result discarded, for each open
+	// document opened or changed since its last one, before a navigation
+	// request: ruby-lsp indexes an open document only while answering such a
+	// request. Empty for every other adapter. The request reads only what the
+	// server already has, so it is not in the policy.
+	Reindex string `json:"-"`
+	// ExternalRoots, when set, are the only host directories a navigation
+	// answer may point into outside the project (ruby-lsp: the interpreter's
+	// lib/ruby and the GEM_PATH directories); other external locations are
+	// dropped. Empty keeps every external location, as for the other adapters.
+	// Derived from the executable and GEM_PATH, which the policy already binds.
+	ExternalRoots []string `json:"-"`
 	// BuildContext names an automatically inferred, immutable build context of
 	// the same semantic server (for gopls: the canonical, comma-joined custom
 	// build tags). The flags themselves reach the server through Settings and the
@@ -376,6 +395,7 @@ func (s *lspSession) waitProcess(proc SessionProcess) {
 		}
 		s.mu.Lock()
 		s.exitStatus = status
+		s.exitCode, s.exitKnown = code, err == nil && code >= 0
 		s.mu.Unlock()
 		close(s.exited)
 	}()
@@ -697,6 +717,8 @@ type lspSession struct {
 	// Failure report facts (FailureLog only).
 	started    time.Time
 	exitStatus string
+	exitCode   int // valid when exitKnown: the process exited (not signaled)
+	exitKnown  bool
 
 	// Transport-lifetime history: never evicted on close or attachment changes.
 	publicationURIs map[string]bool // value true means reused/ambiguous
@@ -707,6 +729,9 @@ type lspSession struct {
 	// of the open lifecycle can therefore only describe that lifecycle.
 	wireHigh  int64
 	wireBases map[string]int64 // open lifecycles only
+	// unindexed: open URIs opened or changed since their last Reindex request
+	// (config.Reindex only).
+	unindexed map[string]bool
 
 	ready    chan struct{} // closed once with the first terminal/ready result
 	readyErr error
@@ -1140,6 +1165,9 @@ func (s *lspSession) stop(phase string, cause error, graceful bool) {
 			}
 		}
 		s.mu.Lock()
+		if text := s.config.ExitFailures[s.exitCode]; phase == phaseFailed && s.exitKnown && text != "" {
+			cause = failure("unsupported", text)
+		}
 		s.phase = phase
 		s.snap.Err = cause
 		var report SessionFailure

@@ -1,7 +1,7 @@
 # Performance Milestone 3 — Shared project index
 
 Status: automated gate complete 2026-10-25, PI-01…10. Native platform/GUI checks remain unperformed. Prerequisites PF-10A/B
-complete. [Roadmap](performance.md), [≤4h briefs](../tasks/performance-m3.md).
+complete. [Roadmap](performance.md), [≤4h briefs](../tasks/performance-m3/README.md).
 
 ## Goal and evidence
 

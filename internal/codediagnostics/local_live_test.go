@@ -17,7 +17,7 @@ func TestDiscoverLocalLiveBindsToolchainAndHoldsOtherLanguages(t *testing.T) {
 	tsPath, tsEnv := tsHost(t)
 	live := LocalLiveEnvironment{GoPath: []string{bin}, Path: tsPath, Go: env, TS: tsEnv, Ruff: RuffEnvironment{Home: tsEnv.Home}, Pyright: PyrightEnvironment{Home: tsEnv.Home, NodeDir: tsEnv.NodeDir}}
 	regs, err := DiscoverLocalLive(root, live)
-	if err != nil || len(regs) != 6 {
+	if err != nil || len(regs) != 8 {
 		t.Fatal(err, regs)
 	}
 	g := regs[0]

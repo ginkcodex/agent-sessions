@@ -2,8 +2,8 @@
 
 Status: complete 2026-10-25; IT-01…IT-12 complete (12/12);
 [gate evidence](../perf.md#it-12--integrated-evidence-and-milestone-gate-2026-10-25).
-[Task briefs IT-01…IT-12](../tasks/performance-m2.md) ·
-[Performance roadmap](performance.md) · [Task tracker](../../TASKS.md#performance-milestone-2).
+[Task briefs IT-01…IT-12](../tasks/performance-m2/README.md) ·
+[Performance roadmap](performance.md) · [Task tracker](../tasks/performance-m2/README.md).
 
 ## Problem
 

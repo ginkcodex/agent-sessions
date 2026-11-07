@@ -76,9 +76,19 @@ type fakeSrv struct {
 	termOnce   sync.Once
 	mu         sync.Mutex
 	methods    []string
+	code       int // exit code Wait reports; set before exit
 }
 
-func (f *fakeSrv) Wait() (int, error) { <-f.exited; return 0, nil }
+func (f *fakeSrv) Wait() (int, error) { <-f.exited; return f.code, nil }
+
+// exit ends the fake process with code, as a server exiting on its own.
+func (f *fakeSrv) exit(code int) {
+	f.code = code
+	f.once.Do(func() { close(f.exited) })
+	_ = f.toTr.Close()
+	_ = f.errW.Close()
+}
+
 func (f *fakeSrv) Terminate() error {
 	f.termOnce.Do(func() { close(f.terminated) })
 	f.once.Do(func() { close(f.exited) })

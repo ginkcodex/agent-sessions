@@ -3,7 +3,9 @@ package codediagnostics
 import (
 	"context"
 	"errors"
+	"maps"
 	"path/filepath"
+	"slices"
 )
 
 // DocumentServer is the fixed, adapter-owned choice of server and language for
@@ -215,6 +217,57 @@ func (s *lspSession) closeLifecycle(uri string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.wireBases, uri)
+	delete(s.unindexed, uri)
+}
+
+// markUnindexed records an opened or changed document for the next Reindex
+// pass. Recorded before delivery, as the lifecycle is: one extra request is
+// harmless, a missed one leaves the draft unindexed.
+func (s *lspSession) markUnindexed(uri string) {
+	if s.config.Reindex == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, open := s.wireBases[uri]; !open {
+		return
+	}
+	if s.unindexed == nil {
+		s.unindexed = make(map[string]bool)
+	}
+	s.unindexed[uri] = true
+}
+
+// reindex sends config.Reindex for each open document changed since its last
+// one, in URI order, and discards the answers. It runs before a navigation
+// request on the same transport, so the server sees the drafts first. A
+// document whose request was not answered stays marked; an error answer
+// unmarks it (asking again would fail again). At most the session's open
+// documents are sent.
+func (s *lspSession) reindex(ctx context.Context, tr *LSPTransport) error {
+	if s.config.Reindex == "" {
+		return nil
+	}
+	s.mu.Lock()
+	uris := slices.Sorted(maps.Keys(s.unindexed))
+	clear(s.unindexed)
+	s.mu.Unlock()
+	for i, uri := range uris {
+		_, err := tr.Call(ctx, s.config.Reindex, map[string]any{"textDocument": map[string]any{"uri": uri}})
+		var answer *LSPResponseError
+		if err == nil || errors.As(err, &answer) {
+			continue
+		}
+		s.mu.Lock()
+		for _, u := range uris[i:] {
+			if _, open := s.wireBases[u]; open {
+				s.unindexed[u] = true
+			}
+		}
+		s.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 // PublicationVersionFor maps a versioned publication for path to the document
@@ -283,6 +336,11 @@ const maxWatchedChanges = 256
 // resolve inside the root; deleted paths are validated portable joins under the
 // canonical root. Unsupported/stopped sessions are silently skipped.
 func (d SessionDocuments) WatchedFiles(ctx context.Context, root AuthorizedRoot, changes []FileChange) error {
+	return d.watchedFiles(ctx, root, changes, nil)
+}
+
+// watchedFiles is WatchedFiles for the servers accept allows (all when nil).
+func (d SessionDocuments) watchedFiles(ctx context.Context, root AuthorizedRoot, changes []FileChange, accept func(providerID, path string) bool) error {
 	if len(changes) == 0 {
 		return nil
 	}
@@ -304,6 +362,9 @@ func (d SessionDocuments) WatchedFiles(ctx context.Context, root AuthorizedRoot,
 			servers = d.Cover(root, c.Path)
 		}
 		for _, server := range servers {
+			if accept != nil && !accept(server.Config.ProviderID, c.Path) {
+				continue
+			}
 			// Coverage is not ownership: look the exact configured session up
 			// directly so a sibling context that does not own the path still
 			// receives the change.
@@ -397,6 +458,7 @@ func (d SessionDocuments) Apply(ctx context.Context, step DocumentStep) error {
 		// Record before attempting delivery: an interrupted write may have reached
 		// the server. A failed open must never make the next open look isolated.
 		s.openLifecycle(uri)
+		s.markUnindexed(uri)
 		wire, err := s.wireVersion(uri, step.Version)
 		if err != nil {
 			return err
@@ -408,6 +470,7 @@ func (d SessionDocuments) Apply(ctx context.Context, step DocumentStep) error {
 		if err != nil {
 			return err
 		}
+		s.markUnindexed(uri)
 		method = "textDocument/didChange"
 		changes := make([]map[string]any, 0, len(step.Changes))
 		for _, c := range step.Changes {

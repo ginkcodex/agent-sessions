@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixtureStore, loadServerComponent, loadServerModule, renderWithFixture } from './helpers.mjs';
+import { fixtureStore, loadServerComponent, loadServerModule, renderWithFixture, renderedButtons } from './helpers.mjs';
 import { CODE_LANGUAGES, codeLanguageIds, languageList, languageOfPath, languageOfProvider } from '../src/lib/codeLanguages.ts';
 import { liveLanguages, providerMode, providerStatus } from '../src/lib/codeCheckLabels.ts';
 import { navigationBlocker } from '../src/lib/codeNavigation.ts';
@@ -23,13 +23,16 @@ const panel = await loadServerComponent(new URL('../src/lib/components/common/go
 ]);
 
 test('the language table matches the backend IDs and maps providers and files', () => {
-  assert.deepEqual(CODE_LANGUAGES.map(l => l.id), ['go', 'typescript', 'svelte', 'python', 'rust']);
+  assert.deepEqual(CODE_LANGUAGES.map(l => l.id), ['go', 'typescript', 'svelte', 'python', 'rust', 'ruby']);
+  assert.deepEqual(codeLanguageIds(['ruby', 'go']), ['go', 'ruby']);
+  assert.equal(languageOfProvider('rubocop')?.id, 'ruby');
   assert.deepEqual(codeLanguageIds(['rust', 'nonsense', 'go', 'rust', 7]), ['go', 'rust']);
   assert.equal(languageOfProvider('go-vet-2')?.id, 'go');
   assert.equal(languageOfProvider('pyright')?.id, 'python');
   assert.equal(languageOfProvider('mock-checker'), undefined);
-  for (const [path, id] of [['a/B.PY', 'python'], ['x.pyi', 'python'], ['m.mts', 'typescript'], ['App.svelte', 'svelte'], ['lib.rs', 'rust'], ['main.go', 'go']]) assert.equal(languageOfPath(path)?.id, id, path);
-  assert.equal(languageOfPath('README.md'), undefined);
+  for (const [path, id] of [['a/B.PY', 'python'], ['x.pyi', 'python'], ['m.mts', 'typescript'], ['App.svelte', 'svelte'], ['lib.rs', 'rust'], ['main.go', 'go'], ['app/User.RB', 'ruby'], ['lib/tasks/db.rake', 'ruby'], ['x.gemspec', 'ruby'], ['config.ru', 'ruby']]) assert.equal(languageOfPath(path)?.id, id, path);
+  // Extensionless Ruby files and templates are not owned, as on the backend.
+  for (const path of ['README.md', 'Gemfile', 'Rakefile', 'show.html.erb']) assert.equal(languageOfPath(path), undefined, path);
   assert.equal(languageList(['Go', 'Python', 'Rust']), 'Go, Python and Rust');
   // The shared table keeps the existing labels.
   assert.equal(providerMode({ providerId: 'go-vet-1', coverage: { kind: 'savedProject', externalChanges: 'unwatched' } }), 'saved Go files · on demand');
@@ -141,6 +144,7 @@ function render(overrides = {}) {
 test('the panel names only the languages that are on and explains off and ignored ones', async () => {
   const all = await render();
   assert.match(all, /For Go, TypeScript\/JavaScript, Svelte, Python and Rust, a missing supported server/);
+  assert.match(all, /class="mono[^"]*">gem install rubocop<\/span>/);
   assert.match(all, /npm install -g pyright/);
   assert.doesNotMatch(all, /off in Settings/);
   const off = await render({ languagesOff: ['python', 'rust'], providers: [saved, live('ruff', undefined, 'disabled'), { ...saved, providerId: 'cargo-check', availability: 'disabled', notice: 'Off in Settings', coverage: { ...saved.coverage, roots: [] } }] });
@@ -155,6 +159,54 @@ test('the panel names only the languages that are on and explains off and ignore
   assert.match(old, /older and still checks Python, though it is off in Settings/);
   const changed = await render({ languagesChanged: true });
   assert.match(changed, /Language settings changed since these checkers were found/);
+});
+
+const rubocop = (availability, notice) => ({ ...live('rubocop', ['.rb', '.rake', '.gemspec', '.ru'], availability), ...(notice ? { notice } : {}) });
+test('Ruby: RuboCop setup text and install hints, never an app download or a RuboCop navigation claim', async () => {
+  const missing = await render({ providers: [saved, rubocop('missingTool', 'RuboCop is not installed for Ruby 4.0.9.')], managed: { hostId: 'local:actual', state: 'idle' }, snapshot: { approval: { state: 'required' }, proposal: { tools: [] } } });
+  assert.match(missing, /Ruby linter \(RuboCop\)/);
+  assert.match(missing, /RuboCop is not installed for Ruby 4\.0\.9\./);
+  assert.match(missing, /class="mono[^"]*">bundle add rubocop --group development<\/span>(<!--[^>]*-->)*, (<!--[^>]*-->)*<span class="mono[^"]*">gem install rubocop<\/span>(<!--[^>]*-->)* or (<!--[^>]*-->)*<span class="mono[^"]*">gem install ruby-lsp<\/span>/);
+  assert.match(missing, /RuboCop is never downloaded by this app\. It runs with the Ruby the project asks for/);
+  assert.match(missing, /RuboCop plus ruby-lsp for Ruby \(lint\/syntax problems and navigation, respectively\)/);
+  // Ruby is not among the languages with app downloads, and no Install button is offered.
+  assert.match(missing, /For Go, TypeScript\/JavaScript, Svelte, Python and Rust, a missing supported server/);
+  assert.doesNotMatch(missing, /Python, Rust and Ruby, a missing|Install rubocop/);
+  assert.ok(!renderedButtons(missing).some(b => /^Install /.test(b.text)));
+  // Approval names RuboCop as giving no navigation, unless Ruby is off.
+  const approval = await render({ providers: [live('gopls', ['.go'], 'approvalRequired'), rubocop('approvalRequired')], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [{ providerId: 'rubocop', executable: '/r/bin/ruby', configPaths: ['Gemfile'] }] } } });
+  assert.match(approval, /Ruff alone does not provide navigation\. RuboCop alone does not provide navigation for Ruby\./);
+  assert.doesNotMatch(/hover with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? 'missing RuboCop', /RuboCop/);
+  const rubyOff = await render({ languagesOff: ['ruby'], providers: [live('gopls', ['.go'], 'approvalRequired'), rubocop('disabled')], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [] } } });
+  assert.doesNotMatch(rubyOff, /RuboCop alone does not provide navigation|RuboCop is never downloaded|gem install rubocop|ruby-lsp/);
+  assert.match(rubyOff, /Ruby is off in Settings/);
+  // A folder without Ruby files has only the muted row and no Ruby setup text.
+  const other = await render({ providers: [saved, { ...rubocop('unsupported', 'No Ruby file was found in this project.'), coverage: { ...rubocop().coverage, roots: [] } }] });
+  assert.doesNotMatch(other, /RuboCop is never downloaded/);
+});
+
+const rubyLsp = (availability, notice) => ({ ...live('ruby-lsp', ['.rb', '.rake', '.gemspec', '.ru'], availability), ...(notice ? { notice } : {}) });
+test('Ruby: ruby-lsp row, setup text and install hint; navigation names it, never a download', async () => {
+  assert.equal(languageOfProvider('ruby-lsp')?.id, 'ruby');
+  const missing = await render({ providers: [saved, rubocop('available'), rubyLsp('missingTool', 'ruby-lsp is not installed for Ruby 4.0.9. Run gem install ruby-lsp, then refresh.')], managed: { hostId: 'local:actual', state: 'idle' } });
+  assert.match(missing, /<span class="name[^"]*">Ruby language server \(ruby-lsp\)<\/span> <span class="pill tone-bad[^"]*">Not installed<\/span>/);
+  assert.match(missing, /ruby-lsp is not installed for Ruby 4\.0\.9\. Run gem install ruby-lsp, then refresh\./);
+  assert.match(missing, /ruby-lsp, also never downloaded, answers go to definition, references and hover in opened Ruby files with the same Ruby\./);
+  assert.match(missing, /without add-ons; it reads the project's Ruby files, Ruby's standard library and installed gems, evaluates the project's Gemfile, and reports no problems\. Right after it starts it may answer nothing while it indexes the project\./);
+  assert.doesNotMatch(missing, /Install ruby-lsp|Ruby, a missing/);
+  assert.ok(!renderedButtons(missing).some(b => /^Install /.test(b.text)));
+  // The version floor and incompatible gems come as the backend's notice.
+  const old = await render({ providers: [saved, rubyLsp('unsupported', 'ruby-lsp 0.25.0 is older than 0.26; run gem update ruby-lsp, then refresh.')] });
+  assert.match(old, /Ruby language server \(ruby-lsp\)<\/span> <span class="pill tone-warn[^"]*">Unsupported/);
+  assert.match(old, /ruby-lsp 0\.25\.0 is older than 0\.26; run gem update ruby-lsp, then refresh\./);
+  // A Ruby project with only ruby-lsp registered still gets the Ruby setup text.
+  assert.match(old, /ruby-lsp, also never downloaded/);
+  // Approval lists ruby-lsp among the navigation servers, and its approval notice.
+  const notice = "ruby-lsp reads the project's Ruby files, Ruby's standard library and the gems in Gemfile.lock to answer Go to Definition, references and hover; it reports no problems. Add-ons are not loaded. It evaluates the project's Gemfile. Ruby navigation covers opened documents only.";
+  const approval = await render({ providers: [rubocop('approvalRequired'), rubyLsp('approvalRequired', notice)], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [{ providerId: 'ruby-lsp', executable: '/r/bin/ruby', configPaths: ['Gemfile', 'Gemfile.lock'] }] } } });
+  assert.match(/hover with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? '', /and ruby-lsp for Ruby$/);
+  assert.match(approval, /Ruby language server \(ruby-lsp\)/);
+  assert.ok(approval.includes(notice.replaceAll("'", '&#39;')) || approval.includes(notice), 'approval notice');
 });
 
 test('the panel links to Settings for languages and downloads instead of its own switch', async () => {

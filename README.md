@@ -200,9 +200,11 @@ or subscriptions.
   and create or switch branches. Fetch, fast-forward pull, and non-force push
   are available in the project UI.
 - Enable project-approved code checks and language-tool features such as
-  diagnostics, hover, and definition/reference navigation. Support depends on
-  the language, platform, and available tools; this is a lightweight workbench,
-  not a full IDE.
+  diagnostics, hover, and definition/reference navigation for Go,
+  TypeScript/JavaScript, Svelte, Python and Rust, and for Ruby RuboCop lint
+  with ruby-lsp navigation.
+  Support depends on the language, platform, and available tools; this is a
+  lightweight workbench, not a full IDE.
 
 > **Editing limits:** binary, non-UTF-8, mixed-line-ending, symlinked, protected,
 > and larger-than-500-KB files stay read-only. Drafts live in memory, not in a
@@ -433,7 +435,7 @@ npm --prefix frontend run build
 - [Product specification](SPEC.md) — design background; some original scope
   notes predate the current terminal and editing features.
 - [Task breakdown](TASKS.md) and [implementation plans](docs/plan/README.md).
-- [Wails v3 upgrade](docs/wails-v3-upgrade.md) — current desktop build,
+- [Wails v3 upgrade](docs/plan/wails-v3-upgrade.md) — current desktop build,
   supported Linux versions, and which native checks are still open.
 - [Windows setup and packaging](packaging/windows/README.md).
 - [Report a bug or request a feature](https://github.com/ginkcodex/agent-sessions/issues).

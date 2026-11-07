@@ -56,6 +56,24 @@ var workspaceProviders = []workspaceProvider{
 		func(root AuthorizedRoot, env LocalLiveEnvironment, w *tsWorkspace) (livePlan, error) {
 			return discoverPyrightWorkspace(root, env.Path, env.Pyright, w)
 		}},
+	{rubocopProviderID, RubyLanguageID, rubyDocumentExtensions,
+		func(name string) bool { return slices.Contains(rubocopProjectMarkers.configs, name) },
+		func(root AuthorizedRoot, env LocalLiveEnvironment, w *tsWorkspace) (livePlan, error) {
+			ruby := env.Ruby
+			if ruby.Home == "" {
+				ruby.Home = env.Go.Home
+			}
+			return discoverRubocopWorkspace(root, env.Path, ruby, w)
+		}},
+	{rubyLspProviderID, RubyLanguageID, rubyDocumentExtensions,
+		func(name string) bool { return slices.Contains(rubyLspProjectMarkers.configs, name) },
+		func(root AuthorizedRoot, env LocalLiveEnvironment, w *tsWorkspace) (livePlan, error) {
+			ruby := env.Ruby
+			if ruby.Home == "" {
+				ruby.Home = env.Go.Home
+			}
+			return discoverRubyLspWorkspace(root, env.Path, ruby, w)
+		}},
 }
 
 func pythonRequirements(name string) bool { return name == "setup.cfg" || name == "requirements.txt" }
@@ -74,9 +92,9 @@ func (p workspaceProvider) register(root AuthorizedRoot, env LocalLiveEnvironmen
 }
 
 type workspaceDirectory struct {
-	rel                                   string
-	files                                 []string
-	python, typescript, npm, npmWorkspace bool
+	rel                                         string
+	files                                       []string
+	python, typescript, npm, npmWorkspace, ruby bool
 }
 type workspaceScan struct {
 	dirs    []workspaceDirectory
@@ -133,7 +151,7 @@ func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 				continue
 			}
 			if e.IsDir() {
-				if slices.Contains([]string{"node_modules", ".venv", "venv", "__pycache__", "site-packages", ".tox", ".nox", ".git", ".next", "dist", "build"}, e.Name()) {
+				if slices.Contains([]string{"node_modules", ".venv", "venv", "__pycache__", "site-packages", ".tox", ".nox", ".git", ".next", "dist", "build", ".bundle", ".ruby-lsp"}, e.Name()) || rubySkipped(filepath.ToSlash(rel), e.Name(), d.files) {
 					if e.Name() == ".venv" || e.Name() == "venv" {
 						if st, err := r.Lstat(filepath.Join(rel, "pyvenv.cfg")); err == nil && st.Mode().IsRegular() {
 							d.python = true
@@ -165,6 +183,8 @@ func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 				}
 			case "tsconfig.json", "jsconfig.json":
 				d.typescript = true
+			case "Gemfile":
+				d.ruby = true
 			}
 		}
 		result.dirs = append(result.dirs, d)
@@ -272,11 +292,14 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 	if err != nil {
 		return nil, false, err
 	}
-	var pyRoots, tsRoots []string
+	var pyRoots, tsRoots, rubyRoots []string
 	npmWorkspaces := []string{}
 	for _, d := range scan.dirs {
 		if d.python {
 			pyRoots = append(pyRoots, d.rel)
+		}
+		if d.ruby {
+			rubyRoots = append(rubyRoots, d.rel)
 		}
 		if d.typescript {
 			suppressed := false
@@ -295,7 +318,7 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 		}
 	}
 	nested := false
-	for _, dirs := range [][]string{pyRoots, tsRoots} {
+	for _, dirs := range [][]string{pyRoots, tsRoots, rubyRoots} {
 		for _, dir := range dirs {
 			nested = nested || dir != ""
 		}
@@ -312,6 +335,9 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 			}
 			if _, ok := TSLanguageID(file); ok && deepestWorkspace(tsRoots, file) == "" && !slices.Contains(tsRoots, "") {
 				tsRoots = append(tsRoots, "")
+			}
+			if _, ok := RubyLanguageID(file); ok && deepestWorkspace(rubyRoots, file) == "" && !slices.Contains(rubyRoots, "") {
+				rubyRoots = append(rubyRoots, "")
 			}
 		}
 	}
@@ -336,7 +362,8 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 	}
 	pyRoots = owningSources(pyRoots, PythonLanguageID)
 	tsRoots = owningSources(tsRoots, TSLanguageID)
-	providerRoots := map[string][]string{tsProviderID: tsRoots, ruffProviderID: pyRoots, pyrightProviderID: pyRoots}
+	rubyRoots = owningSources(rubyRoots, RubyLanguageID)
+	providerRoots := map[string][]string{tsProviderID: tsRoots, ruffProviderID: pyRoots, pyrightProviderID: pyRoots, rubocopProviderID: rubyRoots, rubyLspProviderID: rubyRoots}
 	var registrations []Registration
 	// Reserve sixteen contributions for the unchanged Go/Svelte registrations.
 	// Every instance stays atomic: never discard part of its approved toolchain.
@@ -362,6 +389,15 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 				return nil, true, err
 			}
 			w := tsWorkspace{sources: true, partial: scan.partial}
+			// Ancestors inside the authorized root, nearest first, for version files
+			// the scoped root cannot see.
+			for up := path.Dir(dir); dir != ""; up = path.Dir(up) {
+				if up == "." {
+					w.ancestors = append(w.ancestors, root.Project().Root)
+					break
+				}
+				w.ancestors = append(w.ancestors, filepath.Join(root.Project().Root, filepath.FromSlash(up)))
+			}
 			for _, d := range scan.dirs {
 				for _, f := range d.files {
 					file := path.Join(d.rel, f)

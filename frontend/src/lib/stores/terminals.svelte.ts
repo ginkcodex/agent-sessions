@@ -578,31 +578,44 @@ export class TerminalsStore {
     this.closeQueue = [];
   }
 
-  /** Keeps a matching active pane, otherwise selects the first workspace tab without opening the panel or taking DOM focus. */
-  selectDirectory(dir: string, host: string): boolean {
+  /**
+   * Shows the pane that best fits a workspace, and the session in it when
+   * given, without opening the panel or taking DOM focus. In order: the tab
+   * running that session, then an agent tab of the workspace, then any tab
+   * of it. The active pane stays when it fits as well as the best one. A
+   * subagent runs in its parent's tab.
+   */
+  selectDirectory(dir: string, host: string, meta?: Pick<SessionMeta, 'ref' | 'parentId'>): boolean {
     if (!dir) return false;
+    const session = meta?.parentId ? { agent: meta.ref.agent, id: meta.parentId } : meta?.ref;
     const directoryKey = (path: string) => {
       const windows = /^[a-z]:[\\/]|^\\\\/i.test(path);
       const normalized = windows ? path.replace(/\\/g, '/').toLowerCase() : path;
       return normalized.replace(/\/+$/, '') || '/';
     };
     const key = directoryKey(dir);
-    const matches = (tab: PanelTab | undefined) => tab?.status === 'running' && tab.host === host && !!tab.dir && directoryKey(tab.dir) === key;
-    if (matches(this.activeTab)) {
-      this.focusOnActivation = false;
-      return true;
-    }
+    // Lower fits better; null does not fit. Use the launch directory: a
+    // shell's `cd` does not change its workspace.
+    const fit = (tab: PanelTab | undefined): number | null => {
+      if (tab?.status !== 'running' || tab.host !== host) return null;
+      if (session && tab.session?.agent === session.agent && tab.session.id === session.id) return 0;
+      if (!tab.dir || directoryKey(tab.dir) !== key) return null;
+      return tab.kind === 'agent' ? 1 : 2;
+    };
     // Follow the visible tab order (which users can rearrange), then pane order.
-    // Use the launch directory: a shell's `cd` does not change its workspace.
+    let best: PanelTab | null = null;
+    let bestFit = Infinity;
     for (const group of this.groups) {
-      const tab = group.panes.map(id => this.tabs.find(t => t.id === id))
-        .find(matches);
-      if (!tab) continue;
-      this.select(tab.id);
-      this.focusOnActivation = false;
-      return true;
+      for (const id of group.panes) {
+        const tab = this.tabs.find((t) => t.id === id);
+        const f = fit(tab);
+        if (tab && f !== null && f < bestFit) [best, bestFit] = [tab, f];
+      }
     }
-    return false;
+    if (!best) return false;
+    if (fit(this.activeTab) !== bestFit) this.select(best.id);
+    this.focusOnActivation = false;
+    return true;
   }
 
   /** Focuses a pane, showing its tab. */

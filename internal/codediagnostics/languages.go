@@ -24,6 +24,7 @@ var languages = []Language{
 	{ID: "svelte", Name: "Svelte", Live: []string{svelteLSProviderID}, Saved: []string{"svelte-check"}, Tools: []string{"svelte-language-server"}},
 	{ID: "python", Name: "Python", Live: []string{ruffProviderID, pyrightProviderID}, Tools: []string{"ruff", "pyright"}},
 	{ID: "rust", Name: "Rust", Live: []string{rustAnalyzerProviderID}, Saved: []string{"cargo-check"}, Tools: []string{"rust-analyzer"}},
+	{ID: "ruby", Name: "Ruby", Live: []string{rubocopProviderID, rubyLspProviderID}},
 }
 
 // languageFiles tells, by language ID, whether a file is one of its sources.
@@ -33,6 +34,7 @@ var languageFiles = map[string]func(file string) bool{
 	"svelte":     func(file string) bool { return strings.ToLower(path.Ext(file)) == ".svelte" },
 	"python":     func(file string) bool { _, ok := PythonLanguageID(file); return ok },
 	"rust":       func(file string) bool { return strings.HasSuffix(file, ".rs") },
+	"ruby":       func(file string) bool { _, ok := RubyLanguageID(file); return ok },
 }
 
 // Languages returns the supported languages in display order.

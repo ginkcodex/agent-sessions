@@ -70,7 +70,7 @@
   .reasoning-body {
     padding: 10px 14px;
     border-top: 1px solid var(--border-color);
-    font-size: 13.2px;
+    font-size: 13.7px;
     color: var(--text-secondary);
     line-height: 1.5;
     background-color: var(--bg-primary);

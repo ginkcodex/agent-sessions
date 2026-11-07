@@ -187,15 +187,31 @@ test('renderMarkdown renders tables, including one right after a line of text', 
 
   const first = renderMarkdown('| A | B |\n| :-- | --: |\n| 1 | 2 |');
   assert.ok(first.startsWith('<div class="table-container"><table>'), first);
-  assert.ok(first.includes('<th>A</th><th>B</th>'), first);
-  assert.ok(first.includes('<td>1</td><td>2</td>'), first);
+  assert.ok(first.includes('<th>A</th><th class="align-right">B</th>'), first);
+  assert.ok(first.includes('<td>1</td><td class="align-right">2</td>'), first);
 
   const code = renderMarkdown('| a | b |\n|---|---|\n| a | `x|y` |');
   assert.ok(code.includes('<tr><td>a</td><td><code class="inline-code">x|y</code></td></tr>'), code);
 
   const escaped = renderMarkdown('| a \\| b | c |\n|---|---|\n| 1 | 2 |');
-  assert.ok(escaped.includes('<th>a | b</th><th>c</th></tr>'), escaped);
+  assert.ok(escaped.includes('<th class="nowrap">a | b</th><th>c</th></tr>'), escaped);
   assert.ok(escaped.includes('<tr><td>1</td><td>2</td></tr>'), escaped);
+});
+
+test('renderMarkdown aligns table columns and keeps short cells on one line', () => {
+  const md = renderMarkdown(
+    '| ID | Scope | Est |\n|---|---|:-:|\n' +
+      '| RB-00 | Spike on real `rubocop --lsp`, and briefly ruby-lsp: push vs pull | 3 |\n' +
+      '| **Total** | | ~25h |'
+  );
+  assert.ok(md.includes('<th>ID</th><th>Scope</th><th class="align-center">Est</th>'), md);
+  // "RB-00" could break at its hyphen; the long scope cell may wrap.
+  assert.ok(md.includes('<td class="nowrap">RB-00</td><td>Spike on real'), md);
+  assert.ok(md.includes('<td class="align-center">3</td>'), md);
+  assert.ok(md.includes('<td><strong>Total</strong></td><td></td><td class="align-center">~25h</td>'), md);
+
+  const both = renderMarkdown('| a |\n|--:|\n| 2 days |');
+  assert.ok(both.includes('<td class="align-right nowrap">2 days</td>'), both);
 });
 
 test('renderMarkdown keeps table cells safe and leaves non-tables alone', () => {

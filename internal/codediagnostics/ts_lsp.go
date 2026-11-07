@@ -492,15 +492,23 @@ type tsWorkspace struct {
 	packages, configs []string
 	partial           bool
 	sources           bool // a file with one of projectMarkers.sources was seen
+	// ancestors are the canonical directories above a nested workspace,
+	// nearest first, up to the authorized root (Ruby version files).
+	ancestors []string
 }
 
 // projectMarkers selects the files that make a directory a project root.
 // Every configs file found is also a configuration identity bound into
 // approval; plain markers are not read by the server and are not bound.
-// skipDir names dependency trees that are skipped silently.
+// skipDir names dependency trees that are skipped silently; skipPath does the
+// same for a relative path at any depth (vendor/bundle), and skipBeside for a
+// directory only when its parent holds the named file (Rails' tmp and log
+// beside a Gemfile, which sorts before them).
 type projectMarkers struct {
 	configs, plain []string
 	skipDir        []string
+	skipPath       []string
+	skipBeside     map[string]string
 	sources        []string // lower-case extensions of the language's source files
 }
 
@@ -514,6 +522,16 @@ var tsProjectMarkers = projectMarkers{configs: []string{"package.json", "tsconfi
 // "references" are not followed, so sibling/out-of-root projects are never read.
 func discoverTSPackages(root AuthorizedRoot) (tsWorkspace, error) {
 	return discoverProjectDirs(root, tsProjectMarkers)
+}
+
+// matchesSkipPath reports whether portable is one of paths or ends with one.
+func matchesSkipPath(paths []string, portable string) bool {
+	for _, p := range paths {
+		if portable == p || strings.HasSuffix(portable, "/"+p) {
+			return true
+		}
+	}
+	return false
 }
 
 // discoverProjectDirs is the bounded contained walk shared by adapters. Hidden
@@ -542,6 +560,7 @@ func discoverProjectDirs(root AuthorizedRoot, markers projectMarkers) (tsWorkspa
 		}
 		slices.SortFunc(ds, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 		found := false
+		var files []string
 		for _, d := range ds {
 			entries++
 			if entries > maxTSEntries {
@@ -559,6 +578,9 @@ func discoverProjectDirs(root AuthorizedRoot, markers projectMarkers) (tsWorkspa
 				if slices.Contains(markers.skipDir, n) { // dependencies, not project packages
 					continue
 				}
+				if matchesSkipPath(markers.skipPath, portable) || markers.skipBeside[n] != "" && slices.Contains(files, markers.skipBeside[n]) {
+					continue
+				}
 				if strings.HasPrefix(n, ".") || depth >= 32 {
 					w.partial = true
 					continue
@@ -566,6 +588,7 @@ func discoverProjectDirs(root AuthorizedRoot, markers projectMarkers) (tsWorkspa
 				walk(rel, depth+1)
 				continue
 			}
+			files = append(files, d.Name())
 			if !w.sources && slices.Contains(markers.sources, strings.ToLower(filepath.Ext(d.Name()))) {
 				w.sources = true
 			}
