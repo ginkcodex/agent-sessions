@@ -46,6 +46,7 @@ const viewer = await loadServerComponent(VIEWER_URL, [
   ["'../../../sourceDiagnostics'", lib('../../../sourceDiagnostics.ts')],
   ["'../../../fileSelection'", lib('../../../fileSelection.ts')], ["'../../../sourceNavigation'", lib('../../../sourceNavigation.ts')],
   ["'../../../filePosition'", lib('../../../filePosition.ts')],
+  ["'../../../scrollAnchor'", lib('../../../scrollAnchor.ts')],
   ["import ContextMenu from '../ContextMenu.svelte';",
     `const ContextMenu = ${stub('data-context-menu', attr('data-labels', "$$props.items.map(i => i.label ?? i.kind).join('|')"))};`],
   ["import HoverCard from './HoverCard.svelte';",

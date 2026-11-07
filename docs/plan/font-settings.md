@@ -188,6 +188,7 @@ while they are open:
 - `FileViewer`: the change-navigation line list, the overview ruler, find
   highlights and the saved scroll position already depend on
   `presentationFontSize`; they also depend on the editor and docs sizes.
+  The first visible source line or Markdown block stays in place (FS-10).
 - `TranscriptView`: if the view follows the bottom, it stays at the bottom;
   otherwise the first visible message stays in place (WebKit has no scroll
   anchoring). Session find highlights are painted again.
