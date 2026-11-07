@@ -522,6 +522,54 @@ test('wrap and disabled options are applied and reconfigured without losing the 
   assert.equal(view.state.doc.toString(), 'x');
 });
 
+// The rules a state's themes mount, as CSS text.
+const themeRules = (state) => state.facet(EditorView.styleModule).flatMap((module) => module.rules);
+
+test('the editor font comes from the Appearance variables, falling back to today\'s 0.78rem and --font-mono', () => {
+  const { view } = mount();
+  const rules = themeRules(view.state).join('\n');
+  assert.match(rules, /font-size: var\(--editor-font-size, 0\.78rem\)/);
+  assert.match(rules, /font-family: var\(--editor-font-family, var\(--font-mono\)\)/);
+  assert.doesNotMatch(rules, /font-size: 0\.78rem/, 'no fixed size left to win over the setting');
+  // The viewer's SourceView uses the same two values, so the text does not move between modes.
+  const viewer = readFileSync(new URL('lib/components/common/go-to-file/SourceView.svelte', SRC), 'utf8');
+  const code = viewer.match(/\n  \.code \{([^}]*)\}/)[1];
+  assert.match(code, /font-family: var\(--editor-font-family, var\(--font-mono\)\);/);
+  assert.match(code, /font-size: var\(--editor-font-size, 0\.78rem\);/);
+  assert.match(code, /line-height: 1\.5;/);
+});
+
+test('remeasure swaps between two font themes, so CodeMirror measures again, and keeps the document and history', () => {
+  const { editor, view } = mount({ text: 'x' });
+  type(view, 'y');
+  const selection = view.state.selection.main.head;
+  const first = view.state.facet(EditorView.styleModule);
+  editor.remeasure();
+  const second = view.state.facet(EditorView.styleModule);
+  // CodeMirror sets mustMeasureContent when the theme facet changes; that
+  // facet is the themes' class names, so a different theme module is enough.
+  assert.notDeepEqual(second, first);
+  assert.ok(themeRules(view.state).some((r) => /editor-font-size/.test(r)), "the swapped-in theme still sets the font");
+  editor.remeasure();
+  assert.deepEqual(view.state.facet(EditorView.styleModule), first, 'two themes, reused: no new styles per change');
+  assert.equal(view.state.doc.toString(), 'xy');
+  assert.equal(view.state.selection.main.head, selection);
+  assert.equal(undo(view), true, 'history survives a font change');
+  editor.destroy();
+  const dispatches = view.dispatches;
+  editor.remeasure();
+  assert.equal(view.dispatches, dispatches, 'inert after destroy');
+});
+
+test('FileEditor remeasures when the editor font or size setting changes, not on mount', () => {
+  const source = readFileSync(COMPONENT_URL, 'utf8');
+  assert.match(source, /let fontSetting = \$derived\(`\$\{preferences\.editorFont\}\\n\$\{preferences\.editorFontSize\}`\);/);
+  assert.match(source, /if \(measuredFont !== undefined && measuredFont !== setting\) editor\.remeasure\(\);/);
+  const viewer = readFileSync(new URL('lib/components/common/go-to-file/FileViewer.svelte', SRC), 'utf8');
+  assert.match(viewer, /void presentationFontSize; void preferences\.editorFont; void preferences\.editorFontSize;/, 'change navigation gathers its lines again');
+  assert.match(viewer, /getEditorFont: \(\) => `\$\{preferences\.editorFont\}\\n\$\{preferences\.editorFontSize\}`/, 'find paints again');
+});
+
 test('languages load lazily by extension, case-insensitively, with JS/TS/JSX dialects', async () => {
   const cases = [
     ['a.js', javascriptLanguage],
@@ -812,6 +860,7 @@ test('after destroy every controller method is an inert no-op and destroy is ide
 const component = await loadServerComponent(COMPONENT_URL, [
   ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
   ["import { filePrompt } from '../../../stores/filePrompt.svelte';", 'const filePrompt = { request: null };'],
+  ["import { preferences } from '../../../stores/preferences.svelte';", "const preferences = { editorFont: '', editorFontSize: null };"],
 ]);
 
 test('FileEditor server-renders an empty host and inert command exports before the runtime loads', async () => {

@@ -72,17 +72,30 @@ const wrapping = new Compartment();
 const editing = new Compartment();
 const language = new Compartment();
 const coloring = new Compartment();
+const font = new Compartment();
 const editable = (disabled = false): Extension => [
   EditorView.editable.of(!disabled),
   EditorState.readOnly.of(disabled),
 ];
 
+/** The editor font (Settings → Appearance), with today's defaults as fallbacks; SourceView uses the same. */
+export const EDITOR_FONT_SIZE = 'var(--editor-font-size, 0.78rem)';
+export const EDITOR_FONT_FAMILY = 'var(--editor-font-family, var(--font-mono))';
+
+// Two identical font themes. CodeMirror measures its text again only when its
+// theme changes, so a font setting swaps one for the other (remeasure below).
+// Swapping, rather than making a new theme each time, mounts no new styles.
+const fontThemes = [0, 1].map(() => EditorView.theme({
+  '&': { fontSize: EDITOR_FONT_SIZE },
+  '.cm-scroller': { fontFamily: EDITOR_FONT_FAMILY },
+}));
+
 // Matches the viewer's SourceView (font, line height, gutter and line
 // padding), so switching between viewing and editing does not move the text.
 const theme = EditorView.theme({
-  '&': { height: '100%', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)', fontSize: '0.78rem' },
+  '&': { height: '100%', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)' },
   '&.cm-focused': { outline: 'none' },
-  '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font-mono)', lineHeight: '1.5', tabSize: '4' },
+  '.cm-scroller': { overflow: 'auto', lineHeight: '1.5', tabSize: '4' },
   '.cm-content': { padding: '8px 0', caretColor: 'var(--text-primary)' },
   '.cm-line': { padding: '0 14px' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--text-primary)' },
@@ -493,7 +506,7 @@ function freshState(options: FileEditorOptions): EditorState {
     extensions: [
       lineNumbers(), history(), drawSelection(), highlightActiveLine(), indentOnInput(),
       diagnosticLines, clearSavedMarkers, navigation,
-      search(), theme, fitTooltips, indentUnit.of(detectIndent(options.text)), EditorState.tabSize.of(4),
+      search(), theme, font.of(fontThemes[0]), fitTooltips, indentUnit.of(detectIndent(options.text)), EditorState.tabSize.of(4),
       wrapping.of(options.wrap ? EditorView.lineWrapping : []),
       editing.of(editable(options.disabled)), language.of([]), coloring.of([]),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...editorLintKeymap]),
@@ -703,6 +716,12 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
     find() { return !destroyed && openSearchPanel(view); },
     closeSearch() { return !destroyed && closeSearchPanel(view); },
     handleKey(event: KeyboardEvent) { return !destroyed && handleKey(view, event); },
+    /** Measures the text again after the editor font or size changed. */
+    remeasure() {
+      if (destroyed) return;
+      const current = font.get(view.state);
+      view.dispatch({ effects: font.reconfigure(fontThemes[current === fontThemes[0] ? 1 : 0]) });
+    },
     destroy() {
       if (destroyed) return;
       remember();

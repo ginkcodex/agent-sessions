@@ -355,8 +355,9 @@
     min-width: max-content;
     min-height: 100%;
     padding: 8px 0;
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
+    /* Settings → Appearance; the editor's theme (fileEditor.ts) uses the same. */
+    font-family: var(--editor-font-family, var(--font-mono));
+    font-size: var(--editor-font-size, 0.78rem);
     line-height: 1.5;
     color: var(--text-primary);
     tab-size: 4;

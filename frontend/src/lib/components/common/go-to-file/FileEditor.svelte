@@ -9,6 +9,7 @@
   }
   import type { FileEditorController, FileEditorOptions } from '../../../fileEditor';
   import { filePrompt } from '../../../stores/filePrompt.svelte';
+  import { preferences } from '../../../stores/preferences.svelte';
 
   let { id, text, path, version, wrap, disabled = false, diagnostics, position, onposition, selection, onselection, onchange, onsave, symbols, onproblems, scroller = $bindable() }: FileEditorOptions & {
     /** The element that scrolls the text, for the overview ruler. */
@@ -46,6 +47,17 @@
 
   $effect(() => {
     editor?.update(options());
+  });
+
+  // The font reaches CodeMirror through CSS variables (App.svelte), which it
+  // cannot see change; it measures once the root style has them.
+  let fontSetting = $derived(`${preferences.editorFont}\n${preferences.editorFontSize}`);
+  let measuredFont: string | undefined;
+  $effect(() => {
+    const setting = fontSetting;
+    if (!editor) return;
+    if (measuredFont !== undefined && measuredFont !== setting) editor.remeasure();
+    measuredFont = setting;
   });
 
   /** Commands are harmless no-ops until the lazy runtime has mounted. */

@@ -678,6 +678,7 @@
     getHtmlLines: () => htmlLines,
     getWrap: () => files.wrap,
     getPresentationFontSize: () => presentationFontSize,
+    getEditorFont: () => `${preferences.editorFont}\n${preferences.editorFontSize}`,
   });
 
   let changeStarts = $derived(showDiff ? diffChangeStarts(rows) : []);
@@ -692,7 +693,7 @@
     changeCurrent = -1;
   });
   $effect(() => {
-    void rows; void htmlLines; void files.wrap; void presentationFontSize;
+    void rows; void htmlLines; void files.wrap; void presentationFontSize; void preferences.editorFont; void preferences.editorFontSize;
     changeLines = changeNavigationShown && find.codeEl ? [...find.codeEl.querySelectorAll<HTMLElement>('.line')] : [];
   });
   function stepChange(direction: number) {

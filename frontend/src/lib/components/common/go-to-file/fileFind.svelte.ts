@@ -24,6 +24,8 @@ export interface FileFindOptions {
   getHtmlLines: () => string[] | null;
   getWrap: () => boolean;
   getPresentationFontSize: () => number;
+  /** The editor font and size (Settings → Appearance), which move the lines. */
+  getEditorFont?: () => string;
 }
 
 /** Must be called during component initialisation, as it sets up effects. */
@@ -68,6 +70,7 @@ export function createFileFind(options: FileFindOptions) {
     void options.getHtmlLines();
     void options.getWrap();
     void options.getPresentationFontSize();
+    void options.getEditorFont?.();
     lineEls = findActive && codeEl ? [...codeEl.querySelectorAll<HTMLElement>('.line')] : [];
     schedulePaint();
   });
