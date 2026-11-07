@@ -71,7 +71,7 @@ the edge does.
 
 - macOS only. Windows and Linux touchpads report no gesture phase to the
   page, and their webviews have no such convention in this app. They are
-  left for later.
+  planned in [swipe-navigation-windows-linux](swipe-navigation-windows-linux.md).
 - No sliding page animation; the step happens once the swipe is long
   enough.
 - The system setting decides, as in Safari: with *Swipe between pages* off
