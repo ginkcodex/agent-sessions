@@ -17,11 +17,10 @@ import (
 // answers "./"). Callers then decide without Git's rules.
 //
 // It may run before the project is approved, so a repository's own config
-// must not start a program: core.fsmonitor is turned off and History's
-// environment keeps Git from writing locks or fetching.
+// must not start a program: gitOutputEnv turns core.fsmonitor off and
+// History's environment keeps Git from writing locks or fetching.
 func IgnoredDirectories(ctx context.Context, dir string) ([]string, bool) {
-	flags := []string{"--literal-pathspecs", "-c", "core.fsmonitor=false"}
-	out, err := gitOutputEnv(ctx, dir, nil, gitHistoryEnv(), flags, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
+	out, err := gitOutputEnv(ctx, dir, nil, gitHistoryEnv(), []string{"--literal-pathspecs"}, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
 	if err != nil || ctx.Err() != nil {
 		return nil, false
 	}

@@ -1,6 +1,7 @@
 # Code checks: Git ignore rules in project discovery
 
-Planned 2026-11-07. Status: **planned**.
+Planned 2026-11-07. Status: **implemented**; the desktop app check (IS-04)
+and repository filter programs (IS-06) are open.
 Tasks: [code-diagnostics-ignore-scope](../tasks/code-diagnostics-ignore-scope/README.md).
 
 Request: Go files in this repository showed *Go language server (gopls) —
@@ -122,9 +123,10 @@ check for `pyvenv.cfg` in the nested workspace scan.
   the 16-call and 5 s limits.
 - **Remote hosts** run the same code on the server; without Git there,
   discovery behaves as before.
-- **Found along the way:** the Files, Changes and History Git calls do not
-  set `core.fsmonitor=false`, so a repository's own config can start a
-  program when the file tree is opened. Tracked as its own task.
+- **Found along the way:** the Files, Changes and History Git calls did not
+  set `core.fsmonitor=false`, so a repository's own config could start a
+  program when the file tree was opened; fixed in IS-05. `git status` also
+  runs a clean filter the repository's config sets; tracked as IS-06.
 
 ## Release criteria
 

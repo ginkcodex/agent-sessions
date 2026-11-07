@@ -234,6 +234,14 @@ func gitOutput(ctx context.Context, root string, stdin io.Reader, flags []string
 	return gitOutputEnv(ctx, root, stdin, nil, flags, args...)
 }
 
+// gitNoFsmonitor turns off core.fsmonitor for every Git the app runs. A
+// repository's own config can set it to a program, which `git status`,
+// `ls-files` and index refreshes then start: opening a project, before or
+// after approval, must not run a program the project chose. Git's built-in
+// daemon (`core.fsmonitor=true`) is turned off with it, so very large
+// repositories lose its speed-up.
+var gitNoFsmonitor = []string{"-c", "core.fsmonitor=false"}
+
 // gitOutputEnv is gitOutput with env added to the process environment.
 func gitOutputEnv(ctx context.Context, root string, stdin io.Reader, env, flags []string, args ...string) ([]byte, error) {
 	git, err := exec.LookPath("git")
@@ -242,7 +250,7 @@ func gitOutputEnv(ctx context.Context, root string, stdin io.Reader, env, flags 
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	argv := append(append([]string{"-C", root}, flags...), "-c", "core.quotepath=off")
+	argv := append(append(append([]string{"-C", root}, flags...), gitNoFsmonitor...), "-c", "core.quotepath=off")
 	cmd := exec.CommandContext(ctx, git, append(argv, args...)...) //nolint:gosec
 	hideConsole(cmd)
 	if len(env) > 0 {

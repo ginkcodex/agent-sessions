@@ -107,7 +107,7 @@ func (e *gitCommandError) Error() string {
 func (e *gitCommandError) Unwrap() error { return e.err }
 
 func (w gitWriter) run(input string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(w.ctx, w.git, append([]string{"-C", w.root, "--literal-pathspecs", "--no-pager"}, args...)...)
+	cmd := exec.CommandContext(w.ctx, w.git, append(append([]string{"-C", w.root, "--literal-pathspecs", "--no-pager"}, gitNoFsmonitor...), args...)...)
 	hideConsole(cmd)
 	if w.session {
 		prepareGitSessionProcess(cmd)
