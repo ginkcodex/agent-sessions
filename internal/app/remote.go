@@ -457,9 +457,19 @@ func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dia
 		attempt := c.attempt
 		c.mu.Unlock()
 		// Dropped, not a user disconnect: stay on the host and retry.
-		c.setPhase(gen, ConnDisconnected, alias, "connection lost", rpc.Capabilities{}, "")
+		message := "connection lost"
+		if errors.Is(sess.Err(), rpc.ErrLinkSilent) {
+			message = remote.SilentLinkMessage()
+		}
+		c.setPhase(gen, ConnDisconnected, alias, message, rpc.Capabilities{}, "")
+		if errors.Is(sess.Err(), rpc.ErrLinkSilent) {
+			c.releaseHost(alias, opts)
+		}
+		if ctx.Err() != nil {
+			return
+		}
 		delay := reconnectBackoff[(attempt-1)%len(reconnectBackoff)]
-		c.setPhase(gen, ConnReconnecting, alias, "connection lost", rpc.Capabilities{}, "")
+		c.setPhase(gen, ConnReconnecting, alias, message, rpc.Capabilities{}, "")
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():

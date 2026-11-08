@@ -376,6 +376,19 @@ func (s *Session) InitializeResult() *rpc.InitializeResult { return s.init }
 // Alias is the SSH host this session is connected to.
 func (s *Session) Alias() string { return s.alias }
 
+// Err reports the RPC reason the session ended. Read it after Done closes.
+func (s *Session) Err() error {
+	if s.client != nil {
+		return s.client.Err()
+	}
+	return nil
+}
+
+// SilentLinkMessage describes the configured silence deadline to the user.
+func SilentLinkMessage() string {
+	return fmt.Sprintf("no response from the host for %s", livenessDeadline)
+}
+
 // Done is closed when the ssh process has exited.
 func (s *Session) Done() <-chan struct{} { return s.done }
 
