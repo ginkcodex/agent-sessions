@@ -48,11 +48,12 @@ type AskpassBroker struct {
 	listener net.Listener
 	handler  AskpassPromptHandler
 
-	mu      sync.Mutex
-	pending map[string]chan string
-	seq     int64
-	closed  bool
-	done    chan struct{}
+	mu        sync.Mutex
+	pending   map[string]chan string
+	seq       int64
+	closed    bool
+	done      chan struct{}
+	observers map[*promptObserver]struct{} // synchronous open/closed state observers
 }
 
 // NewAskpassBroker creates a new askpass unix socket broker with a secure token.
@@ -89,17 +90,43 @@ func NewAskpassBroker(handler AskpassPromptHandler) (*AskpassBroker, error) {
 	_ = os.Chmod(sockPath, 0600)
 
 	b := &AskpassBroker{
-		sockPath: sockPath,
-		dir:      sockDir,
-		token:    token,
-		listener: listener,
-		handler:  handler,
-		pending:  make(map[string]chan string),
-		done:     make(chan struct{}),
+		sockPath:  sockPath,
+		dir:       sockDir,
+		token:     token,
+		listener:  listener,
+		handler:   handler,
+		pending:   make(map[string]chan string),
+		done:      make(chan struct{}),
+		observers: make(map[*promptObserver]struct{}),
 	}
 
 	go b.acceptLoop()
 	return b, nil
+}
+
+// promptObserver callbacks run under the broker lock and must not call the broker.
+// Synchronous updates ensure even a short-lived prompt pauses the probe budget.
+type promptObserver struct {
+	update func(open bool)
+}
+
+func (b *AskpassBroker) promptChangedLocked() {
+	for observer := range b.observers {
+		observer.update(len(b.pending) > 0)
+	}
+}
+
+func (b *AskpassBroker) observePrompts(update func(bool)) func() {
+	observer := &promptObserver{update: update}
+	b.mu.Lock()
+	b.observers[observer] = struct{}{}
+	update(len(b.pending) > 0)
+	b.mu.Unlock()
+	return func() {
+		b.mu.Lock()
+		delete(b.observers, observer)
+		b.mu.Unlock()
+	}
 }
 
 // SocketPath returns the unix domain socket path.
@@ -119,6 +146,7 @@ func (b *AskpassBroker) Reply(id string, answer string) bool {
 	ch, ok := b.pending[id]
 	if ok {
 		delete(b.pending, id)
+		b.promptChangedLocked()
 	}
 	b.mu.Unlock()
 
@@ -136,6 +164,7 @@ func (b *AskpassBroker) Cancel(id string) {
 	ch, ok := b.pending[id]
 	if ok {
 		delete(b.pending, id)
+		b.promptChangedLocked()
 	}
 	b.mu.Unlock()
 
@@ -157,6 +186,7 @@ func (b *AskpassBroker) Close() error {
 	for id, ch := range b.pending {
 		close(ch)
 		delete(b.pending, id)
+		b.promptChangedLocked()
 	}
 	b.mu.Unlock()
 
@@ -215,13 +245,23 @@ func (b *AskpassBroker) handleConn(conn net.Conn) {
 	respCh := make(chan string, 1)
 
 	b.mu.Lock()
+	if b.closed {
+		b.mu.Unlock()
+		_ = sendAskpassResponse(conn, AskpassResponse{Error: "broker closed"})
+		return
+	}
 	b.pending[promptID] = respCh
+	b.promptChangedLocked()
 	b.mu.Unlock()
 
-	defer func() {
-		b.mu.Lock()
-		delete(b.pending, promptID)
-		b.mu.Unlock()
+	defer b.Cancel(promptID)
+	// A killed SSH/askpass helper must not leave a phantom open prompt that
+	// pauses later probes for this connection until the prompt timeout.
+	_ = conn.SetReadDeadline(time.Time{})
+	go func() {
+		var data [1]byte
+		_, _ = conn.Read(data[:])
+		b.Cancel(promptID)
 	}()
 
 	// Notify handler

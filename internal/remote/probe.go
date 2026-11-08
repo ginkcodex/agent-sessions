@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/rpc"
@@ -62,13 +63,13 @@ func NormalizeArch(m string) (string, error) {
 	}
 }
 
-const probeTimeout = 45 * time.Second
+var probeTimeout = 45 * time.Second // variable so tests can shorten automatic probes
 
 // ProbeHost probes a remote machine via SSH or WSL to detect OS, architecture, $HOME,
 // and which server builds of appVersion are installed.
 func ProbeHost(ctx context.Context, alias string, opts SSHOptions, appVersion string) (*HostProbe, error) {
 	var timeout time.Duration
-	if _, wsl := ParseWSLTarget(alias); wsl || !SupportsSSHAskpass() {
+	if _, wsl := ParseWSLTarget(alias); opts.Automatic || wsl || !SupportsSSHAskpass() {
 		timeout = probeTimeout
 	}
 	return probeHost(ctx, alias, opts, appVersion, timeout)
@@ -76,12 +77,15 @@ func ProbeHost(ctx context.Context, alias string, opts SSHOptions, appVersion st
 
 func probeHost(ctx context.Context, alias string, opts SSHOptions, appVersion string, timeout time.Duration) (*HostProbe, error) {
 	parent := ctx
-	// Unix credential prompts retain their own two-minute timeout; Windows
-	// must authenticate noninteractively and WSL has no prompts, so their
-	// entire probe is bounded.
+	// Only automatic Unix SSH probes pause their budget for credentials.
+	// Windows and WSL retain their unconditional wall-clock deadline.
 	if timeout > 0 {
+		var broker *AskpassBroker
+		if _, wsl := ParseWSLTarget(alias); opts.Automatic && !wsl && SupportsSSHAskpass() {
+			broker = opts.AskpassBroker
+		}
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel = probeBudget(ctx, timeout, broker)
 		defer cancel()
 	}
 	opts.NoTTY = true
@@ -186,11 +190,66 @@ func probeHost(ctx context.Context, alias string, opts SSHOptions, appVersion st
 	return probe, nil
 }
 
+// probeBudget counts only time without an open prompt. The broker invokes
+// transitions synchronously, so answering immediately cannot lose a pause.
+func probeBudget(parent context.Context, limit time.Duration, broker *AskpassBroker) (context.Context, context.CancelFunc) {
+	if broker == nil {
+		return context.WithTimeout(parent, limit)
+	}
+	ctx, cancel := context.WithCancelCause(parent)
+	var mu sync.Mutex
+	remaining, started := limit, time.Now()
+	paused, closed := false, false
+	var timer *time.Timer
+	expire := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if closed || paused {
+			return
+		}
+		// A stopped timer's callback may already be waiting for the lock.
+		// Recheck elapsed active time rather than expiring a resumed budget.
+		left := remaining - time.Since(started)
+		if left > 0 {
+			timer.Reset(left)
+			return
+		}
+		closed = true
+		cancel(context.DeadlineExceeded)
+	}
+	mu.Lock()
+	timer = time.AfterFunc(remaining, expire)
+	mu.Unlock()
+	unsubscribe := broker.observePrompts(func(open bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		if closed || open == paused {
+			return
+		}
+		if open {
+			remaining -= time.Since(started)
+			timer.Stop()
+		} else {
+			started = time.Now()
+			timer.Reset(remaining)
+		}
+		paused = open
+	})
+	return ctx, func() {
+		unsubscribe()
+		mu.Lock()
+		closed = true
+		timer.Stop()
+		mu.Unlock()
+		cancel(context.Canceled)
+	}
+}
+
 func probeContextError(parent, run context.Context, timeout time.Duration) error {
 	if parent.Err() != nil {
 		return parent.Err()
 	}
-	return fmt.Errorf("probe timed out after %v: %w", timeout, run.Err())
+	return fmt.Errorf("probe timed out after %v: %w", timeout, context.Cause(run))
 }
 
 // isBuildTag reports whether tag is a build dir of appVersion:

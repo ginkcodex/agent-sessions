@@ -113,6 +113,17 @@ func TestSSHProbeAllowsUnixPrompts(t *testing.T) {
 	}
 }
 
+func TestSSHAutomaticProbeTimeout(t *testing.T) {
+	previous := probeTimeout
+	probeTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { probeTimeout = previous })
+	bin := fakeSSHPath(t, "hang", nil)
+	_, err := ProbeHost(context.Background(), "box", SSHOptions{Binary: bin, ControlMaster: "no", Automatic: true}, "dev")
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "probe timed out after 100ms") {
+		t.Fatalf("automatic probe = %v", err)
+	}
+}
+
 func TestSSHRemotePermissionFailureIsNotAuth(t *testing.T) {
 	bin := fakeSSHPath(t, "remote-denied", nil)
 	err := runRemote(context.Background(), "box", SSHOptions{Binary: bin, ControlMaster: "no"}, nil, nil, "mkdir test")

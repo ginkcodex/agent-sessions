@@ -159,6 +159,7 @@ func newConnection(emitter engine.Emitter) *connection {
 	})
 	if err == nil {
 		c.askpass = broker
+		c.opts.AskpassBroker = broker
 		execPath, err := os.Executable()
 		if err == nil {
 			c.opts.AskpassBinary = execPath
@@ -370,10 +371,13 @@ func (c *connection) Connect(ctx context.Context, alias string) error {
 }
 
 func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dial sessionDialer, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) {
+	firstAttempt := true
 	for {
 		if ctx.Err() != nil {
 			return
 		}
+		opts.Automatic = !firstAttempt
+		firstAttempt = false
 		sess, err := dial(ctx, alias, opts, env, generationEmitter(emitter, gen, c))
 		if err != nil {
 			if ctx.Err() != nil {

@@ -16,6 +16,51 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
 
+func TestConnection_AutomaticAttempts(t *testing.T) {
+	previous := reconnectBackoff
+	reconnectBackoff = []time.Duration{time.Millisecond}
+	t.Cleanup(func() { reconnectBackoff = previous })
+	for _, dropped := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dropped=%v", dropped), func(t *testing.T) {
+			c := newConnection(nil)
+			defer c.Shutdown()
+			attempts := make(chan bool, 8)
+			count := 0
+			c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
+				attempts <- opts.Automatic
+				count++
+				if count == 1 && dropped {
+					client, init := pipeClient(t)
+					s := remote.NewTestSession(alias, client, init)
+					_ = s.Close()
+					return s, nil
+				}
+				if count == 2 {
+					// Model a stalled automatic probe cancelled by its budget.
+					probeCtx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+					defer cancel()
+					<-probeCtx.Done()
+					return nil, fmt.Errorf("probe timed out after 20ms: %w", probeCtx.Err())
+				}
+				return nil, errors.New("transient network failure")
+			}
+			if err := c.Connect(context.Background(), "box"); err != nil {
+				t.Fatal(err)
+			}
+			for i, want := range []bool{false, true, true} {
+				select {
+				case got := <-attempts:
+					if got != want {
+						t.Fatalf("attempt %d automatic=%v, want %v", i, got, want)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatal("timeout did not advance to next attempt")
+				}
+			}
+		})
+	}
+}
+
 func TestConnection_LocalByDefault(t *testing.T) {
 	c := newConnection(nil)
 	if got := c.snapshot().Phase; got != ConnLocal {
