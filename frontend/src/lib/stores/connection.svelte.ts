@@ -270,8 +270,9 @@ export class ConnectionStore {
     }
     // Reload only when a host (re)connects or the app returns to Local; a
     // drop or a pending switch leaves the last data up as stale.
+    const previousHost = link.dataHost;
     if (link.update(state.phase, state.host)) {
-      this.resetStores(link.dataHost);
+      this.resetStores(link.dataHost, state.phase === 'connected' && !!state.host && previousHost === state.host);
     }
   }
 
@@ -289,9 +290,9 @@ export class ConnectionStore {
     return link.stale;
   }
 
-  private resetStores(host?: string): void {
+  private resetStores(host?: string, sameHost = false): void {
     this.pendingAskpass = null;
-    void appState.reset(host);
+    void appState.reset(host, sameHost);
     manage.reset();
     search.reset();
     handoff.reset();

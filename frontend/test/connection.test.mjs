@@ -695,6 +695,7 @@ async function startupConnectionFixture(run) {
   const listeners = [];
   const seeds = [];
   const resets = [];
+  const resetOptions = [];
   let refreshes = 0;
   const link = {
     dataHost: undefined,
@@ -707,8 +708,8 @@ async function startupConnectionFixture(run) {
       return true;
     },
   };
-  const appState = { targetHost: undefined, sessions: [], reset(host) {
-    resets.push(host); this.targetHost = host; this.sessions = [{ id: host ?? 'local' }];
+  const appState = { targetHost: undefined, sessions: [], reset(host, sameHost) {
+    resets.push(host); resetOptions.push([host, sameHost]); this.targetHost = host; this.sessions = [{ id: host ?? 'local' }];
   } };
   for (const name of ['seed', 'update']) link[name] = link[name].bind(link);
   appState.reset = appState.reset.bind(appState);
@@ -721,7 +722,7 @@ async function startupConnectionFixture(run) {
   };
   const store = new ConnectionStore();
   store.refreshHosts = async () => { refreshes++; };
-  try { await run({ store, snapshots, listeners, seeds, resets, link, appState, refreshes: () => refreshes }); }
+  try { await run({ store, snapshots, listeners, seeds, resets, resetOptions, link, appState, refreshes: () => refreshes }); }
   finally { store.destroy(); delete globalThis.__storeFixture; }
 }
 
@@ -789,5 +790,27 @@ test('failed initial snapshot does not undo newer remote state', async () => {
     await init;
     assert.equal(store.host, 'box');
     assert.deepEqual(seeds, []);
+  });
+});
+
+
+test('ConnectionStore preserves navigation only for reconnecting the displayed remote host', async () => {
+  await startupConnectionFixture(async ({ store, snapshots, listeners, resetOptions }) => {
+    const init = store.init();
+    snapshots[0].resolve({ phase: 'local', generation: 0 });
+    await init;
+    const emit = (phase, host, generation = 1) => listeners[0]({ phase, host, generation });
+    emit('connected', 'box');
+    emit('reconnecting', 'box');
+    emit('connected', 'box');
+    // Retry starts a new generation but still reconnects the same displayed host.
+    emit('connecting', 'box', 2);
+    emit('connected', 'box', 2);
+    emit('connecting', 'other', 3);
+    emit('connected', 'other', 3);
+    emit('local', undefined, 4);
+    assert.deepEqual(resetOptions, [
+      ['box', false], ['box', true], ['box', true], ['other', false], [undefined, false],
+    ]);
   });
 });
