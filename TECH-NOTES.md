@@ -68,6 +68,57 @@ To see where the main thread goes when `perf` and `gdb -p` need root
 (`gdb -batch -ex run -ex 'thread apply 1 bt' … --args <binary>`) and send
 SIGINT to that child only, never to a running app picked by name.
 
+## Linux session-list scrollbar (WebKitGTK)
+
+**Keep `transform: translateZ(0)` on `.virtual-list-container`** in
+`frontend/src/lib/components/sessionlist/VirtualList.svelte`. Without its own
+compositing layer, WebKitGTK (2.52.6, GTK4) misdraws that scroller's
+`::-webkit-scrollbar` (style.css, Linux only):
+
+- the thumb is missing while the top of the list is in view, and appears only
+  after about the 16th session scrolls in;
+- it then flashes each time the pointer highlights a new row.
+
+macOS uses overlay scrollbars and never showed it. The workspace tree uses the
+same scrollbar theme and was fine. `frontend/test/virtual-list.test.mjs` fails
+if the declaration is removed.
+
+The geometry was never wrong: the 10px lane is reserved, and scrollHeight is
+rows × 84 at every offset. So don't fix it in the list. These changes did
+nothing (SS-01 to SS-06):
+
+- removing `-webkit-overflow-scrolling`;
+- removing the row hover transition;
+- removing `contain`;
+- `top` instead of `translateY` rows;
+- rebuilding the list as normal-flow rows with spacers.
+
+The engine-level cause was not traced. See
+[docs/plan/session-scrollbar.md](docs/plan/session-scrollbar.md).
+
+The transform makes the container the containing block for `position: fixed`
+descendants. A fixed popover inside a row would be placed relative to the
+list, so render menus outside VirtualList, as the session menu already does.
+
+How to test scrollbar paint on Linux:
+
+- **Only the real desktop app with native input reproduces it.** A standalone
+  WebKitGTK window loading the Vite page showed the thumb at the top, which
+  was false reassurance. Scrolling by setting `scrollTop` from JavaScript
+  isn't native input either.
+- **The packaged app has no Web Inspector.**
+- Build a candidate outside `build/bin`:
+  `npm --prefix frontend run build && go build -tags desktop,production -o /tmp/<name> ./cmd/agent-sessions`.
+  Run it with the real local data.
+- Drive it with a python-evdev `UInput` device (`/dev/uinput` is writable for
+  the user): `ABS_X`/`ABS_Y` move the pointer, and `REL_WHEEL` -1/+1 scrolls
+  down/up.
+- Capture with the `org.freedesktop.portal.Screenshot` D-Bus call
+  (non-interactive). GNOME Shell's own Screenshot interface is denied.
+  Crop the scrollbar lane before judging.
+- Portal captures can miss a flash shorter than one frame. Take several
+  during a pointer sweep, and have the user confirm on their build.
+
 ## Fullscreen shortcut
 
 Control+Command+F toggles fullscreen on macOS; other platforms use F11
