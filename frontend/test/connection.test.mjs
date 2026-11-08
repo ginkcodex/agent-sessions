@@ -98,12 +98,12 @@ test('reconnect banner keeps a lost session apart from a retrying failed connect
   assert.match(lost, /Connection to <strong>box<\/strong> lost\. Automatically reconnecting…/);
   assert.equal(bannerDetail(lost), undefined);
   assert.match(lost, /class="spinner/);
-  assert.deepEqual(renderedButtons(lost).map(b => b.text), ['Switch to Local']);
+  assert.deepEqual(renderedButtons(lost).map(b => b.text), ['Retry', 'Switch to Local']);
 
   const retrying = await renderReconnectBanner({ phase: 'reconnecting', host: 'box', error: 'dial tcp: i/o timeout' });
   assert.match(retrying, /Could not connect to <strong>box<\/strong>\. Retrying…/);
   assert.equal(bannerDetail(retrying), 'dial tcp: i/o timeout');
-  assert.deepEqual(renderedButtons(retrying).map(b => b.text), ['Switch to Local']);
+  assert.deepEqual(renderedButtons(retrying).map(b => b.text), ['Retry', 'Switch to Local']);
 
   assert.doesNotMatch(await renderReconnectBanner({ phase: 'connected', host: 'box' }), /reconnect-banner/);
   assert.doesNotMatch(await renderReconnectBanner({ phase: 'local' }), /reconnect-banner/);

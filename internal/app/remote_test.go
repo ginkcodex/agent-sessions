@@ -477,3 +477,77 @@ func TestConnection_ExplicitLeaveStopsMaster(t *testing.T) {
 		t.Fatalf("ControlMaster=no: stopped %q", g)
 	}
 }
+
+func TestReconnectDelay(t *testing.T) {
+	for i, want := range []time.Duration{time.Second, 2 * time.Second, 5 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second} {
+		if got := reconnectDelay(i + 1); got != want {
+			t.Errorf("attempt %d: got %s, want %s", i+1, got, want)
+		}
+	}
+}
+
+func TestConnection_RetryWaitsForCancelledDial(t *testing.T) {
+	previous := reconnectBackoff
+	reconnectBackoff = []time.Duration{time.Millisecond}
+	t.Cleanup(func() { reconnectBackoff = previous })
+	c := newConnection(nil)
+	defer c.Shutdown()
+	started := make(chan int, 4)
+	cancelled := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	calls := 0 // all accesses serialized by dialMu
+	c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
+		calls++
+		started <- calls
+		if calls == 1 {
+			return nil, errors.New("offline")
+		}
+		if calls == 2 {
+			<-ctx.Done()
+			close(cancelled)
+			<-release // cancellation cleanup must finish before the replacement dial
+			return nil, ctx.Err()
+		}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	if err := c.Connect(context.Background(), "box"); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []int{1, 2} {
+		select {
+		case got := <-started:
+			if got != want {
+				t.Fatalf("dial %d, want %d", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("automatic dial did not start")
+		}
+	}
+	if c.snapshot().Phase != ConnReconnecting {
+		t.Fatal("expected reconnecting")
+	}
+	if err := c.Connect(context.Background(), "box"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("retry did not cancel previous dial")
+	}
+	select {
+	case <-started:
+		t.Fatal("replacement overlapped cancellation cleanup")
+	case <-time.After(20 * time.Millisecond):
+	}
+	release <- struct{}{}
+	select {
+	case got := <-started:
+		if got != 3 {
+			t.Fatalf("dial %d, want 3", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("replacement dial did not start")
+	}
+}
