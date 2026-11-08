@@ -273,5 +273,9 @@ func fakeServe(args []string) int {
 			Capabilities:    rpc.Capabilities{Search: true, Export: true, Import: true},
 		})
 		_ = enc.Encode(rpc.Response{JSONRPC: rpc.JSONRPCVersion, ID: req.ID, Result: raw})
+		if os.Getenv("AGENT_SESSIONS_FAKE_SILENT") == "1" {
+			time.Sleep(time.Minute)
+			return 0
+		}
 	}
 }

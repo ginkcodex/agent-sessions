@@ -192,6 +192,18 @@ func (s *Server) Serve(parent context.Context) error {
 			continue
 		}
 
+		// Liveness: answered before the initialize check and without the
+		// backend, so a slow startup or a busy engine never delays it. The
+		// handler goroutine keeps the loop from waiting on the writer.
+		if req.Method == MethodPing {
+			s.handlers.Add(1)
+			go func() {
+				defer s.handlers.Done()
+				_ = s.sendResult(req.ID, struct{}{})
+			}()
+			continue
+		}
+
 		// Handshake enforcement: must initialize first
 		if !s.isInitialized() && req.Method != MethodInitialize {
 			_ = s.sendError(req.ID, &ResponseError{

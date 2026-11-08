@@ -138,6 +138,9 @@ var handshakeTimeout = 60 * time.Second
 // Several must fit in that window so a slow link does not trip it.
 const heartbeatInterval = 15 * time.Second
 
+var livenessProbeAfter = 5 * time.Second
+var livenessDeadline = 20 * time.Second
+
 // handshakeErr names the timeout when it, rather than the caller, ended the
 // handshake.
 func handshakeErr(parent, run context.Context, err error) error {
@@ -242,6 +245,7 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	// Started before initialize: the server's idle timer runs from the
 	// preface on, and starting the engine can take a while.
 	go heartbeat(runCtx, client, heartbeatInterval)
+	go client.WatchLiveness(runCtx, livenessProbeAfter, livenessDeadline, cancel)
 	initializeDone := engine.BeginStartupPhase(ctx, "remote_initialize")
 	res, err := client.Initialize(runCtx, rpc.InitializeRequest{
 		ProtocolVersion: rpc.ProtocolVersion,
@@ -250,9 +254,14 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	})
 	initializeDone(err == nil)
 	if err != nil {
+		if errors.Is(client.Err(), rpc.ErrLinkSilent) {
+			err = rpc.ErrLinkSilent
+		} else {
+			err = handshakeErr(ctx, runCtx, err)
+		}
 		_ = client.Close()
 		_ = s.Close()
-		return nil, fmt.Errorf("remote initialize: %w%s", handshakeErr(ctx, runCtx, err), s.stderrSuffix())
+		return nil, fmt.Errorf("remote initialize: %w%s", err, s.stderrSuffix())
 	}
 	s.client = client
 	s.init = res

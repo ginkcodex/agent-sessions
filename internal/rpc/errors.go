@@ -54,6 +54,9 @@ var (
 	ErrPrefaceNotFound  = errors.New("preface nonce not found before scan cap")
 	ErrTimeout          = errors.New("request timed out")
 	ErrIdleTimeout      = errors.New("no message from the client within the idle timeout")
+	// ErrLinkSilent ends a session whose server sent nothing, not even a
+	// reply to $/ping, for the liveness deadline. It is a disconnect.
+	ErrLinkSilent = fmt.Errorf("%w: no response from the host", ErrDisconnected)
 )
 
 // ErrorData attaches machine-readable diagnostic codes to a JSON-RPC error.

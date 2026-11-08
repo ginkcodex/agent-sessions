@@ -8,6 +8,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/engine"
@@ -29,18 +30,22 @@ type NotificationHandler func(method string, params json.RawMessage)
 
 // Client implements engine.Backend by forwarding requests over a JSON-RPC 2.0 transport.
 type Client struct {
-	rawR     io.Reader
-	rawW     io.Writer
-	reader   *FrameReader
-	writer   *FrameWriter
-	seq      int64
-	mu       sync.Mutex
-	pending  map[string]chan *Response
-	handlers []NotificationHandler
-	emitter  engine.Emitter
-	closed   bool
-	done     chan struct{}
-	closeErr error
+	rawR        io.Reader
+	rawW        io.Writer
+	reader      *FrameReader
+	writer      *FrameWriter
+	seq         int64
+	mu          sync.Mutex
+	pending     map[string]chan *Response
+	handlers    []NotificationHandler
+	emitter     engine.Emitter
+	closed      bool
+	done        chan struct{}
+	closeErr    error
+	finishOnce  sync.Once
+	notifyMu    sync.Mutex
+	notifyQueue []func()
+	notifyWake  chan struct{}
 
 	cdHost       string
 	cdOwned      map[string]cd.Context
@@ -51,6 +56,13 @@ type Client struct {
 	caps         Capabilities
 	roots        paths.Roots
 	appVer       string
+
+	// Liveness (see liveness.go): when bytes last arrived, and whether a
+	// $/ping is being written.
+	base     time.Time
+	lastRead atomic.Int64
+	pinging  atomic.Bool
+	pingID   atomic.Int64
 }
 
 // NewClient creates a new RPC client over r and w and starts reading frames in a background goroutine.
@@ -58,13 +70,16 @@ func NewClient(r io.Reader, w io.Writer) *Client {
 	c := &Client{
 		rawR:        r,
 		rawW:        w,
-		reader:      NewFrameReader(r),
+		base:        time.Now(),
 		writer:      NewFrameWriter(w),
 		cdOwned:     make(map[string]cd.Context),
 		cdSequences: make(map[string]int64),
 		pending:     make(map[string]chan *Response),
 		done:        make(chan struct{}),
+		notifyWake:  make(chan struct{}, 1),
 	}
+	c.reader = NewFrameReader(&activityReader{r: r, base: c.base, last: &c.lastRead})
+	go c.notificationLoop()
 	go c.readLoop()
 	return c
 }
@@ -134,49 +149,80 @@ func (c *Client) handleNotification(method string, params json.RawMessage) {
 	emitter := c.emitter
 	c.mu.Unlock()
 
-	for _, h := range handlers {
-		h(method, params)
-	}
+	c.queueNotification(func() {
+		for _, h := range handlers {
+			h(method, params)
+		}
 
-	if emitter != nil {
-		switch method {
-		case engine.CodeDiagnosticsUpdatedEvent:
-			var ev cd.Event
-			if json.Unmarshal(params, &ev) == nil {
-				emitter.Emit(method, ev)
+		if emitter != nil {
+			switch method {
+			case engine.CodeDiagnosticsUpdatedEvent:
+				var ev cd.Event
+				if json.Unmarshal(params, &ev) == nil {
+					emitter.Emit(method, ev)
+				}
+			case NotificationCatalogChanged:
+				var ev engine.CatalogChanged
+				if err := json.Unmarshal(params, &ev); err == nil {
+					emitter.Emit(NotificationCatalogChanged, ev)
+				}
+			case NotificationDiscoveryStatus:
+				var status engine.DiscoveryStatus
+				if json.Unmarshal(params, &status) == nil {
+					emitter.Emit(method, status)
+				}
+			case NotificationIndexProgress:
+				var p index.FTSProgress
+				if err := json.Unmarshal(params, &p); err == nil {
+					emitter.Emit(NotificationIndexProgress, p)
+				}
 			}
-		case NotificationCatalogChanged:
-			var ev engine.CatalogChanged
-			if err := json.Unmarshal(params, &ev); err == nil {
-				emitter.Emit(NotificationCatalogChanged, ev)
+		}
+	})
+}
+
+// queueNotification keeps arbitrary emitters/callbacks off the transport reader.
+// Preserve delivery order; diagnostics ownership bookkeeping remains on the reader.
+func (c *Client) queueNotification(f func()) {
+	c.notifyMu.Lock()
+	c.notifyQueue = append(c.notifyQueue, f)
+	c.notifyMu.Unlock()
+	select {
+	case c.notifyWake <- struct{}{}:
+	default:
+	}
+}
+
+func (c *Client) notificationLoop() {
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-c.notifyWake:
+		}
+		for {
+			select {
+			case <-c.done:
+				return
+			default:
 			}
-		case NotificationDiscoveryStatus:
-			var status engine.DiscoveryStatus
-			if json.Unmarshal(params, &status) == nil {
-				emitter.Emit(method, status)
+			c.notifyMu.Lock()
+			if len(c.notifyQueue) == 0 {
+				c.notifyMu.Unlock()
+				break
 			}
-		case NotificationIndexProgress:
-			var p index.FTSProgress
-			if err := json.Unmarshal(params, &p); err == nil {
-				emitter.Emit(NotificationIndexProgress, p)
-			}
+			f := c.notifyQueue[0]
+			c.notifyQueue[0] = nil
+			c.notifyQueue = c.notifyQueue[1:]
+			c.notifyMu.Unlock()
+			f()
 		}
 	}
 }
 
 func (c *Client) readLoop() {
 	var closeErr error
-	defer func() {
-		c.mu.Lock()
-		c.closed = true
-		c.closeErr = closeErr
-		for _, ch := range c.pending {
-			close(ch)
-		}
-		c.pending = make(map[string]chan *Response)
-		c.mu.Unlock()
-		close(c.done)
-	}()
+	defer func() { c.finish(closeErr) }()
 
 	for {
 		frame, err := c.reader.ReadFrame()
@@ -202,6 +248,9 @@ func (c *Client) readLoop() {
 		}
 
 		if partial.ID != nil {
+			if fmt.Sprint(partial.ID) == fmt.Sprint(c.pingID.Load()) {
+				c.pinging.Store(false)
+			}
 			// Deliver once: taking the entry out under the lock means a
 			// duplicate or late response for this ID finds nothing, so this
 			// send never blocks the read loop (the channel holds one).
@@ -303,15 +352,31 @@ func (c *Client) call(ctx context.Context, method string, params any, out any) e
 	}
 }
 
+// finish publishes termination even when the reader or a callback is stuck.
+func (c *Client) finish(err error) {
+	c.finishOnce.Do(func() {
+		c.mu.Lock()
+		c.closed = true
+		c.closeErr = err
+		for _, ch := range c.pending {
+			close(ch)
+		}
+		c.pending = make(map[string]chan *Response)
+		close(c.done)
+		c.mu.Unlock()
+	})
+}
+
+// Err returns the terminal transport error after Done closes.
+func (c *Client) Err() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closeErr
+}
+
 // Close closes the client connection.
 func (c *Client) Close() error {
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return nil
-	}
-	c.closed = true
-	c.mu.Unlock()
+	c.finish(ErrDisconnected)
 
 	if closer, ok := c.rawR.(io.Closer); ok {
 		_ = closer.Close()
