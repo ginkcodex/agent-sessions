@@ -35,6 +35,10 @@ type SSHOptions struct {
 	// its terminal, so BatchMode is off and askpass is not used. With
 	// ForceTTY it gets a terminal on Windows too.
 	Interactive bool
+	// Automatic limits retry probes, while preserving first-connect Unix prompts.
+	Automatic bool
+	// AskpassBroker reports this connection's open credential prompts.
+	AskpassBroker *AskpassBroker
 }
 
 // LoginShell, as the first element of a remote command, runs the rest under

@@ -273,5 +273,17 @@ func fakeServe(args []string) int {
 			Capabilities:    rpc.Capabilities{Search: true, Export: true, Import: true},
 		})
 		_ = enc.Encode(rpc.Response{JSONRPC: rpc.JSONRPCVersion, ID: req.ID, Result: raw})
+		if os.Getenv("AGENT_SESSIONS_FAKE_SILENT") == "1" {
+			if os.Getenv("AGENT_SESSIONS_FAKE_RETAIN_STDERR") == "1" {
+				child := exec.Command("sh", "-c", "sleep 3")
+				child.Stderr = os.Stderr
+				if err := child.Start(); err != nil {
+					return 2
+				}
+				go func() { _ = child.Wait() }()
+			}
+			time.Sleep(time.Minute)
+			return 0
+		}
 	}
 }

@@ -32,6 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Terminal cwd matching | [terminal-cwd-matching](../plan/terminal-cwd-matching.md) | [terminal-cwd-matching/](terminal-cwd-matching/README.md) | 1/1 ✅ |
 | Code diagnostics (Go to File checks) | [code-diagnostics](../plan/code-diagnostics.md) | [code-diagnostics/](code-diagnostics/README.md) | 19/28 ✅ · 8 🟡 · 1 ⛔ |
 | Editor essentials | [editor-essentials](../plan/editor-essentials.md) | [editor-essentials/](editor-essentials/README.md) | 23/23 ✅ |
 | Git history | [git-history](../plan/git-history.md) | [git-history/](git-history/README.md) | 17/18 ✅ · 1 🟡 |
@@ -60,3 +61,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Go to File editing | [file-editing](../plan/file-editing.md) | [file-editing/](file-editing/README.md) | 11/14 ✅ · 3 🟡 |
 | Wails v3 upgrade | [wails-v3-upgrade](../plan/wails-v3-upgrade.md) | [wails-v3-upgrade/](wails-v3-upgrade/README.md) | 1/2 ✅ · 1 ⬜ |
 | Arch Linux AUR package | [aur-package](../plan/aur-package.md) | [aur-package/](aur-package/README.md) | 4/7 ✅ · 3 🟡 |
+| Remote reconnect | [remote-reconnect](../plan/remote-reconnect.md) | [remote-reconnect/](remote-reconnect/README.md) | 8/8 ✅ |

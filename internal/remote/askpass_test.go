@@ -5,6 +5,8 @@ package remote
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"net"
 	"os"
 	"strings"
 	"sync"
@@ -90,6 +92,105 @@ func TestAskpass_RoundTrip(t *testing.T) {
 	output := strings.TrimSpace(stdout.String())
 	if output != testAnswer {
 		t.Errorf("got stdout %q, want %q", output, testAnswer)
+	}
+}
+
+func TestAskpass_ProbeBudgetPauses(t *testing.T) {
+	for _, action := range []string{"reply", "cancel", "close"} {
+		t.Run(action, func(t *testing.T) {
+			arrived := make(chan string, 1)
+			broker, err := NewAskpassBroker(func(id, _ string) { arrived <- id })
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer broker.Close()
+			// Start already open: subscribing must snapshot existing prompts.
+			helperDone := make(chan error, 1)
+			go func() {
+				var out, diagnostic bytes.Buffer
+				helperDone <- RunAskpassHelper(context.Background(), broker.SocketPath(), broker.Token(), "Password:", &out, &diagnostic)
+			}()
+			var id string
+			select {
+			case id = <-arrived:
+			case <-time.After(2 * time.Second):
+				t.Fatal("no prompt")
+			}
+			ctx, cancel := probeBudget(context.Background(), 150*time.Millisecond, broker)
+			defer cancel()
+			select {
+			case <-ctx.Done():
+				t.Fatal("open prompt consumed probe budget")
+			case <-time.After(250 * time.Millisecond):
+			}
+			switch action {
+			case "reply":
+				broker.Reply(id, "answer")
+			case "cancel":
+				broker.Cancel(id)
+			case "close":
+				broker.Close()
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal("resume did not preserve remaining time")
+			case <-time.After(50 * time.Millisecond):
+			}
+			select {
+			case <-ctx.Done():
+				if context.Cause(ctx) != context.DeadlineExceeded {
+					t.Fatalf("cause = %v", context.Cause(ctx))
+				}
+			case <-time.After(time.Second):
+				t.Fatal("closed prompt did not resume probe budget")
+			}
+			select {
+			case <-helperDone:
+			case <-time.After(time.Second):
+				t.Fatal("helper did not finish")
+			}
+		})
+	}
+}
+
+func TestAskpass_ProbeBudgetRemainingAndDisconnectedHelper(t *testing.T) {
+	arrived := make(chan string, 2)
+	broker, err := NewAskpassBroker(func(id, _ string) { arrived <- id })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer broker.Close()
+	ctx, cancel := probeBudget(context.Background(), 800*time.Millisecond, broker)
+	defer cancel()
+	time.Sleep(500 * time.Millisecond) // consume most of the active budget
+	var conns []net.Conn
+	for range 2 {
+		conn, err := net.Dial("unix", broker.SocketPath())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		conns = append(conns, conn)
+		if err := json.NewEncoder(conn).Encode(AskpassRequest{Token: broker.Token(), Prompt: "Password:"}); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-arrived:
+		case <-time.After(time.Second):
+			t.Fatal("no prompt")
+		}
+	}
+	conns[0].Close()
+	select {
+	case <-ctx.Done():
+		t.Fatal("one closed helper resumed budget while another prompt was open")
+	case <-time.After(900 * time.Millisecond):
+	}
+	conns[1].Close()
+	select {
+	case <-ctx.Done():
+	case <-time.After(650 * time.Millisecond):
+		t.Fatal("helper disconnect did not resume remaining budget (or reset it)")
 	}
 }
 

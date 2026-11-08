@@ -582,8 +582,9 @@ export class TerminalsStore {
    * Shows the pane that best fits a workspace, and the session in it when
    * given, without opening the panel or taking DOM focus. In order: the tab
    * running that session, then an agent tab of the workspace, then any tab
-   * of it. The active pane stays when it fits as well as the best one. A
-   * subagent runs in its parent's tab.
+   * of it. Shell workspaces follow reported cwd; agent workspaces use launch
+   * directory. The active pane stays when it fits as well as the best one.
+   * A subagent runs in its parent's tab.
    */
   selectDirectory(dir: string, host: string, meta?: Pick<SessionMeta, 'ref' | 'parentId'>): boolean {
     if (!dir) return false;
@@ -594,12 +595,13 @@ export class TerminalsStore {
       return normalized.replace(/\/+$/, '') || '/';
     };
     const key = directoryKey(dir);
-    // Lower fits better; null does not fit. Use the launch directory: a
-    // shell's `cd` does not change its workspace.
+    // Lower fits better; null does not fit. Shells follow their reported
+    // cwd, falling back to launch directory; agents keep their launch workspace.
     const fit = (tab: PanelTab | undefined): number | null => {
       if (tab?.status !== 'running' || tab.host !== host) return null;
       if (session && tab.session?.agent === session.agent && tab.session.id === session.id) return 0;
-      if (!tab.dir || directoryKey(tab.dir) !== key) return null;
+      const workspace = tab.kind === 'shell' ? tab.cwd || tab.dir : tab.dir;
+      if (!workspace || directoryKey(workspace) !== key) return null;
       return tab.kind === 'agent' ? 1 : 2;
     };
     // Follow the visible tab order (which users can rearrange), then pane order.

@@ -22,7 +22,6 @@
         connectedGeneration !== undefined && connectedGeneration === connectionStore.generation,
     }),
   );
-  let isDisconnected = $derived(connectionStore.phase === 'disconnected');
 
   function handleSwitchLocal() {
     void connectionStore.disconnect();
@@ -58,7 +57,7 @@
       </div>
     </div>
     <div class="banner-actions">
-      {#if isDisconnected && connectionStore.host}
+      {#if connectionStore.host}
         <button type="button" class="banner-btn retry-btn" onclick={handleRetry}>
           Retry
         </button>

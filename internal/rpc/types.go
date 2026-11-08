@@ -24,7 +24,11 @@ const (
 	MethodCancelRequest         = "$/cancelRequest"
 	// MethodHeartbeat is a notification the client sends on a timer so the
 	// server can tell a live but quiet client from one that vanished.
-	MethodHeartbeat  = "$/heartbeat"
+	MethodHeartbeat = "$/heartbeat"
+	// MethodPing is a request the server answers at once, even before
+	// initialize, so the client can tell a silent link from a quiet one.
+	// Any reply counts: an older server answers it with an error.
+	MethodPing       = "$/ping"
 	MethodInitialize = "initialize"
 )
 

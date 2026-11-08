@@ -53,6 +53,8 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [swipe-navigation-windows-linux.md](swipe-navigation-windows-linux.md) | [swipe-navigation-windows-linux](../tasks/swipe-navigation-windows-linux/README.md) | The same two-finger touchpad swipe on Windows (from wheel events) and Linux (GTK, native) |
 | [linux-gpu-rendering.md](linux-gpu-rendering.md) | [linux-gpu-rendering](../tasks/linux-gpu-rendering/README.md) | Linux: keep WebKit's DMA-BUF GPU renderer; only NVIDIA (Wails' check) falls back to shared memory |
 | [aur-package.md](aur-package.md) | [aur-package](../tasks/aur-package/README.md) | Arch Linux: `agent-sessions-bin` on the AUR from each stable release's `.deb`, published by CI |
+| [remote-reconnect.md](remote-reconnect.md) | [remote-reconnect](../tasks/remote-reconnect/README.md) | Faster recovery from interrupted SSH and WSL connections: liveness watchdog, fresh redial, bounded retries, same-host reload |
+| [terminal-cwd-matching.md](terminal-cwd-matching.md) | [terminal-cwd-matching](../tasks/terminal-cwd-matching/README.md) | Match shell workspaces by detected cwd while preserving agent identity and active equal matches |
 
 ## Supporting documents
 
@@ -91,6 +93,9 @@ Read them in order: later milestones build on the contracts defined in M0.
 **[git-history.md](git-history.md):**
 - [git-history-contract.md](git-history-contract.md): Git history contract v1
 - [git-history-qa.md](git-history-qa.md): Git history QA — 2026-10-26
+
+**[remote-reconnect.md](remote-reconnect.md):**
+- [remote-reconnect-qa.md](remote-reconnect-qa.md): Remote reconnect measurements and native checks
 
 Reference: [../formats.md](../formats.md) holds the verified on-disk formats
 of each tool; [../perf.md](../perf.md) holds performance measurements.

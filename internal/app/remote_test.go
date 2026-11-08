@@ -16,6 +16,51 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
 
+func TestConnection_AutomaticAttempts(t *testing.T) {
+	previous := reconnectBackoff
+	reconnectBackoff = []time.Duration{time.Millisecond}
+	t.Cleanup(func() { reconnectBackoff = previous })
+	for _, dropped := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dropped=%v", dropped), func(t *testing.T) {
+			c := newConnection(nil)
+			defer c.Shutdown()
+			attempts := make(chan bool, 8)
+			count := 0
+			c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
+				attempts <- opts.Automatic
+				count++
+				if count == 1 && dropped {
+					client, init := pipeClient(t)
+					s := remote.NewTestSession(alias, client, init)
+					_ = s.Close()
+					return s, nil
+				}
+				if count == 2 {
+					// Model a stalled automatic probe cancelled by its budget.
+					probeCtx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+					defer cancel()
+					<-probeCtx.Done()
+					return nil, fmt.Errorf("probe timed out after 20ms: %w", probeCtx.Err())
+				}
+				return nil, errors.New("transient network failure")
+			}
+			if err := c.Connect(context.Background(), "box"); err != nil {
+				t.Fatal(err)
+			}
+			for i, want := range []bool{false, true, true} {
+				select {
+				case got := <-attempts:
+					if got != want {
+						t.Fatalf("attempt %d automatic=%v, want %v", i, got, want)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatal("timeout did not advance to next attempt")
+				}
+			}
+		})
+	}
+}
+
 func TestConnection_LocalByDefault(t *testing.T) {
 	c := newConnection(nil)
 	if got := c.snapshot().Phase; got != ConnLocal {
@@ -430,5 +475,79 @@ func TestConnection_ExplicitLeaveStopsMaster(t *testing.T) {
 	c2.Shutdown()
 	if g := got(); g != "a,b,c" {
 		t.Fatalf("ControlMaster=no: stopped %q", g)
+	}
+}
+
+func TestReconnectDelay(t *testing.T) {
+	for i, want := range []time.Duration{time.Second, 2 * time.Second, 5 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second} {
+		if got := reconnectDelay(i + 1); got != want {
+			t.Errorf("attempt %d: got %s, want %s", i+1, got, want)
+		}
+	}
+}
+
+func TestConnection_RetryWaitsForCancelledDial(t *testing.T) {
+	previous := reconnectBackoff
+	reconnectBackoff = []time.Duration{time.Millisecond}
+	t.Cleanup(func() { reconnectBackoff = previous })
+	c := newConnection(nil)
+	defer c.Shutdown()
+	started := make(chan int, 4)
+	cancelled := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	calls := 0 // all accesses serialized by dialMu
+	c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
+		calls++
+		started <- calls
+		if calls == 1 {
+			return nil, errors.New("offline")
+		}
+		if calls == 2 {
+			<-ctx.Done()
+			close(cancelled)
+			<-release // cancellation cleanup must finish before the replacement dial
+			return nil, ctx.Err()
+		}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	if err := c.Connect(context.Background(), "box"); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []int{1, 2} {
+		select {
+		case got := <-started:
+			if got != want {
+				t.Fatalf("dial %d, want %d", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("automatic dial did not start")
+		}
+	}
+	if c.snapshot().Phase != ConnReconnecting {
+		t.Fatal("expected reconnecting")
+	}
+	if err := c.Connect(context.Background(), "box"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("retry did not cancel previous dial")
+	}
+	select {
+	case <-started:
+		t.Fatal("replacement overlapped cancellation cleanup")
+	case <-time.After(20 * time.Millisecond):
+	}
+	release <- struct{}{}
+	select {
+	case got := <-started:
+		if got != 3 {
+			t.Fatalf("dial %d, want 3", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("replacement dial did not start")
 	}
 }

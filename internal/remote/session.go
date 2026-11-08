@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"sync"
 	"time"
@@ -138,6 +139,9 @@ var handshakeTimeout = 60 * time.Second
 // Several must fit in that window so a slow link does not trip it.
 const heartbeatInterval = 15 * time.Second
 
+var livenessProbeAfter = 5 * time.Second
+var livenessDeadline = 20 * time.Second
+
 // handshakeErr names the timeout when it, rather than the caller, ended the
 // handshake.
 func handshakeErr(parent, run context.Context, err error) error {
@@ -200,13 +204,23 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 		cmd:    cmd,
 		done:   make(chan struct{}),
 	}
-	cmd.Stderr = &s.stderr
-	// Cancellation must also release readers if a proxy child retains stdout.
-	context.AfterFunc(runCtx, func() { _ = stdout.Close() })
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	// Own the stderr drain: exec.Cmd's implicit copier otherwise waits its
+	// full WaitDelay when an SSH mux/proxy child retains the pipe after kill.
+	// Close both readers on cancellation so silence detection is not delayed.
+	context.AfterFunc(runCtx, func() {
+		_ = stdout.Close()
+		_ = stderr.Close()
+	})
 	if err := cmd.Start(); err != nil {
 		cancel()
 		return nil, fmt.Errorf("start remote server: %w", err)
 	}
+	go func() { _, _ = io.Copy(&s.stderr, stderr) }()
 	go s.wait()
 
 	// Bound the handshake: a login shell that stalls, or streams output with
@@ -242,6 +256,7 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	// Started before initialize: the server's idle timer runs from the
 	// preface on, and starting the engine can take a while.
 	go heartbeat(runCtx, client, heartbeatInterval)
+	go client.WatchLiveness(runCtx, livenessProbeAfter, livenessDeadline, cancel)
 	initializeDone := engine.BeginStartupPhase(ctx, "remote_initialize")
 	res, err := client.Initialize(runCtx, rpc.InitializeRequest{
 		ProtocolVersion: rpc.ProtocolVersion,
@@ -250,9 +265,14 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	})
 	initializeDone(err == nil)
 	if err != nil {
+		if errors.Is(client.Err(), rpc.ErrLinkSilent) {
+			err = rpc.ErrLinkSilent
+		} else {
+			err = handshakeErr(ctx, runCtx, err)
+		}
 		_ = client.Close()
 		_ = s.Close()
-		return nil, fmt.Errorf("remote initialize: %w%s", handshakeErr(ctx, runCtx, err), s.stderrSuffix())
+		return nil, fmt.Errorf("remote initialize: %w%s", err, s.stderrSuffix())
 	}
 	s.client = client
 	s.init = res
@@ -366,6 +386,19 @@ func (s *Session) InitializeResult() *rpc.InitializeResult { return s.init }
 
 // Alias is the SSH host this session is connected to.
 func (s *Session) Alias() string { return s.alias }
+
+// Err reports the RPC reason the session ended. Read it after Done closes.
+func (s *Session) Err() error {
+	if s.client != nil {
+		return s.client.Err()
+	}
+	return nil
+}
+
+// SilentLinkMessage describes the configured silence deadline to the user.
+func SilentLinkMessage() string {
+	return fmt.Sprintf("no response from the host for %s", livenessDeadline)
+}
 
 // Done is closed when the ssh process has exited.
 func (s *Session) Done() <-chan struct{} { return s.done }

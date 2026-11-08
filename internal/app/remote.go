@@ -40,7 +40,18 @@ var reconnectBackoff = []time.Duration{
 	2 * time.Second,
 	5 * time.Second,
 	10 * time.Second,
-	30 * time.Second,
+}
+
+// reconnectDelay holds at the final step rather than cycling after long outages.
+func reconnectDelay(attempt int) time.Duration {
+	index := attempt - 1
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(reconnectBackoff) {
+		index = len(reconnectBackoff) - 1
+	}
+	return reconnectBackoff[index]
 }
 
 // ConnectionState is the snapshot the frontend renders.
@@ -86,7 +97,9 @@ type connSnap struct {
 // connection tracks the active target. The local engine stays running while a
 // remote session is connected; events from a stale generation are dropped.
 type connection struct {
-	mu      sync.Mutex
+	mu sync.Mutex
+	// dialMu lets a cancelled attempt finish cleanup before its replacement dials.
+	dialMu  sync.Mutex
 	state   ConnectionState
 	session *remote.Session
 	// client and xport serve the connected session (set with it; tests set
@@ -111,6 +124,8 @@ type connection struct {
 	// master; its master is then left to ControlPersist.
 	busy     func(host string) bool
 	forwards *portForwards
+	// phases logs phase changes with their timing; nil logs nothing.
+	phases *phaseLogger
 	// claims keeps each host open in one window at most; nil (tests, no
 	// cache dir) lets every window open any host.
 	claims *hostClaims
@@ -139,6 +154,7 @@ func newConnection(emitter engine.Emitter) *connection {
 		emitter:     emitter,
 		localActive: true,
 		stopMaster:  newMasterStopper,
+		phases:      newPhaseLogger(),
 	}
 	if !remote.SupportsSSHAskpass() {
 		c.opts.ControlMaster = "no"
@@ -156,6 +172,7 @@ func newConnection(emitter engine.Emitter) *connection {
 	})
 	if err == nil {
 		c.askpass = broker
+		c.opts.AskpassBroker = broker
 		execPath, err := os.Executable()
 		if err == nil {
 			c.opts.AskpassBinary = execPath
@@ -235,6 +252,7 @@ func (c *connection) emit() {
 	if c.forwards != nil {
 		c.forwards.sync(c.state, c.opts)
 	}
+	c.phases.observe(c.state)
 	e := c.emitter
 	st := c.state
 	c.mu.Unlock()
@@ -366,11 +384,20 @@ func (c *connection) Connect(ctx context.Context, alias string) error {
 }
 
 func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dial sessionDialer, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) {
+	firstAttempt := true
 	for {
 		if ctx.Err() != nil {
 			return
 		}
+		opts.Automatic = !firstAttempt
+		firstAttempt = false
+		c.dialMu.Lock()
+		if ctx.Err() != nil {
+			c.dialMu.Unlock()
+			return
+		}
 		sess, err := dial(ctx, alias, opts, env, generationEmitter(emitter, gen, c))
+		c.dialMu.Unlock()
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -388,7 +415,7 @@ func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dia
 				// Stay disconnected on the host; the user can Retry.
 				return
 			}
-			delay := reconnectBackoff[(attempt-1)%len(reconnectBackoff)]
+			delay := reconnectDelay(attempt)
 			c.setPhase(gen, ConnReconnecting, alias, err.Error(), rpc.Capabilities{}, "")
 			timer := time.NewTimer(delay)
 			select {
@@ -453,9 +480,19 @@ func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dia
 		attempt := c.attempt
 		c.mu.Unlock()
 		// Dropped, not a user disconnect: stay on the host and retry.
-		c.setPhase(gen, ConnDisconnected, alias, "connection lost", rpc.Capabilities{}, "")
-		delay := reconnectBackoff[(attempt-1)%len(reconnectBackoff)]
-		c.setPhase(gen, ConnReconnecting, alias, "connection lost", rpc.Capabilities{}, "")
+		message := "connection lost"
+		if errors.Is(sess.Err(), rpc.ErrLinkSilent) {
+			message = remote.SilentLinkMessage()
+		}
+		c.setPhase(gen, ConnDisconnected, alias, message, rpc.Capabilities{}, "")
+		if errors.Is(sess.Err(), rpc.ErrLinkSilent) {
+			c.releaseHost(alias, opts)
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		delay := reconnectDelay(attempt)
+		c.setPhase(gen, ConnReconnecting, alias, message, rpc.Capabilities{}, "")
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():

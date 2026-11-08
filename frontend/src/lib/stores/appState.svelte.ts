@@ -444,14 +444,35 @@ export class AppState {
     }
   }
 
-  async reset(host?: string): Promise<void> {
+  async reset(host?: string, sameHost = false): Promise<void> {
     // A startup collector belongs to one hydration/host, not later navigation.
     this.startupObservation = null;
     this.discoveryReloads++;
     this.discoveryReset++;
     this.discoveryReloading = false;
-    // Drop a header load still in flight for the previous backend.
+    // Invalidate every request immediately, including while the new tree loads.
+    this.groupsRequests.next();
+    this.sessionsRequests.next();
     this.sessionMetaRequests.next();
+    this.navRequests.next();
+    const reset = this.discoveryReset;
+    if (sameHost && host && host === this.targetHost) {
+      const ref = this.selectedSessionRef;
+      await this.reload(true);
+      if (reset !== this.discoveryReset || !refsEqual(this.selectedSessionRef, ref)) return;
+      if (ref && !(await this.sessionExists(ref))) {
+        if (reset !== this.discoveryReset || !refsEqual(this.selectedSessionRef, ref)) return;
+        this.selectedGroupKey = null;
+        this.selectedSessionRef = null;
+        this.selectedSessionMeta = null;
+        this.history.clear();
+        this.syncHistory();
+        await this.loadSessions();
+      } else if (reset === this.discoveryReset && refsEqual(this.selectedSessionRef, ref)) {
+        await this.refreshSelectedSession();
+      }
+      return;
+    }
     this.targetHost = host;
     this.collapsedKeys = loadCollapsedKeys(host);
     this.defaultCollapsed = new Set();
@@ -465,7 +486,7 @@ export class AppState {
     this.groups = [];
     this.agentCounts = {};
     this.error = null;
-    await this.loadGroups();
+    if (!(await this.loadGroups()) || reset !== this.discoveryReset) return;
     await this.loadSessions();
   }
 }
