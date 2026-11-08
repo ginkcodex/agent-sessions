@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [session-scrollbar.md](session-scrollbar.md) | [session-scrollbar](../tasks/session-scrollbar/README.md) | Fix the Linux session-list scrollbar vanishing at the top and flashing on hover |
 | [wails-v3-upgrade.md](wails-v3-upgrade.md) | [wails-v3-upgrade](../tasks/wails-v3-upgrade/README.md) | Move the desktop app to Wails v3 and GTK 4; native manual gates |
 | [file-editing.md](file-editing.md) | [file-editing](../tasks/file-editing/README.md) | Go to File editing: safe local/remote saves, drafts, conflicts and lifecycle guards |
 | [code-diagnostics.md](code-diagnostics.md) | [code-diagnostics](../tasks/code-diagnostics/README.md) | Go to File diagnostics: project checks, live language servers, trust, Problems panel, local/remote lifecycle |

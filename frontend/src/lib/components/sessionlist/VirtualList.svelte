@@ -92,6 +92,10 @@
     height: 100%;
     overflow-y: auto;
     position: relative;
+    /* Own compositing layer for the scroller. Without it WebKitGTK drops the
+       Linux scrollbar near the top of the list and flashes it on row hover.
+       Verified natively in the desktop app (SS-07). */
+    transform: translateZ(0);
     -webkit-overflow-scrolling: touch;
   }
 
