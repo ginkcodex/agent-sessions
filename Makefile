@@ -49,7 +49,7 @@ test:
 # Opt-in SSH integration tests against a throwaway Docker sshd
 # (internal/remote/sshtest). Needs docker, ssh and ssh-keygen.
 test-ssh:
-	AGENT_SESSIONS_SSH_DOCKER=1 $(GO) test -race -count=1 -run 'SSHD' ./internal/remote/... ./internal/app/...
+	AGENT_SESSIONS_SSH_DOCKER=1 $(GO) test -race -count=1 -timeout 20m -run 'SSHD' ./internal/remote/... ./internal/app/...
 
 lint:
 	$(GO) tool golangci-lint run

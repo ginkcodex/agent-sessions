@@ -60,7 +60,13 @@ func sshdConnection(t *testing.T, h *sshtest.Host) (*connection, *phaseLog) {
 	prev := reconnectBackoff
 	reconnectBackoff = []time.Duration{200 * time.Millisecond}
 	t.Cleanup(func() { reconnectBackoff = prev })
+	return sshdConnectionProduction(t, h)
+}
 
+// sshdConnectionProduction keeps the production backoff and timeouts, for
+// tests that measure how long recovery takes.
+func sshdConnectionProduction(t *testing.T, h *sshtest.Host) (*connection, *phaseLog) {
+	t.Helper()
 	log := &phaseLog{}
 	c := newConnection(log)
 	t.Cleanup(c.Shutdown)
@@ -180,4 +186,97 @@ func TestSSHD_VersionMismatchStopsRetrying(t *testing.T) {
 	if got := c.snapshot(); got.Phase != ConnDisconnected {
 		t.Fatalf("phase after wait = %q", got.Phase)
 	}
+}
+
+// silentDrop measures recovery from a fault that leaves the link open but
+// silent, at production timings: how long until the app reports the drop,
+// and how long after the fault is undone until it is connected again. The
+// fault lasts at least outage, and at least a few seconds past detection
+// so that some retries fail first, as on a real outage.
+type silentDrop struct {
+	name   string
+	fault  func(t *testing.T, h *sshtest.Host)
+	undo   func(t *testing.T, h *sshtest.Host)
+	outage time.Duration
+	// Upper bounds; past them the test fails with what it saw.
+	detectWithin, recoverWithin time.Duration
+}
+
+func (s silentDrop) run(t *testing.T) {
+	h := sshtest.Start(t)
+	t.Setenv("AGENT_SESSIONS_REMOTE_SERVERS_DIR", sshtest.ServerBundleDir(t, version.Current()))
+	c, log := sshdConnectionProduction(t, h)
+	alias := h.Alias(sshtest.UserSh)
+
+	if err := c.Connect(context.Background(), alias); err != nil {
+		t.Fatal(err)
+	}
+	i, st := log.waitFor(t, 0, 60*time.Second, func(st ConnectionState) bool {
+		return st.Phase == ConnConnected || st.Phase == ConnDisconnected
+	})
+	if st.Phase != ConnConnected {
+		t.Fatalf("first connect: %+v", st)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	if _, err := c.backend(nil).AgentCounts(ctx, engine.FilterOpts{}); err != nil {
+		t.Fatalf("call before the fault: %v", err)
+	}
+
+	faultAt := time.Now()
+	s.fault(t, h)
+	undone := false
+	defer func() {
+		if !undone {
+			s.undo(t, h)
+		}
+	}()
+	i, st = log.waitFor(t, i+1, s.detectWithin, phaseIs(ConnDisconnected))
+	detect := time.Since(faultAt)
+	t.Logf("%s: drop reported after %s (%q)", s.name, detect.Round(100*time.Millisecond), st.Error)
+
+	undoAt := faultAt.Add(s.outage)
+	if earliest := time.Now().Add(5 * time.Second); undoAt.Before(earliest) {
+		undoAt = earliest
+	}
+	time.Sleep(time.Until(undoAt))
+	undoAt = time.Now()
+	s.undo(t, h)
+	undone = true
+	_, st = log.waitFor(t, i+1, s.recoverWithin, phaseIs(ConnConnected))
+	recovered := time.Since(undoAt)
+	if st.Host != alias {
+		t.Fatalf("reconnected to %q", st.Host)
+	}
+	if _, err := c.backend(nil).AgentCounts(ctx, engine.FilterOpts{}); err != nil {
+		t.Fatalf("call after reconnect: %v", err)
+	}
+	t.Logf("RESULT %s: detect=%s recover=%s (outage %s, total %s)", s.name,
+		detect.Round(100*time.Millisecond), recovered.Round(100*time.Millisecond),
+		undoAt.Sub(faultAt).Round(100*time.Millisecond), time.Since(faultAt).Round(100*time.Millisecond))
+}
+
+// The network to the host is cut: nothing gets through, nothing fails.
+func TestSSHD_RecoversFromNetworkCut(t *testing.T) {
+	silentDrop{
+		name:          "network cut",
+		fault:         func(t *testing.T, h *sshtest.Host) { h.CutNetwork(t) },
+		undo:          func(t *testing.T, h *sshtest.Host) { h.RestoreNetwork(t) },
+		outage:        60 * time.Second,
+		detectWithin:  3 * time.Minute,
+		recoverWithin: 4 * time.Minute,
+	}.run(t)
+}
+
+// The host freezes: its kernel accepts packets but sshd and the server
+// never answer.
+func TestSSHD_RecoversFromFrozenHost(t *testing.T) {
+	silentDrop{
+		name:          "frozen host",
+		fault:         func(t *testing.T, h *sshtest.Host) { h.Pause(t) },
+		undo:          func(t *testing.T, h *sshtest.Host) { h.Unpause(t) },
+		outage:        60 * time.Second,
+		detectWithin:  3 * time.Minute,
+		recoverWithin: 4 * time.Minute,
+	}.run(t)
 }

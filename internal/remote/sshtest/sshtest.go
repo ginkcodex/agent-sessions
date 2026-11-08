@@ -39,7 +39,7 @@ const (
 const Banner = "Welcome to the agent-sessions test host"
 
 const dockerfile = `FROM alpine:3.20
-RUN apk add --no-cache openssh-server zsh && \
+RUN apk add --no-cache openssh-server zsh iptables && \
     adduser -D -s /bin/sh ` + UserSh + ` && \
     adduser -D -s /bin/zsh ` + UserZsh + ` && \
     for u in ` + UserSh + ` ` + UserZsh + `; do \
@@ -101,8 +101,12 @@ func Start(t testing.TB) *Host {
 	keygen(t, clientKey)
 
 	name := fmt.Sprintf("as-sshd-%d-%d", os.Getpid(), time.Now().UnixNano())
-	run(t, "docker", "run", "-d", "--rm", "--name", name, "-p", "127.0.0.1::22", image)
-	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", name).Run() })
+	// NET_ADMIN lets CutNetwork drop sshd's packets inside the container.
+	run(t, "docker", "run", "-d", "--rm", "--cap-add", "NET_ADMIN", "--name", name, "-p", "127.0.0.1::22", image)
+	t.Cleanup(func() {
+		_ = exec.Command("docker", "unpause", name).Run()
+		_ = exec.Command("docker", "rm", "-f", name).Run()
+	})
 
 	h := &Host{Container: name, Aliases: map[string]string{}}
 	h.cp(t, hostKey, "/etc/ssh/test_host_key")
@@ -198,6 +202,43 @@ func (h *Host) Exec(t testing.TB, script string) string {
 func (h *Host) ExecAs(t testing.TB, user, script string) string {
 	t.Helper()
 	return run(t, "docker", "exec", "-u", user, "-w", "/home/"+user, "-e", "HOME=/home/"+user, h.Container, "sh", "-c", script)
+}
+
+// cutRules drop every packet to and from sshd without a reply, so open
+// connections go silent instead of failing, as on a lost network.
+var cutRules = [][]string{
+	{"INPUT", "-p", "tcp", "--dport", "22", "-j", "DROP"},
+	{"OUTPUT", "-p", "tcp", "--sport", "22", "-j", "DROP"},
+}
+
+// CutNetwork silently drops all ssh traffic to and from the container.
+// Open connections stay open but nothing gets through until RestoreNetwork.
+func (h *Host) CutNetwork(t testing.TB) {
+	t.Helper()
+	for _, rule := range cutRules {
+		run(t, "docker", append([]string{"exec", h.Container, "iptables", "-A"}, rule...)...)
+	}
+}
+
+// RestoreNetwork undoes CutNetwork.
+func (h *Host) RestoreNetwork(t testing.TB) {
+	t.Helper()
+	for _, rule := range cutRules {
+		run(t, "docker", append([]string{"exec", h.Container, "iptables", "-D"}, rule...)...)
+	}
+}
+
+// Pause freezes every process in the container, as on a host that hangs.
+// The kernel still accepts TCP packets, but sshd never answers them.
+func (h *Host) Pause(t testing.TB) {
+	t.Helper()
+	run(t, "docker", "pause", h.Container)
+}
+
+// Unpause undoes Pause.
+func (h *Host) Unpause(t testing.TB) {
+	t.Helper()
+	run(t, "docker", "unpause", h.Container)
 }
 
 // CopyTree copies a local directory to /home/<user>/<rel> in the container,

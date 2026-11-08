@@ -111,6 +111,8 @@ type connection struct {
 	// master; its master is then left to ControlPersist.
 	busy     func(host string) bool
 	forwards *portForwards
+	// phases logs phase changes with their timing; nil logs nothing.
+	phases *phaseLogger
 	// claims keeps each host open in one window at most; nil (tests, no
 	// cache dir) lets every window open any host.
 	claims *hostClaims
@@ -139,6 +141,7 @@ func newConnection(emitter engine.Emitter) *connection {
 		emitter:     emitter,
 		localActive: true,
 		stopMaster:  newMasterStopper,
+		phases:      newPhaseLogger(),
 	}
 	if !remote.SupportsSSHAskpass() {
 		c.opts.ControlMaster = "no"
@@ -235,6 +238,7 @@ func (c *connection) emit() {
 	if c.forwards != nil {
 		c.forwards.sync(c.state, c.opts)
 	}
+	c.phases.observe(c.state)
 	e := c.emitter
 	st := c.state
 	c.mu.Unlock()

@@ -114,8 +114,9 @@ Connection phase changes are logged with the time since the previous phase
 (`agent-sessions: connection <host>: reconnecting after 21.3s connected
 (no response from host)`), so native runs on Windows and macOS can be timed
 without a debugger. The opt-in Docker sshd harness gets two silent-failure
-scenarios: the container's network cut (`docker network disconnect`) and
-the container frozen (`docker pause`). Both run with production timings.
+scenarios: the network cut (iptables in the container drops every packet
+to and from sshd) and the container frozen (`docker pause`). Both run with
+production timings.
 
 ## Decisions
 
@@ -153,7 +154,7 @@ the container frozen (`docker pause`). Both run with production timings.
 ## Release criteria
 
 - With the Docker sshd harness at production timings: after
-  `docker network disconnect` and after `docker pause`, the app reports
+  a network cut and after `docker pause`, the app reports
   reconnecting within 25 s, and connects again within 15 s of the fault
   being undone. Before and after numbers are recorded in
   [remote-reconnect-qa.md](remote-reconnect-qa.md).

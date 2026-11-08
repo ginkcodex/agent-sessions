@@ -6,7 +6,25 @@ from the fault to `reconnecting` and from undoing the fault to `connected`.
 
 ## Baseline (before the change)
 
-Not measured yet ([RR-01](../tasks/remote-reconnect/RR-01.md)).
+Measured 2026-11-08 on Linux, commit `4aeb573` plus the RR-01 logging and
+harness changes, before the liveness changes. Production SSH keepalives,
+handshake timeout and reconnect backoff; local Docker sshd, one run each.
+
+| Scenario | Fault → drop reported | Restore → connected | Actual outage | Result |
+|---|---|---|---|---|
+| Network cut (iptables DROP both directions) | 59.5 s | 0.3 s | 64.5 s | Pass |
+| Frozen host (Docker pause) | 59.3 s | 0.2 s | 64.3 s | Pass |
+
+The harness holds the fault for at least 60 s and at least 5 s after the
+drop is reported. The fast recovery here is on a local host and is not a
+claim about WAN or native-client recovery. Both scenarios completed an RPC
+call before and after the fault. Command: `AGENT_SESSIONS_SSH_DOCKER=1 go
+test -race -count=1 -timeout 20m -v -run
+'TestSSHD_RecoversFrom(NetworkCut|FrozenHost)$' ./internal/app/` (pass).
+
+Phase timings are written to the client's standard logger. A Windows GUI
+build needs stderr capture/redirection to collect those lines. Native
+checks below have not been performed.
 
 ## After the change
 
