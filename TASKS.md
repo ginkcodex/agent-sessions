@@ -58,6 +58,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Terminal cwd matching | [terminal-cwd-matching](docs/plan/terminal-cwd-matching.md) | [terminal-cwd-matching/](docs/tasks/terminal-cwd-matching/README.md) | 1/1 ✅ |
 | Code diagnostics (Go to File checks) | [code-diagnostics](docs/plan/code-diagnostics.md) | [code-diagnostics/](docs/tasks/code-diagnostics/README.md) | 19/28 ✅ · 8 🟡 · 1 ⛔ |
 | Editor essentials | [editor-essentials](docs/plan/editor-essentials.md) | [editor-essentials/](docs/tasks/editor-essentials/README.md) | 23/23 ✅ |
 | Git history | [git-history](docs/plan/git-history.md) | [git-history/](docs/tasks/git-history/README.md) | 17/18 ✅ · 1 🟡 |

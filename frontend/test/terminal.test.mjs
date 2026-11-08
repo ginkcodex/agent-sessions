@@ -665,7 +665,6 @@ test('workspace activation picks the first running matching tab in display order
     const first = await store.newShell('/a');
     const other = await store.newShell('/b');
     const second = await store.newShell('/a');
-    store.setCwd(first.id, '/elsewhere');
     store.setOpen(false);
     assert.equal(store.selectDirectory('/a/', ''), true);
     assert.equal(store.active, second.id, 'keeps the matching active tab instead of selecting the first');
@@ -696,6 +695,34 @@ test('workspace activation picks the first running matching tab in display order
   });
 });
 
+test('shell workspace activation follows detected cwd and preserves the active equal match', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [session] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const first = await store.newShell('/initial');
+    const second = await store.newShell(session.cwd);
+    store.setCwd(first.id, session.cwd);
+    store.select(first.id);
+    store.setOpen(false);
+    for (let i = 0; i < 2; i++) {
+      assert.equal(store.selectDirectory(session.cwd, '', session), true);
+      assert.equal(store.active, first.id, 'transcript activation keeps the shell reached by cd');
+    }
+    assert.equal(first.dir, '/initial', 'launch directory remains intact');
+    assert.equal(store.open, false);
+    assert.equal(store.focusOnActivation, false);
+    assert.equal(store.selectDirectory('/initial', ''), false, 'known cwd replaces launch workspace');
+
+    store.setCwd(first.id, '/elsewhere');
+    store.selectDirectory(session.cwd, '', session);
+    assert.equal(store.active, second.id, 'moving away stops the first shell matching');
+    store.setCwd(second.id, '/elsewhere');
+    assert.equal(store.selectDirectory(session.cwd, '', session), false, 'neither shell matches its old workspace');
+    assert.equal(store.active, second.id, 'no match leaves selection unchanged');
+    store.selectDirectory('/elsewhere', '');
+    assert.equal(store.active, second.id, 'equal reported cwd preserves the active shell');
+  });
+});
+
 test('session activation prefers the session tab, then an agent tab, then any workspace tab', async () => {
   await withTerminals(async ({ store, mock }) => {
     const [mine, other] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
@@ -703,6 +730,8 @@ test('session activation prefers the session tab, then an agent tab, then any wo
     const shell = await store.newShell(dir);
     const otherAgent = await store.runResume(other.ref, dir);
     const own = await store.runResume(mine.ref);
+    store.setCwd(otherAgent.id, '/agent-command-directory');
+    store.setCwd(own.id, '/agent-command-directory');
     store.setOpen(false);
 
     store.select(shell.id);
@@ -725,7 +754,8 @@ test('session activation prefers the session tab, then an agent tab, then any wo
     assert.equal(store.active, secondAgent.id, 'an active agent tab of the workspace stays');
     store.select(shell.id);
     store.selectDirectory(dir, '');
-    assert.equal(store.active, otherAgent.id, 'without a session, the first agent tab still comes before shells');
+    assert.equal(store.active, otherAgent.id, 'agent workspace uses launch directory despite reported cwd');
+    assert.equal(store.selectDirectory('/agent-command-directory', ''), false, 'agent cwd does not create a workspace match');
 
     otherAgent.status = 'exited';
     secondAgent.status = 'exited';
@@ -742,8 +772,10 @@ test('session activation prefers the session tab, then an agent tab, then any wo
 test('workspace matching normalizes Windows paths and trailing separators without folding POSIX case', async () => {
   await withTerminals(async ({ store }) => {
     const windows = await store.newShell('C:\\Users\\Gink\\project');
-    const posix = await store.newShell('/Project');
-    assert.equal(store.selectDirectory('c:/users/gink/project/', ''), true);
+    const posix = await store.newShell('/initial');
+    store.setCwd(windows.id, 'C:\\Users\\Gink\\moved');
+    store.setCwd(posix.id, '/Project');
+    assert.equal(store.selectDirectory('c:/users/gink/moved/', ''), true);
     assert.equal(store.active, windows.id);
     assert.equal(store.selectDirectory('/project', ''), false);
     assert.equal(store.selectDirectory('/Project/', ''), true);
@@ -756,6 +788,7 @@ test('workspace activation selects matching split panes', async () => {
     const first = await store.newShell('/a');
     store.setCwd(first.id, '/nested');
     const split = await store.split(first.id);
+    store.setCwd(first.id, '/elsewhere');
     await store.newShell('/b');
     assert.equal(store.selectDirectory('/nested', ''), true);
     assert.equal(store.active, split.id);

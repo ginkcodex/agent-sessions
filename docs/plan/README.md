@@ -54,6 +54,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [linux-gpu-rendering.md](linux-gpu-rendering.md) | [linux-gpu-rendering](../tasks/linux-gpu-rendering/README.md) | Linux: keep WebKit's DMA-BUF GPU renderer; only NVIDIA (Wails' check) falls back to shared memory |
 | [aur-package.md](aur-package.md) | [aur-package](../tasks/aur-package/README.md) | Arch Linux: `agent-sessions-bin` on the AUR from each stable release's `.deb`, published by CI |
 | [remote-reconnect.md](remote-reconnect.md) | [remote-reconnect](../tasks/remote-reconnect/README.md) | Faster recovery from interrupted SSH and WSL connections: liveness watchdog, fresh redial, bounded retries, same-host reload |
+| [terminal-cwd-matching.md](terminal-cwd-matching.md) | [terminal-cwd-matching](../tasks/terminal-cwd-matching/README.md) | Match shell workspaces by detected cwd while preserving agent identity and active equal matches |
 
 ## Supporting documents
 
