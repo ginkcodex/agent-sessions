@@ -263,8 +263,8 @@ func TestSSHD_RecoversFromNetworkCut(t *testing.T) {
 		fault:         func(t *testing.T, h *sshtest.Host) { h.CutNetwork(t) },
 		undo:          func(t *testing.T, h *sshtest.Host) { h.RestoreNetwork(t) },
 		outage:        60 * time.Second,
-		detectWithin:  3 * time.Minute,
-		recoverWithin: 4 * time.Minute,
+		detectWithin:  25 * time.Second,
+		recoverWithin: 15 * time.Second,
 	}.run(t)
 }
 
@@ -276,7 +276,7 @@ func TestSSHD_RecoversFromFrozenHost(t *testing.T) {
 		fault:         func(t *testing.T, h *sshtest.Host) { h.Pause(t) },
 		undo:          func(t *testing.T, h *sshtest.Host) { h.Unpause(t) },
 		outage:        60 * time.Second,
-		detectWithin:  3 * time.Minute,
-		recoverWithin: 4 * time.Minute,
+		detectWithin:  25 * time.Second,
+		recoverWithin: 15 * time.Second,
 	}.run(t)
 }

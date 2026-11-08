@@ -147,21 +147,21 @@ production timings.
 - **Askpass pause** needs the broker to report open prompts per
   connection; Windows has no broker (non-interactive SSH), so the limit is
   never paused there, as today.
-- **Docker scenarios approximate** real network loss: a disconnected
-  container network drops packets locally rather than across a WAN.
+- **Docker scenarios approximate** real network loss: container iptables
+  drops packets locally rather than across a WAN.
   Native Windows, WSL and macOS checks stay manual.
 
 ## Release criteria
 
-- With the Docker sshd harness at production timings: after
+- **Met (2026-11-08):** With the Docker sshd harness at production timings: after
   a network cut and after `docker pause`, the app reports
   reconnecting within 25 s, and connects again within 15 s of the fault
   being undone. Before and after numbers are recorded in
   [remote-reconnect-qa.md](remote-reconnect-qa.md).
-- A server that stops reading (live transport, stuck process) is detected
+- **Met (shortened test timers):** A server that stops reading (live transport, stuck process) is detected
   within 25 s in a unit test; a link that delivers a large response slowly
   for longer than the deadline is not dropped.
-- A same-host reconnect leaves the selected session open.
-- `go test -race ./...`, `make test-ssh`, frontend tests and checks pass.
-- Native Windows (SSH and WSL) and macOS runs are recorded as done or as
+- **Met (store regressions; native UI not checked):** A same-host reconnect leaves the selected session open.
+- **Met (reruns recorded in QA):** `go test -race ./...`, `make test-ssh`, frontend tests and checks pass. Repository-wide lint remains **not met** (135 findings; see QA record).
+- **Met (recorded, not executed):** Native Windows (SSH and WSL) and macOS runs are recorded as done or as
   not performed, never assumed.

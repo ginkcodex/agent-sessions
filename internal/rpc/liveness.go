@@ -31,9 +31,9 @@ func (c *Client) Quiet() time.Duration {
 
 // WatchLiveness runs until ctx ends or the client closes. Once nothing has
 // arrived for probeAfter it sends one $/ping; any reply, or any other frame,
-// counts as life. Once nothing has arrived for deadline it calls onSilent
-// once and returns. The caller ends the transport there; this does not
-// close the client, because a read blocked on a stuck pipe would not return.
+// counts as life. Once nothing has arrived for deadline it publishes
+// ErrLinkSilent, calls onSilent once to end the transport, closes the client
+// pipes and returns. Publishing termination does not wait for a stuck read.
 //
 // Sending never blocks the watch: on a lost network the write can wait on a
 // full pipe until the transport is torn down.
@@ -65,7 +65,7 @@ func (c *Client) WatchLiveness(ctx context.Context, probeAfter, deadline time.Du
 	}
 }
 
-// sendPing writes one $/ping unless one is still being written. The reply
+// sendPing writes one $/ping unless one is still awaiting a reply. The reply
 // is matched to no pending call, so the read loop drops it after the
 // activity reader has seen it.
 func (c *Client) sendPing() {
