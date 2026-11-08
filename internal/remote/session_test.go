@@ -58,6 +58,29 @@ func TestDialSession(t *testing.T) {
 	}
 }
 
+func TestDialSession_RetainedStderrDoesNotDelaySilence(t *testing.T) {
+	if !SupportsSSHAskpass() {
+		t.Skip("Unix proxy child fixture")
+	}
+	bin := fakeSSHPath(t, "serve", map[string]string{"AGENT_SESSIONS_FAKE_SILENT": "1", "AGENT_SESSIONS_FAKE_RETAIN_STDERR": "1"})
+	prevProbe, prevDeadline := livenessProbeAfter, livenessDeadline
+	livenessProbeAfter, livenessDeadline = 30*time.Millisecond, 300*time.Millisecond
+	t.Cleanup(func() { livenessProbeAfter, livenessDeadline = prevProbe, prevDeadline })
+	s, err := DialSession(t.Context(), "box", SSHOptions{Binary: bin, ControlMaster: "no"}, "/opt/agent-sessions-cli", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	select {
+	case <-s.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("retained stderr delayed process completion")
+	}
+	if !errors.Is(s.Err(), rpc.ErrLinkSilent) {
+		t.Fatalf("reason = %v", s.Err())
+	}
+}
+
 func TestDialSession_SilentServerEndsTransport(t *testing.T) {
 	bin := fakeSSHPath(t, "serve", map[string]string{"AGENT_SESSIONS_FAKE_SILENT": "1"})
 	prevProbe, prevDeadline := livenessProbeAfter, livenessDeadline

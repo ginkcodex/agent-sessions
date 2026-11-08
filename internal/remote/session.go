@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"sync"
 	"time"
@@ -203,13 +204,23 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 		cmd:    cmd,
 		done:   make(chan struct{}),
 	}
-	cmd.Stderr = &s.stderr
-	// Cancellation must also release readers if a proxy child retains stdout.
-	context.AfterFunc(runCtx, func() { _ = stdout.Close() })
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	// Own the stderr drain: exec.Cmd's implicit copier otherwise waits its
+	// full WaitDelay when an SSH mux/proxy child retains the pipe after kill.
+	// Close both readers on cancellation so silence detection is not delayed.
+	context.AfterFunc(runCtx, func() {
+		_ = stdout.Close()
+		_ = stderr.Close()
+	})
 	if err := cmd.Start(); err != nil {
 		cancel()
 		return nil, fmt.Errorf("start remote server: %w", err)
 	}
+	go func() { _, _ = io.Copy(&s.stderr, stderr) }()
 	go s.wait()
 
 	// Bound the handshake: a login shell that stalls, or streams output with

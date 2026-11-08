@@ -1,7 +1,7 @@
 # Remote reconnect — tasks
 
 - **Plan:** [remote-reconnect.md](../../plan/remote-reconnect.md)
-- **Progress:** 6/7 done
+- **Progress:** 7/8 done
 
 Planned 2026-11-08. RR-01 measures today's recovery with silent failures.
 RR-02…RR-04 make the backend notice a dead link within about 20 s and redial
@@ -18,3 +18,5 @@ records native checks.
 | [RR-05](RR-05.md) | ✅ Done | Backoff that stays at 10 s; Retry while reconnecting | 1.5 h | — |
 | [RR-06](RR-06.md) | ✅ Done | Same-host reconnect keeps the selected session and history | 3 h | — |
 | [RR-07](RR-07.md) | ⬜ Not started | Integrated measurement, M7 doc update, native check record | 2.5 h | RR-01…RR-06 |
+
+| [RR-08](RR-08.md) | ✅ Done | Release inherited stderr on cancellation (found by RR-07) | 1 h | RR-02 |
