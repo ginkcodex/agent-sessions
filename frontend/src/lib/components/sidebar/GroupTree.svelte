@@ -6,7 +6,7 @@
   import { catalogNotice, emptyCatalogState, discoveryProblem } from '../../discovery';
   import { manage } from '../../stores/manage.svelte';
   import { filterSessionsByAge, refsEqual } from '../../manage';
-  import { nodeDirectory, nodeToHighlight, sessionToSelect } from '../../tree';
+  import { nodeDirectory, nodeToHighlight, sessionToSelect, workspaceTerminalTarget } from '../../tree';
   import { terminals } from '../../stores/terminals.svelte';
   import { link } from '../../stores/link.svelte';
   import GroupNodeItem from './GroupNodeItem.svelte';
@@ -20,13 +20,16 @@
     // The clicked row shows as selected at once, before its session opens.
     clicked = node.key;
     const cwd = nodeDirectory(appState.groups, node.key);
-    if (cwd) terminals.selectDirectory(cwd, link.dataHost ?? '');
+    const host = link.dataHost ?? '';
     try {
       await appState.selectGroup(node.key, 'push');
-      // A later click superseded this one while sessions were loading.
-      if (appState.selectedGroupKey !== node.key) return;
+      // A later click or a host switch superseded this one while sessions were loading.
+      if (appState.selectedGroupKey !== node.key || (link.dataHost ?? '') !== host) return;
       const visible = filterSessionsByAge(appState.sessions, manage.ageFilter);
       const ref = sessionToSelect(node, visible);
+      // The terminal follows the session that opens, as a click on its row does.
+      const target = workspaceTerminalTarget(visible, ref, cwd);
+      if (target) terminals.selectDirectory(target.dir, host, target.session);
       await appState.selectSession(ref);
     } finally {
       if (clicked === node.key) clicked = null;

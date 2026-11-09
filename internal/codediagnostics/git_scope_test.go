@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 // gitInit makes root/rel a repository of its own; nothing is committed.
@@ -121,15 +122,34 @@ func TestGitScopeCallBudget(t *testing.T) {
 	}
 	root := goplsRoot(t, files)
 	gitInit(t, root, ".")
+	for i := range maxGitScopeCalls + 2 {
+		gitInit(t, root, fmt.Sprintf("r%02d", i))
+	}
 	r := openTestRoot(t, root)
 	s := newGitScope(root)
+	// Isolate the call cap from the wall-clock budget and slow Git startup
+	// on Windows. Repository setup above must not spend either budget.
+	s.deadline = time.Now().Add(time.Minute)
 	for i := range maxGitScopeCalls + 2 {
-		rel := fmt.Sprintf("r%02d", i)
-		gitInit(t, root, rel)
-		s.skip(r, rel)
+		s.skip(r, fmt.Sprintf("r%02d", i))
 	}
 	if s.calls != maxGitScopeCalls {
 		t.Fatalf("Git calls = %d, want the budget %d", s.calls, maxGitScopeCalls)
+	}
+}
+
+func TestGitScopeExpiredDeadline(t *testing.T) {
+	root := goplsRoot(t, map[string]string{"nested/.gitignore": "out/\n"})
+	gitInit(t, root, "nested")
+	r := openTestRoot(t, root)
+	s := newGitScope(root)
+	s.deadline = time.Now().Add(-time.Second)
+	calls := s.calls
+	if s.skip(r, "nested") {
+		t.Fatal("an unqueried nested repository was skipped")
+	}
+	if s.calls != calls || s.asked["nested"] {
+		t.Fatal("Git was queried after the deadline")
 	}
 }
 

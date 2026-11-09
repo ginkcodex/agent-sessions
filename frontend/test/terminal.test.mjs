@@ -26,6 +26,7 @@ import {
 } from '../src/lib/terminal.ts';
 import { hostLabel, shellCommand, windowTitle, wslDistro } from '../src/lib/hosts.ts';
 import { StaleReplyError } from '../src/lib/link.ts';
+import { sessionToSelect, workspaceTerminalTarget } from '../src/lib/tree.ts';
 import { ALL_AGENTS } from '../src/lib/portable.ts';
 import { fixtureStore, loadServerModule, loadServerComponent } from './helpers.mjs';
 import { render } from 'svelte/server';
@@ -631,7 +632,10 @@ test('TerminalsStore tracks cwd independently for active and inactive tabs', asy
 
 test('workspace activation is wired to directory, session and transcript interactions without stealing focus', () => {
   const source = path => readFileSync(new URL(`../src/lib/components/${path}.svelte`, import.meta.url), 'utf8');
-  assert.match(source('sidebar/GroupTree'), /const cwd = nodeDirectory\(appState\.groups, node\.key\);\s*if \(cwd\) terminals\.selectDirectory\(cwd, link\.dataHost \?\? ''\)/);
+  const tree = source('sidebar/GroupTree');
+  assert.match(tree, /const ref = sessionToSelect\(node, visible\);[\s\S]*?const target = workspaceTerminalTarget\(visible, ref, cwd\);\s*if \(target\) terminals\.selectDirectory\(target\.dir, host, target\.session\);\s*await appState\.selectSession\(ref\)/);
+  assert.equal(tree.match(/terminals\.selectDirectory/g).length, 1, 'directory clicks no longer activate a tab before the session is known');
+  assert.match(tree, /if \(appState\.selectedGroupKey !== node\.key \|\| \(link\.dataHost \?\? ''\) !== host\) return;/);
   assert.match(source('sessionlist/SessionList'), /function handleSelectSession\(session: SessionMeta\) \{\s*if \(!session\.cwdMissing\) terminals\.selectDirectory\(session\.cwd, link\.dataHost \?\? '', session\)/);
   const transcript = source('transcript/TranscriptView');
   assert.match(transcript, /terminals\.selectDirectory\(session\.cwd, link\.dataHost \?\? '', session\)/);
@@ -766,6 +770,40 @@ test('session activation prefers the session tab, then an agent tab, then any wo
     own.host = 'remote';
     store.selectDirectory(dir, '', mine);
     assert.equal(store.active, shell.id, 'a session tab on another host does not match');
+  });
+});
+
+test('directory click activates the opened session tab, not the first agent tab of the workspace', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [latest, older] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const dir = '/project';
+    const shell = await store.newShell(dir);
+    const olderTab = await store.runResume(older.ref, dir);
+    // Resumed from elsewhere: its launch directory is not the workspace.
+    const latestTab = await store.runResume(latest.ref, '/launched-elsewhere');
+    store.select(shell.id);
+    store.setOpen(false);
+
+    const opened = { ...latest, cwd: dir, cwdMissing: false };
+    const visible = [opened, { ...older, cwd: dir }];
+    const target = workspaceTerminalTarget(visible, sessionToSelect({ key: 'dir', label: dir, kind: 'directory', sessionCount: 2 }, visible), dir);
+    assert.equal(store.selectDirectory(target.dir, '', target.session), true);
+    assert.equal(store.active, latestTab.id, "the opened session's own tab wins");
+
+    store.selectDirectory(dir, '');
+    assert.equal(store.active, olderTab.id, 'without the session, the first agent tab of the directory wins (the old behavior)');
+
+    const sub = { ref: { agent: latest.ref.agent, id: 'sub' }, parentId: latest.ref.id, cwd: dir };
+    const subTarget = workspaceTerminalTarget([sub, opened], sub.ref, dir);
+    store.selectDirectory(subTarget.dir, '', subTarget.session);
+    assert.equal(store.active, latestTab.id, "an opened subagent selects its parent's tab");
+
+    const none = workspaceTerminalTarget([], null, dir);
+    store.select(shell.id);
+    store.selectDirectory(none.dir, '', none.session);
+    assert.equal(store.active, olderTab.id, 'with no session to open, the directory alone still selects a workspace tab');
+    assert.equal(store.open, false);
+    assert.equal(store.focusOnActivation, false);
   });
 });
 

@@ -58,6 +58,9 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Windows CI test stability | [windows-ci-test-stability](docs/plan/windows-ci-test-stability.md) | [windows-ci-test-stability/](docs/tasks/windows-ci-test-stability/README.md) | 1/1 ✅ |
+| Workspace terminal selection | [workspace-terminal-selection](docs/plan/workspace-terminal-selection.md) | [workspace-terminal-selection/](docs/tasks/workspace-terminal-selection/README.md) | 1/1 ✅ |
+| Terminal file path detection | [terminal-file-paths](docs/plan/terminal-file-paths.md) | [terminal-file-paths/](docs/tasks/terminal-file-paths/README.md) | 1/1 ✅ |
 | Workspace stars | [workspace-stars](docs/plan/workspace-stars.md) | [workspace-stars/](docs/tasks/workspace-stars/README.md) | 3/3 ✅ |
 | macOS terminal Vietnamese input | [macos-terminal-input](docs/plan/macos-terminal-input.md) | [macos-terminal-input/](docs/tasks/macos-terminal-input/README.md) | 1/3 ✅ · 1 🟡 · 1 ➖ |
 | Manual Bash transcript | [manual-bash-transcript](docs/plan/manual-bash-transcript.md) | [manual-bash-transcript/](docs/tasks/manual-bash-transcript/README.md) | 2/2 ✅ |

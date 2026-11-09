@@ -166,11 +166,15 @@ func fireTimerOrDone(fs *fakeFS, timer chan time.Time, done <-chan struct{}) {
 	}
 }
 
-// awaitWatched waits until the watcher has added the root watch (initial scan
-// done).
-func awaitWatched(t *testing.T, fs *fakeFS, dir string) {
+// awaitWatcherReady waits for the event loop: adding the root watch is too
+// early, since full performs a second scan before the initial publication.
+func awaitWatcherReady(t *testing.T, fs *fakeFS) {
 	t.Helper()
-	eventually(t, "initial scan", func() bool { return fs.watching(dir) })
+	select {
+	case <-fs.ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watcher did not finish its initial scans and publication")
+	}
 }
 
 func providerState(s Snapshot, id string) ProviderState {
@@ -180,6 +184,66 @@ func providerState(s Snapshot, id string) ProviderState {
 		}
 	}
 	return ProviderState{}
+}
+
+// startupBlockedFS pauses after installing the first watch, before the
+// startup re-scan. This makes the old root-watch readiness race deterministic.
+type startupBlockedFS struct {
+	*fakeFS
+	installed chan struct{}
+	release   chan struct{}
+	once      sync.Once
+}
+
+func (f *startupBlockedFS) Add(path string) error {
+	if err := f.fakeFS.Add(path); err != nil {
+		return err
+	}
+	f.once.Do(func() {
+		close(f.installed)
+		<-f.release
+	})
+	return nil
+}
+
+func TestProjectWatcherReadyAfterStartupScans(t *testing.T) {
+	w := newWatchEnv(t, false, map[string]string{"lib/b.rb": "b"})
+	w.approve()
+	w.open("lib/b.rb")
+	w.rec.take(rubyLspProviderID)
+	fs, timer := newFakeFS(), make(chan time.Time)
+	blocked := &startupBlockedFS{fakeFS: fs, installed: make(chan struct{}), release: make(chan struct{})}
+	var release sync.Once
+	unblock := func() { release.Do(func() { close(blocked.release) }) }
+	pw := StartProjectWatcher(w.m, w.s.Context, w.root, w.options(blocked, timer))
+	defer pw.Stop()
+	defer unblock()
+	select {
+	case <-blocked.installed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("root watch was not installed")
+	}
+	if !fs.watching(w.dir) {
+		t.Fatal("root is not watched")
+	}
+	select {
+	case <-fs.ready:
+		t.Fatal("watcher ready before startup re-scan")
+	default:
+	}
+	writeTree(t, w.dir, map[string]string{"lib/b.rb": "during startup"})
+	unblock()
+	awaitWatcherReady(t, fs)
+	if got := w.take(); len(got) != 0 {
+		t.Fatalf("startup reported changes: %v", got)
+	}
+	writeTree(t, w.dir, map[string]string{"lib/b.rb": "after startup, a saved change"})
+	w.event(fs, "lib/b.rb", fsnotify.Write)
+	fireTimer(fs, timer)
+	w.watched(rubyLspProviderID, "workspace/didChangeWatchedFiles b.rb")
+	if got := w.take(); len(got) != 1 || !slices.Equal(got[0], []FileChange{{"lib/b.rb", 2}}) {
+		t.Fatalf("saved change after startup: %v", got)
+	}
 }
 
 // A Ruby-only approved project: saved Ruby transitions reach ruby-lsp and
@@ -195,7 +259,7 @@ func TestProjectWatcherRubyOnly(t *testing.T) {
 	fs, timer := newFakeFS(), make(chan time.Time)
 	pw := StartProjectWatcher(w.m, w.s.Context, w.root, w.options(fs, timer))
 	defer pw.Stop()
-	awaitWatched(t, fs, w.dir)
+	awaitWatcherReady(t, fs)
 	if !fs.watching(filepath.Join(w.dir, "lib")) || !slices.Equal(pw.live, []string{rubyLspProviderID}) || pw.goSyntax {
 		t.Fatalf("watching %v, live %v, go-syntax %v", fs.added, pw.live, pw.goSyntax)
 	}
@@ -289,7 +353,7 @@ func TestProjectWatcherLiveApproval(t *testing.T) {
 
 	fs, timer := newFakeFS(), make(chan time.Time)
 	pw = StartProjectWatcher(w.m, w.s.Context, w.root, w.options(fs, timer))
-	awaitWatched(t, fs, w.dir)
+	awaitWatcherReady(t, fs)
 	revoked, err := w.m.Revoke(w.s.Context)
 	if err != nil {
 		t.Fatal(err)
@@ -299,8 +363,7 @@ func TestProjectWatcherLiveApproval(t *testing.T) {
 	}
 	writeTree(t, w.dir, map[string]string{"a.rb": "changed"})
 	w.event(fs, "a.rb", fsnotify.Write)
-	// awaitWatched returns once the root is watched, which can be before the
-	// first publish: the watcher may see the revoke there and end unread.
+	// The watcher may stop on revoke before reading the queued events or tick.
 	fireTimerOrDone(fs, timer, pw.Done())
 	<-pw.Done()
 	if got := w.take(); len(got) != 0 {
