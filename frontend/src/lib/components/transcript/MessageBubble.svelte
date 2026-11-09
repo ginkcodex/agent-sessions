@@ -15,6 +15,8 @@
   import Icon from '../common/Icon.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
   import TextPart from './parts/TextPart.svelte';
+  import ManualBashPart from './parts/ManualBashPart.svelte';
+  import { manualBashMessage, manualBashMarkdown } from '../../manualBash';
   import ReasoningPart from './parts/ReasoningPart.svelte';
   import ToolPart from './parts/ToolPart.svelte';
   import PatchPart from './parts/PatchPart.svelte';
@@ -65,8 +67,10 @@
 
   // Copy and Translate work on what Chat level shows of user and assistant
   // messages; other messages keep the default context menu.
-  let markdown = $derived(isUser || isAssistant ? messageMarkdown(message) : '');
-  let text = $derived(markdown ? messageText(message) : '');
+  let manualBash = $derived(manualBashMessage(message, sessionRef));
+  let markdown = $derived(manualBash ? manualBashMarkdown(manualBash) : isUser || isAssistant ? messageMarkdown(message) : '');
+  // Commands/output are code, not prose to translate.
+  let text = $derived(!manualBash && markdown ? messageText(message) : '');
   let key = $derived(translationKey(sessionRef, message, index, translateSettings.language));
   let translation = $derived(translations.get(key));
   let translated = $derived(translation?.status === 'done' && !translation.showOriginal);
@@ -138,7 +142,7 @@
     printMessage({
       sessionRef,
       title: appState.selectedSessionMeta?.title ?? '',
-      parts: translated && translation ? withTranslation(parts, translation.text) : parts,
+      parts: manualBash ? [{ kind: 'text', text: markdown }] : translated && translation ? withTranslation(parts, translation.text) : parts,
     });
   }
 
@@ -188,6 +192,7 @@
     class:role-assistant={isAssistant}
     class:role-system={isSystem}
     class:is-meta={message.isMeta}
+    class:manual-bash={!!manualBash}
     oncontextmenu={openMenu}
   >
     <!-- The role, model and time sit above the message rather than in a card
@@ -248,28 +253,32 @@
 
     <div class="message-card">
       <div class="message-parts-body" bind:this={body}>
-        {#each visibleParts as part, idx (idx)}
-          {#if part.kind === 'text' && part.text}
-            <TextPart text={part.text} {onFileLink} />
-          {:else if part.kind === 'reasoning' && part.text}
-            <ReasoningPart text={part.text} {onFileLink} defaultExpanded={searchKind === 'reasoning' || matchedParts.has(part)} />
-          {:else if part.kind === 'tool' && part.tool}
-            <ToolPart tool={part.tool} {sessionRef} defaultExpanded={searchKind === 'tool' || matchedParts.has(part)} />
-          {:else if part.kind === 'patch'}
-            <PatchPart files={part.files} text={part.text} />
-          {:else if part.kind === 'compaction'}
-            <CompactionPart text={part.text} />
-          {:else if part.kind === 'notice' && part.text}
-            <NoticePart text={part.text} />
-          {:else if part.kind === 'file' && part.file && isImageFile(part.file)}
-            <ImagePart file={part.file} {sessionRef} />
-          {:else if part.kind === 'file' && part.file}
-            <div class="file-attachment-pill">
-              <Icon name="paperclip" size={13} />
-              <span>{part.file.name || part.file.ref || 'Attachment'}</span>
-            </div>
-          {/if}
-        {/each}
+        {#if manualBash}
+          <ManualBashPart record={manualBash} defaultExpanded={forceVisible} />
+        {:else}
+          {#each visibleParts as part, idx (idx)}
+            {#if part.kind === 'text' && part.text}
+              <TextPart text={part.text} {onFileLink} />
+            {:else if part.kind === 'reasoning' && part.text}
+              <ReasoningPart text={part.text} {onFileLink} defaultExpanded={searchKind === 'reasoning' || matchedParts.has(part)} />
+            {:else if part.kind === 'tool' && part.tool}
+              <ToolPart tool={part.tool} {sessionRef} defaultExpanded={searchKind === 'tool' || matchedParts.has(part)} />
+            {:else if part.kind === 'patch'}
+              <PatchPart files={part.files} text={part.text} />
+            {:else if part.kind === 'compaction'}
+              <CompactionPart text={part.text} />
+            {:else if part.kind === 'notice' && part.text}
+              <NoticePart text={part.text} />
+            {:else if part.kind === 'file' && part.file && isImageFile(part.file)}
+              <ImagePart file={part.file} {sessionRef} />
+            {:else if part.kind === 'file' && part.file}
+              <div class="file-attachment-pill">
+                <Icon name="paperclip" size={13} />
+                <span>{part.file.name || part.file.ref || 'Attachment'}</span>
+              </div>
+            {/if}
+          {/each}
+        {/if}
       </div>
     </div>
   </div>
@@ -313,6 +322,18 @@
 
   .role-user .message-parts-body {
     padding: 10px 14px;
+  }
+
+  /* Local shell activity gets a full-width terminal card, not a prose bubble. */
+  .role-user.manual-bash .message-card {
+    width: calc(100% - var(--gutter));
+    max-width: none;
+    background: transparent;
+    border-radius: 0;
+  }
+
+  .role-user.manual-bash .message-parts-body {
+    padding: 0;
   }
 
   /* The agent's reply: open text under its mark, no card. */

@@ -3,7 +3,7 @@
  * IDs, providers and extensions mirror the backend's language table
  * (internal/codediagnostics/languages.go); the backend owns discovery.
  */
-export type CodeLanguageId = 'go' | 'typescript' | 'svelte' | 'python' | 'rust' | 'ruby';
+export type CodeLanguageId = 'go' | 'typescript' | 'svelte' | 'python' | 'rust' | 'ruby' | 'java' | 'php';
 
 export interface CodeLanguage {
   id: CodeLanguageId;
@@ -21,6 +21,8 @@ export const CODE_LANGUAGES: readonly CodeLanguage[] = [
   { id: 'python', name: 'Python', providers: ['ruff', 'pyright'], extensions: ['.py', '.pyi'] },
   { id: 'rust', name: 'Rust', providers: ['rust-analyzer', 'cargo-check'], extensions: ['.rs'] },
   { id: 'ruby', name: 'Ruby', providers: ['rubocop', 'ruby-lsp'], extensions: ['.rb', '.rake', '.gemspec', '.ru'] },
+  { id: 'java', name: 'Java', providers: ['jdtls'], extensions: ['.java'] },
+  { id: 'php', name: 'PHP', providers: ['intelephense'], extensions: ['.php', '.phtml'] },
 ];
 
 export function isCodeLanguage(id: unknown): id is CodeLanguageId {

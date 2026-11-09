@@ -59,6 +59,8 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
 | macOS terminal Vietnamese input | [macos-terminal-input](docs/plan/macos-terminal-input.md) | [macos-terminal-input/](docs/tasks/macos-terminal-input/README.md) | 1/3 ✅ · 1 🟡 · 1 ➖ |
+| Manual Bash transcript | [manual-bash-transcript](docs/plan/manual-bash-transcript.md) | [manual-bash-transcript/](docs/tasks/manual-bash-transcript/README.md) | 2/2 ✅ |
+| Java/PHP code intelligence | [code-diagnostics-java-php](docs/plan/code-diagnostics-java-php.md) | [code-diagnostics-java-php/](docs/tasks/code-diagnostics-java-php/README.md) | 4/4 ✅ |
 | Session scrollbar stability | [session-scrollbar](docs/plan/session-scrollbar.md) | [session-scrollbar/](docs/tasks/session-scrollbar/README.md) | 7/7 ✅ |
 | Terminal cwd matching | [terminal-cwd-matching](docs/plan/terminal-cwd-matching.md) | [terminal-cwd-matching/](docs/tasks/terminal-cwd-matching/README.md) | 1/1 ✅ |
 | Code diagnostics (Go to File checks) | [code-diagnostics](docs/plan/code-diagnostics.md) | [code-diagnostics/](docs/tasks/code-diagnostics/README.md) | 19/28 ✅ · 8 🟡 · 1 ⛔ |

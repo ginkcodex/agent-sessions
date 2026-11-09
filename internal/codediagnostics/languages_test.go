@@ -8,7 +8,7 @@ import (
 )
 
 func TestLanguagesCoverEveryProviderAndTool(t *testing.T) {
-	providers := []string{goplsProviderID, "go-vet", GoSyntaxProviderID, tsProviderID, svelteLSProviderID, "svelte-check", ruffProviderID, pyrightProviderID, rustAnalyzerProviderID, "cargo-check", rubocopProviderID, rubyLspProviderID}
+	providers := []string{goplsProviderID, "go-vet", GoSyntaxProviderID, tsProviderID, svelteLSProviderID, "svelte-check", ruffProviderID, pyrightProviderID, rustAnalyzerProviderID, "cargo-check", rubocopProviderID, rubyLspProviderID, javaProviderID, phpProviderID}
 	seen := map[string]string{}
 	for _, l := range Languages() {
 		for _, id := range append(slices.Clone(l.Live), l.Saved...) {
@@ -33,7 +33,7 @@ func TestLanguagesCoverEveryProviderAndTool(t *testing.T) {
 	if want := managedtools.ProposableTools(); len(tools) != len(want) || !slices.Equal(slices.Sorted(slices.Values(tools)), slices.Sorted(slices.Values(want))) {
 		t.Fatalf("managed tools %v, proposable %v", tools, want)
 	}
-	if got := LiveProviderIDs(); !slices.Equal(got, []string{"gopls", "typescript", "svelte", "ruff", "pyright", "rust-analyzer", "rubocop", "ruby-lsp"}) {
+	if got := LiveProviderIDs(); !slices.Equal(got, []string{"gopls", "typescript", "svelte", "ruff", "pyright", "rust-analyzer", "rubocop", "ruby-lsp", "jdtls", "intelephense"}) {
 		t.Fatalf("live providers %v", got)
 	}
 	// Callers cannot change the table.
@@ -103,7 +103,7 @@ func TestDisabledLanguagesLeaveDiscovery(t *testing.T) {
 		for _, r := range regs {
 			ids = append(ids, r.ProviderID)
 		}
-		if !slices.Equal(ids, []string{goplsProviderID, tsProviderID, svelteLSProviderID, rubocopProviderID, rubyLspProviderID}) {
+		if !slices.Equal(ids, []string{goplsProviderID, tsProviderID, svelteLSProviderID, rubocopProviderID, rubyLspProviderID, javaProviderID, phpProviderID}) {
 			t.Errorf("%s: %v", name, ids)
 		}
 		// Python has sources, Rust none: only Python is reported, as disabled

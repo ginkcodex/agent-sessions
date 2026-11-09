@@ -26,6 +26,8 @@ Read them in order: later milestones build on the contracts defined in M0.
 | Plan | Tasks | Covers |
 |---|---|---|
 | [macos-terminal-input.md](macos-terminal-input.md) | [macos-terminal-input](../tasks/macos-terminal-input/README.md) | Vietnamese replacement input in macOS terminals without text loss or cursor movement |
+| [manual-bash-transcript.md](manual-bash-transcript.md) | [manual-bash-transcript](../tasks/manual-bash-transcript/README.md) | Readable user-run Bash command/output cards and clean session titles |
+| [code-diagnostics-java-php.md](code-diagnostics-java-php.md) | [code-diagnostics-java-php](../tasks/code-diagnostics-java-php/README.md) | Java/PHP source navigation and live diagnostics with JDT LS and Intelephense |
 | [session-scrollbar.md](session-scrollbar.md) | [session-scrollbar](../tasks/session-scrollbar/README.md) | Fix the Linux session-list scrollbar vanishing at the top and flashing on hover |
 | [wails-v3-upgrade.md](wails-v3-upgrade.md) | [wails-v3-upgrade](../tasks/wails-v3-upgrade/README.md) | Move the desktop app to Wails v3 and GTK 4; native manual gates |
 | [file-editing.md](file-editing.md) | [file-editing](../tasks/file-editing/README.md) | Go to File editing: safe local/remote saves, drafts, conflicts and lifecycle guards |
@@ -94,6 +96,9 @@ Read them in order: later milestones build on the contracts defined in M0.
 - [code-diagnostics-typescript.md](code-diagnostics-typescript.md): Code diagnostics: TypeScript adapter and version spike (CD-23)
 - [code-diagnostics-workspaces.md](code-diagnostics-workspaces.md): Nested diagnostics workspaces (2026-10-23)
 - [code-diagnostics-zed-model.md](code-diagnostics-zed-model.md): Code diagnostics: the editor model (2026-10-23)
+
+**[code-diagnostics-java-php.md](code-diagnostics-java-php.md):**
+- [code-diagnostics-java-php-qa.md](code-diagnostics-java-php-qa.md): Automated results and blocked real-server/manual release gates
 
 **[git-history.md](git-history.md):**
 - [git-history-contract.md](git-history-contract.md): Git history contract v1

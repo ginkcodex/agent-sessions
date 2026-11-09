@@ -39,6 +39,7 @@ type checkpoint struct {
 
 	FirstUserSeen         bool   `json:"firstUserSeen,omitempty"`
 	LastUserPrompt        string `json:"lastUserPrompt,omitempty"`
+	LastBashCommand       string `json:"lastBashCommand,omitempty"`
 	SubagentDescription   string `json:"subagentDescription,omitempty"`
 	SubagentTask          string `json:"subagentTask,omitempty"`
 	SubagentMetaPath      string `json:"subagentMetaPath,omitempty"`
@@ -53,7 +54,7 @@ type checkpoint struct {
 
 // checkpointVersion 4 normalizes Windows CWDs in their own style; 5 adds
 // Turn. A full rescan replaces metadata cached by earlier versions.
-const checkpointVersion = 6 // Native custom-title precedence requires a full rescan.
+const checkpointVersion = 7 // Manual Bash records must not replace conversation titles.
 
 var ignoredRecordTypes = map[string]bool{
 	"attachment": true, "last-prompt": true, "mode": true,
@@ -112,7 +113,15 @@ func (c *checkpoint) consume(line []byte, d *provider.Diagnostics) {
 			}
 			return
 		}
-		text, counts := userContent(gjson.GetBytes(line, "message.content"))
+		content := gjson.GetBytes(line, "message.content")
+		if bash, ok := manualBashContent(content); ok {
+			c.Meta.Counts.User++
+			if bash.command != "" {
+				c.LastBashCommand = model.TruncateRunes(model.OneLine(bash.command), 300)
+			}
+			return
+		}
+		text, counts := userContent(content)
 		if counts {
 			c.Meta.Counts.User++
 			if !c.FirstUserSeen {
@@ -183,6 +192,10 @@ func (c *checkpoint) consume(line []byte, d *provider.Diagnostics) {
 // interruption ends it, and tool results answer pending calls.
 func (c *checkpoint) userTurn(content gjson.Result, sidechain bool) {
 	if sidechain {
+		return
+	}
+	if _, ok := manualBashContent(content); ok {
+		// A local ! command does not start or finish an assistant turn.
 		return
 	}
 	text, counts := userContent(content)
@@ -321,6 +334,8 @@ func (c *checkpoint) finalize(fileModTime time.Time) model.SessionMeta {
 		meta.Title = c.LastUserPrompt
 	case meta.FirstPrompt != "": // Checkpoints written before LastUserPrompt existed.
 		meta.Title = meta.FirstPrompt
+	case c.LastBashCommand != "":
+		meta.Title = "! " + c.LastBashCommand
 	default:
 		meta.Title = "(untitled)"
 	}

@@ -117,6 +117,8 @@ type LocalLiveEnvironment struct {
 	Rust    RustEnvironment
 	Ruby    RubyEnvironment     // Home defaults to Go.Home
 	Svelte  SvelteLSEnvironment // Home defaults to Go.Home
+	Java    JavaEnvironment
+	PHP     PHPEnvironment
 	// Disabled languages are not discovered at all: no tool lookup, no
 	// registration.
 	Disabled DisabledLanguages
@@ -124,8 +126,8 @@ type LocalLiveEnvironment struct {
 
 // DiscoverLocalLive is the production local live route's discovery: gopls,
 // vtsls (CD-23), the Svelte language server (CD-24), Ruff and Pyright for
-// Python, rust-analyzer, and RuboCop and ruby-lsp for Ruby, each with
-// independent availability. Metadata only.
+// Python, rust-analyzer, RuboCop and ruby-lsp for Ruby, JDT LS for Java,
+// and Intelephense for PHP, each with independent availability. Metadata only.
 func DiscoverLocalLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Registration, error) {
 	if len(env.GoPath) > 64 || len(env.Path) > 64 {
 		return nil, failure("limitExceeded", "Reviewed executable search budget exceeded")

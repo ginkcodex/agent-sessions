@@ -216,8 +216,15 @@ or subscriptions.
   are available in the project UI.
 - Enable project-approved code checks and language-tool features such as
   diagnostics, hover, and definition/reference navigation for Go,
-  TypeScript/JavaScript, Svelte, Python and Rust, and for Ruby RuboCop lint
-  with ruby-lsp navigation.
+  TypeScript/JavaScript, Svelte, Python, Rust, Java and PHP, and for Ruby
+  RuboCop lint with ruby-lsp navigation. Java needs user-installed Eclipse
+  JDT LS (`jdtls`) and JDK 25+; PHP needs Node.js 22+ and Intelephense
+  (`npm install -g intelephense`). Install these on the host holding the files,
+  then rediscover checkers. Java/PHP checks cover opened files, not a full
+  Check Project build. Java build import can execute Maven/Gradle project code
+  and download dependencies after approval; archive/decompiled Java definitions
+  are not supported. Intelephense is proprietary; these features need no paid
+  licence. Native Windows uses WSL/SSH for live language servers.
   Support depends on the language, platform, and available tools; this is a
   lightweight workbench, not a full IDE.
 

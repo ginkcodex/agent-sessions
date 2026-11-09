@@ -37,26 +37,33 @@ type workspaceProvider struct {
 }
 
 var workspaceProviders = []workspaceProvider{
-	{tsProviderID, TSLanguageID, tsDocumentExtensions,
+	{
+		tsProviderID, TSLanguageID, tsDocumentExtensions,
 		func(name string) bool { return slices.Contains(tsProjectMarkers.configs, name) },
 		func(root AuthorizedRoot, env LocalLiveEnvironment, w *tsWorkspace) (livePlan, error) {
 			return discoverTypeScriptWorkspace(root, env.Path, env.TS, w)
-		}},
-	{ruffProviderID, PythonLanguageID, ruffDocumentExtensions,
+		},
+	},
+	{
+		ruffProviderID, PythonLanguageID, ruffDocumentExtensions,
 		func(name string) bool {
 			return slices.Contains(ruffProjectMarkers.configs, name) || pythonRequirements(name)
 		},
 		func(root AuthorizedRoot, env LocalLiveEnvironment, w *tsWorkspace) (livePlan, error) {
 			return discoverRuffWorkspace(root, env.Path, env.Ruff, w)
-		}},
-	{pyrightProviderID, PythonLanguageID, ruffDocumentExtensions,
+		},
+	},
+	{
+		pyrightProviderID, PythonLanguageID, ruffDocumentExtensions,
 		func(name string) bool {
 			return slices.Contains(pyrightProjectMarkers.configs, name) || pythonRequirements(name)
 		},
 		func(root AuthorizedRoot, env LocalLiveEnvironment, w *tsWorkspace) (livePlan, error) {
 			return discoverPyrightWorkspace(root, env.Path, env.Pyright, w)
-		}},
-	{rubocopProviderID, RubyLanguageID, rubyDocumentExtensions,
+		},
+	},
+	{
+		rubocopProviderID, RubyLanguageID, rubyDocumentExtensions,
 		func(name string) bool { return slices.Contains(rubocopProjectMarkers.configs, name) },
 		func(root AuthorizedRoot, env LocalLiveEnvironment, w *tsWorkspace) (livePlan, error) {
 			ruby := env.Ruby
@@ -64,8 +71,10 @@ var workspaceProviders = []workspaceProvider{
 				ruby.Home = env.Go.Home
 			}
 			return discoverRubocopWorkspace(root, env.Path, ruby, w)
-		}},
-	{rubyLspProviderID, RubyLanguageID, rubyDocumentExtensions,
+		},
+	},
+	{
+		rubyLspProviderID, RubyLanguageID, rubyDocumentExtensions,
 		func(name string) bool { return slices.Contains(rubyLspProjectMarkers.configs, name) },
 		func(root AuthorizedRoot, env LocalLiveEnvironment, w *tsWorkspace) (livePlan, error) {
 			ruby := env.Ruby
@@ -73,7 +82,30 @@ var workspaceProviders = []workspaceProvider{
 				ruby.Home = env.Go.Home
 			}
 			return discoverRubyLspWorkspace(root, env.Path, ruby, w)
-		}},
+		},
+	},
+	{
+		javaProviderID, JavaLanguageID, javaDocumentExtensions,
+		func(name string) bool { return slices.Contains(javaProjectMarkers.configs, name) },
+		func(root AuthorizedRoot, env LocalLiveEnvironment, w *tsWorkspace) (livePlan, error) {
+			java := env.Java
+			if java.Home == "" {
+				java.Home = env.Go.Home
+			}
+			return discoverJavaWorkspace(root, env.Path, java, w)
+		},
+	},
+	{
+		phpProviderID, PHPLanguageID, phpDocumentExtensions,
+		func(name string) bool { return slices.Contains(phpProjectMarkers.configs, name) },
+		func(root AuthorizedRoot, env LocalLiveEnvironment, w *tsWorkspace) (livePlan, error) {
+			php := env.PHP
+			if php.Home == "" {
+				php.Home = env.Go.Home
+			}
+			return discoverPHPWorkspace(root, env.Path, php, w)
+		},
+	},
 }
 
 func pythonRequirements(name string) bool { return name == "setup.cfg" || name == "requirements.txt" }
@@ -95,6 +127,7 @@ type workspaceDirectory struct {
 	rel                                         string
 	files                                       []string
 	python, typescript, npm, npmWorkspace, ruby bool
+	java, php                                   bool
 }
 type workspaceScan struct {
 	dirs    []workspaceDirectory
@@ -153,7 +186,7 @@ func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 				continue
 			}
 			if e.IsDir() {
-				if slices.Contains([]string{"node_modules", ".venv", "venv", "__pycache__", "site-packages", ".tox", ".nox", ".git", ".next", "dist", "build", ".bundle", ".ruby-lsp"}, e.Name()) || rubySkipped(filepath.ToSlash(rel), e.Name(), d.files) {
+				if slices.Contains([]string{"node_modules", ".venv", "venv", "__pycache__", "site-packages", ".tox", ".nox", ".git", ".next", "dist", "build", "target", "vendor", ".gradle", ".bundle", ".ruby-lsp"}, e.Name()) || rubySkipped(filepath.ToSlash(rel), e.Name(), d.files) {
 					if e.Name() == ".venv" || e.Name() == "venv" {
 						if st, err := r.Lstat(filepath.Join(rel, "pyvenv.cfg")); err == nil && st.Mode().IsRegular() {
 							d.python = true
@@ -190,6 +223,10 @@ func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 				d.typescript = true
 			case "Gemfile":
 				d.ruby = true
+			case "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts":
+				d.java = true
+			case "composer.json":
+				d.php = true
 			}
 		}
 		result.dirs = append(result.dirs, d)
@@ -297,7 +334,7 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 	if err != nil {
 		return nil, false, err
 	}
-	var pyRoots, tsRoots, rubyRoots []string
+	var pyRoots, tsRoots, rubyRoots, javaRoots, phpRoots []string
 	npmWorkspaces := []string{}
 	for _, d := range scan.dirs {
 		if d.python {
@@ -305,6 +342,15 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 		}
 		if d.ruby {
 			rubyRoots = append(rubyRoots, d.rel)
+		}
+		if d.php {
+			phpRoots = append(phpRoots, d.rel)
+		}
+		if d.java {
+			// Keep Maven/Gradle modules in their outer build workspace.
+			if !slices.ContainsFunc(javaRoots, func(dir string) bool { return withinWorkspace(dir, d.rel+"/") }) {
+				javaRoots = append(javaRoots, d.rel)
+			}
 		}
 		if d.typescript {
 			suppressed := false
@@ -323,7 +369,7 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 		}
 	}
 	nested := false
-	for _, dirs := range [][]string{pyRoots, tsRoots, rubyRoots} {
+	for _, dirs := range [][]string{pyRoots, tsRoots, rubyRoots, javaRoots, phpRoots} {
 		for _, dir := range dirs {
 			nested = nested || dir != ""
 		}
@@ -343,6 +389,12 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 			}
 			if _, ok := RubyLanguageID(file); ok && deepestWorkspace(rubyRoots, file) == "" && !slices.Contains(rubyRoots, "") {
 				rubyRoots = append(rubyRoots, "")
+			}
+			if _, ok := JavaLanguageID(file); ok && deepestWorkspace(javaRoots, file) == "" && !slices.Contains(javaRoots, "") {
+				javaRoots = append(javaRoots, "")
+			}
+			if _, ok := PHPLanguageID(file); ok && deepestWorkspace(phpRoots, file) == "" && !slices.Contains(phpRoots, "") {
+				phpRoots = append(phpRoots, "")
 			}
 		}
 	}
@@ -368,7 +420,9 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 	pyRoots = owningSources(pyRoots, PythonLanguageID)
 	tsRoots = owningSources(tsRoots, TSLanguageID)
 	rubyRoots = owningSources(rubyRoots, RubyLanguageID)
-	providerRoots := map[string][]string{tsProviderID: tsRoots, ruffProviderID: pyRoots, pyrightProviderID: pyRoots, rubocopProviderID: rubyRoots, rubyLspProviderID: rubyRoots}
+	javaRoots = owningSources(javaRoots, JavaLanguageID)
+	phpRoots = owningSources(phpRoots, PHPLanguageID)
+	providerRoots := map[string][]string{tsProviderID: tsRoots, ruffProviderID: pyRoots, pyrightProviderID: pyRoots, rubocopProviderID: rubyRoots, rubyLspProviderID: rubyRoots, javaProviderID: javaRoots, phpProviderID: phpRoots}
 	var registrations []Registration
 	// Reserve sixteen contributions for the unchanged Go/Svelte registrations.
 	// Every instance stays atomic: never discard part of its approved toolchain.

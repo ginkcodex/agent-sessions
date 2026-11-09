@@ -23,14 +23,14 @@ const panel = await loadServerComponent(new URL('../src/lib/components/common/go
 ]);
 
 test('the language table matches the backend IDs and maps providers and files', () => {
-  assert.deepEqual(CODE_LANGUAGES.map(l => l.id), ['go', 'typescript', 'svelte', 'python', 'rust', 'ruby']);
+  assert.deepEqual(CODE_LANGUAGES.map(l => l.id), ['go', 'typescript', 'svelte', 'python', 'rust', 'ruby', 'java', 'php']);
   assert.deepEqual(codeLanguageIds(['ruby', 'go']), ['go', 'ruby']);
   assert.equal(languageOfProvider('rubocop')?.id, 'ruby');
   assert.deepEqual(codeLanguageIds(['rust', 'nonsense', 'go', 'rust', 7]), ['go', 'rust']);
   assert.equal(languageOfProvider('go-vet-2')?.id, 'go');
   assert.equal(languageOfProvider('pyright')?.id, 'python');
   assert.equal(languageOfProvider('mock-checker'), undefined);
-  for (const [path, id] of [['a/B.PY', 'python'], ['x.pyi', 'python'], ['m.mts', 'typescript'], ['App.svelte', 'svelte'], ['lib.rs', 'rust'], ['main.go', 'go'], ['app/User.RB', 'ruby'], ['lib/tasks/db.rake', 'ruby'], ['x.gemspec', 'ruby'], ['config.ru', 'ruby']]) assert.equal(languageOfPath(path)?.id, id, path);
+  for (const [path, id] of [['a/B.PY', 'python'], ['x.pyi', 'python'], ['m.mts', 'typescript'], ['App.svelte', 'svelte'], ['lib.rs', 'rust'], ['main.go', 'go'], ['app/User.RB', 'ruby'], ['lib/tasks/db.rake', 'ruby'], ['x.gemspec', 'ruby'], ['config.ru', 'ruby'], ['Main.JAVA', 'java'], ['src/Index.PHP', 'php'], ['views/index.phtml', 'php']]) assert.equal(languageOfPath(path)?.id, id, path);
   // Extensionless Ruby files and templates are not owned, as on the backend.
   for (const path of ['README.md', 'Gemfile', 'Rakefile', 'show.html.erb']) assert.equal(languageOfPath(path), undefined, path);
   assert.equal(languageList(['Go', 'Python', 'Rust']), 'Go, Python and Rust');
@@ -166,7 +166,7 @@ test('Ruby: RuboCop setup text and install hints, never an app download or a Rub
   const missing = await render({ providers: [saved, rubocop('missingTool', 'RuboCop is not installed for Ruby 4.0.9.')], managed: { hostId: 'local:actual', state: 'idle' }, snapshot: { approval: { state: 'required' }, proposal: { tools: [] } } });
   assert.match(missing, /Ruby linter \(RuboCop\)/);
   assert.match(missing, /RuboCop is not installed for Ruby 4\.0\.9\./);
-  assert.match(missing, /class="mono[^"]*">bundle add rubocop --group development<\/span>(<!--[^>]*-->)*, (<!--[^>]*-->)*<span class="mono[^"]*">gem install rubocop<\/span>(<!--[^>]*-->)* or (<!--[^>]*-->)*<span class="mono[^"]*">gem install ruby-lsp<\/span>/);
+  assert.match(missing, /class="mono[^"]*">bundle add rubocop --group development<\/span>(<!--[^>]*-->)*, (<!--[^>]*-->)*<span class="mono[^"]*">gem install rubocop<\/span>(<!--[^>]*-->)*, (<!--[^>]*-->)*<span class="mono[^"]*">gem install ruby-lsp<\/span>/);
   assert.match(missing, /RuboCop is never downloaded by this app\. It runs with the Ruby the project asks for/);
   assert.match(missing, /RuboCop plus ruby-lsp for Ruby \(lint\/syntax problems and navigation, respectively\)/);
   // Ruby is not among the languages with app downloads, and no Install button is offered.
@@ -204,7 +204,7 @@ test('Ruby: ruby-lsp row, setup text and install hint; navigation names it, neve
   // Approval lists ruby-lsp among the navigation servers, and its approval notice.
   const notice = "ruby-lsp reads the project's Ruby files, Ruby's standard library and the gems in Gemfile.lock to answer Go to Definition, references and hover; it reports no problems. Add-ons are not loaded. It evaluates the project's Gemfile. Ruby navigation covers opened documents only.";
   const approval = await render({ providers: [rubocop('approvalRequired'), rubyLsp('approvalRequired', notice)], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [{ providerId: 'ruby-lsp', executable: '/r/bin/ruby', configPaths: ['Gemfile', 'Gemfile.lock'] }] } } });
-  assert.match(/hover with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? '', /and ruby-lsp for Ruby$/);
+  assert.match(/hover with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? '', /ruby-lsp for Ruby, JDT LS for Java \(JDK 25\+\) and Intelephense for PHP \(Node\.js\)$/);
   assert.match(approval, /Ruby language server \(ruby-lsp\)/);
   assert.ok(approval.includes(notice.replaceAll("'", '&#39;')) || approval.includes(notice), 'approval notice');
 });

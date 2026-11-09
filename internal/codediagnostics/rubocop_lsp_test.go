@@ -383,7 +383,7 @@ func rubocopLiveEnv(t *testing.T) (LocalLiveEnvironment, rubyRuntime) {
 	t.Helper()
 	rt, env := rubocopHost(t)
 	writeGem(t, filepath.Join(env.Home, ".gem/ruby/4.0.0"), "rubocop", "1.92.2")
-	return LocalLiveEnvironment{Ruby: env, Disabled: NewDisabledLanguages([]string{"go", "typescript", "svelte", "python", "rust"})}, rt
+	return LocalLiveEnvironment{Ruby: env, Disabled: NewDisabledLanguages([]string{"java", "php", "go", "typescript", "svelte", "python", "rust"})}, rt
 }
 
 func TestRubocopLocalLiveSingleRoot(t *testing.T) {
@@ -412,7 +412,7 @@ func TestRubocopLocalLiveSingleRoot(t *testing.T) {
 	}
 	// Ruby alone, with no tool lookup when it is off: an invalid Ruby
 	// environment is never read.
-	off := LocalLiveEnvironment{Ruby: RubyEnvironment{Home: "relative"}, Disabled: NewDisabledLanguages([]string{"go", "typescript", "svelte", "python", "rust", "ruby"})}
+	off := LocalLiveEnvironment{Ruby: RubyEnvironment{Home: "relative"}, Disabled: NewDisabledLanguages([]string{"java", "php", "go", "typescript", "svelte", "python", "rust", "ruby"})}
 	if regs, err := DiscoverLocalLive(root, off); err != nil || len(regs) != 0 {
 		t.Fatal(err, regs)
 	}
