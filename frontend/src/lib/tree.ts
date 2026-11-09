@@ -1,4 +1,4 @@
-import type { GroupNode, GroupNodeKind, SessionRef } from './types';
+import type { GroupNode, GroupNodeKind, SessionMeta, SessionRef } from './types';
 import { refsEqual } from './manage';
 
 /**
@@ -94,6 +94,23 @@ export function sessionToSelect(
   const own = nodeKind(node) === 'session' ? node.sessions?.[0] : undefined;
   if (own && visible.some((s) => refsEqual(s.ref, own))) return own;
   return visible[0]?.ref ?? null;
+}
+
+/**
+ * What the terminal panel should show once a tree row opens session ref: the
+ * session's own directory and identity, as clicking its row in the list
+ * passes, so its own tab wins. The row's directory stands in when the session's
+ * is unknown, and alone when no session opens. Null without any directory.
+ */
+export function workspaceTerminalTarget<T extends Pick<SessionMeta, 'ref' | 'cwd' | 'cwdMissing'>>(
+  visible: T[],
+  ref: SessionRef | null,
+  rowDirectory: string | undefined
+): { dir: string; session?: T } | null {
+  const session = ref ? visible.find((s) => refsEqual(s.ref, ref)) : undefined;
+  const dir = (session && !session.cwdMissing && session.cwd) || rowDirectory;
+  if (!dir) return null;
+  return session ? { dir, session } : { dir };
 }
 
 /**

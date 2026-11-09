@@ -9,6 +9,7 @@ import {
   directoryName,
   pruneKeys,
   sessionToSelect,
+  workspaceTerminalTarget,
   nodesHolding,
   nodeToHighlight,
   knownDirectories,
@@ -203,6 +204,21 @@ test('sessionToSelect picks the node itself for sessions, else the first visible
   assert.equal(sessionToSelect(group, []), null);
 });
 
+test('workspaceTerminalTarget passes the opened session like a session-row click', () => {
+  const latest = { ref: { agent: 'claude-code', id: 'latest' }, cwd: '/project/', parentId: undefined };
+  const sub = { ref: { agent: 'claude-code', id: 'sub' }, cwd: '/project', parentId: 'latest' };
+  const lost = { ref: { agent: 'codex', id: 'lost' }, cwd: '/gone', cwdMissing: true };
+  const visible = [latest, sub, lost];
+
+  assert.deepEqual(workspaceTerminalTarget(visible, latest.ref, '/project'), { dir: '/project/', session: latest });
+  assert.equal(workspaceTerminalTarget(visible, sub.ref, '/project').session, sub, 'subagent keeps parentId for its parent tab');
+  assert.deepEqual(workspaceTerminalTarget(visible, lost.ref, '/project'), { dir: '/project', session: lost }, 'unknown session directory falls back to the row');
+  assert.deepEqual(workspaceTerminalTarget(visible, { ...latest.ref, id: 'hidden' }, '/project'), { dir: '/project' });
+  assert.deepEqual(workspaceTerminalTarget([], null, '/project'), { dir: '/project' }, 'no session: the row directory alone');
+  assert.deepEqual(workspaceTerminalTarget([{ ...latest, cwd: '' }], latest.ref, undefined), null);
+  assert.deepEqual(workspaceTerminalTarget([], null, undefined), null);
+});
+
 test('knownDirectories lists existing directories once, sorted', () => {
   const groups = [
     { key: 'a:claude', label: 'claude', kind: 'agent', agent: 'claude-code', sessionCount: 3, children: [
@@ -302,7 +318,7 @@ async function renderGroupTree(filter) {
     ["'../../discovery'", JSON.stringify(new URL('../src/lib/discovery.ts', import.meta.url).href)],
     ["import { manage } from '../../stores/manage.svelte';", 'const manage = {};'],
     ["import { filterSessionsByAge, refsEqual } from '../../manage';", 'const filterSessionsByAge = () => [];const refsEqual = (a, b) => a === b;'],
-    ["import { nodeDirectory, nodeToHighlight, sessionToSelect } from '../../tree';", 'const nodeDirectory = () => undefined;const nodeToHighlight = () => null;const sessionToSelect = () => null;'],
+    ["'../../tree'", JSON.stringify(new URL('../src/lib/tree.ts', import.meta.url).href)],
     ["import { terminals } from '../../stores/terminals.svelte';", 'const terminals = {};'],
     ["import { link } from '../../stores/link.svelte';", 'const link = {};'],
     ["import GroupNodeItem from './GroupNodeItem.svelte';", 'const GroupNodeItem = () => {};'],
