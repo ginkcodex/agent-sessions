@@ -10,6 +10,9 @@
   import { terminals } from '../../stores/terminals.svelte';
   import { link } from '../../stores/link.svelte';
   import GroupNodeItem from './GroupNodeItem.svelte';
+  import { workspaceStars } from '../../stores/workspaceStars.svelte';
+
+  let visibleGroups = $derived(workspaceStars.visibleGroups(appState.groups));
 
   // Selecting a group also selects the first session shown in the list
   // (after the age filter), so the transcript follows the tree.
@@ -36,7 +39,7 @@
   let highlightedKey = $derived(
     clicked ??
     nodeToHighlight(
-      appState.groups,
+      visibleGroups,
       appState.selectedSessionRef,
       appState.selectedGroupKey,
       appState.collapsedKeys,
@@ -99,6 +102,14 @@
   {/if}
   {#if appState.loadingGroups}
     <div class="tree-message loading">Loading groups…</div>
+  {:else if workspaceStars.onlyStarred && visibleGroups.length === 0 && appState.groups.length > 0}
+    <div class="tree-message" role="status">
+      <p>No starred workspaces match current filters.</p>
+      <p>Star a workspace to keep it handy.</p>
+      <button type="button" class="clear-filters-btn" onclick={() => { workspaceStars.onlyStarred = false; }}>
+        Show all workspaces
+      </button>
+    </div>
   {:else if appState.groups.length === 0}
     {#if emptyState === 'discovering'}
       <div class="tree-message loading" role="status">Discovering agent sessions…</div>
@@ -140,7 +151,7 @@
     {/if}
   {:else}
     <ul class="root-list">
-      {#each appState.groups as node (node.key)}
+      {#each visibleGroups as node (node.key)}
         <GroupNodeItem
           {node}
           level={0}

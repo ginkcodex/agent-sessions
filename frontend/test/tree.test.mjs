@@ -306,6 +306,7 @@ async function renderGroupTree(filter) {
     ["import { terminals } from '../../stores/terminals.svelte';", 'const terminals = {};'],
     ["import { link } from '../../stores/link.svelte';", 'const link = {};'],
     ["import GroupNodeItem from './GroupNodeItem.svelte';", 'const GroupNodeItem = () => {};'],
+    ["import { workspaceStars } from '../../stores/workspaceStars.svelte';", 'const workspaceStars = { onlyStarred: false, visibleGroups: groups => groups };'],
   ]);
   return renderWithFixture(groupTreeModule, {
     appState: { loadingGroups: false, groups: [], selectedSessionRef: null, filter: { query: '', path: '', liveOnly: false, archived: false, ...filter } },

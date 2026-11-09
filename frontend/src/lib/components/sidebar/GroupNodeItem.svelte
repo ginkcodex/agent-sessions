@@ -10,6 +10,7 @@
   import { newSession } from '../../stores/newSession.svelte';
   import { newSessionMenuItems } from '../../newSession';
   import { workspaces } from '../../stores/workspaces.svelte';
+  import { workspaceStars } from '../../stores/workspaceStars.svelte';
 
   interface Props {
     node: GroupNode;
@@ -154,6 +155,21 @@
         <span class="node-path">{path}</span>
       {/if}
     </span>
+
+    {#if kind === 'directory' && node.cwd}
+      <button
+        type="button"
+        class="star-btn"
+        class:starred={workspaceStars.isStarred(node.cwd)}
+        aria-label={workspaceStars.isStarred(node.cwd) ? `Unstar workspace ${name}` : `Star workspace ${name}`}
+        aria-pressed={workspaceStars.isStarred(node.cwd)}
+        title={workspaceStars.isStarred(node.cwd) ? 'Unstar workspace' : 'Star workspace'}
+        onclick={(e) => { e.stopPropagation(); workspaceStars.toggle(node.cwd!); }}
+        onkeydown={(e) => e.stopPropagation()}
+      >
+        <Icon name="star" size={14} />
+      </button>
+    {/if}
 
     {#if hasMenu}
       <button
@@ -318,6 +334,36 @@
     font-size: 0.7rem;
     color: var(--danger);
     font-weight: 500;
+  }
+
+  .star-btn {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    flex-shrink: 0;
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .star-btn:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .star-btn.starred {
+    color: var(--accent-color);
+  }
+
+  .star-btn.starred :global(svg) {
+    fill: currentColor;
+  }
+
+  .star-btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
   }
 
   .menu-btn {
