@@ -53,10 +53,11 @@ func TestJavaPHPWorkspaceRouting(t *testing.T) {
 
 func TestJavaPHPDisabledSkipsInvalidToolEnvironment(t *testing.T) {
 	root := workspaceTestRoot(t, map[string]string{"Main.java": "", "index.php": ""})
-	env := javaPHPEnv(t)
-	env.Disabled = NewDisabledLanguages([]string{"go", "typescript", "svelte", "python", "rust", "ruby", "java", "php"})
-	env.Java = JavaEnvironment{Home: "relative", Cache: "relative", JavaHome: "relative"}
-	env.PHP = PHPEnvironment{Home: "relative"}
+	env := LocalLiveEnvironment{
+		Disabled: NewDisabledLanguages([]string{"go", "typescript", "svelte", "python", "rust", "ruby", "java", "php"}),
+		Java:     JavaEnvironment{Home: "relative", Cache: "relative", JavaHome: "relative"},
+		PHP:      PHPEnvironment{Home: "relative"},
+	}
 	regs, err := DiscoverLocalLive(root, env)
 	if err != nil || len(regs) != 0 {
 		t.Fatalf("%v %+v", err, regs)

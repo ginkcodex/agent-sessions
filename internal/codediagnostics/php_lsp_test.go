@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -23,6 +24,9 @@ func phpWritePackage(t *testing.T, dir string) {
 
 func phpHost(t *testing.T) (reviewed []string, env PHPEnvironment, pkg string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix npm/Node fixture; native Windows local live servers are unsupported")
+	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -242,7 +246,10 @@ func TestPHPWrappersLocalAndReviewedRuntime(t *testing.T) {
 		t.Fatalf("escaping local package: %+v %v", p, err)
 	}
 	// A global install's adjacent native Node wins over another reviewed Node.
-	other := t.TempDir()
+	other, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	writeNode(t, other, "24.1.0")
 	p, err = DiscoverPHP(goplsRoot(t, map[string]string{"a.php": ""}), append([]string{filepath.Join(other, "bin"), shim}, reviewed...), env)
 	if err != nil || p.Availability() != "available" || p.config.Executable != filepath.Join(reviewed[0], "node") {

@@ -63,6 +63,19 @@ server or native/remote QA passed on the strength of fake-server tests.
   Windows users use a WSL/SSH workspace. Remote servers must be rebuilt to deploy
   this backend change. No Windows build is requested by this task.
 
+## CI regression follow-up (JP-05)
+
+Recent branch CI exposed stale eight-provider assertions after Java/PHP expanded
+live discovery to ten providers, a macOS `/var` versus `/private/var` fixture
+comparison, and Unix-only PHP runtime fixtures being exercised on Windows.
+Update discovery tests against the registry, canonicalize the compared temporary
+runtime path, and explicitly skip Unix npm/Node fixture-dependent PHP tests on
+Windows. Keep platform-independent PHP ownership/discovery and disabled-language
+tests running there. Do not expand native Windows server support or relax runtime
+validation to accommodate synthetic fixtures. Verify with targeted tests, Linux
+race regression and Windows/macOS test cross-compilation; record native CI as
+unrun until the corrected commit executes on those runners.
+
 ## Release criteria
 
 1. Java/PHP appear in language settings and setup guidance with accurate tools,
