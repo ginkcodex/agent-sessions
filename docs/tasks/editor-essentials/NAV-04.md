@@ -32,8 +32,10 @@ shows the type and docs, and back returns to where you were.
   (Shift+F12), Copy.
 - Navigation history per Go to File dialog: Back (Ctrl+- / Cmd+[) and
   Forward (Ctrl+Shift+- / Cmd+]), plus buttons in the toolbar.
-- When navigation is unavailable, the menu items are disabled with the reason
-  as a tooltip ("Approve code checks to use navigation").
+- Original behavior: when navigation was unavailable, menu items were disabled
+  with a reason tooltip. [NAV-07](NAV-07.md) supersedes that presentation:
+  unavailable navigation entries and their blocker explanation are hidden;
+  actionable settings and Copy remain.
 
 ## Done when
 

@@ -1,5 +1,7 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom';
 import * as cs from '../src/lib/contentSearch.ts';
 import { StaleReplyError } from '../src/lib/link.ts';
 import { fixtureStore, loadServerComponent, loadServerModule, renderWithFixture } from './helpers.mjs';
@@ -523,6 +525,69 @@ test('pane renders toggles, filters and grouped results with the match highlight
   assert.match(html, /aria-expanded="false"[^>]*title="b\.md · More matches in this file were not listed"/);
   assert.equal((html.match(/<mark[ >]/g) ?? []).length, 2, 'folded files list no matches');
   assert.match(html, />1\+</);
+});
+
+test('result metadata precedes a separate action slot in search and replace, with no slot for references', async () => {
+  const path = 'courses/long-directory/long-file-name.md';
+  const result = { files: [file(path, [hit(12345, 0, 3, 'foo with a long preview')])], matches: 1 };
+  for (const replaceOpen of [false, true]) {
+    const html = await renderPane(store => {
+      answered(store, { pattern: 'foo' }, result);
+      store.options.replaceOpen = replaceOpen;
+    });
+    const { document } = new JSDOM(html).window;
+    const header = document.querySelector('.file-head');
+    const row = document.querySelector('.match-row');
+    assert.equal(header.children[0].classList.contains('file-row'), true);
+    assert.equal(header.children[1].classList.contains('row-actions'), true);
+    assert.equal(header.querySelector('.count').textContent, '1');
+    assert.equal(row.querySelector('.line-no').textContent, '12345');
+    assert.equal(row.querySelector('.line-no').nextElementSibling.classList.contains('row-actions'), true);
+    for (const actions of document.querySelectorAll('.row-actions')) {
+      assert.equal(actions.children.length, replaceOpen ? 2 : 1);
+      assert.match(actions.lastElementChild.getAttribute('aria-label'), /^Dismiss /);
+    }
+    assert.equal(document.querySelectorAll('.row-actions').length, 2);
+  }
+  const html = await renderPane(store => {
+    store.references = { name: 'foo', loading: false, result };
+    store.options.replaceOpen = true;
+  }, {});
+  const { document } = new JSDOM(html).window;
+  assert.ok(document.querySelector('.count'));
+  assert.ok(document.querySelector('.line-no'));
+  assert.equal(document.querySelector('.row-actions'), null);
+});
+
+test('result action CSS reserves space without covering counts or line numbers', () => {
+  // jsdom does not calculate geometry: guard the layout contract explicitly.
+  const source = readFileSync(new URL('SearchPane.svelte', base), 'utf8');
+  const css = source.split('<style>')[1].split('</style>')[0];
+  const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  const rule = selector => {
+    const found = rules.find(([, selectors]) => selectors.split(',').some(s => s.trim() === selector));
+    assert.ok(found, `missing CSS rule: ${selector}`);
+    return found[2];
+  };
+  const actions = rule('.row-actions');
+  assert.match(actions, /display: flex;/);
+  assert.match(actions, /flex-shrink: 0;/);
+  assert.match(actions, /opacity: 0;/);
+  assert.match(actions, /pointer-events: none;/);
+  assert.doesNotMatch(actions, /position:|transform:|display: none|visibility: hidden/);
+  for (const selector of ['.file-head:hover', '.file-head:focus-within', '.match-row:hover', '.match-row.active', '.match-row:focus-within']) {
+    const reveal = rule(`${selector} .row-actions`);
+    assert.match(reveal, /opacity: 1;/);
+    assert.match(reveal, /pointer-events: auto;/);
+    assert.doesNotMatch(reveal, /display:|position:|width:|padding:/);
+  }
+  assert.match(rule('.file-row'), /flex: 1;/);
+  for (const selector of ['.file-row', '.file-name', '.file-dir', '.preview']) {
+    assert.match(rule(selector), /min-width: 0;/);
+  }
+  for (const selector of ['.count', '.line-no']) {
+    assert.match(rule(selector), /flex-shrink: 0;/);
+  }
 });
 
 test('pane shows truncation, errors in place, drafts and an empty result', async () => {

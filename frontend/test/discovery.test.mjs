@@ -182,6 +182,7 @@ const tree = await loadServerComponent(new URL('../src/lib/components/sidebar/Gr
   ...common,
   ["'../../tree'", lib('tree')],
   ["import GroupNodeItem from './GroupNodeItem.svelte';", "const GroupNodeItem = ($$renderer) => $$renderer.push('<li>generated-group</li>');"],
+  ["import { workspaceStars } from '../../stores/workspaceStars.svelte';", 'const workspaceStars = { onlyStarred: false, visibleGroups: groups => groups };'],
 ]);
 const list = await loadServerComponent(new URL('../src/lib/components/sessionlist/SessionList.svelte', import.meta.url), [
   ...common,

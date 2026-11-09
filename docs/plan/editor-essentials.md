@@ -88,6 +88,37 @@ take a run ID and an explicit cancel binding, as `RunCodeDiagnostics` and
 | Navigation | `internal/codediagnostics/lsp_navigation.go` | `SourceView`, `fileEditor.ts`, References panel |
 | Git | `internal/files/git_*.go` | Go to File left pane, Changes mode |
 
+## Search result action spacing (2026-11-09)
+
+Follow-up [PS-06](../tasks/editor-essentials/PS-06.md) fixes dismiss/replace
+buttons covering result counts and line numbers. Keep actions in normal flex
+layout, reserving their space while hidden and revealing them on hover, active
+matches or keyboard focus. File labels and previews truncate in the remaining
+space; counts and line numbers do not shrink. Reference results have no actions
+and must not reserve an empty action slot. Search and replacement behavior is
+unchanged.
+
+Risk: narrow panes and two-button replace mode leave less preview space. Release
+criteria: regression tests cover search, replace and reference markup plus the
+non-overlay CSS contract; frontend checks, tests and production build pass.
+Native macOS hover/focus appearance remains a manual check unless actually run.
+
+## Unavailable navigation menu cleanup (2026-11-09)
+
+Follow-up [NAV-07](../tasks/editor-essentials/NAV-07.md) hides unavailable
+Go to Definition / Find References actions and the disabled blocker explanation
+in the shared source/editor word menu. Keep the actionable code-navigation
+settings link where applicable and Copy; no leading divider when Copy is alone.
+Available navigation actions, keyboard-shortcut feedback, approval checks and
+request ownership guards are unchanged. Blocker details remain in Code checks
+and existing explicit keyboard feedback rather than the context menu.
+
+Risk: removing disabled entries reduces discoverability; the settings link
+remains the setup route. Release criteria: actual menu-handler tests cover
+blocked and available navigation, settings availability, copy-only menus and
+existing ownership guards; frontend tests, type checks and build pass. Native
+visual review is recorded separately if performed.
+
 ## Validation
 
 Each task adds Go unit tests with temporary directories and fake servers, and

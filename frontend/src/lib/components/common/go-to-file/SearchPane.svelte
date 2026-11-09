@@ -299,15 +299,15 @@
                 {#if file.draft}<span class="draft-tag" title="Searched in the unsaved draft">draft</span>{/if}
                 <span class="count" aria-label="{file.matches.length}{file.truncated ? '+' : ''} {file.matches.length === 1 && !file.truncated ? 'match' : 'matches'}">{file.matches.length}{file.truncated ? '+' : ''}</span>
               </button>
-              <span class="row-actions">
+              {#if !references}<span class="row-actions">
                 {#if replaceOpen}
                   <button type="button" class="row-action" aria-label="Replace all in {file.path}"
                     title={blockedFile ?? 'Replace all in file'} disabled={Boolean(blockedFile)}
                     onclick={() => void contentSearch.replaceFile(file.path)}>{@render icon('replace-all')}</button>
                 {/if}
-                {#if !references}<button type="button" class="row-action" aria-label="Dismiss {file.path}" title="Dismiss"
-                  onclick={() => contentSearch.dismiss(file.path)}>{@render icon('dismiss')}</button>{/if}
-              </span>
+                <button type="button" class="row-action" aria-label="Dismiss {file.path}" title="Dismiss"
+                  onclick={() => contentSearch.dismiss(file.path)}>{@render icon('dismiss')}</button>
+              </span>{/if}
             </div>
             {#if !folded}
               <ul class="match-list" role="listbox" aria-label="Matches in {file.path}">
@@ -331,17 +331,17 @@
                       <span class="preview">{m.preview.slice(0, m.previewStart)}<mark>{m.preview.slice(m.previewStart, m.previewEnd)}</mark>{m.preview.slice(m.previewEnd)}</span>
                     {/if}
                     <span class="line-no">{m.line}</span>
-                    <span class="row-actions">
+                    {#if !references}<span class="row-actions">
                       {#if replaceOpen}
                         <button type="button" class="row-action" aria-label="Replace line {m.line} of {file.path}"
                           title={blockedFile ?? 'Replace'} disabled={Boolean(blockedFile)}
                           onclick={(e) => { e.stopPropagation(); void contentSearch.replaceMatch({ path: file.path, index: i }); }}
                           ondblclick={(e) => e.stopPropagation()}>{@render icon('replace')}</button>
                       {/if}
-                      {#if !references}<button type="button" class="row-action" aria-label="Dismiss line {m.line} of {file.path}" title="Dismiss"
+                      <button type="button" class="row-action" aria-label="Dismiss line {m.line} of {file.path}" title="Dismiss"
                         onclick={(e) => { e.stopPropagation(); contentSearch.dismiss(file.path, { path: file.path, index: i }); }}
-                        ondblclick={(e) => e.stopPropagation()}>{@render icon('dismiss')}</button>{/if}
-                    </span>
+                        ondblclick={(e) => e.stopPropagation()}>{@render icon('dismiss')}</button>
+                    </span>{/if}
                   </li>
                 {/each}
               </ul>
@@ -514,7 +514,8 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     padding: 4px 8px 4px 4px;
     border-radius: 4px;
     font-size: 0.75rem;
@@ -526,9 +527,9 @@
   }
 
   .file-head {
-    position: relative;
     display: flex;
     align-items: center;
+    padding-right: 4px;
     border-radius: 4px;
   }
 
@@ -537,16 +538,15 @@
     background-color: var(--hover-bg);
   }
 
-  /* Shown on hover and keyboard focus, over the count or line number. */
+  /* Reserve space even when hidden, so actions never cover result metadata
+     or shift the text on hover. Opacity keeps them keyboard-focusable. */
   .row-actions {
-    position: absolute;
-    right: 4px;
-    top: 50%;
-    transform: translateY(-50%);
-    display: none;
+    display: flex;
+    flex-shrink: 0;
+    align-self: center;
     gap: 1px;
-    padding-left: 4px;
-    background-color: inherit;
+    opacity: 0;
+    pointer-events: none;
   }
 
   .file-head:hover .row-actions,
@@ -554,16 +554,8 @@
   .match-row:hover .row-actions,
   .match-row.active .row-actions,
   .match-row:focus-within .row-actions {
-    display: flex;
-  }
-
-  .file-head:hover .row-actions,
-  .match-row:hover .row-actions {
-    background-color: var(--hover-bg);
-  }
-
-  .match-row.active .row-actions {
-    background-color: var(--active-bg);
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .row-action {
@@ -600,7 +592,7 @@
   }
 
   .file-name {
-    flex-shrink: 0;
+    min-width: 0;
     max-width: 60%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -640,7 +632,6 @@
   }
 
   .match-row {
-    position: relative;
     display: flex;
     align-items: baseline;
     gap: 8px;

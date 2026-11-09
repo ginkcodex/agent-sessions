@@ -1,20 +1,21 @@
 # Editor essentials — tasks
 
 - **Plan:** [editor-essentials.md](../../plan/editor-essentials.md)
-- **Progress:** 23/23 done
+- **Progress:** 25/25 done
 
 Project search and replace, new agent sessions and alerts, code navigation
 and Git changes.
 
 ## Project search
 
-| Task | Status | Scope | Est |
-|---|---|---|---|
-| [PS-01](PS-01.md) | ✅ Done | Content search engine on the host | 4 h |
-| [PS-02](PS-02.md) | ✅ Done | Search over Engine/App/RPC with cancel | 3 h |
-| [PS-03](PS-03.md) | ✅ Done | Search pane in Go to File | 4 h |
-| [PS-04](PS-04.md) | ✅ Done | Revision-checked replace engine | 3 h |
-| [PS-05](PS-05.md) | ✅ Done | Replace in the Search pane, drafts included | 4 h |
+| Task | Status | Scope | Est | Depends on |
+|---|---|---|---|---|
+| [PS-01](PS-01.md) | ✅ Done | Content search engine on the host | 4 h | — |
+| [PS-02](PS-02.md) | ✅ Done | Search over Engine/App/RPC with cancel | 3 h | PS-01 |
+| [PS-03](PS-03.md) | ✅ Done | Search pane in Go to File | 4 h | PS-02 |
+| [PS-04](PS-04.md) | ✅ Done | Revision-checked replace engine | 3 h | PS-01 |
+| [PS-05](PS-05.md) | ✅ Done | Replace in the Search pane, drafts included | 4 h | PS-03, PS-04 |
+| [PS-06](PS-06.md) | ✅ Done | Search result action spacing | 1 h | PS-03, PS-05 |
 
 ## Agent sessions
 
@@ -37,6 +38,7 @@ and Git changes.
 | [NAV-04](NAV-04.md) | ✅ Done | Navigation in the viewer | 4 h |
 | [NAV-05](NAV-05.md) | ✅ Done | Navigation in the editor; HD-01/02 hover formatting follow-up complete | 3 h |
 | [NAV-06](NAV-06.md) | ✅ Done | References list | 3 h |
+| [NAV-07](NAV-07.md) | ✅ Done | Hide unavailable source/editor navigation menu entries | 1 h |
 
 ## Git changes
 

@@ -1022,11 +1022,12 @@
     symbolMenu = {
       ...at,
       items: [
-        { label: 'Go to Definition (F12)', disabled: Boolean(symbolBlocker), title: symbolBlocker, onSelect: () => ask('definition') },
-        { label: 'Find References (Shift+F12)', disabled: Boolean(symbolBlocker), title: symbolBlocker, onSelect: () => ask('references') },
-        ...(symbolBlocker ? [{ label: symbolBlocker, disabled: true, onSelect: () => {} }] : []),
+        ...(!symbolBlocker ? [
+          { label: 'Go to Definition (F12)', onSelect: () => ask('definition') },
+          { label: 'Find References (Shift+F12)', onSelect: () => ask('references') },
+        ] : []),
         ...(setup ? [{ label: 'Open code navigation settings…', onSelect: () => { if (valid()) onCodeSettings?.(); } }] : []),
-        { label: `Copy “${word.length > 40 ? word.slice(0, 39) + '…' : word}”`, separator: true, onSelect: () => { if (valid()) void copyToClipboard(word); } },
+        { label: `Copy “${word.length > 40 ? word.slice(0, 39) + '…' : word}”`, separator: !symbolBlocker || Boolean(setup), onSelect: () => { if (valid()) void copyToClipboard(word); } },
       ],
     };
   }
