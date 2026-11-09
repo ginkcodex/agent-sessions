@@ -565,6 +565,16 @@
     gap: 6px;
   }
 
+  /* Keep individual painted surfaces composited on WebKitGTK (SS-10,
+     user-confirmed). A shared group layer did not stop rapid-scroll flashing. */
+  :global([data-platform="linux"]) .agent-badge,
+  :global([data-platform="linux"]) .live-badge,
+  :global([data-platform="linux"]) .archived-badge,
+  :global([data-platform="linux"]) .model-badge,
+  :global([data-platform="linux"]) .version-badge {
+    transform: translateZ(0);
+  }
+
   .agent-badge {
     display: inline-flex;
     align-items: center;
@@ -726,6 +736,14 @@
 
   .action-btn.new-btn:hover:not(:disabled) {
     background-color: var(--bg-tertiary);
+  }
+
+  /* Keep filled action surfaces in their own layers on WebKitGTK when the
+     adjacent composited list rapidly repaints under the pointer (SS-08).
+     Only transform the buttons: menus must remain outside these layers. */
+  :global([data-platform="linux"]) .action-btn.resume-btn,
+  :global([data-platform="linux"]) .action-btn.new-btn {
+    transform: translateZ(0);
   }
 
   .action-btn.new-btn:disabled {

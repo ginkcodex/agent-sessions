@@ -119,6 +119,90 @@ How to test scrollbar paint on Linux:
 - Portal captures can miss a flash shorter than one frame. Take several
   during a pointer sweep, and have the user confirm on their build.
 
+## Linux transcript-header flashing during rapid list scrolling (WebKitGTK)
+
+### Observed behavior and working fix
+
+After the scrollbar fix, rapid scrolling with the pointer over the session list
+made **stationary controls in the adjacent transcript header** flash. Slow
+scrolling did not trigger it; moving the pointer outside the list avoided it.
+The user reported no equivalent issue on Windows or macOS. The Linux test
+environment was WebKitGTK 2.52.6 / GTK 4.22.4, GNOME Wayland, display scale 2.
+
+- SS-08: `transform: translateZ(0)` on each Resume/New button stopped their
+  flashing (user-confirmed after rebuilding).
+- SS-09: putting the left navigation/badges in one transformed `.header-badges`
+  group **did not help**. Removed; do not restore this as an equivalent fix.
+- SS-10: applying the transform to each navigation button and each
+  agent/Live/Archived/model/version badge stopped the remaining reported
+  flashing (user-confirmed 2026-11-09).
+
+Keep the Linux-only declarations on `.action-btn.resume-btn`,
+`.action-btn.new-btn` and the individual badge selectors in
+`frontend/src/lib/components/transcript/SessionHeader.svelte`, and `.nav-btn`
+in `frontend/src/lib/components/transcript/NavButtons.svelte`. Keep SS-07's
+separate scroller layer too. Live animation, virtualization and GPU renderer
+settings were not changed by the header fix.
+
+### Why it likely happens — and what is not known
+
+The evidence points to a **WebKitGTK paint/compositing invalidation problem**,
+not a demonstrated application-state or layout bug. While rows move underneath
+a stationary pointer, hover highlights change and can schedule further paints;
+rapid scrolling makes that work more frequent. Scrolling and compositing can
+use different rendering paths from an ordinary stationary repaint. A problem
+in their interaction could explain why unrelated stationary surfaces flash.
+This is a working hypothesis, not a traced WebKit defect.
+
+`translateZ(0)` leaves an element's apparent position unchanged but provides a
+3D-transform compositing hint; WebKit can give that surface its own backing
+instead of repainting it as part of shared content. That changes paint/layer
+boundaries, which is consistent with the observed fix. A transformed parent is
+not a guarantee that every descendant gets an independent backing: grouping
+and individual surface promotion are not interchangeable, as SS-09 showed.
+Actual layer allocation is an engine decision, not a CSS guarantee.
+
+We did **not** trace the failing frame inside WebKit, establish whether the
+fault is in invalidation, backing-store reuse or final composition, identify a
+GPU-driver cause, or establish that the header and earlier scrollbar symptoms
+share one underlying defect. Different platform webview/scrollbar/rendering
+paths can explain platform-specific behavior, but macOS also uses WebKit, so
+this should not be generalized to all WebKit engines. Other Linux engine,
+driver and display-scale combinations were not verified.
+
+### Prevention and regression checks
+
+- Preserve the narrowly scoped Linux surface workarounds. When adding similar
+  controls, test them beside the fast-scrolling list before assuming a parent
+  layer protects them. Do not apply `translateZ(0)` to every UI element: extra
+  layers consume resources and can affect text rasterization and stacking.
+- Do not transform the entire header or dropdown wrappers as a shortcut.
+  Transforms create stacking contexts and containing blocks for positioned
+  descendants, including fixed descendants. Check dropdown overlap, focus
+  outlines, disabled controls and overflow whenever layer boundaries change.
+- Do not disable hover, rewrite correct virtualization geometry or globally
+  disable DMA-BUF to hide this symptom. Prior list experiments failed; the
+  DMA-BUF fallback also has the performance cost documented above.
+- Test the **actual rebuilt desktop app** with native wheel/touchpad input:
+  fast down/up scrolling with the pointer over rows, slow-scrolling control,
+  pointer-outside control, live and non-live sessions, and the list at the top.
+  Inspect the whole header, not just large filled buttons; small text flashed
+  too. Also open Resume/New menus and check navigation/focus behavior.
+- The source guards in `frontend/test/session-header.test.mjs` and
+  `frontend/test/virtual-list.test.mjs` protect the CSS scope and declarations,
+  **not the rendered pixels**. Passing tests, JS `scrollTop` changes or a few
+  static screenshots cannot establish absence of brief flashing. Native user
+  confirmation caught both the failed group fix and the successful surface fix.
+- Recheck these workarounds when upgrading WebKitGTK/GTK/Wails or changing
+  scrollbar, hover, containment or transform rules. Remove a workaround only
+  after native reproduction tests show it is no longer needed.
+
+Evidence: [SS-08](docs/tasks/session-scrollbar/SS-08.md),
+[SS-09](docs/tasks/session-scrollbar/SS-09.md) (ineffective experiment),
+[SS-10](docs/tasks/session-scrollbar/SS-10.md). Reported header flashing is
+resolved; the separate menu/top-thumb follow-up checks in SS-08 were not
+explicitly verified and are not recorded as passes.
+
 ## Remote shell locale (SSH and WSL shell tabs)
 
 **Keep `panelRemoteLocale` at the start of `PanelShellScript`**

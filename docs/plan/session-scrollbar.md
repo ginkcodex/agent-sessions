@@ -57,6 +57,56 @@ scroller its own layer avoids it. The engine-level cause was not traced.
 - One extra compositing layer for the list; no slowdown was noticed.
 - Behaviour on other WebKitGTK versions or distributions is untested.
 
+## Follow-up: transcript action flicker (SS-08)
+
+The user reports that Resume and New in the adjacent transcript header flash
+while rapidly scrolling the session list under the pointer on Linux. Slow
+scrolling does not trigger it; Windows and macOS are unaffected. The scrollbar
+itself remains fixed. This suggests paint/compositing under rapid hover/scroll
+invalidation, but the engine-level cause is not established.
+
+Test a narrowly scoped Linux-only compositing layer on the Resume/New button
+surfaces. Do not transform the header or split-button menu wrappers: that would
+also change dropdown stacking/containing blocks. Keep the existing list fix,
+virtualization, button behavior, transitions and GPU renderer settings intact.
+A source regression test can guard the scope, not prove the visual fix.
+
+Risks: a small extra layer per filled button; native WebKit may still exhibit
+the defect. Verify rapid wheel scrolling under the pointer, slow scrolling,
+the scrollbar at the top, button hover/focus and dropdown overlap. Native
+Linux/user confirmation remains a release gate; do not label an unconfirmed
+candidate as a verified fix.
+
+## Follow-up: navigation and badges flicker (SS-09)
+
+The user confirms SS-08 stops Resume/New flashing during rapid scrolling, but
+reports that the left navigation, agent icon, Live badge and model text still
+flash. Give their shared `.header-badges` group the same Linux-only compositing
+layer. This covers the version and Archived badge too, without promoting each
+small element separately. The group contains no dropdowns or fixed descendants;
+leave the header, action wrappers and SS-08 button layers unchanged.
+
+Risks: one additional layer; future fixed descendants in this group would use it
+as their containing block. Keep the Live pulse and navigation semantics intact.
+Guard the Linux-scoped rule, run frontend checks/tests/build, and request native
+fast-scroll confirmation for this newly covered group. Automated tests do not
+prove painting behavior.
+
+## Follow-up: individual navigation/badge surfaces (SS-10)
+
+The user rebuilt and reports SS-09's shared-group layer does not stop the left
+header flashing. Remove that ineffective group transform. SS-10 instead applies
+the same Linux-only transform that worked on Resume/New directly to each
+navigation button and agent/Live/Archived/model/version badge. NavButtons is
+only used in this header. Keep wrappers untransformed and the Live animation
+unchanged; do not add broad GPU/environment or scroll behavior workarounds.
+
+The user confirms the remaining flashing is gone after rebuilding and testing
+SS-10 (2026-11-09). Keep individual surface layers; the engine-level cause is
+not established. Several small layers replace the ineffective group layer.
+Automated source guards verify scope only; native confirmation comes from the
+user's test, which did not itemize live/non-live cases separately.
+
 ## Release criteria
 
 - Frontend checks and tests pass.
