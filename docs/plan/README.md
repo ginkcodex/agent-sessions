@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [terminal-file-paths.md](terminal-file-paths.md) | [terminal-file-paths](../tasks/terminal-file-paths/README.md) | Correct inner-path detection in terminal tool-call wrappers |
 | [workspace-stars.md](workspace-stars.md) | [workspace-stars](../tasks/workspace-stars/README.md) | Persistent workspace stars and a starred-only sidebar filter |
 | [macos-terminal-input.md](macos-terminal-input.md) | [macos-terminal-input](../tasks/macos-terminal-input/README.md) | Vietnamese replacement input in macOS terminals without text loss or cursor movement |
 | [manual-bash-transcript.md](manual-bash-transcript.md) | [manual-bash-transcript](../tasks/manual-bash-transcript/README.md) | Readable user-run Bash command/output cards and clean session titles |

@@ -20,6 +20,23 @@ test('candidate offsets exclude quotes, punctuation and line/column suffixes', (
   assert.deepEqual(paths("'a folder/config.json' foo.ts:12:3: README.md."), ['a folder/config.json', 'foo.ts', 'README.md']);
 });
 
+test('tool-call wrappers link only the inner path, preserving filename parentheses', () => {
+  for (const [text, expected] of [
+    ['● Update(docs/tasks/editor-essentials/README.md)', ['docs/tasks/editor-essentials/README.md']],
+    ['Update(TASKS.md) Read(Makefile) Write(.gitignore)', ['TASKS.md', 'Makefile', '.gitignore']],
+    ['CustomTool(src/file(copy).ts:12:8),', ['src/file(copy).ts']],
+    ['Read("some folder/a(copy).ts":22)', ['some folder/a(copy).ts']],
+    ["Update('some folder/config.json')", ['some folder/config.json']],
+    ['src/file(copy).ts (src/file(copy).ts:12), "src/file(copy).ts"', Array(3).fill('src/file(copy).ts')],
+    ['Update(C:\\work\\main.ts) Read(/tmp/a.ts) Write(../docs/a.md)', ['C:\\work\\main.ts', '/tmp/a.ts', '../docs/a.md']],
+    ['Read(https://example.com/a.ts) https://example.com/a(b).ts', []],
+  ]) {
+    const candidates = extractTerminalFileCandidates(text);
+    assert.deepEqual(candidates.map(c => c.path), expected, text);
+    for (const c of candidates) assert.equal(text.slice(c.start, c.end), c.path, text);
+  }
+});
+
 test('box-drawing pane borders and block gutters end a candidate', () => {
   const text = 'quit.        │internal/app/app.go                +3';
   const candidates = extractTerminalFileCandidates(text);
@@ -217,6 +234,34 @@ test('wrapped lines return the complete path with physical buffer coordinates', 
     const [link] = mock.links(row);
     assert.equal(link.text, 'src/longname.ts');
     assert.deepEqual(link.range, { start: { x: 1, y: 1 }, end: { x: 7, y: 2 } });
+  }
+});
+
+test('tool-call links map inner paths across wrapped rows and activate with Ctrl/Cmd', () => {
+  const text = '● Update(docs/tasks/editor-essentials/README.md)';
+  const path = 'docs/tasks/editor-essentials/README.md';
+  const cols = 24;
+  for (const isMac of [false, true]) {
+    const mock = mockTerminal([
+      { text: text.slice(0, cols) },
+      { text: text.slice(cols), wrapped: true },
+    ], cols);
+    const opened = [];
+    installTerminalFileLinks(mock.terminal, { isMac, cwd: '/workspace', onOpen: (...args) => opened.push(args) });
+    for (const row of [1, 2]) {
+      const links = mock.links(row);
+      assert.equal(links.length, 1);
+      const [link] = links;
+      assert.equal(link.text, path);
+      assert.deepEqual(link.range, {
+        start: { x: text.indexOf(path) + 1, y: 1 },
+        end: { x: text.indexOf(path) + path.length - cols, y: 2 },
+      });
+      link.activate(click());
+      assert.equal(opened.length, row - 1);
+      link.activate(click(isMac ? { metaKey: true } : { ctrlKey: true }));
+    }
+    assert.deepEqual(opened, [[path, '/workspace'], [path, '/workspace']]);
   }
 });
 

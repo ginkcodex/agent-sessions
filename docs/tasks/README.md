@@ -32,6 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Terminal file path detection | [terminal-file-paths](../plan/terminal-file-paths.md) | [terminal-file-paths/](terminal-file-paths/README.md) | 1/1 ✅ |
 | Workspace stars | [workspace-stars](../plan/workspace-stars.md) | [workspace-stars/](workspace-stars/README.md) | 3/3 ✅ |
 | macOS terminal Vietnamese input | [macos-terminal-input](../plan/macos-terminal-input.md) | [macos-terminal-input/](macos-terminal-input/README.md) | 1/3 ✅ · 1 🟡 · 1 ➖ |
 | Manual Bash transcript | [manual-bash-transcript](../plan/manual-bash-transcript.md) | [manual-bash-transcript/](manual-bash-transcript/README.md) | 2/2 ✅ |

@@ -36,13 +36,32 @@ export function extractTerminalFileCandidates(text: string): TerminalFileCandida
   const results: TerminalFileCandidate[] = [];
   const add = (raw: string, start: number, git = false) => {
     let value = raw;
+    if (!git) {
+      // Tool TUIs print Identifier(path). The identifier is presentation syntax,
+      // not a directory; keep offsets anchored to the argument itself.
+      const wrapper = /^[a-z_][\w.-]*\((.*)\)[,;\]}]*$/i.exec(value);
+      if (wrapper) {
+        start += value.indexOf('(') + 1;
+        value = wrapper[1].replace(/:\d+(?::\d+)?$/, '');
+      }
+    }
     if ((value[0] === '"' || value[0] === "'") && value.at(-1) === value[0]) {
       start++;
       value = value.slice(1, -1);
     } else {
       const leading = /^[([{]+/.exec(value)?.[0].length ?? 0;
       start += leading;
-      value = value.slice(leading).replace(/[),;\]}]+$/, '');
+      value = value.slice(leading).replace(/[,;\]}]+$/, '');
+      // Remove prose/wrapper closers, but not balanced filename parentheses.
+      let balance = 0;
+      for (const char of value) {
+        if (char === '(') balance++;
+        else if (char === ')') balance--;
+      }
+      while (balance < 0 && value.endsWith(')')) {
+        value = value.slice(0, -1);
+        balance++;
+      }
       value = value.replace(/\.(?=$)/, (dot) => /\.[\w-]+\.$/.test(value) ? '' : dot);
     }
     value = value.replace(/:\d+(?::\d+)?[:]?$/, '');
@@ -81,7 +100,8 @@ export function extractTerminalFileCandidates(text: string): TerminalFileCandida
   // and so do box-drawing and block characters (U+2500–U+259F): TUIs draw
   // pane borders and gutters with them, often right against a path, as in
   // "│src/app.ts". File names do not use them.
-  const tokens = /"[^"\r\n─-▟]+"(?::\d+(?::\d+)?)?|'[^'\r\n─-▟]+'(?::\d+(?::\d+)?)?|[^\s"'─-▟]+/g;
+  // Keep quoted tool arguments together even when their paths contain spaces.
+  const tokens = /[a-z_][\w.-]*\((?:"[^"\r\n─-▟]+"|'[^'\r\n─-▟]+')(?::\d+(?::\d+)?)?\)[,;\]}]*|"[^"\r\n─-▟]+"(?::\d+(?::\d+)?)?|'[^'\r\n─-▟]+'(?::\d+(?::\d+)?)?|[^\s"'─-▟]+/gi;
   for (const match of text.matchAll(tokens)) {
     if (results.length >= MAX_LINKS) break;
     // Strip location suffix before unquoting ("some file.ts":12).
