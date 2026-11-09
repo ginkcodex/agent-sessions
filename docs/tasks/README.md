@@ -32,7 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| Manual Bash transcript | [manual-bash-transcript](../plan/manual-bash-transcript.md) | [manual-bash-transcript/](manual-bash-transcript/README.md) | 1/2 ✅ · 1 ⬜ |
+| Manual Bash transcript | [manual-bash-transcript](../plan/manual-bash-transcript.md) | [manual-bash-transcript/](manual-bash-transcript/README.md) | 2/2 ✅ |
 | Java/PHP code intelligence | [code-diagnostics-java-php](../plan/code-diagnostics-java-php.md) | [code-diagnostics-java-php/](code-diagnostics-java-php/README.md) | 4/4 ✅ |
 | Session scrollbar stability | [session-scrollbar](../plan/session-scrollbar.md) | [session-scrollbar/](session-scrollbar/README.md) | 7/7 ✅ |
 | Terminal cwd matching | [terminal-cwd-matching](../plan/terminal-cwd-matching.md) | [terminal-cwd-matching/](terminal-cwd-matching/README.md) | 1/1 ✅ |
