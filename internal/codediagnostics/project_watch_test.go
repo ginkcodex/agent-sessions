@@ -21,10 +21,12 @@ type fakeFS struct {
 	added   map[string]bool
 	closed  bool
 	failAdd bool
+	ready   chan struct{} // first event-channel request, after initial publication
+	onReady sync.Once
 }
 
 func newFakeFS() *fakeFS {
-	return &fakeFS{events: make(chan fsnotify.Event, 64), errors: make(chan error, 4), added: map[string]bool{}}
+	return &fakeFS{events: make(chan fsnotify.Event, 64), errors: make(chan error, 4), added: map[string]bool{}, ready: make(chan struct{})}
 }
 func (f *fakeFS) Add(p string) error {
 	f.mu.Lock()
@@ -41,10 +43,13 @@ func (f *fakeFS) Remove(p string) error {
 	delete(f.added, p)
 	return nil
 }
-func (f *fakeFS) Close() error                  { f.mu.Lock(); f.closed = true; f.mu.Unlock(); return nil }
-func (f *fakeFS) Events() <-chan fsnotify.Event { return f.events }
-func (f *fakeFS) Errors() <-chan error          { return f.errors }
-func (f *fakeFS) watching(p string) bool        { f.mu.Lock(); defer f.mu.Unlock(); return f.added[p] }
+func (f *fakeFS) Close() error { f.mu.Lock(); f.closed = true; f.mu.Unlock(); return nil }
+func (f *fakeFS) Events() <-chan fsnotify.Event {
+	f.onReady.Do(func() { close(f.ready) })
+	return f.events
+}
+func (f *fakeFS) Errors() <-chan error   { return f.errors }
+func (f *fakeFS) watching(p string) bool { f.mu.Lock(); defer f.mu.Unlock(); return f.added[p] }
 
 // approvedSyntax returns a Manager with an approved attachment carrying the
 // in-process go-syntax provider for root.

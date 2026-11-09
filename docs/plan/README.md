@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [windows-ci-test-stability.md](windows-ci-test-stability.md) | [windows-ci-test-stability](../tasks/windows-ci-test-stability/README.md) | Deterministic Git budgets and watcher startup synchronization in Windows CI tests |
 | [workspace-terminal-selection.md](workspace-terminal-selection.md) | [workspace-terminal-selection](../tasks/workspace-terminal-selection/README.md) | Directory clicks in the workspace tree select the opened session's terminal tab |
 | [terminal-file-paths.md](terminal-file-paths.md) | [terminal-file-paths](../tasks/terminal-file-paths/README.md) | Correct inner-path detection in terminal tool-call wrappers |
 | [workspace-stars.md](workspace-stars.md) | [workspace-stars](../tasks/workspace-stars/README.md) | Persistent workspace stars and a starred-only sidebar filter |
