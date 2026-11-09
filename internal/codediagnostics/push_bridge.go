@@ -15,6 +15,8 @@ var pushSpecs = map[string]pushSpec{
 	pyrightProviderID:      {partialPyrightNotice, func(file string) bool { _, ok := PythonLanguageID(file); return ok }},
 	rustAnalyzerProviderID: {partialRustNotice, func(file string) bool { return strings.HasSuffix(file, ".rs") }},
 	rubocopProviderID:      {partialRubocopNotice, func(file string) bool { _, ok := RubyLanguageID(file); return ok }},
+	javaProviderID:         {"Some Java diagnostics could not be verified; results are partial.", func(file string) bool { _, ok := JavaLanguageID(file); return ok }},
+	phpProviderID:          {partialPHPNotice, func(file string) bool { _, ok := PHPLanguageID(file); return ok }},
 }
 
 // PushBridge turns one provider's publishDiagnostics for the files it owns into

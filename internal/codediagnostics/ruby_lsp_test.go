@@ -344,7 +344,7 @@ func rubyLspLiveEnv(t *testing.T) (LocalLiveEnvironment, rubyRuntime) {
 	t.Helper()
 	rt, env, user := rubyLspUser(t)
 	writeGem(t, user, "rubocop", "1.92.2")
-	return LocalLiveEnvironment{Ruby: env, Disabled: NewDisabledLanguages([]string{"go", "typescript", "svelte", "python", "rust"})}, rt
+	return LocalLiveEnvironment{Ruby: env, Disabled: NewDisabledLanguages([]string{"java", "php", "go", "typescript", "svelte", "python", "rust"})}, rt
 }
 
 // RuboCop and ruby-lsp share the Ruby workspaces: one ruby-lsp server per
@@ -403,7 +403,7 @@ func TestRubyLspLocalLive(t *testing.T) {
 	}
 
 	// Turning Ruby off stops both; nothing reads the Ruby environment.
-	off := LocalLiveEnvironment{Ruby: RubyEnvironment{Home: "relative"}, Disabled: NewDisabledLanguages([]string{"go", "typescript", "svelte", "python", "rust", "ruby"})}
+	off := LocalLiveEnvironment{Ruby: RubyEnvironment{Home: "relative"}, Disabled: NewDisabledLanguages([]string{"java", "php", "go", "typescript", "svelte", "python", "rust", "ruby"})}
 	if regs, err := DiscoverLocalLive(root, off); err != nil || len(regs) != 0 {
 		t.Fatal(err, regs)
 	}
@@ -433,7 +433,7 @@ func TestRubyLspIndependentOfRubocop(t *testing.T) {
 			writeRubyLsp(t, user, "0.26.11")
 		}
 		root := goplsRoot(t, files)
-		regs, err := DiscoverLocalLive(root, LocalLiveEnvironment{Ruby: env, Disabled: NewDisabledLanguages([]string{"go", "typescript", "svelte", "python", "rust"})})
+		regs, err := DiscoverLocalLive(root, LocalLiveEnvironment{Ruby: env, Disabled: NewDisabledLanguages([]string{"java", "php", "go", "typescript", "svelte", "python", "rust"})})
 		if err != nil || len(regs) != 2 || (regs[0].Availability == "available") != c.rubocop || (regs[1].Availability == "available") != c.lsp {
 			t.Fatal(c.name, err, regs)
 		}

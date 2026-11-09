@@ -25,6 +25,8 @@ var languages = []Language{
 	{ID: "python", Name: "Python", Live: []string{ruffProviderID, pyrightProviderID}, Tools: []string{"ruff", "pyright"}},
 	{ID: "rust", Name: "Rust", Live: []string{rustAnalyzerProviderID}, Saved: []string{"cargo-check"}, Tools: []string{"rust-analyzer"}},
 	{ID: "ruby", Name: "Ruby", Live: []string{rubocopProviderID, rubyLspProviderID}},
+	{ID: "java", Name: "Java", Live: []string{javaProviderID}},
+	{ID: "php", Name: "PHP", Live: []string{phpProviderID}},
 }
 
 // languageFiles tells, by language ID, whether a file is one of its sources.
@@ -35,6 +37,8 @@ var languageFiles = map[string]func(file string) bool{
 	"python":     func(file string) bool { _, ok := PythonLanguageID(file); return ok },
 	"rust":       func(file string) bool { return strings.HasSuffix(file, ".rs") },
 	"ruby":       func(file string) bool { _, ok := RubyLanguageID(file); return ok },
+	"java":       func(file string) bool { _, ok := JavaLanguageID(file); return ok },
+	"php":        func(file string) bool { _, ok := PHPLanguageID(file); return ok },
 }
 
 // Languages returns the supported languages in display order.

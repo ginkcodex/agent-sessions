@@ -60,9 +60,10 @@ const powerShellExitStatus = "; $ok = $?; if ($LASTEXITCODE) { exit $LASTEXITCOD
 
 // PanelShellScript is the /bin/sh script a WSL or SSH host's shell tab
 // runs: it enters dir when there is one and it exists, then becomes the
-// user's login shell.
+// user's login shell. An unconfigured locale defaults to an installed UTF-8
+// locale on that host, so the shell can edit the terminal's Unicode input.
 func PanelShellScript(dir string) string {
-	script := panelPosixShellScript(`"${SHELL:-/bin/sh}"`)
+	script := panelRemoteLocale + panelPosixShellScript(`"${SHELL:-/bin/sh}"`)
 	if dir != "" {
 		script = "cd -- " + ShellEscape(dir) + " 2>/dev/null\n" + script
 	}

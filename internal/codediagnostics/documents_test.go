@@ -450,14 +450,19 @@ type managerHarness struct {
 
 func NewManagerForTest(t *testing.T, root AuthorizedRoot) *managerHarness {
 	t.Helper()
-	// Checker approval is separate from LSP session approval: reuse a checker tool.
+	tools := []ToolInput{{ProviderID: "t", Executable: filepath.Join(root.Project().Root, "server"), ConfigPaths: []string{"cfg"}, Policy: "adapter-v1 fixed argv and env"}}
+	return newManagerForTools(t, root, tools)
+}
+
+func newManagerForTools(t *testing.T, root AuthorizedRoot, tools []ToolInput) *managerHarness {
+	t.Helper()
+	// Checker approval is separate from LSP session approval.
 	trust := NewTrust(nil)
 	m, err := NewManager("connection", trust, NewSupervisor(trust, SupervisorOptions{}), ManagerLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Close)
-	tools := []ToolInput{{ProviderID: "t", Executable: filepath.Join(root.Project().Root, "server"), ConfigPaths: []string{"cfg"}, Policy: "adapter-v1 fixed argv and env"}}
 	snap, err := m.Attach(root, 1, []Registration{{ProviderID: "t", Availability: "available", Adapter: &fakeChecker{tools: tools, calls: make(chan adapterCall, 1)}}})
 	if err != nil {
 		t.Fatal(err)

@@ -119,6 +119,79 @@ How to test scrollbar paint on Linux:
 - Portal captures can miss a flash shorter than one frame. Take several
   during a pointer sweep, and have the user confirm on their build.
 
+## Remote shell locale (SSH and WSL shell tabs)
+
+**Keep `panelRemoteLocale` at the start of `PanelShellScript`**
+(`internal/launch/panel_locale.go`, `panel.go`). Without it, a plain shell tab
+on an SSH host can start with the POSIX/ASCII locale, which breaks Vietnamese
+input there.
+
+The symptom: Vietnamese typed with OpenKey (EVKey and GoTiengViet work the same
+way) came out as wrong text, and the cursor jumped to the first line. It
+happened only in plain shells on a remote host. These all worked on the same
+Mac:
+
+- a local shell tab;
+- Claude Code, Codex and OpenCode, both local and remote;
+- `ssh` to the same host from iTerm or Terminal.
+
+The failing shell showed:
+
+- `LANG` was empty and `LC_CTYPE` was `POSIX`.
+- `locale charmap` reported `ANSI_X3.4-1968`.
+- `locale -a` listed `C.utf8` and `en_US.utf8`, so UTF-8 locales were
+  installed; nothing selected one.
+
+These IMEs delete the typed letters and send the accented replacement as
+UTF-8. In an ASCII locale, bash's readline treats each byte as one character.
+Its redraw then garbles the line and moves the cursor. Agents work because
+their TUIs decode UTF-8 themselves and don't rely on the shell's locale.
+
+Why only the app:
+
+- `sshEnvironment` (`internal/remote/ssh.go`) starts from `os.Environ()`.
+  Local shells use `term.LoginEnv`, which re-reads the login shell's
+  environment, but SSH does not.
+- An app opened from Finder often has no `LANG`, so `SendEnv LANG LC_*`
+  (macOS default, `/etc/ssh/ssh_config.d/100-macos.conf`) has nothing to send.
+- Without a forwarded locale, many Linux servers fall back to POSIX.
+- Terminal apps export `LANG`, which is why `ssh` from them works.
+
+The fix runs on the remote host, before the login shell starts. When `LANG`,
+`LC_CTYPE` and `LC_ALL` are all unset or empty, it reads `LC_ALL=C locale -a`
+there and exports `LANG` as the first match in this order:
+
+1. `C.UTF-8` or `C.utf8`.
+2. `en_US.*` UTF-8.
+3. Any other UTF-8 locale.
+
+Rules to keep if you change it:
+
+- **Never guess a locale name.** A locale available on the client may not
+  exist on the host. Setting a missing one causes `setlocale` warnings and
+  leaves the shell in ASCII anyway. Take names from the host's own `locale -a`.
+- **Never override an explicit setting**, including `LANG=C` or
+  `LC_CTYPE=POSIX`. Do nothing when `locale` is missing, fails, or lists no
+  UTF-8 locale.
+- **Only remote plain shells.** Local shells already get the login
+  environment. Agent launches don't need the fallback, and adding it there
+  would change their environment for no reason.
+- The user's startup files still run after the fallback, so a `LANG` they
+  set wins.
+
+Forwarding the client's `LANG` from the app instead was not chosen: the name
+may not exist on the host, and the server's `AcceptEnv` may drop it anyway.
+
+`internal/launch/panel_locale_test.go` runs the real bootstrap, both raw and
+in its quoted SSH form. A stub `locale` replays host lists (including the
+reported one) and failure cases. A fake login shell prints the result. One
+more test runs the bootstrap with the machine's real `locale -a` and checks
+that the charmap becomes UTF-8. A quick check on a remote tab is
+`locale charmap`: it should print `UTF-8`. If a host still fails, a user can
+put `export LANG=C.UTF-8` in `~/.bashrc` or `~/.profile` there. See
+[docs/plan/macos-terminal-input.md](docs/plan/macos-terminal-input.md) and
+its QA note.
+
 ## Fullscreen shortcut
 
 Control+Command+F toggles fullscreen on macOS; other platforms use F11
