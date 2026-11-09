@@ -44,7 +44,7 @@ func TestJavaPHPRealSmoke(t *testing.T) {
 				t.Fatalf("server unavailable: %+v", plan.Provider())
 			}
 			trust := NewTrust(nil)
-			h := NewManagerForTest(t, root)
+			h := newManagerForTools(t, root, cfg.Tools())
 			bridge := newPushBridge(cfg.ProviderID, root, h.Manager)
 			bridge.Notice = func(s string) { t.Log("notice:", s) }
 			sessions := NewSessionManager(trust, SessionOptions{Launch: HostSessionLaunch, Notifications: bridge.Handle, FailureLog: func(f SessionFailure) { t.Logf("server failure: %+v", f) }})
@@ -66,31 +66,54 @@ func TestJavaPHPRealSmoke(t *testing.T) {
 			if _, err = h.OpenDocument(ctx, c, file, "d1", 1, draft, ""); err != nil {
 				t.Fatal(err)
 			}
-			deadline := time.Now().Add(90 * time.Second)
-			diagnostic := false
-			definition := false
-			for time.Now().Before(deadline) {
-				if s, e := h.GetSnapshot(c); e == nil {
-					for _, set := range s.ResultSets {
-						if len(set.Diagnostics) > 0 {
-							diagnostic = true
+			definitionStart := 9
+			if language == "java" {
+				definitionStart = 12
+			}
+			for _, step := range []struct {
+				version int64
+				text    string
+				errors  bool
+			}{{1, draft, true}, {2, saved, false}, {3, draft, true}} {
+				if step.version > 1 {
+					if _, err = h.ChangeDocument(ctx, c, "d1", step.version, step.text); err != nil {
+						t.Fatal(err)
+					}
+				}
+				deadline := time.Now().Add(45 * time.Second)
+				diagnostic, definition := false, false
+				for time.Now().Before(deadline) {
+					if s, e := h.GetSnapshot(c); e == nil {
+						for _, set := range s.ResultSets {
+							if set.ProviderID == cfg.ProviderID && set.Scope.DocumentID == "d1" && (len(set.Diagnostics) > 0) == step.errors {
+								diagnostic = true
+							}
 						}
 					}
-				}
-				if !definition {
-					result, e := h.Navigate(ctx, c, "d1", 1, NavigateDefinition, Position{Line: line, Character: character})
-					if e == nil && len(result.Locations) > 0 {
-						definition = true
-						t.Logf("definition: %+v", result.Locations)
+					if !definition {
+						result, e := h.Navigate(ctx, c, "d1", step.version, NavigateDefinition, Position{Line: line, Character: character})
+						if e == nil {
+							for _, location := range result.Locations {
+								if location.Path == file && !location.External && location.Range.Start == (Position{Line: 1, Character: definitionStart}) && location.Range.End == (Position{Line: 1, Character: definitionStart + 5}) {
+									definition = true
+								}
+							}
+						}
 					}
+					if diagnostic && definition {
+						break
+					}
+					time.Sleep(250 * time.Millisecond)
 				}
-				if diagnostic && definition {
-					t.Log("opened-draft diagnostic and source definition passed")
-					return
+				if !diagnostic || !definition {
+					t.Fatalf("real %s version %d: expected errors=%v diagnostics=%v definition=%v, session=%+v", language, step.version, step.errors, diagnostic, definition, sessions.Info(root, cfg))
 				}
-				time.Sleep(250 * time.Millisecond)
+				t.Logf("version %d: errors=%v and exact source definition passed", step.version, step.errors)
 			}
-			t.Fatalf("real %s: diagnostics=%v definition=%v, session=%+v", language, diagnostic, definition, sessions.Info(root, cfg))
+			data, err := os.ReadFile(filepath.Join(root.Project().Root, file))
+			if err != nil || string(data) != saved {
+				t.Fatalf("draft edits changed the saved file: %v", err)
+			}
 		})
 	}
 }
