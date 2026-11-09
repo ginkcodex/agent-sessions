@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [code-diagnostics-java-php.md](code-diagnostics-java-php.md) | [code-diagnostics-java-php](../tasks/code-diagnostics-java-php/README.md) | Java/PHP source navigation and live diagnostics with JDT LS and Intelephense |
 | [session-scrollbar.md](session-scrollbar.md) | [session-scrollbar](../tasks/session-scrollbar/README.md) | Fix the Linux session-list scrollbar vanishing at the top and flashing on hover |
 | [wails-v3-upgrade.md](wails-v3-upgrade.md) | [wails-v3-upgrade](../tasks/wails-v3-upgrade/README.md) | Move the desktop app to Wails v3 and GTK 4; native manual gates |
 | [file-editing.md](file-editing.md) | [file-editing](../tasks/file-editing/README.md) | Go to File editing: safe local/remote saves, drafts, conflicts and lifecycle guards |

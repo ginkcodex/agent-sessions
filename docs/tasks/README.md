@@ -32,6 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Java/PHP code intelligence | [code-diagnostics-java-php](../plan/code-diagnostics-java-php.md) | [code-diagnostics-java-php/](code-diagnostics-java-php/README.md) | 1/4 ✅ · 3 ⬜ |
 | Session scrollbar stability | [session-scrollbar](../plan/session-scrollbar.md) | [session-scrollbar/](session-scrollbar/README.md) | 7/7 ✅ |
 | Terminal cwd matching | [terminal-cwd-matching](../plan/terminal-cwd-matching.md) | [terminal-cwd-matching/](terminal-cwd-matching/README.md) | 1/1 ✅ |
 | Code diagnostics (Go to File checks) | [code-diagnostics](../plan/code-diagnostics.md) | [code-diagnostics/](code-diagnostics/README.md) | 19/28 ✅ · 8 🟡 · 1 ⛔ |
