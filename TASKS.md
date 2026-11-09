@@ -64,7 +64,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Session scrollbar stability | [session-scrollbar](docs/plan/session-scrollbar.md) | [session-scrollbar/](docs/tasks/session-scrollbar/README.md) | 9/10 ✅ · 1 🟡 |
 | Terminal cwd matching | [terminal-cwd-matching](docs/plan/terminal-cwd-matching.md) | [terminal-cwd-matching/](docs/tasks/terminal-cwd-matching/README.md) | 1/1 ✅ |
 | Code diagnostics (Go to File checks) | [code-diagnostics](docs/plan/code-diagnostics.md) | [code-diagnostics/](docs/tasks/code-diagnostics/README.md) | 19/28 ✅ · 8 🟡 · 1 ⛔ |
-| Editor essentials | [editor-essentials](docs/plan/editor-essentials.md) | [editor-essentials/](docs/tasks/editor-essentials/README.md) | 23/23 ✅ |
+| Editor essentials | [editor-essentials](docs/plan/editor-essentials.md) | [editor-essentials/](docs/tasks/editor-essentials/README.md) | 24/24 ✅ |
 | Git history | [git-history](docs/plan/git-history.md) | [git-history/](docs/tasks/git-history/README.md) | 17/18 ✅ · 1 🟡 |
 | Code checks: choosing languages | [code-diagnostics-languages](docs/plan/code-diagnostics-languages.md) | [code-diagnostics-languages/](docs/tasks/code-diagnostics-languages/README.md) | 8/8 ✅ |
 | Code checks: Git ignore rules in discovery | [code-diagnostics-ignore-scope](docs/plan/code-diagnostics-ignore-scope.md) | [code-diagnostics-ignore-scope/](docs/tasks/code-diagnostics-ignore-scope/README.md) | 4/6 ✅ · 1 🟡 · 1 ⬜ |
