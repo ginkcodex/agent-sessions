@@ -16,7 +16,7 @@ pipeline. Preserve existing language behavior and honest coverage reporting.
   Inspect the JDK `release` file instead of executing a version probe. Require
   Java 25 for current JDT LS; the project's source level can be older.
 - **PHP:** Intelephense's npm server, launched directly by reviewed Node.js with
-  `--stdio`. Definition, references, hover and opened-file diagnostics are free;
+  `--stdio` on Node.js 22+. Definition, references, hover and opened-file diagnostics are free;
   the server is proprietary and premium features are outside this feature.
   No PHP runtime, Composer execution or paid licence is required by the adapter.
 - First release uses user-installed tools, as Ruby does. No background install,

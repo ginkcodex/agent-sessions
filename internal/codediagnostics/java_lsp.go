@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path"
@@ -27,12 +28,14 @@ const (
 	maxJavaIdentityEntries = 2048
 )
 
-var javaDocumentExtensions = []string{".java"}
-var javaProjectMarkers = projectMarkers{
-	configs: []string{"pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties", "gradle-wrapper.properties", "gradle-wrapper.jar", "mvnw", "mvnw.cmd", "gradlew", "gradlew.bat", ".classpath", ".project"},
-	skipDir: []string{"target", ".gradle", "build", "vendor", "node_modules"},
-	sources: javaDocumentExtensions,
-}
+var (
+	javaDocumentExtensions = []string{".java"}
+	javaProjectMarkers     = projectMarkers{
+		configs: []string{"pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties", "gradle-wrapper.properties", "gradle-wrapper.jar", "mvnw", "mvnw.cmd", "gradlew", "gradlew.bat", ".classpath", ".project"},
+		skipDir: []string{"target", ".gradle", "build", "vendor", "node_modules"},
+		sources: javaDocumentExtensions,
+	}
+)
 
 // JavaEnvironment contains reviewed absolute host paths, not inherited variables.
 // Cache is the app-owned cache base. JavaHome optionally pins a JDK installation.
@@ -271,7 +274,7 @@ func javaNative(file string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var b [4]byte
 	if _, err := io.ReadFull(f, b[:]); err != nil {
 		return false
@@ -405,8 +408,11 @@ func javaIdentityPaths(dirs, extra []string) ([]string, error) {
 			return err
 		}
 		ds, err := f.ReadDir(maxJavaIdentityEntries + 1 - entries)
-		f.Close()
-		if err != nil && err != io.EOF {
+		closeErr := f.Close()
+		if closeErr != nil {
+			return closeErr
+		}
+		if err != nil && !errors.Is(err, io.EOF) {
 			return err
 		}
 		entries += len(ds)

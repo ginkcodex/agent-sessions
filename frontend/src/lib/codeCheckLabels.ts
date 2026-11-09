@@ -16,6 +16,8 @@ const toolNames: Record<string, string> = {
   'cargo-check': 'Rust compiler check (Cargo)',
   rubocop: 'Ruby linter (RuboCop)',
   'ruby-lsp': 'Ruby language server (ruby-lsp)',
+  jdtls: 'Java language server (JDT LS)',
+  intelephense: 'PHP language server (Intelephense)',
 };
 
 export function toolName(providerId: string): string {

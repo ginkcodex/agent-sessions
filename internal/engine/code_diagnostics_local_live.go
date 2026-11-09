@@ -151,6 +151,8 @@ func discoverLocalLiveIn(root cd.AuthorizedRoot, managed []string, prepareDir st
 		Pyright:  cd.PyrightEnvironment{Home: home},
 		Rust:     cd.RustEnvironment{Home: home, CargoHome: os.Getenv("CARGO_HOME"), RustupHome: os.Getenv("RUSTUP_HOME"), PrepareDir: prepareDir},
 		Ruby:     cd.RubyEnvironment{Home: home, RbenvRoot: os.Getenv("RBENV_ROOT"), MiseDataDir: os.Getenv("MISE_DATA_DIR"), AsdfDataDir: os.Getenv("ASDF_DATA_DIR")},
+		Java:     cd.JavaEnvironment{Home: home, Cache: filepath.Join(cache, "agent-sessions", "jdtls"), JavaHome: os.Getenv("JAVA_HOME")},
+		PHP:      cd.PHPEnvironment{Home: home},
 		Disabled: off,
 	})
 }

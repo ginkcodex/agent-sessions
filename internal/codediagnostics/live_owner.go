@@ -158,11 +158,13 @@ func (d *LiveDocuments) Navigate(ctx context.Context, req NavigationRequest) (Na
 }
 
 // watchedFileProviders are the live servers told of saved-file transitions,
-// each for its own files: gopls for Go, ruby-lsp for Ruby (it re-indexes
-// closed files from them). Other servers, RuboCop included, get none.
+// each for its own files: Go, Ruby, Java and PHP servers can update their
+// closed-file indexes from these events. Other servers get none.
 var watchedFileProviders = map[string]func(path string) bool{
 	goplsProviderID:   func(path string) bool { return strings.HasSuffix(path, ".go") },
 	rubyLspProviderID: func(path string) bool { _, ok := RubyLanguageID(path); return ok },
+	javaProviderID:    func(path string) bool { _, ok := JavaLanguageID(path); return ok },
+	phpProviderID:     func(path string) bool { _, ok := PHPLanguageID(path); return ok },
 }
 
 func watchedFileFor(providerID, path string) bool {
@@ -170,8 +172,8 @@ func watchedFileFor(providerID, path string) bool {
 	return ok && accept(path)
 }
 
-// WatchedFiles notifies the current gopls and ruby-lsp sessions (only) of
-// saved Go and Ruby file transitions observed by the approved project watcher.
+// WatchedFiles notifies running reviewed servers of matching saved-file
+// transitions observed by the approved project watcher.
 // Other paths and projects without a running session are ignored.
 func (d *LiveDocuments) WatchedFiles(ctx context.Context, root AuthorizedRoot, changes []FileChange) error {
 	p, ok := d.project(root)

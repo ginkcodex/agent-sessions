@@ -92,6 +92,9 @@ Read them in order: later milestones build on the contracts defined in M0.
 - [code-diagnostics-workspaces.md](code-diagnostics-workspaces.md): Nested diagnostics workspaces (2026-10-23)
 - [code-diagnostics-zed-model.md](code-diagnostics-zed-model.md): Code diagnostics: the editor model (2026-10-23)
 
+**[code-diagnostics-java-php.md](code-diagnostics-java-php.md):**
+- [code-diagnostics-java-php-qa.md](code-diagnostics-java-php-qa.md): Automated results and blocked real-server/manual release gates
+
 **[git-history.md](git-history.md):**
 - [git-history-contract.md](git-history-contract.md): Git history contract v1
 - [git-history-qa.md](git-history-qa.md): Git history QA — 2026-10-26

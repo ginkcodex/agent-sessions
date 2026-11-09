@@ -44,11 +44,11 @@ func javaHost(t *testing.T) ([]string, JavaEnvironment, string) {
 		javaName, jvm, jli = "bin/java.exe", "bin/server/jvm.dll", "bin/jli.dll"
 	}
 	writeTree(t, jdk, map[string]string{javaName: native, "release": "JAVA_VERSION=\"25.0.1\"\n", jvm: "synthetic JVM", jli: "synthetic JLI"})
-	if err := os.Chmod(filepath.Join(jdk, javaName), 0755); err != nil {
+	if err := os.Chmod(filepath.Join(jdk, javaName), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(base, "bin")
-	if err := os.Mkdir(bin, 0755); err != nil {
+	if err := os.Mkdir(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(filepath.Join(dist, "bin", "jdtls"), filepath.Join(bin, "jdtls")); err != nil {
@@ -176,6 +176,7 @@ func dirsJavaName() string {
 	}
 	return filepath.Join("bin", "java")
 }
+
 func javaArg(t *testing.T, cfg ServerConfig, flag string) string {
 	t.Helper()
 	i := slices.Index(cfg.Args, flag)
@@ -204,7 +205,7 @@ func TestJavaUnavailableMetadata(t *testing.T) {
 				env.JavaHome += "-absent"
 				state = "missingTool"
 			case "script Java":
-				if err := os.WriteFile(filepath.Join(env.JavaHome, dirsJavaName()), []byte("#!/bin/sh\n"), 0755); err != nil {
+				if err := os.WriteFile(filepath.Join(env.JavaHome, dirsJavaName()), []byte("#!/bin/sh\n"), 0o755); err != nil {
 					t.Fatal(err)
 				}
 				state = "missingTool"
@@ -226,7 +227,9 @@ func TestJavaUnavailableMetadata(t *testing.T) {
 					}
 				}
 			case "missing launcher":
-				os.Remove(filepath.Join(dist, "plugins", "org.eclipse.equinox.launcher_1.7.0.jar"))
+				if err := os.Remove(filepath.Join(dist, "plugins", "org.eclipse.equinox.launcher_1.7.0.jar")); err != nil {
+					t.Fatal(err)
+				}
 			case "ambiguous launcher":
 				writeTree(t, dist, map[string]string{"plugins/org.eclipse.equinox.launcher_1.8.0.jar": ""})
 			case "no config":
@@ -234,7 +237,9 @@ func TestJavaUnavailableMetadata(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "missing core":
-				os.Remove(filepath.Join(dist, "plugins", "org.eclipse.jdt.ls.core_1.57.0.jar"))
+				if err := os.Remove(filepath.Join(dist, "plugins", "org.eclipse.jdt.ls.core_1.57.0.jar")); err != nil {
+					t.Fatal(err)
+				}
 			case "cache in project":
 				env.Cache = filepath.Join(root.Project().Root, "cache")
 			case "cache in distribution":
@@ -267,7 +272,7 @@ func TestJavaConventionalLayoutAndRuntimePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	conventional := filepath.Join(filepath.Dir(dirs[0]), "share", "java", "jdtls")
-	if err := os.MkdirAll(filepath.Dir(conventional), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(conventional), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Rename(dist, conventional); err != nil {
@@ -306,7 +311,7 @@ func TestJavaFingerprintAndRevalidation(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(f, append(data, '!'), 0755); err != nil {
+				if err := os.WriteFile(f, append(data, '!'), 0o755); err != nil {
 					t.Fatal(err)
 				}
 			case "release":
@@ -314,7 +319,7 @@ func TestJavaFingerprintAndRevalidation(t *testing.T) {
 			case "JVM":
 				for _, tool := range cfg.Toolchain {
 					if strings.Contains(filepath.Base(tool.Executable), "jvm") {
-						if err := os.WriteFile(tool.Executable, []byte("changed JVM"), 0644); err != nil {
+						if err := os.WriteFile(tool.Executable, []byte("changed JVM"), 0o644); err != nil {
 							t.Fatal(err)
 						}
 					}
@@ -324,7 +329,9 @@ func TestJavaFingerprintAndRevalidation(t *testing.T) {
 			case "bundle added":
 				writeTree(t, dist, map[string]string{"plugins/new.jar": "new bundle"})
 			case "bundle removed":
-				os.Remove(filepath.Join(dist, "plugins", "other.jar"))
+				if err := os.Remove(filepath.Join(dist, "plugins", "other.jar")); err != nil {
+					t.Fatal(err)
+				}
 			case "configuration":
 				for _, tool := range cfg.Args {
 					if shared, ok := strings.CutPrefix(tool, "-Dosgi.sharedConfiguration.area="); ok {
@@ -345,7 +352,7 @@ func TestJavaFingerprintAndRevalidation(t *testing.T) {
 				writeTree(t, root.Project().Root, map[string]string{".mvn/wrapper/maven-wrapper.jar": "executable wrapper"})
 			case "cache link":
 				data := javaArg(t, cfg, "-data")
-				if err := os.MkdirAll(filepath.Dir(data), 0755); err != nil {
+				if err := os.MkdirAll(filepath.Dir(data), 0o755); err != nil {
 					t.Fatal(err)
 				}
 				if err := os.Symlink(root.Project().Root, data); err != nil {
@@ -392,7 +399,7 @@ func TestJavaWorkspaceConfigAndCacheSafety(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := javaArg(t, cfg, "-data")
-	if err := os.MkdirAll(filepath.Dir(data), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(data), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(root.Project().Root, data); err != nil {
@@ -414,7 +421,9 @@ func TestJavaIdentityBounds(t *testing.T) {
 	if err := f.Truncate(maxIdentityFile + 1); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	p, err := DiscoverJava(root, dirs, env)
 	if err != nil || p.Availability() != "unsupported" {
 		t.Fatalf("oversized bundle accepted: %v %+v", err, p)
