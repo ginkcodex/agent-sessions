@@ -153,11 +153,18 @@ const Row = await component('sidebar/GroupNodeItem', [
   ["import { workspaces } from '../../stores/workspaces.svelte';", 'const workspaces = { directories: [] };'],
 ]);
 const Filter = await component('sidebar/PathFilter');
+const WorkspaceStart = await component('sessionlist/WorkspaceStart', [
+  ["import { link } from '../../stores/link.svelte';", 'const link = globalThis.__starLink;'],
+  ["import { newSession } from '../../stores/newSession.svelte';", 'const newSession = { defaultAgent: "claude-code", choices: [], available: false, refresh: async () => {} };'],
+  ["import { terminals } from '../../stores/terminals.svelte';", 'const terminals = {};'],
+  ["import { files } from '../../stores/files.svelte';", 'const files = {};'],
+]);
 
-function open(Component, props = {}) {
+function open(Component, props = {}, setup = () => {}) {
   storage();
   const store = globalThis.__starStore = new WorkspaceStarsStore();
   globalThis.__starAppState = { filter: {} };
+  setup(store);
   const target = document.createElement('div'); document.body.append(target);
   const instance = mount(Component, { target, props }); flushSync();
   return { target, store, close() { unmount(instance); target.remove(); } };
@@ -201,6 +208,50 @@ test('star filter is next to directory search and toggles without touching its f
     button.click(); flushSync();
     assert.equal(button.getAttribute('aria-pressed'), 'false');
   } finally { filter.close(); }
+});
+
+test('new workspace panel can reveal a workspace hidden by the starred-only filter without clearing it', () => {
+  const panel = open(WorkspaceStart, { cwd: '/new' }, store => { store.onlyStarred = true; });
+  try {
+    const groups = [directory('/new')];
+    const button = panel.target.querySelector('.workspace-star');
+    assert.deepEqual(panel.store.visibleGroups(groups), []);
+    assert.equal(button.getAttribute('aria-label'), 'Star workspace');
+    assert.equal(button.getAttribute('aria-pressed'), 'false');
+    button.click(); flushSync();
+    assert.equal(button.getAttribute('aria-label'), 'Unstar workspace');
+    assert.equal(button.getAttribute('aria-pressed'), 'true');
+    assert.match(button.textContent, /Unstar workspace/);
+    assert.deepEqual(panel.store.visibleGroups(groups), groups);
+    assert.equal(new WorkspaceStarsStore().isStarred('/new'), true, 'panel uses the shared persisted preference');
+    assert.equal(panel.store.onlyStarred, true);
+    assert.deepEqual(globalThis.__starAppState.filter, {});
+    button.click(); flushSync();
+    assert.equal(button.getAttribute('aria-pressed'), 'false');
+    assert.deepEqual(panel.store.visibleGroups(groups), []);
+  } finally { panel.close(); }
+});
+
+test('new workspace panel reflects existing host-scoped stars and disables changes on blocked links', () => {
+  const panel = open(WorkspaceStart, { cwd: '/new' }, store => {
+    link.dataHost = 'ssh:project';
+    store.toggle('/new');
+  });
+  try {
+    assert.equal(panel.target.querySelector('.workspace-star').getAttribute('aria-pressed'), 'true');
+    link.dataHost = undefined;
+    assert.equal(panel.store.isStarred('/new'), false, 'same path on local is independent');
+  } finally { panel.close(); }
+  for (const state of ['stale', 'locked']) {
+    const blocked = open(WorkspaceStart, { cwd: '/new' }, () => { link[state] = true; });
+    try {
+      const button = blocked.target.querySelector('.workspace-star');
+      assert.equal(button.disabled, true);
+      button.click(); flushSync();
+      assert.equal(blocked.store.isStarred('/new'), false);
+    } finally { blocked.close(); }
+  }
+  link.stale = false; link.locked = false;
 });
 
 const Tree = await loadServerComponent(new URL('../src/lib/components/sidebar/GroupTree.svelte', import.meta.url), [

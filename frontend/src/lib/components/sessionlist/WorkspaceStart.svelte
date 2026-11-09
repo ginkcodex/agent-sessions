@@ -5,6 +5,7 @@
   import { terminals } from '../../stores/terminals.svelte';
   import { files } from '../../stores/files.svelte';
   import { link } from '../../stores/link.svelte';
+  import { workspaceStars } from '../../stores/workspaceStars.svelte';
   import type { AgentID } from '../../types';
 
   let { cwd }: { cwd: string } = $props();
@@ -23,6 +24,19 @@
   <span class="icon" aria-hidden="true"><Icon name="folder" size={22} strokeWidth={1.75} /></span>
   <h3>No sessions yet</h3>
   <p class="path">{cwd}</p>
+  <button
+    type="button"
+    class="workspace-star"
+    class:starred={workspaceStars.isStarred(cwd)}
+    aria-label={workspaceStars.isStarred(cwd) ? 'Unstar workspace' : 'Star workspace'}
+    aria-pressed={workspaceStars.isStarred(cwd)}
+    title={workspaceStars.isStarred(cwd) ? 'Unstar workspace' : 'Star workspace'}
+    disabled={blocked}
+    onclick={() => workspaceStars.toggle(cwd)}
+  >
+    <Icon name="star" size={14} />
+    {workspaceStars.isStarred(cwd) ? 'Unstar workspace' : 'Star workspace'}
+  </button>
   <p>Start a coding agent in this workspace. New sessions appear here once discovered.</p>
   <label for="workspace-agent">Coding agent</label>
   <select id="workspace-agent" bind:value={agent} disabled={blocked || newSession.starting}>
@@ -45,4 +59,8 @@
   button, select { padding: 7px 12px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); }
   button { cursor: pointer; } button:disabled { opacity: .5; cursor: default; } .primary { background: var(--accent-color); color: white; }
   .secondary { display: flex; gap: 8px; }
+  .workspace-star { display: inline-flex; align-items: center; gap: 6px; }
+  .workspace-star.starred { color: var(--accent-color); }
+  .workspace-star.starred :global(svg) { fill: currentColor; }
+  .workspace-star:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 </style>
