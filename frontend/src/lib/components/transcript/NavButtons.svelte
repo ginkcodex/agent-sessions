@@ -55,6 +55,12 @@
     cursor: pointer;
   }
 
+  /* Match the individual header surface layers on Linux (SS-10), rather
+     than transforming the shared navigation/badge wrapper. */
+  :global([data-platform="linux"]) .nav-btn {
+    transform: translateZ(0);
+  }
+
   .nav-btn:hover:not(:disabled) {
     color: var(--text-primary);
     background-color: var(--hover-bg);

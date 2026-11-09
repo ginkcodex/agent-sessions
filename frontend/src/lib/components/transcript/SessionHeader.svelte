@@ -565,6 +565,16 @@
     gap: 6px;
   }
 
+  /* Keep individual painted surfaces composited on WebKitGTK (SS-10,
+     user-confirmed). A shared group layer did not stop rapid-scroll flashing. */
+  :global([data-platform="linux"]) .agent-badge,
+  :global([data-platform="linux"]) .live-badge,
+  :global([data-platform="linux"]) .archived-badge,
+  :global([data-platform="linux"]) .model-badge,
+  :global([data-platform="linux"]) .version-badge {
+    transform: translateZ(0);
+  }
+
   .agent-badge {
     display: inline-flex;
     align-items: center;

@@ -35,7 +35,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | macOS terminal Vietnamese input | [macos-terminal-input](../plan/macos-terminal-input.md) | [macos-terminal-input/](macos-terminal-input/README.md) | 1/3 ✅ · 1 🟡 · 1 ➖ |
 | Manual Bash transcript | [manual-bash-transcript](../plan/manual-bash-transcript.md) | [manual-bash-transcript/](manual-bash-transcript/README.md) | 2/2 ✅ |
 | Java/PHP code intelligence | [code-diagnostics-java-php](../plan/code-diagnostics-java-php.md) | [code-diagnostics-java-php/](code-diagnostics-java-php/README.md) | 5/5 ✅ |
-| Session scrollbar stability | [session-scrollbar](../plan/session-scrollbar.md) | [session-scrollbar/](session-scrollbar/README.md) | 8/9 ✅ · 1 🟡 |
+| Session scrollbar stability | [session-scrollbar](../plan/session-scrollbar.md) | [session-scrollbar/](session-scrollbar/README.md) | 9/10 ✅ · 1 🟡 |
 | Terminal cwd matching | [terminal-cwd-matching](../plan/terminal-cwd-matching.md) | [terminal-cwd-matching/](terminal-cwd-matching/README.md) | 1/1 ✅ |
 | Code diagnostics (Go to File checks) | [code-diagnostics](../plan/code-diagnostics.md) | [code-diagnostics/](code-diagnostics/README.md) | 19/28 ✅ · 8 🟡 · 1 ⛔ |
 | Editor essentials | [editor-essentials](../plan/editor-essentials.md) | [editor-essentials/](editor-essentials/README.md) | 23/23 ✅ |

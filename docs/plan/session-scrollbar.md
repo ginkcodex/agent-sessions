@@ -92,6 +92,21 @@ Guard the Linux-scoped rule, run frontend checks/tests/build, and request native
 fast-scroll confirmation for this newly covered group. Automated tests do not
 prove painting behavior.
 
+## Follow-up: individual navigation/badge surfaces (SS-10)
+
+The user rebuilt and reports SS-09's shared-group layer does not stop the left
+header flashing. Remove that ineffective group transform. SS-10 instead applies
+the same Linux-only transform that worked on Resume/New directly to each
+navigation button and agent/Live/Archived/model/version badge. NavButtons is
+only used in this header. Keep wrappers untransformed and the Live animation
+unchanged; do not add broad GPU/environment or scroll behavior workarounds.
+
+The user confirms the remaining flashing is gone after rebuilding and testing
+SS-10 (2026-11-09). Keep individual surface layers; the engine-level cause is
+not established. Several small layers replace the ineffective group layer.
+Automated source guards verify scope only; native confirmation comes from the
+user's test, which did not itemize live/non-live cases separately.
+
 ## Release criteria
 
 - Frontend checks and tests pass.

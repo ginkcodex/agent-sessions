@@ -88,6 +88,23 @@ test('Linux filled actions have their own layers without transforming menu wrapp
   }
 });
 
+test('Linux header badges and navigation target individual surfaces, not wrappers', () => {
+  const source = readFileSync(new URL('../src/lib/components/transcript/SessionHeader.svelte', import.meta.url), 'utf8');
+  const names = ['agent-badge', 'live-badge', 'archived-badge', 'model-badge', 'version-badge'];
+  const selectors = names.map(name => `:global([data-platform="linux"]) .${name}`).join(',\n  ');
+  assert.ok(source.includes(`${selectors} {\n    transform: translateZ(0);\n  }`));
+  // SS-09's ineffective group transform must not be retained.
+  assert.doesNotMatch(source, /:global\(\[data-platform="linux"\]\) \.(header-badges|header-top-row)\s*\{/);
+  for (const name of ['header-badges', 'header-top-row']) {
+    const rule = source.match(new RegExp(`\\.${name}\\s*\\{([^}]*)\\}`));
+    assert.ok(rule);
+    assert.doesNotMatch(rule[1], /transform\s*:/);
+  }
+  const nav = readFileSync(new URL('../src/lib/components/transcript/NavButtons.svelte', import.meta.url), 'utf8');
+  assert.match(nav, /:global\(\[data-platform="linux"\]\) \.nav-btn\s*\{\s*transform: translateZ\(0\);\s*\}/);
+  assert.doesNotMatch(nav, /:global\(\[data-platform="linux"\]\) \.nav-buttons\s*\{/);
+});
+
 test('SessionHeader menus keep each item on one line', () => {
   const source = readFileSync(new URL('../src/lib/components/transcript/SessionHeader.svelte', import.meta.url), 'utf8');
   // "New Claude Code session" wrapped to the width of the narrow New ▾ button.

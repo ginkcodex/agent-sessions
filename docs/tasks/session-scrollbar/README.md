@@ -1,7 +1,7 @@
 # Session scrollbar — tasks
 
 - **Plan:** [session-scrollbar.md](../../plan/session-scrollbar.md)
-- **Progress:** 8/9 done · 1 partial
+- **Progress:** 9/10 done · 1 partial
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -14,3 +14,4 @@
 | [SS-07](SS-07.md) | ✅ Done | Give the scroll container its own compositing layer (the fix) | 2 h | SS-06 |
 | [SS-08](SS-08.md) | 🟡 Partial — buttons user-confirmed; remaining native checks pending | Transcript Resume/New flashing during rapid Linux list scrolling | 2 h | SS-07 |
 | [SS-09](SS-09.md) | ✅ Done — ineffective; reverted | Shared Linux header navigation/badge layer | 1 h | SS-08 |
+| [SS-10](SS-10.md) | ✅ Done — user-confirmed | Individual Linux navigation/badge surface layers | 1 h | SS-09 |
