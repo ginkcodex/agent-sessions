@@ -27,6 +27,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 |---|---|---|
 | [windows-ci-test-stability.md](windows-ci-test-stability.md) | [windows-ci-test-stability](../tasks/windows-ci-test-stability/README.md) | Deterministic Git budgets and watcher startup synchronization in Windows CI tests |
 | [workspace-terminal-selection.md](workspace-terminal-selection.md) | [workspace-terminal-selection](../tasks/workspace-terminal-selection/README.md) | Directory clicks in the workspace tree select the opened session's terminal tab |
+| [conversation-pdf.md](conversation-pdf.md) | [conversation-pdf](../tasks/conversation-pdf/README.md) | Print a session's entire Chat-level conversation from the transcript header menu |
 | [terminal-file-paths.md](terminal-file-paths.md) | [terminal-file-paths](../tasks/terminal-file-paths/README.md) | Correct inner-path detection in terminal tool-call wrappers |
 | [workspace-stars.md](workspace-stars.md) | [workspace-stars](../tasks/workspace-stars/README.md) | Persistent workspace stars and a starred-only sidebar filter |
 | [macos-terminal-input.md](macos-terminal-input.md) | [macos-terminal-input](../tasks/macos-terminal-input/README.md) | Vietnamese replacement input in macOS terminals without text loss or cursor movement |

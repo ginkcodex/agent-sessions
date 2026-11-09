@@ -28,6 +28,11 @@
   import { mixesRevisions, refreshLimit, TranscriptRefresher, windowOf, type TranscriptWindow } from '../../transcriptRefresh';
   import { PAGE_SIZE, pageCap } from '../../pageCap';
   import type { TranscriptMode } from '../../transcript';
+  import { loadConversationPrintParts } from '../../conversationPrint';
+  import { printMessage } from '../../print';
+  import { errorText } from '../../manage';
+  import { translations, translationKey } from '../../stores/translations.svelte';
+  import { translateSettings } from '../../stores/translate.svelte';
   import SessionHeader from './SessionHeader.svelte';
   import MessageBubble from './MessageBubble.svelte';
   import SessionFindBar from './SessionFindBar.svelte';
@@ -106,6 +111,48 @@
   let mode = $state<TranscriptMode>(preferences.transcriptMode);
   let resumeCopied = $state(false);
   let resumeOpening = $state(false);
+  let printPreparing = $state(false);
+  let printGeneration = 0;
+  $effect(() => {
+    void appState.selectedSessionRef;
+    void link.dataHost;
+    void link.phase;
+    return () => {
+      printGeneration++;
+      printPreparing = false;
+    };
+  });
+
+  async function printConversation() {
+    const meta = appState.selectedSessionMeta;
+    if (!meta || printPreparing || link.locked) return;
+    const ref = { ...meta.ref };
+    const title = meta.title;
+    const language = translateSettings.language;
+    const started = epoch();
+    const generation = ++printGeneration;
+    const valid = () => generation === printGeneration && started === epoch()
+      && !link.locked && refsMatch(appState.selectedSessionRef, ref);
+    printPreparing = true;
+    try {
+      const parts = await loadConversationPrintParts(ref, api.getMessages.bind(api), valid, (message, index) => {
+        const entry = translations.get(translationKey(ref, message, index, language));
+        return entry?.status === 'done' && !entry.showOriginal ? entry.text : undefined;
+      });
+      if (!valid()) return;
+      if (!parts.length) {
+        toast.show({ title: 'Nothing to print', body: 'This session has no Chat-level conversation content.' });
+        return;
+      }
+      printMessage({ sessionRef: ref, title, parts });
+    } catch (err) {
+      if (valid() && !isStaleReply(err)) {
+        toast.show({ title: 'Could not print conversation', body: errorText(err, 'The conversation could not be loaded.'), tone: 'error' });
+      }
+    } finally {
+      if (generation === printGeneration) printPreparing = false;
+    }
+  }
   let containerEl: HTMLElement | null = $state(null);
   let listEl: HTMLElement | null = $state(null);
   // Once the view reaches the end of the transcript, it stays there as
@@ -727,6 +774,8 @@
         {resumeCopied}
         onFind={toggleFind}
         findOpen={find.open}
+        onPrint={() => void printConversation()}
+        {printPreparing}
       />
     {/if}
 
