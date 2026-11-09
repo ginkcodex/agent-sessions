@@ -77,6 +77,21 @@ the scrollbar at the top, button hover/focus and dropdown overlap. Native
 Linux/user confirmation remains a release gate; do not label an unconfirmed
 candidate as a verified fix.
 
+## Follow-up: navigation and badges flicker (SS-09)
+
+The user confirms SS-08 stops Resume/New flashing during rapid scrolling, but
+reports that the left navigation, agent icon, Live badge and model text still
+flash. Give their shared `.header-badges` group the same Linux-only compositing
+layer. This covers the version and Archived badge too, without promoting each
+small element separately. The group contains no dropdowns or fixed descendants;
+leave the header, action wrappers and SS-08 button layers unchanged.
+
+Risks: one additional layer; future fixed descendants in this group would use it
+as their containing block. Keep the Live pulse and navigation semantics intact.
+Guard the Linux-scoped rule, run frontend checks/tests/build, and request native
+fast-scroll confirmation for this newly covered group. Automated tests do not
+prove painting behavior.
+
 ## Release criteria
 
 - Frontend checks and tests pass.
