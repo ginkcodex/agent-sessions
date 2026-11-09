@@ -39,7 +39,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Session scrollbar stability | [session-scrollbar](../plan/session-scrollbar.md) | [session-scrollbar/](session-scrollbar/README.md) | 9/10 ✅ · 1 🟡 |
 | Terminal cwd matching | [terminal-cwd-matching](../plan/terminal-cwd-matching.md) | [terminal-cwd-matching/](terminal-cwd-matching/README.md) | 1/1 ✅ |
 | Code diagnostics (Go to File checks) | [code-diagnostics](../plan/code-diagnostics.md) | [code-diagnostics/](code-diagnostics/README.md) | 19/28 ✅ · 8 🟡 · 1 ⛔ |
-| Editor essentials | [editor-essentials](../plan/editor-essentials.md) | [editor-essentials/](editor-essentials/README.md) | 24/24 ✅ |
+| Editor essentials | [editor-essentials](../plan/editor-essentials.md) | [editor-essentials/](editor-essentials/README.md) | 25/25 ✅ |
 | Git history | [git-history](../plan/git-history.md) | [git-history/](git-history/README.md) | 17/18 ✅ · 1 🟡 |
 | Code checks: choosing languages | [code-diagnostics-languages](../plan/code-diagnostics-languages.md) | [code-diagnostics-languages/](code-diagnostics-languages/README.md) | 8/8 ✅ |
 | Code checks: Git ignore rules in discovery | [code-diagnostics-ignore-scope](../plan/code-diagnostics-ignore-scope.md) | [code-diagnostics-ignore-scope/](code-diagnostics-ignore-scope/README.md) | 4/6 ✅ · 1 🟡 · 1 ⬜ |

@@ -1,7 +1,7 @@
 # Editor essentials — tasks
 
 - **Plan:** [editor-essentials.md](../../plan/editor-essentials.md)
-- **Progress:** 24/24 done
+- **Progress:** 25/25 done
 
 Project search and replace, new agent sessions and alerts, code navigation
 and Git changes.
@@ -38,6 +38,7 @@ and Git changes.
 | [NAV-04](NAV-04.md) | ✅ Done | Navigation in the viewer | 4 h |
 | [NAV-05](NAV-05.md) | ✅ Done | Navigation in the editor; HD-01/02 hover formatting follow-up complete | 3 h |
 | [NAV-06](NAV-06.md) | ✅ Done | References list | 3 h |
+| [NAV-07](NAV-07.md) | ✅ Done | Hide unavailable source/editor navigation menu entries | 1 h |
 
 ## Git changes
 

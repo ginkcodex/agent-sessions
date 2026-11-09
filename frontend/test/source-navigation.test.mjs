@@ -165,13 +165,13 @@ function menuFixture(blocker) {
   const { wordMenu: menu, selectionMenu } = new Function('ctx', `with(ctx) { ${menuJS}; return { wordMenu, selectionMenu }; }`)(context);
   return { context, calls, menu, selectionMenu };
 }
-test('source and editor menus explain approval and open settings without executing tools', () => {
+test('source and editor menus hide unavailable navigation and keep actionable settings and copy', () => {
   const h = menuFixture('Approve code checks for this project.');
   h.menu({ line: 0, character: 0 }, 'name', { x: 10, y: 20 });
   const items = h.context.symbolMenu.items;
-  assert.equal(items[0].disabled, true);
-  assert.equal(items[1].disabled, true);
-  assert.ok(items.some(i => i.label === h.context.symbolBlocker && i.disabled));
+  assert.deepEqual(items.map(i => i.label), ['Open code navigation settings…', 'Copy “name”']);
+  assert.ok(items.every(i => !i.disabled));
+  assert.equal(items[1].separator, true);
   items.find(i => /settings/.test(i.label)).onSelect();
   assert.deepEqual(h.calls, [['settings']]);
   items.find(i => i.label === 'Copy “name”').onSelect();
@@ -179,8 +179,35 @@ test('source and editor menus explain approval and open settings without executi
   for (const state of [{ historical: true }, { external: true }, { activeTab: { gitBasis: 'head' } }, { onCodeSettings: undefined }]) {
     Object.assign(h.context, state);
     h.menu({ line: 0, character: 0 }, 'name', { x: 1, y: 2 });
-    assert.equal(h.context.symbolMenu.items.some(i => /settings/.test(i.label)), false);
+    assert.deepEqual(h.context.symbolMenu.items.map(i => i.label), ['Copy “name”']);
+    assert.equal(h.context.symbolMenu.items[0].separator, false, 'no leading divider when Copy is alone');
+    h.context.symbolMenu.items[0].onSelect();
+    assert.deepEqual(h.calls.at(-1), ['copy', 'name']);
     Object.assign(h.context, { historical: false, external: false, activeTab: h.context.files.activeTab, onCodeSettings: () => {} });
+  }
+});
+test('all navigation blockers hide gray entries while available symbol actions still work', () => {
+  for (const blocker of [
+    'Nothing to approve: no supported checker was found on this host.',
+    'No language server for this file.',
+    'Reconnect to use code navigation.',
+    'The language server is still starting.',
+  ]) {
+    const h = menuFixture(blocker);
+    h.menu({ line: 0, character: 0 }, 'DNS', { x: 10, y: 20 });
+    assert.deepEqual(h.context.symbolMenu.items.map(i => i.label), ['Open code navigation settings…', 'Copy “DNS”']);
+    assert.ok(h.context.symbolMenu.items.every(i => !i.disabled && i.label !== blocker));
+  }
+  for (const setup of [true, false]) {
+    const h = menuFixture();
+    if (!setup) h.context.onCodeSettings = undefined;
+    h.menu({ line: 0, character: 0 }, 'name', { x: 10, y: 20 });
+    const items = h.context.symbolMenu.items;
+    assert.deepEqual(items.map(i => i.label), ['Go to Definition (F12)', 'Find References (Shift+F12)',
+      ...(setup ? ['Open code navigation settings…'] : []), 'Copy “name”']);
+    assert.equal(items.at(-1).separator, true);
+    items[0].onSelect(); items[1].onSelect();
+    assert.deepEqual(h.calls.map(call => call.slice(0, 2)), [['ask', 'definition'], ['ask', 'references']]);
   }
 });
 test('shared menus guard action dispatch against text, tab, host and editor ownership changes', () => {
