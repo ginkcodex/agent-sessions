@@ -169,6 +169,8 @@ test('row star mouse and keyboard events never select or collapse a workspace, a
     onSelect() { selected++; }, onToggleCollapse() { collapsed++; } });
   try {
     const button = row.target.querySelector('.star-btn');
+    assert.equal(row.target.querySelector('.node-row').lastElementChild, button, 'star stays at the trailing edge when the hover menu appears');
+    assert.ok(button.previousElementSibling.classList.contains('count-badge'), 'session count precedes the star');
     assert.equal(button.getAttribute('aria-pressed'), 'false');
     for (const key of ['Enter', ' ']) {
       button.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));

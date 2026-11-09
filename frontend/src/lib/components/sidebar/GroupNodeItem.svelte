@@ -156,21 +156,6 @@
       {/if}
     </span>
 
-    {#if kind === 'directory' && node.cwd}
-      <button
-        type="button"
-        class="star-btn"
-        class:starred={workspaceStars.isStarred(node.cwd)}
-        aria-label={workspaceStars.isStarred(node.cwd) ? `Unstar workspace ${name}` : `Star workspace ${name}`}
-        aria-pressed={workspaceStars.isStarred(node.cwd)}
-        title={workspaceStars.isStarred(node.cwd) ? 'Unstar workspace' : 'Star workspace'}
-        onclick={(e) => { e.stopPropagation(); workspaceStars.toggle(node.cwd!); }}
-        onkeydown={(e) => e.stopPropagation()}
-      >
-        <Icon name="star" size={14} />
-      </button>
-    {/if}
-
     {#if hasMenu}
       <button
         type="button"
@@ -189,6 +174,21 @@
     <span class="count-badge" title="{node.sessionCount} sessions">
       {node.sessionCount}
     </span>
+
+    {#if kind === 'directory' && node.cwd}
+      <button
+        type="button"
+        class="star-btn"
+        class:starred={workspaceStars.isStarred(node.cwd)}
+        aria-label={workspaceStars.isStarred(node.cwd) ? `Unstar workspace ${name}` : `Star workspace ${name}`}
+        aria-pressed={workspaceStars.isStarred(node.cwd)}
+        title={workspaceStars.isStarred(node.cwd) ? 'Unstar workspace' : 'Star workspace'}
+        onclick={(e) => { e.stopPropagation(); workspaceStars.toggle(node.cwd!); }}
+        onkeydown={(e) => e.stopPropagation()}
+      >
+        <Icon name="star" size={14} />
+      </button>
+    {/if}
   </div>
 
   {#if menu}

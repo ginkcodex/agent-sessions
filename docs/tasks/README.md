@@ -32,7 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| Workspace stars | [workspace-stars](../plan/workspace-stars.md) | [workspace-stars/](workspace-stars/README.md) | 1/1 ✅ |
+| Workspace stars | [workspace-stars](../plan/workspace-stars.md) | [workspace-stars/](workspace-stars/README.md) | 2/2 ✅ |
 | macOS terminal Vietnamese input | [macos-terminal-input](../plan/macos-terminal-input.md) | [macos-terminal-input/](macos-terminal-input/README.md) | 1/3 ✅ · 1 🟡 · 1 ➖ |
 | Manual Bash transcript | [manual-bash-transcript](../plan/manual-bash-transcript.md) | [manual-bash-transcript/](manual-bash-transcript/README.md) | 2/2 ✅ |
 | Java/PHP code intelligence | [code-diagnostics-java-php](../plan/code-diagnostics-java-php.md) | [code-diagnostics-java-php/](code-diagnostics-java-php/README.md) | 5/5 ✅ |

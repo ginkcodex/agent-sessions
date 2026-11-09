@@ -6,7 +6,7 @@ Let users mark important workspaces and quickly show only those workspaces from 
 
 ## Design
 
-- Directory rows have an always-visible star toggle. Filled/accent stars indicate saved workspaces; toggling never selects or expands a row.
+- Directory rows have an always-visible star toggle at the far right, after the session count, so showing the hover actions menu cannot shift its position. Filled/accent stars indicate saved workspaces; toggling never selects or expands a row.
 - A star filter beside the directory search toggles the visible navigation tree only. It composes with the existing backend filters and does not close the current session or change navigation/collapse state.
 - Save stars as client-side preferences in localStorage, identified by data-host alias and workspace path, not display label or group key. Local, WSL and SSH identities are separate. Windows-style paths are case-insensitive and separator-normalized.
 - Filter directory-first and agent-first trees without mutating the catalog. Keep matching directory subtrees and necessary agent ancestors, recalculating ancestor session references/counts. Flat mode matches session cwd and retains matching families/context ancestors.
