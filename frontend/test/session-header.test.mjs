@@ -76,6 +76,18 @@ test('SessionHeader offers Find in session where the view handles it', async () 
   assert.match(closed, /aria-pressed="false"[^>]*aria-label="Find in session"/);
 });
 
+test('Linux filled actions have their own layers without transforming menu wrappers', () => {
+  const source = readFileSync(new URL('../src/lib/components/transcript/SessionHeader.svelte', import.meta.url), 'utf8');
+  const selector = ':global([data-platform="linux"]) .action-btn.';
+  assert.ok(source.includes(`${selector}resume-btn,\n  ${selector}new-btn {\n    transform: translateZ(0);\n  }`));
+  // A transform on a wrapper/header changes dropdown stacking, not just paint.
+  for (const name of ['session-header', 'header-actions', 'menu-container']) {
+    const rule = source.match(new RegExp(`\\.${name} \\{([^}]*)\\}`));
+    assert.ok(rule, `${name} rule exists`);
+    assert.doesNotMatch(rule[1], /transform\s*:|will-change\s*:\s*transform/);
+  }
+});
+
 test('SessionHeader menus keep each item on one line', () => {
   const source = readFileSync(new URL('../src/lib/components/transcript/SessionHeader.svelte', import.meta.url), 'utf8');
   // "New Claude Code session" wrapped to the width of the narrow New ▾ button.

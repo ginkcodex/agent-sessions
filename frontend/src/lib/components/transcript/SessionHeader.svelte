@@ -728,6 +728,14 @@
     background-color: var(--bg-tertiary);
   }
 
+  /* Keep filled action surfaces in their own layers on WebKitGTK when the
+     adjacent composited list rapidly repaints under the pointer (SS-08).
+     Only transform the buttons: menus must remain outside these layers. */
+  :global([data-platform="linux"]) .action-btn.resume-btn,
+  :global([data-platform="linux"]) .action-btn.new-btn {
+    transform: translateZ(0);
+  }
+
   .action-btn.new-btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;

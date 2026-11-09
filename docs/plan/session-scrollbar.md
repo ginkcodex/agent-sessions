@@ -57,6 +57,26 @@ scroller its own layer avoids it. The engine-level cause was not traced.
 - One extra compositing layer for the list; no slowdown was noticed.
 - Behaviour on other WebKitGTK versions or distributions is untested.
 
+## Follow-up: transcript action flicker (SS-08)
+
+The user reports that Resume and New in the adjacent transcript header flash
+while rapidly scrolling the session list under the pointer on Linux. Slow
+scrolling does not trigger it; Windows and macOS are unaffected. The scrollbar
+itself remains fixed. This suggests paint/compositing under rapid hover/scroll
+invalidation, but the engine-level cause is not established.
+
+Test a narrowly scoped Linux-only compositing layer on the Resume/New button
+surfaces. Do not transform the header or split-button menu wrappers: that would
+also change dropdown stacking/containing blocks. Keep the existing list fix,
+virtualization, button behavior, transitions and GPU renderer settings intact.
+A source regression test can guard the scope, not prove the visual fix.
+
+Risks: a small extra layer per filled button; native WebKit may still exhibit
+the defect. Verify rapid wheel scrolling under the pointer, slow scrolling,
+the scrollbar at the top, button hover/focus and dropdown overlap. Native
+Linux/user confirmation remains a release gate; do not label an unconfirmed
+candidate as a verified fix.
+
 ## Release criteria
 
 - Frontend checks and tests pass.

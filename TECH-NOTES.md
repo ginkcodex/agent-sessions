@@ -119,6 +119,17 @@ How to test scrollbar paint on Linux:
 - Portal captures can miss a flash shorter than one frame. Take several
   during a pointer sweep, and have the user confirm on their build.
 
+## Linux transcript-header actions flashing (WebKitGTK)
+
+Rapid scrolling with the pointer over the session list flashed Resume/New in
+its neighboring transcript header. Slow scrolling did not reproduce it. Apply
+Linux-only `transform: translateZ(0)` to each Resume/New button, not menu
+wrappers or the entire header. The user confirms those buttons no longer flash.
+This suggests a paint/compositing issue, but the engine cause is not traced.
+Native menu/top-thumb checks remain pending in
+[SS-08](docs/tasks/session-scrollbar/SS-08.md). Remaining left-header flashing
+is separate follow-up work.
+
 ## Remote shell locale (SSH and WSL shell tabs)
 
 **Keep `panelRemoteLocale` at the start of `PanelShellScript`**
