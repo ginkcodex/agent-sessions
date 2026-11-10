@@ -1,9 +1,13 @@
-//go:build !darwin && desktop
+//go:build !darwin && !linux && desktop
 
 package main
 
-import "github.com/wailsapp/wails/v3/pkg/application"
+import (
+	"github.com/ginkcode/agent-sessions/internal/app"
+	"github.com/wailsapp/wails/v3/pkg/application"
+)
 
-// printWindow uses Wails' Print off macOS: the WebView2 and WebKitGTK print
-// dialogs already offer the orientation.
-func printWindow(window *application.WebviewWindow) error { return window.Print() }
+// WebView2 uses the shared CSS page setup through its interactive print path.
+func printWindow(window *application.WebviewWindow, _ app.PrintPageSetup) error {
+	return window.Print()
+}

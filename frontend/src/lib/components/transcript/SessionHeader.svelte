@@ -37,6 +37,9 @@
     /** Shows or hides the find bar; without it there is no Find button. */
     onFind?: () => void;
     findOpen?: boolean;
+    /** Prepares the full Chat-level conversation in the shared print editor. */
+    onPrint?: () => void;
+    printPreparing?: boolean;
   }
 
   let {
@@ -49,6 +52,8 @@
     resumeOpening = false,
     onFind,
     findOpen = false,
+    onPrint,
+    printPreparing = false,
   }: Props = $props();
 
   // The agent's name, for the icon badge's tooltip and screen readers.
@@ -353,7 +358,8 @@
           type="button"
           class="action-btn icon-btn more-btn"
           class:active={moreMenuOpen}
-          title="Continue in another agent, or export"
+          title={printPreparing ? 'Preparing conversation for printing…' : 'Continue in another agent, export, or print'}
+          aria-busy={printPreparing}
           aria-label="More actions"
           aria-haspopup="menu"
           aria-expanded={moreMenuOpen}
@@ -386,6 +392,23 @@
               </button>
             {/each}
             <div class="menu-separator" role="separator"></div>
+            {#if onPrint}
+              <button
+                type="button"
+                class="action-menu-item"
+                role="menuitem"
+                title="Print the entire conversation at Chat level, including messages not currently shown"
+                disabled={printPreparing || messageTotal === 0 || link.locked}
+                onclick={() => {
+                  moreMenuOpen = false;
+                  onPrint?.();
+                }}
+              >
+                <Icon name="file-text" size={14} />
+                <span>{printPreparing ? 'Preparing conversation…' : 'Print conversation to PDF…'}</span>
+              </button>
+              <div class="menu-separator" role="separator"></div>
+            {/if}
             <div class="menu-heading" role="presentation">Export</div>
             <button
               type="button"

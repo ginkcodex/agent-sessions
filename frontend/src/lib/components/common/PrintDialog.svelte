@@ -4,6 +4,8 @@
   import type { LoadedImage } from '../../images';
   import type { FileRef, SessionRef } from '../../types';
   import { printDocument, printMarkdown, setPrintEditor } from '../../print';
+  import { DEFAULT_PRINT_PAGE_SETUP, isPrintPageSetup, printPageDimensions, printPageSetup } from '../../printPageSetup';
+  import Dropdown from './Dropdown.svelte';
   import { theme } from '../../stores/theme.svelte';
   import PrintPage from './PrintPage.svelte';
   import { loadAttachments } from './PrintSheet.svelte';
@@ -25,6 +27,15 @@
   let titleInput = $state<HTMLInputElement>();
   let returnFocus: HTMLElement | null = null;
   let generation = 0;
+  // Keep the last selection for this window, across messages/files/conversations.
+  let paper = $state<'a4' | 'letter'>(DEFAULT_PRINT_PAGE_SETUP.paper);
+  let orientation = $state<'portrait' | 'landscape'>(DEFAULT_PRINT_PAGE_SETUP.orientation);
+  let marginMm = $state<number | undefined>(DEFAULT_PRINT_PAGE_SETUP.marginMm);
+  let setup = $derived({ paper, orientation, marginMm });
+  let setupValid = $derived(isPrintPageSetup(setup));
+  let contentWidth = $derived(printPageDimensions(setupValid ? printPageSetup(setup) : DEFAULT_PRINT_PAGE_SETUP).contentWidth);
+  const paperOptions = [{ value: 'a4', label: 'A4' }, { value: 'letter', label: 'Letter' }];
+  const orientationOptions = [{ value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }];
 
   onMount(() => {
     setPrintEditor((job) => {
@@ -63,8 +74,8 @@
   }
 
   function print(): void {
-    if (!markdown.trim()) return;
-    printDocument({ sessionRef, title: title.trim(), showTitle, markdown, attachments });
+    if (!markdown.trim() || !setupValid) return;
+    printDocument({ sessionRef, title: title.trim(), showTitle, markdown, attachments, pageSetup: printPageSetup(setup) });
     void close();
   }
 
@@ -105,6 +116,23 @@
           />
         </label>
         {/if}
+        <fieldset class="page-setup">
+          <legend class="field-label">Page setup</legend>
+          <div class="setup-field">
+            <span class="field-label">Paper</span>
+            <Dropdown ariaLabel="Print paper size" value={paper} options={paperOptions} onChange={(value) => { if (value === 'a4' || value === 'letter') paper = value; }} />
+          </div>
+          <div class="setup-field">
+            <span class="field-label">Orientation</span>
+            <Dropdown ariaLabel="Print orientation" value={orientation} options={orientationOptions} onChange={(value) => { if (value === 'portrait' || value === 'landscape') orientation = value; }} />
+          </div>
+          <label class="setup-field">
+            <span class="field-label">Margins (mm)</span>
+            <input aria-label="Print margins in millimetres" aria-invalid={!setupValid} bind:value={marginMm} type="number" min="0" max="40" step="any" class="text-input text-field margin-input" />
+          </label>
+          <span class="setup-note">All sides · scale 100%</span>
+        </fieldset>
+        {#if !setupValid}<p class="setup-error" role="alert">Enter a margin from 0 to 40 mm.</p>{/if}
         <div class="panes">
           <label class="pane">
             <span class="field-label">Content (Markdown)</span>
@@ -114,13 +142,17 @@
           <div class="pane">
             <span class="field-label">Preview</span>
             <div class="preview">
-              <PrintPage title={showTitle ? title : ''} markdown={preview} {images} shade={theme.resolved} idPrefix="print-preview" />
+              <div class="preview-content" style:width="{contentWidth}mm">
+                <PrintPage title={showTitle ? title : ''} markdown={preview} {images} shade={theme.resolved} idPrefix="print-preview" />
+              </div>
             </div>
           </div>
         </div>
         <p class="hint">
           Images are the <code>![name](attachment:N)</code> lines: move or delete them as you like. The page prints in the
-          light theme.
+          light theme. Preview shows content width, not page breaks.
+          In the system dialog, match paper and orientation, use 100% scale and
+          turn off browser headers/footers if offered. Printer settings may override these margins.
         </p>
       </div>
       <footer class="dialog-footer">
@@ -128,7 +160,7 @@
         <button
           type="button"
           class="btn primary-btn"
-          disabled={!markdown.trim()}
+          disabled={!markdown.trim() || !setupValid}
           title="Open the print dialog (Ctrl+Enter)"
           onclick={print}
         >Print…</button>
@@ -202,6 +234,46 @@
     width: 100%;
   }
 
+  .page-setup {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    margin: 0;
+    padding: 8px 10px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    min-width: 0;
+  }
+
+  .setup-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 100px;
+  }
+
+  .margin-input {
+    width: 100px;
+    height: 30px;
+  }
+
+  .setup-note {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding-bottom: 6px;
+  }
+
+  .setup-error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--danger);
+  }
+
+  .preview-content {
+    flex: none;
+  }
+
   .panes {
     flex: 1;
     min-height: 0;
@@ -211,6 +283,7 @@
   }
 
   .pane {
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;

@@ -53,7 +53,7 @@ type MessageDialogOptions struct {
 // imports the toolkit, so default builds stay GUI-free.
 //
 // Every field may be nil. Missing event and window callbacks do nothing,
-// missing dialogs and Print return ErrDesktopUnavailable, and a nil
+// missing dialogs and print callbacks return ErrDesktopUnavailable, and a nil
 // Notifications reports alerts as unavailable.
 //
 // Dialogs return "" with a nil error when the user cancels. RequestClose must
@@ -80,8 +80,10 @@ type Desktop struct {
 	Raise func(ctx context.Context)
 	// RequestClose asks the window to close as if the user closed it.
 	RequestClose func(ctx context.Context)
-	// Print opens the system print dialog for the window.
+	// Print opens the system print dialog with A4 portrait, 14 mm margins.
 	Print func(ctx context.Context) error
+	// PrintWithSetup opens the same window's dialog with explicit page settings.
+	PrintWithSetup func(ctx context.Context, setup PrintPageSetup) error
 	// OpenWindow opens another app window in this process.
 	OpenWindow func() error
 	// ShowAbout opens the About window, or brings the open one to the front.

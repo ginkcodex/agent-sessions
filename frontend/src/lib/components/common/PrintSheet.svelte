@@ -20,6 +20,7 @@
   import { onMount, tick } from 'svelte';
   import { api } from '../../api';
   import { printTitle, setPrinter, type PrintDocument } from '../../print';
+  import { DEFAULT_PRINT_PAGE_SETUP, installPrintPageSetup, printPageDimensions, printPageSetup } from '../../printPageSetup';
   import { toast } from '../../stores/toast.svelte';
   import PrintPage from './PrintPage.svelte';
 
@@ -32,6 +33,8 @@
   let page = $state<PrintPage>();
   let generation = 0;
   let savedTitle: string | null = null;
+  let removePageSetup: (() => void) | null = null;
+  let contentWidth = $derived(printPageDimensions(doc?.pageSetup ?? DEFAULT_PRINT_PAGE_SETUP).contentWidth);
 
   onMount(() => {
     setPrinter((next) => void run(next));
@@ -41,6 +44,8 @@
     window.addEventListener('afterprint', restore);
     return () => {
       setPrinter(null);
+      generation++;
+      restoreTitle();
       window.removeEventListener('afterprint', restore);
       sheet?.remove();
     };
@@ -49,24 +54,28 @@
   async function run(next: PrintDocument): Promise<void> {
     const id = ++generation;
     restoreTitle();
-    const loaded = await loadAttachments(next.sessionRef, next.attachments);
-    if (id !== generation) return;
-    doc = next;
-    images = loaded;
-    await tick();
-    if (!sheet) return;
-    await Promise.all([page?.drawn(), ...[...sheet.querySelectorAll('img')].map((img) => img.decode().catch(() => {}))]);
-    if (id !== generation) return;
-
-    // The dialog offers the title as the PDF's file name. macOS reports no
-    // afterprint, so the next click or key puts the title back too.
-    savedTitle = document.title;
-    document.title = printTitle(next.title);
     try {
-      await api.printWindow();
+      const setup = printPageSetup(next.pageSetup);
+      const loaded = await loadAttachments(next.sessionRef, next.attachments);
+      if (id !== generation) return;
+      removePageSetup = installPrintPageSetup(document, setup);
+      doc = { ...next, pageSetup: setup };
+      images = loaded;
+      await tick();
+      if (!sheet) { restoreTitle(); return; }
+      await Promise.all([page?.drawn(), ...[...sheet.querySelectorAll('img')].map((img) => img.decode().catch(() => {}))]);
+      if (id !== generation) return;
+
+      // The dialog offers the title as the PDF's file name. macOS reports no
+      // afterprint, so the next click or key restores title and page setup too.
+      savedTitle = document.title;
+      document.title = printTitle(next.title);
+      await api.printWindow(setup);
+      if (id !== generation) return;
       window.addEventListener('pointerdown', restoreTitle, { capture: true, once: true });
       window.addEventListener('keydown', restoreTitle, { capture: true, once: true });
     } catch (err) {
+      if (id !== generation) return;
       restoreTitle();
       toast.show({
         title: "Couldn't open the print dialog",
@@ -79,13 +88,15 @@
   function restoreTitle(): void {
     window.removeEventListener('pointerdown', restoreTitle, { capture: true });
     window.removeEventListener('keydown', restoreTitle, { capture: true });
+    removePageSetup?.();
+    removePageSetup = null;
     if (savedTitle === null) return;
     document.title = savedTitle;
     savedTitle = null;
   }
 </script>
 
-<div class="print-sheet" bind:this={sheet}>
+<div class="print-sheet" bind:this={sheet} style:max-width="{contentWidth}mm">
   {#if doc}
     {#key doc}
       <PrintPage bind:this={page} title={doc.showTitle === false ? '' : doc.title} markdown={doc.markdown} {images} shade="light" idPrefix="print-diagram" />

@@ -3,8 +3,7 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 
-// Points per millimetre; the margin matches @page in style.css.
-#define PRINT_MARGIN (14.0 * 72.0 / 25.4)
+#define POINTS_PER_MM (72.0 / 25.4)
 
 static WKWebView *find_web_view(NSView *view) {
 	if ([view isKindOfClass:[WKWebView class]]) {
@@ -19,37 +18,37 @@ static WKWebView *find_web_view(NSView *view) {
 	return nil;
 }
 
-// Wails' WindowPrint always prints landscape with no margins and hides the
-// orientation choice. This prints the given window's web view the same way,
-// but in portrait with margins, and the print panel offers orientation,
-// paper size and scale. Returns 0 once the print is started on the main
-// thread, -1 before macOS 11, where WKWebView cannot print, or -2 without a
-// window.
-int print_web_view(void *nsWindow) {
+// Called on the main thread, then schedules the panel without blocking the Go
+// binding. Retain the calling window and its view until that block runs.
+int print_web_view(void *nsWindow, int letter, int landscape, double margin_mm) {
 	if (@available(macOS 11.0, *)) {
 		if (nsWindow == NULL) {
 			return -2;
 		}
-		// Kept until the block runs, in case the window closes meanwhile.
-		NSWindow *window = [(NSWindow *)nsWindow retain];
+		NSWindow *window = (NSWindow *)nsWindow;
+		WKWebView *webView = find_web_view([window contentView]);
+		if (webView == nil) {
+			return -3;
+		}
+		[window retain];
+		[webView retain];
 		dispatch_async(dispatch_get_main_queue(), ^{
-			WKWebView *webView = find_web_view([window contentView]);
-			if (webView == nil) {
-				NSLog(@"print: no web view to print");
-				[window release];
-				return;
-			}
-
-			NSPrintInfo *info = [[[NSPrintInfo sharedPrintInfo] copy] autorelease];
+			NSPrintInfo *info = [[[NSPrintInfo alloc] initWithDictionary:@{}] autorelease];
+			// Start with unrotated dimensions; setting orientation rotates them.
 			info.orientation = NSPaperOrientationPortrait;
+			info.paperName = letter ? @"na-letter" : @"iso-a4";
+			info.paperSize = letter ? NSMakeSize(612.0, 792.0)
+			                        : NSMakeSize(210.0 * POINTS_PER_MM, 297.0 * POINTS_PER_MM);
+			info.orientation = landscape ? NSPaperOrientationLandscape : NSPaperOrientationPortrait;
+			[[info dictionary] setObject:@1.0 forKey:NSPrintScalingFactor];
 			info.horizontalPagination = NSPrintingPaginationModeAutomatic;
 			info.verticalPagination = NSPrintingPaginationModeAutomatic;
 			info.horizontallyCentered = NO;
 			info.verticallyCentered = NO;
-			info.leftMargin = PRINT_MARGIN;
-			info.rightMargin = PRINT_MARGIN;
-			info.topMargin = PRINT_MARGIN;
-			info.bottomMargin = PRINT_MARGIN;
+			info.leftMargin = margin_mm * POINTS_PER_MM;
+			info.rightMargin = margin_mm * POINTS_PER_MM;
+			info.topMargin = margin_mm * POINTS_PER_MM;
+			info.bottomMargin = margin_mm * POINTS_PER_MM;
 
 			NSPrintOperation *op = [webView printOperationWithPrintInfo:info];
 			op.showsPrintPanel = YES;
@@ -58,6 +57,7 @@ int print_web_view(void *nsWindow) {
 			// Without a frame the operation's view prints blank pages.
 			op.view.frame = webView.bounds;
 			[op runOperationModalForWindow:window delegate:nil didRunSelector:nil contextInfo:nil];
+			[webView release];
 			[window release];
 		});
 		return 0;

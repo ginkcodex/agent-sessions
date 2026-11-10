@@ -6,6 +6,7 @@ import type { PortForwardRequest, PortForwardState } from './portForward';
 import type { ManagedToolRequest, ManagedToolState } from './managedTools';
 import type { TerminalFileTarget } from './terminalFileOpen';
 import type { UpdateInfo } from './update';
+import { printPageSetup, type PrintPageSetup } from './printPageSetup';
 import type {
   AgentSettings,
   GroupMode,
@@ -127,7 +128,7 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   translateSelection(text: string, context: string): Promise<string>;
   saveImage(req: SaveImageRequest): Promise<string>;
   /** Opens the print dialog; print styles pick what is printed. */
-  printWindow(): Promise<void>;
+  printWindow(setup?: PrintPageSetup): Promise<void>;
   /**
    * Opens another window of the app, with its own connection. Absent where
    * the app has one window only (the browser mock).
@@ -345,6 +346,8 @@ export interface WailsAppBinding {
   TranslateSelection(text: string, context: string): Promise<string>;
   SaveImage(req: SaveImageRequest): Promise<string>;
   PrintWindow(): Promise<void>;
+  /** Absent on older desktop apps; CSS page setup still applies there. */
+  PrintWindowWithSetup?(setup: PrintPageSetup): Promise<void>;
   ToggleFullscreen?(): Promise<void>;
   NewWindow(): Promise<void>;
   ShowAbout(): Promise<void>;
@@ -767,8 +770,19 @@ class WailsBackendAPI implements BackendAPI {
     }
   }
 
-  async printWindow(): Promise<void> {
+  async printWindow(setup?: PrintPageSetup): Promise<void> {
+    const validated = printPageSetup(setup);
     try {
+      if (this.binding.PrintWindowWithSetup) {
+        try {
+          return await this.binding.PrintWindowWithSetup(validated);
+        } catch (e) {
+          // The explicit router facade can expose a method an older app lacks.
+          // Never retry real print failures, which might have opened a dialog.
+          const message = normalizeError(e).message;
+          if (!message.includes('unknown App method "PrintWindowWithSetup"')) throw e;
+        }
+      }
       return await this.binding.PrintWindow();
     } catch (e) {
       throw normalizeError(e);
