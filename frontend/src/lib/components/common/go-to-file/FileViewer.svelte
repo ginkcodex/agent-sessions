@@ -54,6 +54,7 @@
   import { manage } from '../../../stores/manage.svelte';
   import { copyFailed } from '../../../guidance';
   import SelectionTranslation from '../../transcript/SelectionTranslation.svelte';
+  import type { Translation } from '../../../stores/translations.svelte';
 
   let {
     tabs,
@@ -67,20 +68,32 @@
     onCodeSettings?: () => void;
   } = $props();
 
-  let previewMenu = $state<{ x: number; y: number; selection: SelectedText } | null>(null);
+  let previewMenu = $state<{ x: number; y: number; selection?: SelectedText } | null>(null);
   let previewTranslation = $state<SelectedText | null>(null);
+  let fileTranslation = $state<Translation | null>(null);
+  let translationRequest = 0;
+  let previewText = $derived.by(() => showMarkdown && fileTranslation?.status === 'done' && !fileTranslation.showOriginal
+    ? fileTranslation.text : text);
+  let canTranslateFile = $derived.by(() => showMarkdown && contentShown && textContent && Boolean(text.trim()));
+  let translationTooLarge = $derived.by(() => canTranslateFile && new TextEncoder().encode(text).length > 200_000);
 
-  // Changing files, preview mode, content or language dismisses stale selections.
+  // A translation belongs to this exact source, tab, host and target language.
   $effect(() => {
+    void activeTab;
     void files.selected;
+    void files.dir;
+    void link.dataHost;
     void showMarkdown;
+    void contentShown;
     void text;
     void translateSettings.language;
+    untrack(() => translationRequest++);
+    fileTranslation = null;
     previewMenu = null;
     previewTranslation = null;
   });
 
-  let heldPreviewRange = $derived(previewMenu?.selection.range ?? previewTranslation?.range);
+  let heldPreviewRange = $derived(previewMenu?.selection?.range ?? previewTranslation?.range);
   $effect(() => {
     const range = heldPreviewRange;
     return range ? holdSelection(range) : undefined;
@@ -89,10 +102,17 @@
   function openPreviewMenu(event: MouseEvent) {
     previewMenu = null;
     previewTranslation = null;
-    const selected = captureSelection(event.currentTarget as HTMLElement, window.getSelection());
-    if (!selected) return;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) {
+      const selected = captureSelection(event.currentTarget as HTMLElement, selection);
+      if (!selected) return;
+      event.preventDefault();
+      previewMenu = { x: event.clientX, y: event.clientY, selection: selected };
+      return;
+    }
+    if (!canTranslateFile) return;
     event.preventDefault();
-    previewMenu = { x: event.clientX, y: event.clientY, selection: selected };
+    previewMenu = { x: event.clientX, y: event.clientY };
   }
 
   async function copyPreviewSelection(text: string) {
@@ -104,14 +124,54 @@
     }
   }
 
-  let previewMenuItems = $derived.by(() => {
+  async function translateFile() {
+    if (!canTranslateFile || translationTooLarge || !translateSettings.configured || fileTranslation?.status === 'loading') return;
+    const request = ++translationRequest;
+    const source = text, tab = activeTab, dir = files.dir, host = link.dataHost;
+    const language = translateSettings.language, started = epoch();
+    fileTranslation = { status: 'loading', text: '', error: '', showOriginal: false };
+    let result: Translation;
+    try {
+      result = { status: 'done', text: await api.translate(source), error: '', showOriginal: false };
+    } catch (err) {
+      result = { status: 'error', text: '', error: errorText(err, 'Translation failed'), showOriginal: false };
+    }
+    if (request !== translationRequest || activeTab !== tab || text !== source || files.dir !== dir ||
+      link.dataHost !== host || translateSettings.language !== language || !canTranslateFile) return;
+    if (epoch() !== started) {
+      fileTranslation = null;
+      return;
+    }
+    fileTranslation = result;
+  }
+
+  function toggleFileTranslation() {
+    if (fileTranslation?.status === 'done') fileTranslation.showOriginal = !fileTranslation.showOriginal;
+  }
+
+  let previewMenuItems = $derived.by((): ContextMenuItem[] => {
     const selected = previewMenu?.selection;
-    return selected ? selectionMenuItems(
+    if (selected) return selectionMenuItems(
       translateSettings.configured, translateSettings.language,
       () => void copyPreviewSelection(selected.text),
       () => (previewTranslation = selected),
       () => manage.openSettings('translation'),
-    ) : [];
+    );
+    if (!translateSettings.configured) return [
+      { label: 'Translate entire file', onSelect: () => {}, disabled: true, title: 'Set up translation in Settings' },
+      { label: 'Set up translation…', onSelect: () => manage.openSettings('translation') },
+    ];
+    if (translationTooLarge) return [
+      { label: 'Translate entire file', onSelect: () => {}, disabled: true, title: 'This file exceeds the 200,000-byte translation limit. Select a smaller passage to translate.' },
+    ];
+    if (fileTranslation?.status === 'done') return [
+      { label: fileTranslation.showOriginal ? 'Show translation' : 'Show original', onSelect: toggleFileTranslation },
+      { label: 'Retranslate entire file', onSelect: () => void translateFile() },
+    ];
+    if (fileTranslation?.status === 'loading') return [
+      { label: 'Translating…', onSelect: () => {}, disabled: true },
+    ];
+    return [{ label: 'Translate entire file', title: `Translate to ${translateSettings.language}`, onSelect: () => void translateFile() }];
   });
 
   let status = $derived(files.listing?.status);
@@ -748,7 +808,7 @@
 
   async function copyContent() {
     if (!text) return;
-    copyState = (await copyToClipboard(text)) ? 'copied' : 'failed';
+    copyState = (await copyToClipboard(previewText)) ? 'copied' : 'failed';
     if (copyTimer) clearTimeout(copyTimer);
     copyTimer = setTimeout(() => (copyState = 'idle'), 1500);
   }
@@ -1110,6 +1170,7 @@
   }
 
   onDestroy(() => {
+    translationRequest++;
     closeSymbolPopups();
     if (copyTimer) clearTimeout(copyTimer);
     if (pathCopyTimer) clearTimeout(pathCopyTimer);
@@ -1191,6 +1252,19 @@
         <span class="read-only" title={`${activeTab.history.repo} · ${activeTab.history.commit} · base ${activeTab.history.base || 'root'}${activeTab.history.oldPath ? ' · from ' + activeTab.history.oldPath : ''}`}>{activeTab.history.repo} @ {activeTab.history.commit.slice(0, 8)} · {activeTab.history.base ? 'vs first parent' : 'root commit'}{activeTab.gitDeleted ? ' · deleted' : ''}</span>
       {/if}
       {#if files.content}<span class="viewer-size">{formatSize(files.content.size)}</span>{/if}
+      {#if showMarkdown && fileTranslation}
+        <span class="read-only" role="status">
+          {#if fileTranslation.status === 'loading'}
+            Translating…
+          {:else if fileTranslation.status === 'done'}
+            {fileTranslation.showOriginal ? 'Original' : translateSettings.language} ·
+            <button type="button" class="copy-btn" onclick={toggleFileTranslation}>{fileTranslation.showOriginal ? 'Show translation' : 'Show original'}</button>
+          {:else}
+            <span title={fileTranslation.error}>Translation failed: {fileTranslation.error}</span>
+            <button type="button" class="copy-btn" onclick={() => void translateFile()}>Retry</button>
+          {/if}
+        </span>
+      {/if}
       {#if editing && edit}
         {#if edit.saving}
           <span class="edit-status" aria-live="polite">Saving…</span>
@@ -1279,7 +1353,7 @@
             class="copy-btn icon-btn"
             aria-label="Print / Save as PDF"
             title="Print / Save as PDF"
-            onclick={() => files.selectedPath && printFile(files.selectedPath, text)}
+            onclick={() => files.selectedPath && printFile(files.selectedPath, previewText)}
           >
             <span class="btn-icon icon-print" aria-hidden="true"></span>
           </button>
@@ -1518,7 +1592,7 @@
             onfocusin={(event) => focusedPreviewLink = browserLinkDestination(event.target, event.currentTarget)}
             onfocusout={(event) => focusedPreviewLink = browserLinkDestination(event.relatedTarget, event.currentTarget)}
           >
-            <MarkdownDoc source={text} onFileLink={followFileLink} loadImage={loadMarkdownImage} />
+            <MarkdownDoc source={previewText} onFileLink={followFileLink} loadImage={loadMarkdownImage} />
           </div>
         {:else if showSvg}
           {@render imageView()}
@@ -1542,7 +1616,7 @@
 </section>
 
 {#if previewMenu}
-  <ContextMenu x={previewMenu.x} y={previewMenu.y} items={previewMenuItems} ariaLabel="Selection actions" onClose={() => (previewMenu = null)} />
+  <ContextMenu x={previewMenu.x} y={previewMenu.y} items={previewMenuItems} ariaLabel={previewMenu.selection ? 'Selection actions' : 'File preview actions'} onClose={() => (previewMenu = null)} />
 {/if}
 {#if previewTranslation}
   <SelectionTranslation selection={previewTranslation} language={translateSettings.language} onClose={() => (previewTranslation = null)} />
