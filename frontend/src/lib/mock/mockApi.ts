@@ -1,4 +1,5 @@
 import { MockCodeDiagnostics } from './codeDiagnostics';
+import { printPageSetup, type PrintPageSetup } from '../printPageSetup';
 import type { GitHistoryTarget, GitHistoryRepositoryList, GitHistoryRefList, GitHistoryListRequest, GitHistoryPage, GitHistoryCommitRequest, GitHistoryCommitDetail, GitHistoryDiffRequest, GitHistoryDiff, GitHistoryRefActionRequest, GitHistoryRefActionResult, GitHistoryCompareRequest, GitHistoryComparison, GitHistoryCompareDiffRequest, GitHistoryCompareDiff } from '../gitHistory';
 import { searchLimit, searchRegExp, searchText, searchesPath } from '../contentSearch';
 import { replaceInText } from '../searchReplace';
@@ -791,7 +792,8 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     return `/home/mock/${req.name || 'diagram'}.${req.format}`;
   }
 
-  async printWindow(): Promise<void> {
+  async printWindow(setup?: PrintPageSetup): Promise<void> {
+    printPageSetup(setup);
     if (typeof window !== 'undefined') window.print();
   }
 

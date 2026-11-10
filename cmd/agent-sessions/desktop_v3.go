@@ -78,7 +78,12 @@ func newDesktop(desktop *application.App, window *application.WebviewWindow) app
 		Raise:        func(context.Context) { raise(window) },
 		// Close emits WindowClosing, so the close guard decides.
 		RequestClose: func(context.Context) { window.Close() },
-		Print:        func(context.Context) error { return printWindow(window) },
+		Print: func(context.Context) error {
+			return printWindow(window, app.DefaultPrintPageSetup())
+		},
+		PrintWithSetup: func(_ context.Context, setup app.PrintPageSetup) error {
+			return printWindow(window, setup)
+		},
 	}
 }
 

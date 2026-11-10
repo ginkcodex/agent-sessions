@@ -32,6 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Print page setup | [print-page-setup](../plan/print-page-setup.md) | [print-page-setup/](print-page-setup/README.md) | 1/1 ✅ |
 | Windows CI test stability | [windows-ci-test-stability](../plan/windows-ci-test-stability.md) | [windows-ci-test-stability/](windows-ci-test-stability/README.md) | 1/1 ✅ |
 | Workspace terminal selection | [workspace-terminal-selection](../plan/workspace-terminal-selection.md) | [workspace-terminal-selection/](workspace-terminal-selection/README.md) | 1/1 ✅ |
 | Conversation PDF | [conversation-pdf](../plan/conversation-pdf.md) | [conversation-pdf/](conversation-pdf/README.md) | 1/1 ✅ |

@@ -108,6 +108,7 @@ export const APP_METHODS = [
   'PreviewDelete',
   'PreviewExport',
   'PrintWindow',
+  'PrintWindowWithSetup',
   'ProbeFiles',
   'ProjectSnapshot',
   'ReadFile',

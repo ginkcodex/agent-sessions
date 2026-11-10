@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [print-page-setup.md](print-page-setup.md) | [print-page-setup](../tasks/print-page-setup/README.md) | Shared paper, orientation and margin controls with native print defaults |
 | [windows-ci-test-stability.md](windows-ci-test-stability.md) | [windows-ci-test-stability](../tasks/windows-ci-test-stability/README.md) | Deterministic Git budgets and watcher startup synchronization in Windows CI tests |
 | [workspace-terminal-selection.md](workspace-terminal-selection.md) | [workspace-terminal-selection](../tasks/workspace-terminal-selection/README.md) | Directory clicks in the workspace tree select the opened session's terminal tab |
 | [conversation-pdf.md](conversation-pdf.md) | [conversation-pdf](../tasks/conversation-pdf/README.md) | Print a session's entire Chat-level conversation from the transcript header menu |

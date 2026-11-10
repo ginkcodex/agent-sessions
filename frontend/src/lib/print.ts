@@ -6,6 +6,7 @@
  */
 import type { FileRef, Part, SessionRef } from './types';
 import { isImageFile } from './images';
+import type { PrintPageSetup } from './printPageSetup';
 
 export type PrintJob = {
   sessionRef: SessionRef;
@@ -29,6 +30,8 @@ export interface PrintDocument {
   markdown: string;
   /** Images placed in the Markdown as ![name](attachment:N), N from 1. */
   attachments: FileRef[];
+  /** Omitted by older callers: A4, portrait, 14 mm margins. */
+  pageSetup?: PrintPageSetup;
 }
 
 let editor: ((job: PrintJob) => void) | null = null;
