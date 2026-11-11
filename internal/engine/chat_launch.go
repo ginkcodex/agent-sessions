@@ -12,6 +12,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/ginkcode/agent-sessions/internal/acp"
+	"github.com/ginkcode/agent-sessions/internal/codexbridge"
 	"github.com/ginkcode/agent-sessions/internal/launch"
 	mt "github.com/ginkcode/agent-sessions/internal/managedtools"
 	"github.com/ginkcode/agent-sessions/internal/model"
@@ -166,14 +167,23 @@ func (s *Service) ChatLaunch(agent model.AgentID, dir string, overrides ChatAdap
 	if exe.dir != "" {
 		dirs = append(dirs, exe.dir)
 	}
-	if a.CLIEnv != "" && os.Getenv(a.CLIEnv) == "" {
-		if argv := prov.NewSessionCommand(dir).Argv; len(argv) > 0 {
-			if cli, err := findAgent(argv[0]); err == nil {
-				cmd.Env = append(cmd.Env, a.CLIEnv+"="+cli.Path)
-				if !cli.OnPath && !slices.Contains(dirs, filepath.Dir(cli.Path)) {
-					dirs = append(dirs, filepath.Dir(cli.Path))
+	if a.CLIEnv != "" {
+		cli := os.Getenv(a.CLIEnv) // the user's own setting wins
+		set := false
+		if cli == "" {
+			if argv := prov.NewSessionCommand(dir).Argv; len(argv) > 0 {
+				if found, err := findAgent(argv[0]); err == nil {
+					cli, set = found.Path, true
+					if !found.OnPath && !slices.Contains(dirs, filepath.Dir(found.Path)) {
+						dirs = append(dirs, filepath.Dir(found.Path))
+					}
 				}
 			}
+		}
+		if self, ok := daemonBridge(a); ok && cli != "" {
+			cmd.Env = append(cmd.Env, a.CLIEnv+"="+self, codexbridge.EnvCodex+"="+cli)
+		} else if set {
+			cmd.Env = append(cmd.Env, a.CLIEnv+"="+cli)
 		}
 	}
 	if len(dirs) > 0 {
@@ -183,6 +193,23 @@ func (s *Service) ChatLaunch(agent model.AgentID, dir string, overrides ChatAdap
 		cmd.Env = append(cmd.Env, "PATH="+strings.Join(dirs, string(os.PathListSeparator)))
 	}
 	return cmd, nil
+}
+
+// selfExecutable is this program, which runs the Codex daemon bridge.
+var selfExecutable = os.Executable
+
+// daemonBridge returns the program that stands in for the adapter's codex,
+// when it should: not on Windows, where the daemon has no Unix socket, and
+// not when AGENT_SESSIONS_CODEX_DAEMON is "off".
+func daemonBridge(a provider.ACPAdapter) (string, bool) {
+	if !a.DaemonBridge || runtime.GOOS == "windows" || os.Getenv(codexbridge.EnvDaemon) == "off" {
+		return "", false
+	}
+	self, err := selfExecutable()
+	if err != nil {
+		return "", false
+	}
+	return self, true
 }
 
 // adapterCommand is a found adapter: the command that starts it, the path

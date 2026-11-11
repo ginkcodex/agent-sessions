@@ -158,6 +158,9 @@ func (p *Provider) ACPAdapter() provider.ACPAdapter {
 		Executable: "codex-acp",
 		CLIEnv:     "CODEX_PATH",
 		Managed:    "codex-acp",
+		// Without the daemon, a session the Codex CLI just quit stays
+		// locked to the daemon for a minute.
+		DaemonBridge: true,
 	}
 }
 

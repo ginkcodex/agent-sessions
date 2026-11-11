@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ginkcode/agent-sessions/internal/codexbridge"
 	"github.com/ginkcode/agent-sessions/internal/fdlimit"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 )
@@ -28,6 +29,10 @@ import (
 // (docs/plan/linux-gpu-rendering.md).
 
 func main() {
+	// A Codex chat's adapter runs this program as its codex.
+	if code, ok := codexbridge.Main(os.Args[1:]); ok {
+		os.Exit(code)
+	}
 	if sock := os.Getenv("AGENT_SESSIONS_ASKPASS_SOCK"); sock != "" {
 		prompt := ""
 		if len(os.Args) > 1 {

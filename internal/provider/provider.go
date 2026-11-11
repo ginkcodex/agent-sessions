@@ -74,6 +74,10 @@ type ACPAdapter struct {
 	// Managed is the managed-tools catalog ID of the app's own copy, or empty
 	// when the app cannot install the adapter.
 	Managed string
+	// DaemonBridge says CLIEnv's CLI is codex, whose app-server the adapter
+	// starts: the app stands in for it and shares Codex's background daemon
+	// (internal/codexbridge).
+	DaemonBridge bool
 }
 
 // ACPLauncher is implemented by providers whose agent can be driven over

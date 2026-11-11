@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ginkcode/agent-sessions/internal/codexbridge"
 	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
@@ -88,7 +89,7 @@ func TestProvidersDeclareACPAdapters(t *testing.T) {
 		want provider.ACPAdapter
 	}{
 		{claude.New("", nil), provider.ACPAdapter{Executable: "claude-agent-acp", CLIEnv: "CLAUDE_CODE_EXECUTABLE", Managed: "claude-agent-acp"}},
-		{codex.New("", nil), provider.ACPAdapter{Executable: "codex-acp", CLIEnv: "CODEX_PATH", Managed: "codex-acp"}},
+		{codex.New("", nil), provider.ACPAdapter{Executable: "codex-acp", CLIEnv: "CODEX_PATH", Managed: "codex-acp", DaemonBridge: true}},
 		{opencode.New("", nil), provider.ACPAdapter{Executable: "opencode", Args: []string{"acp"}}},
 	} {
 		l, ok := tc.prov.(provider.ACPLauncher)
@@ -210,6 +211,64 @@ func TestChatLaunch(t *testing.T) {
 	if cmd, _ := svc.ChatLaunch(model.AgentClaude, dir, nil, nil); len(cmd.Env) != 0 {
 		t.Fatalf("env = %q", cmd.Env)
 	}
+}
+
+// Codex's adapter starts this program as its codex, which bridges to the
+// Codex daemon and runs the real codex named by AGENT_SESSIONS_CODEX.
+func TestChatLaunchDaemonBridge(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the Codex daemon has no Unix socket on Windows; TestChatLaunch covers the launch")
+	}
+	dir := t.TempDir()
+	bridged := fakeAdapter
+	bridged.DaemonBridge = true
+	svc := NewService(nil, provider.Set{acpFake{providertest.NewFake(model.AgentClaude, "Claude Code"), bridged}})
+	svc.Catalog().Apply(provider.ScanResult{Changed: []model.SessionMeta{{Ref: model.SessionRef{Agent: model.AgentClaude, ID: "d"}, CWD: dir}}})
+	stubFind(t, map[string]launch.Executable{
+		"fake-acp": {Path: "/opt/bin/fake-acp", OnPath: true},
+		"fake":     {Path: "/usr/bin/fake", OnPath: true},
+	})
+	selfExecutable = func() (string, error) { return "/app/agent-sessions", nil }
+	t.Cleanup(func() { selfExecutable = os.Executable })
+	launchEnv := func() []string {
+		t.Helper()
+		cmd, err := svc.ChatLaunch(model.AgentClaude, dir, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cmd.Env
+	}
+	check := func(name, cli, real string) {
+		t.Helper()
+		env := launchEnv()
+		gotCLI, _ := envValue(env, "FAKE_CLI")
+		gotReal, _ := envValue(env, codexbridge.EnvCodex)
+		if gotCLI != cli || gotReal != real {
+			t.Fatalf("%s: env = %q, want FAKE_CLI=%q and %s=%q", name, env, cli, codexbridge.EnvCodex, real)
+		}
+	}
+
+	t.Setenv("FAKE_CLI", "")
+	t.Setenv(codexbridge.EnvDaemon, "")
+	check("found codex", "/app/agent-sessions", "/usr/bin/fake")
+	t.Setenv("FAKE_CLI", "/custom/fake")
+	check("user's codex", "/app/agent-sessions", "/custom/fake")
+
+	t.Setenv(codexbridge.EnvDaemon, "off")
+	check("turned off", "", "")
+	t.Setenv("FAKE_CLI", "")
+	check("turned off, found codex", "/usr/bin/fake", "")
+	t.Setenv(codexbridge.EnvDaemon, "")
+
+	// Nothing to bridge to: the adapter finds codex its own way.
+	stubFind(t, map[string]launch.Executable{"fake-acp": {Path: "/opt/bin/fake-acp", OnPath: true}})
+	check("no codex", "", "")
+	selfExecutable = func() (string, error) { return "", errors.New("gone") }
+	stubFind(t, map[string]launch.Executable{
+		"fake-acp": {Path: "/opt/bin/fake-acp", OnPath: true},
+		"fake":     {Path: "/usr/bin/fake", OnPath: true},
+	})
+	check("no self", "/usr/bin/fake", "")
 }
 
 func TestChatLaunchPrependsInstallDirs(t *testing.T) {
