@@ -929,7 +929,12 @@
     </div>
 
     {#if chat}
-      <ChatComposer {chat} focus={chatOpen} onRestart={() => void chatOpen.restart(chat, !!appState.selectedSessionMeta)} />
+      <ChatComposer
+        {chat}
+        focus={chatOpen}
+        onRestart={() => void chatOpen.restart(chat, !!appState.selectedSessionMeta)}
+        onOption={(configId, value) => chatOpen.choose(chat, configId, value)}
+      />
     {/if}
   {/if}
 

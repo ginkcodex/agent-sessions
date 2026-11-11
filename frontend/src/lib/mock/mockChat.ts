@@ -230,7 +230,9 @@ export class MockChats {
     const msg = `msg_mock_${chat.state.chatId}_${n}`;
     const tool = `toolu_mock_${chat.state.chatId}_${n}`;
     const saved: Message[] = [{ id: `user_mock_${chat.state.chatId}_${n}`, role: 'user', time: new Date().toISOString(), parts: [{ kind: 'text', text }] }];
-    const reply: Message = { id: msg, role: 'assistant', time: new Date().toISOString(), model: 'mock-large', parts: [] };
+    // The turn runs on the model the session has now, as an agent's does.
+    const model = chat.state.configOptions.find((o) => o.id === 'model')?.currentValue;
+    const reply: Message = { id: msg, role: 'assistant', time: new Date().toISOString(), model: typeof model === 'string' ? model : 'mock-large', parts: [] };
     let stopReason = 'end_turn';
     let error: string | undefined;
     let authMethods: ChatUpdateEvent['authMethods'];

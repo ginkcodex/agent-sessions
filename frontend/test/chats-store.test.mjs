@@ -165,6 +165,17 @@ test('options change through setOption and config_options events', async () => {
   });
 });
 
+test('a model set before the first prompt is the one the turn runs on', async () => {
+  await withChats(async ({ store, mock }) => {
+    const chat = await store.start({ agent: 'opencode', dir: DIR });
+    await store.setOption(chat.chatId, 'model', 'mock-small');
+    await store.prompt(chat.chatId, 'hello');
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    const page = await mock.getMessages(store.byChatId(chat.chatId).session, 0, 10);
+    assert.deepEqual(page.messages.filter((m) => m.role === 'assistant').map((m) => m.model), ['mock-small']);
+  });
+});
+
 test('closing and crashing end the chat with their reason', async () => {
   await withChats(async ({ store }) => {
     const a = await store.start({ agent: 'claude-code', dir: DIR });

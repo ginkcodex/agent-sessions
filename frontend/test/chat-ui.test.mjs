@@ -114,8 +114,15 @@ function chat(fields = {}) {
   };
 }
 
+const OPTIONS_URL = new URL('../src/lib/components/chat/ChatOptions.svelte', import.meta.url);
+
 async function renderComposer(c, props = {}) {
+  if (!globalThis.__chatOptions) {
+    const options = await loadServerComponent(OPTIONS_URL, [["'../../chatOptions'", lib('../../chatOptions.ts', OPTIONS_URL)]]);
+    globalThis.__chatOptions = options.default;
+  }
   composerModule ??= await loadServerComponent(COMPOSER_URL, [
+    ["import ChatOptions from './ChatOptions.svelte';", 'const ChatOptions = globalThis.__chatOptions;'],
     ["import { chats } from '../../stores/chats.svelte';", fixtureStore('chats')],
     ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
     ["'../../link'", lib('../../link.ts', COMPOSER_URL)],
@@ -248,6 +255,7 @@ async function withOpener(fixture, fn) {
     ["'../link'", lib('../link.ts', OPENER_URL)],
     ["'../manage'", lib('../manage.ts', OPENER_URL)],
     ["'../chat'", lib('../chat.ts', OPENER_URL)],
+    ["'../chatOptions'", lib('../chatOptions.ts', OPENER_URL)],
     ...['appState', 'chats', 'connectionStore', 'link', 'terminals', 'toast'].map((name) => {
       const file = name === 'connectionStore' ? 'connection' : name;
       return [`import { ${name} } from './${file}.svelte';`, fixtureStore(name, '__openerFixture')];
@@ -417,4 +425,103 @@ test('restart continues a saved session, starts a new one otherwise, and leaves 
     assert.equal(toasts[0].title, 'This session runs in a terminal');
     assert.deepEqual(calls, []);
   });
+});
+
+// --- Session options -----------------------------------------------------------
+
+const OPTIONS = [
+  { id: 'mode', name: 'Mode', category: 'mode', type: 'select', currentValue: 'agent', options: [
+    { value: 'read-only', name: 'Read Only' }, { value: 'agent', name: 'Agent' }, { value: 'agent-full-access', name: 'Full Access' },
+  ] },
+  { id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'gpt-b', options: [
+    { group: 'openai', name: 'OpenAI', options: [{ value: 'gpt-a', name: 'GPT A' }, { value: 'gpt-b', name: 'GPT B' }] },
+  ] },
+];
+const selected = (html) => [...html.matchAll(/<option value="([^"]*)"[^>]*selected/g)].map((m) => m[1]);
+
+test('the composer shows a picker per option, on the value the agent reports', async () => {
+  const onOption = async () => {};
+  const html = unescapeHTML(await renderComposer(chat({ configOptions: OPTIONS }), { onOption }));
+  assert.match(html, /data-chat-options/);
+  assert.deepEqual(selected(html), ['agent', 'gpt-b']);
+  assert.match(html, /<optgroup label="OpenAI">/);
+  assert.match(html, /Full Access \(no permission requests\)/);
+  assert.doesNotMatch(html, /runs tools without asking/);
+
+  // The agent reports another value: the picker follows it.
+  const moved = chat({ configOptions: [{ ...OPTIONS[0], currentValue: 'agent-full-access' }, { ...OPTIONS[1], currentValue: 'gpt-a' }] });
+  const after = unescapeHTML(await renderComposer(moved, { onOption }));
+  assert.deepEqual(selected(after), ['agent-full-access', 'gpt-a']);
+  assert.match(after, /Mode: the agent runs tools without asking/);
+
+  const starting = await renderComposer(chat({ phase: 'starting', configOptions: OPTIONS }), { onOption });
+  assert.equal([...starting.matchAll(/<select[^>]*\sdisabled/g)].length, 2, 'no change while the agent starts');
+  assert.doesNotMatch(await renderComposer(chat({ phase: 'exited', configOptions: OPTIONS, exit: { chatId: 'c1', seq: 2, reason: 'closed' } }), { onOption }), /data-chat-options/);
+  assert.doesNotMatch(await renderComposer(chat({ configOptions: OPTIONS })), /data-chat-options/, 'no pickers without a setter');
+  assert.doesNotMatch(await renderComposer(chat(), { onOption }), /data-chat-options/, 'no options');
+});
+
+function withStorage() {
+  const data = new Map();
+  globalThis.localStorage = { getItem: (k) => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, String(v)), removeItem: (k) => data.delete(k) };
+  return () => delete globalThis.localStorage;
+}
+
+test('a chosen option is set and remembered for the next new chat of the agent on this host', async () => {
+  const restore = withStorage();
+  try {
+    const sets = [];
+    const optionsAfter = (id, value) => OPTIONS.map((o) => (o.id === id ? { ...o, currentValue: value } : o));
+    const chatsFixture = {
+      agents: [{ agent: 'codex', available: true }],
+      forSession: () => undefined,
+      start: async (req) => chat({ session: { agent: req.agent, id: 'new' }, configOptions: OPTIONS }),
+      setOption: async (chatId, id, value) => {
+        sets.push([chatId, id, value]);
+        if (value === 'refused') throw new Error('the agent refused');
+        return optionsAfter(id, value);
+      },
+    };
+    await withOpener({ chats: chatsFixture }, async ({ opener, toasts }) => {
+      // Nothing remembered: a new chat keeps the agent's options.
+      assert.equal(await opener.startNew('codex', '/p'), true);
+      assert.deepEqual(sets.splice(0), []);
+
+      const c = chat({ configOptions: OPTIONS });
+      await opener.choose(c, 'model', 'gpt-a');
+      await opener.choose(c, 'mode', 'read-only');
+      assert.deepEqual(sets.splice(0), [['c1', 'model', 'gpt-a'], ['c1', 'mode', 'read-only']]);
+      await opener.choose(c, 'model', 'refused');
+      assert.equal(toasts.splice(0)[0].title, 'Could not change the option');
+      sets.splice(0);
+
+      // The next new chat gets them before its first prompt, in the agent's order.
+      assert.equal(await opener.startNew('codex', '/p'), true);
+      assert.deepEqual(sets.splice(0), [['c1', 'mode', 'read-only'], ['c1', 'model', 'gpt-a']]);
+      // A continued session keeps its own.
+      assert.equal(await opener.openSession(META), true);
+      assert.deepEqual(sets.splice(0), []);
+
+      // Full access is set when picked, but never remembered: the next chat
+      // starts with the agent's own mode.
+      await opener.choose(c, 'mode', 'agent-full-access');
+      assert.deepEqual(sets.splice(0), [['c1', 'mode', 'agent-full-access']]);
+      assert.equal(await opener.startNew('codex', '/p'), true);
+      assert.deepEqual(sets.splice(0), [['c1', 'model', 'gpt-a']]);
+    });
+
+    // Another host has its own memory.
+    await withOpener({ chats: chatsFixture, link: { dataHost: 'dev-box' } }, async ({ opener }) => {
+      assert.equal(await opener.startNew('codex', '/p'), true);
+      assert.deepEqual(sets.splice(0), []);
+    });
+
+    // A remembered choice the agent refuses is skipped, and the chat still starts.
+    await withOpener({ chats: { ...chatsFixture, setOption: async () => { throw new Error('no such model'); } } }, async ({ opener, toasts }) => {
+      assert.equal(await opener.startNew('codex', '/p'), true);
+      assert.equal(toasts[0].title, 'Could not apply your Model choice');
+    });
+  } finally {
+    restore();
+  }
 });

@@ -1,12 +1,13 @@
 <script lang="ts">
   // Where the user writes to a chat's agent: send, cancel the running turn,
-  // end the chat.
+  // end the chat, and pick the session's options.
   import type { Chat } from '../../stores/chats.svelte';
   import { chats } from '../../stores/chats.svelte';
   import { toast } from '../../stores/toast.svelte';
   import { isStaleReply } from '../../link';
   import { errorText } from '../../manage';
   import { ALL_AGENTS } from '../../portable';
+  import ChatOptions from './ChatOptions.svelte';
 
   interface Props {
     chat: Chat;
@@ -17,9 +18,11 @@
     focus?: { focusRequest: number; focusHandled: number };
     /** Starts the agent again once the chat ended. */
     onRestart?: () => void;
+    /** Sets one of the session's options; without it no pickers show. */
+    onOption?: (configId: string, value: string | boolean) => Promise<void>;
   }
 
-  let { chat, focus, onRestart }: Props = $props();
+  let { chat, focus, onRestart, onOption }: Props = $props();
 
   let text = $state('');
   let sending = $state(false);
@@ -85,6 +88,9 @@
     void send();
   }}
 >
+  {#if onOption && !closed}
+    <ChatOptions {chat} onChange={onOption} />
+  {/if}
   <textarea
     bind:this={input}
     bind:value={text}

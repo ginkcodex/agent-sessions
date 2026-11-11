@@ -219,7 +219,8 @@ The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
 - **`components/chat/`:**
   - `ChatComposer`: send, and cancel while a turn runs, with pickers for the
     session options (mode, model, effort). The last choice is remembered per
-    agent and host;
+    agent and host and applied to the agent's next new chat, except a mode
+    that skips permission requests, which is never remembered;
   - `LiveTail`: renders through `MessageBubble` and `transcript/parts`;
   - `PermissionCard`: the tool's kind, title, command or diff, and one
     button per option with its kind. There is no default choice, nothing
@@ -335,8 +336,9 @@ only once the adapter runs, so the action cannot be hidden ahead of that.
   with the versions current at release.
 - **Session options change the safety picture.** A mode such as Claude's
   `bypassPermissions` or Codex's `agent-full-access` means no permission
-  request ever reaches the card. The picker shows the current mode, and the
-  app never changes it unless the user picks one.
+  request ever reaches the card. The picker shows the current mode and marks
+  those modes. The app never changes the mode unless the user picks one, and
+  never remembers one of those modes for the next chat.
 - **Two writers on one session.** The lock covers what the app starts. An
   agent the user runs elsewhere is only visible to the live detector, and the
   chat warns when that detector reports a process for the session.

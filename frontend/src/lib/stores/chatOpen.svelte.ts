@@ -3,6 +3,7 @@ import type { AgentID, SessionMeta, SessionRef } from '../types';
 import { isStaleReply } from '../link';
 import { errorText } from '../manage';
 import { chatAgentAvailable } from '../chat';
+import { choicesToApply, loadChoices, saveChoice } from '../chatOptions';
 import { appState } from './appState.svelte';
 import { chats, type Chat } from './chats.svelte';
 import { connectionStore } from './connection.svelte';
@@ -59,12 +60,59 @@ export class ChatOpener {
     });
   }
 
-  /** Starts a chat with a new session of agent in dir, and shows it. */
+  /**
+   * Starts a chat with a new session of agent in dir, and shows it. The
+   * options the user last chose for the agent on this host apply first,
+   * except a mode that skips permission requests.
+   */
   startNew(agent: AgentID, dir: string): Promise<boolean> {
-    return this.run(async () => {
-      const chat = await chats.start({ agent, dir });
-      if (chat.session) await appState.selectSession(chat.session, 'push');
-    });
+    return this.run(() => this.startFresh(agent, dir));
+  }
+
+  /**
+   * Sets one of the chat's session options as the user chose it, and
+   * remembers the choice for the agent's next new chat on this host.
+   */
+  async choose(chat: Chat, configId: string, value: string | boolean): Promise<void> {
+    const host = link.dataHost;
+    const option = chat.configOptions.find((o) => o.id === configId);
+    try {
+      await chats.setOption(chat.chatId, configId, value);
+    } catch (err) {
+      if (!isStaleReply(err)) toast.show({ title: 'Could not change the option', body: errorText(err, 'The agent kept the current value.'), tone: 'error' });
+      return;
+    }
+    if (option) saveChoice(chat.agent, host, option, value);
+  }
+
+  private async startFresh(agent: AgentID, dir: string): Promise<void> {
+    const host = link.dataHost;
+    const chat = await chats.start({ agent, dir });
+    await this.applyChoices(chat, host);
+    if (chat.session) await appState.selectSession(chat.session, 'push');
+  }
+
+  // Applies the remembered choices the agent still offers, before the first
+  // prompt, one at a time: a model change can change the efforts on offer.
+  // One the agent refuses is skipped.
+  private async applyChoices(chat: Chat, host: string | undefined): Promise<void> {
+    const saved = loadChoices(chat.agent, host);
+    let options = chat.configOptions;
+    const tried = new Set<string>();
+    for (;;) {
+      const next = choicesToApply(chat.agent, options, saved).find(([id]) => !tried.has(id));
+      if (!next) return;
+      const [id, value] = next;
+      tried.add(id);
+      try {
+        const got = await chats.setOption(chat.chatId, id, value);
+        if (got.length > 0) options = got;
+      } catch (err) {
+        if (isStaleReply(err)) return;
+        const name = options.find((o) => o.id === id)?.name ?? id;
+        toast.show({ title: `Could not apply your ${name} choice`, body: errorText(err, 'The agent kept its own.'), tone: 'error' });
+      }
+    }
   }
 
   /**
@@ -80,8 +128,7 @@ export class ChatOpener {
       if (saved && ref) {
         await chats.start({ agent: chat.agent, dir: chat.dir, resume: { agent: ref.agent, id: ref.id } });
       } else {
-        const next = await chats.start({ agent: chat.agent, dir: chat.dir });
-        if (next.session) await appState.selectSession(next.session, 'push');
+        await this.startFresh(chat.agent, chat.dir);
       }
       chats.dismiss(chat.key);
     });
