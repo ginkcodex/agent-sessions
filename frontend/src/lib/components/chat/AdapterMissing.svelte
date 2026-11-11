@@ -34,7 +34,7 @@
     "Runs npm ci against a lockfile shipped with this app, with install scripts disabled and optional packages (the agent's own native builds) left out; every package is checked against its recorded hash. It runs with the host's Node.js 22 or later, else the app's own.";
 
   async function copy(): Promise<void> {
-    if (await copyToClipboard(agent.install)) {
+    if (agent.install && (await copyToClipboard(agent.install))) {
       copied = true;
       setTimeout(() => (copied = false), 2000);
     } else {

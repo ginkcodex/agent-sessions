@@ -82,8 +82,6 @@ type ChatAgent struct {
 	Path string `json:"path,omitempty"`
 	// Override is true when the path comes from the config file.
 	Override bool `json:"override,omitempty"`
-	// Install is the command that installs the adapter.
-	Install string `json:"install"`
 	// InstallTool is the managed-tools catalog ID the app can install the
 	// adapter as on this host, or empty when it cannot.
 	InstallTool string `json:"installTool,omitempty"`
@@ -112,7 +110,7 @@ func (s *Service) ChatAgents(overrides ChatAdapters, managed ManagedAdapters) []
 			continue
 		}
 		a := l.ACPAdapter()
-		st := ChatAgent{Agent: prov.ID(), Name: prov.DisplayName(), Install: a.Install, Override: overrides[prov.ID()] != ""}
+		st := ChatAgent{Agent: prov.ID(), Name: prov.DisplayName(), Override: overrides[prov.ID()] != ""}
 		if managed != nil {
 			st.InstallTool = a.Managed
 		}
@@ -143,7 +141,7 @@ func (s *Service) ChatLaunch(agent model.AgentID, dir string, overrides ChatAdap
 	a := l.ACPAdapter()
 	exe, err := findAdapter(a, overrides[agent], managed)
 	if err != nil {
-		return acp.Command{}, fmt.Errorf("%w: %s. Install it with: %s", ErrAdapterNotFound, err.Error(), a.Install)
+		return acp.Command{}, fmt.Errorf("%w: %s. Set it up in Settings › Coding agents", ErrAdapterNotFound, err.Error())
 	}
 	cmd := acp.Command{Argv: append(slices.Clone(exe.argv), a.Args...), Dir: dir}
 
@@ -183,9 +181,10 @@ type adapterCommand struct {
 	managed bool
 }
 
-// findAdapter returns the configured adapter when there is one. Otherwise it
-// looks the adapter up like the agent CLIs, so the user's own copy wins, and
-// then takes the app's managed copy.
+// findAdapter returns the configured adapter when there is one. Where the
+// app can install the adapter, it runs only the app's own copy, a version
+// this app was tested with; elsewhere it looks the adapter up like the agent
+// CLIs.
 func findAdapter(a provider.ACPAdapter, override string, managed ManagedAdapters) (adapterCommand, error) {
 	if override != "" {
 		path, err := configuredAdapter(override)
@@ -194,24 +193,29 @@ func findAdapter(a provider.ACPAdapter, override string, managed ManagedAdapters
 		}
 		return adapterCommand{argv: []string{path}, path: path, dir: filepath.Dir(path)}, nil
 	}
+	if managed != nil && a.Managed != "" {
+		return managedAdapter(a, managed)
+	}
 	exe, err := findAgent(a.Executable)
-	if err == nil {
-		c := adapterCommand{argv: []string{exe.Path}, path: exe.Path}
-		if !exe.OnPath {
-			c.dir = filepath.Dir(exe.Path)
+	if err != nil {
+		hint := strings.TrimPrefix(err.Error(), launch.ErrAgentNotFound.Error()+": ")
+		if !strings.Contains(hint, "Windows program") {
+			hint = a.Executable + " was not found on PATH or in its usual install locations"
 		}
-		return c, nil
-	}
-	hint := strings.TrimPrefix(err.Error(), launch.ErrAgentNotFound.Error()+": ")
-	if !strings.Contains(hint, "Windows program") {
-		hint = a.Executable + " was not found on PATH or in its usual install locations"
-	}
-	if managed == nil || a.Managed == "" {
 		return adapterCommand{}, errors.New(hint)
 	}
+	c := adapterCommand{argv: []string{exe.Path}, path: exe.Path}
+	if !exe.OnPath {
+		c.dir = filepath.Dir(exe.Path)
+	}
+	return c, nil
+}
+
+// managedAdapter returns the app's own copy of the adapter.
+func managedAdapter(a provider.ACPAdapter, managed ManagedAdapters) (adapterCommand, error) {
 	main, err := managed.Discover(a.Managed)
 	if os.IsNotExist(err) {
-		return adapterCommand{}, errors.New(hint)
+		return adapterCommand{}, fmt.Errorf("%s is not installed", a.Executable)
 	}
 	if err != nil {
 		return adapterCommand{}, fmt.Errorf("the app's copy of %s is damaged; install it again", a.Executable)

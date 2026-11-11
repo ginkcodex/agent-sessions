@@ -156,7 +156,6 @@ func (p *Provider) NewSessionCommand(dir string) provider.Command {
 func (p *Provider) ACPAdapter() provider.ACPAdapter {
 	return provider.ACPAdapter{
 		Executable: "codex-acp",
-		Install:    "npm install -g @agentclientprotocol/codex-acp",
 		CLIEnv:     "CODEX_PATH",
 		Managed:    "codex-acp",
 	}

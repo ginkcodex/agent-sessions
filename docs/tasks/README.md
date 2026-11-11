@@ -36,7 +36,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | ACP chat mode | [acp-chat](../plan/acp-chat.md) | [acp-chat/](acp-chat/README.md) | 16/17 ✅ · 1 🟡 |
 | Chat attachments | [chat-attachments](../plan/chat-attachments.md) | [chat-attachments/](chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
 | Chat end guard | [chat-end-guard](../plan/chat-end-guard.md) | [chat-end-guard/](chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
-| Chat adapter setup | [chat-adapter-setup](../plan/chat-adapter-setup.md) | [chat-adapter-setup/](chat-adapter-setup/README.md) | 1/5 ✅ · 4 ⬜ |
+| Chat adapter setup | [chat-adapter-setup](../plan/chat-adapter-setup.md) | [chat-adapter-setup/](chat-adapter-setup/README.md) | 2/5 ✅ · 3 ⬜ |
 | Orphaned task notifications | [orphan-task-notifications](../plan/orphan-task-notifications.md) | [orphan-task-notifications/](orphan-task-notifications/README.md) | 1/1 ✅ |
 | Idle rendering | [idle-rendering](../plan/idle-rendering.md) | [idle-rendering/](idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](../plan/file-translate.md) | [file-translate/](file-translate/README.md) | 2/2 ✅ |

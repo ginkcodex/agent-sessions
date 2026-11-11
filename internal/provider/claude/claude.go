@@ -92,7 +92,6 @@ func (p *Provider) NewSessionCommand(dir string) provider.Command {
 func (p *Provider) ACPAdapter() provider.ACPAdapter {
 	return provider.ACPAdapter{
 		Executable: "claude-agent-acp",
-		Install:    "npm install -g @agentclientprotocol/claude-agent-acp",
 		CLIEnv:     "CLAUDE_CODE_EXECUTABLE",
 		Managed:    "claude-agent-acp",
 	}

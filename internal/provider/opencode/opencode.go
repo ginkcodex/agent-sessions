@@ -88,7 +88,6 @@ func (p *Provider) ACPAdapter() provider.ACPAdapter {
 	return provider.ACPAdapter{
 		Executable: "opencode",
 		Args:       []string{"acp"},
-		Install:    "npm install -g opencode-ai",
 	}
 }
 

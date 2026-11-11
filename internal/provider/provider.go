@@ -67,9 +67,6 @@ type ACPAdapter struct {
 	Executable string
 	// Args follow the executable, such as "acp" for "opencode acp".
 	Args []string
-	// Install is the command that installs Executable, shown when it is
-	// missing.
-	Install string
 	// CLIEnv names the variable that tells the adapter which agent CLI to
 	// drive; it is set to the CLI new sessions would start. Empty when
 	// Executable is the CLI itself.

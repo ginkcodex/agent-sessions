@@ -604,8 +604,8 @@ export interface ChatAgent {
   path?: string;
   /** True when the path comes from config.toml's [chat.adapters]. */
   override?: boolean;
-  /** The command that installs the adapter. */
-  install: string;
+  /** The command that installs the adapter; sent only by older servers. */
+  install?: string;
   /**
    * The managed-tools catalog ID the app can install the adapter as on this
    * host; absent when it cannot (Windows, OpenCode, an older server).
