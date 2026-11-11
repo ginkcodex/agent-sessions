@@ -135,8 +135,8 @@
     gap: 8px;
     margin: 0 0 14px 28px;
     color: var(--text-muted);
-    font-size: 0.8rem;
-    line-height: 1.4;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
+    line-height: 1.45;
   }
 
   .answer-line {
@@ -145,8 +145,8 @@
     gap: 8px;
     margin: 0 0 14px 28px;
     color: var(--text-muted);
-    font-size: 0.8rem;
-    line-height: 1.4;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
+    line-height: 1.45;
     overflow-wrap: anywhere;
   }
 
@@ -161,7 +161,7 @@
   .answer-line :global(.icon),
   .chat-status :global(.icon),
   .chat-notice :global(.icon) {
-    margin-top: 2px;
+    margin-top: calc((1.45em - 14px) / 2);
   }
 
   .chat-notice {
@@ -195,7 +195,7 @@
     border-radius: 4px;
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-size: 0.75rem;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     cursor: pointer;
     overflow-wrap: anywhere;
     text-align: left;
@@ -208,7 +208,7 @@
   .exit-log summary {
     width: fit-content;
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     cursor: pointer;
   }
 
@@ -221,7 +221,7 @@
     max-height: 160px;
     overflow: auto;
     font-family: var(--font-mono);
-    font-size: 0.72rem;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }

@@ -114,19 +114,34 @@ async function loadView() {
 
 const view = await loadView();
 
-async function scrollArea(sessionFontSize) {
+async function renderView(sessionFontSize) {
   const { render } = await import('svelte/server');
   globalThis.__transcriptFont.preferences.sessionFontSize = sessionFontSize;
-  const html = render(view.default, { props: {} }).body;
-  return html.match(/<div class="messages-scroll-area[^"]*"[^>]*>/)?.[0];
+  return render(view.default, { props: {} }).body;
 }
 
-test('the scroll area sets --session-font-size only when a size is chosen', async () => {
-  const plain = await scrollArea(null);
-  assert.ok(plain, 'the scroll area renders');
+const paneTag = (html) => html.match(/<div class="transcript-pane[^"]*"[^>]*>/)?.[0];
+
+test('the transcript pane sets --session-font-size only when a size is chosen', async () => {
+  const plain = paneTag(await renderView(null));
+  assert.ok(plain, 'the pane renders');
   assert.doesNotMatch(plain, /style=/, 'the default sets nothing: every part uses its 14.5px fallback');
-  assert.match(await scrollArea(18), /style="--session-font-size: 18px;"/);
-  assert.match(await scrollArea(11.5), /style="--session-font-size: 11.5px;"/);
+  // On the pane, so the live chat and the composer below the scroll area take it too.
+  const sized = await renderView(18);
+  assert.match(paneTag(sized), /style="--session-font-size: 18px;"/);
+  assert.doesNotMatch(sized.match(/<div class="messages-scroll-area[^"]*"[^>]*>/)?.[0] ?? '', /style=/);
+  assert.match(paneTag(await renderView(11.5)), /style="--session-font-size: 11.5px;"/);
+});
+
+test('the live chat and the composer take the session text size', () => {
+  const chat = (name) => readFileSync(new URL(`../src/lib/components/chat/${name}.svelte`, import.meta.url), 'utf8');
+  const styles = (src) => src.slice(src.indexOf('<style>'));
+  for (const name of ['QuestionCard', 'PermissionCard', 'LiveTail']) {
+    const css = styles(chat(name));
+    assert.doesNotMatch(css, /font-size:\s*[\d.]+(rem|px|em)/, `${name} has no fixed text size`);
+    assert.match(css, /var\(--session-font-size, 14\.5px\)/, `${name} reads the session text size`);
+  }
+  assert.match(styles(chat('ChatComposer')), /textarea \{[^}]*font-size: calc\(var\(--session-font-size, 14\.5px\) \* var\(--type-body\)\)/);
 });
 
 test('a size change keeps a scrolled-up reader on the first visible message', () => {

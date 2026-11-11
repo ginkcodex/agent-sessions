@@ -1,7 +1,7 @@
 # Chat questions — tasks
 
 - **Plan:** [chat-questions.md](../../plan/chat-questions.md)
-- **Progress:** 9/10 done
+- **Progress:** 10/11 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -15,3 +15,4 @@
 | [CQ-08](CQ-08.md) | ✅ Done | Late answers: a withdrawn question stays and its answers go as a message; questions outlive `turn_end` | 3 h | CQ-06 |
 | [CQ-09](CQ-09.md) | ✅ Done | Compact live Codex question layout and current custom-answer sentinel | 2 h | CQ-08 |
 | [CQ-10](CQ-10.md) | ✅ Done | Modern question and permission cards: surface, chip, segmented tabs, keycaps, primary button | 3 h | CQ-09 |
+| [CQ-11](CQ-11.md) | ✅ Done | Session text size in the cards, live tail and composer text box | 1.5 h | CQ-10 |

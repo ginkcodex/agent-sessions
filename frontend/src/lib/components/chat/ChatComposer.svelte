@@ -304,8 +304,9 @@
     background: transparent;
     color: var(--text-primary);
     font: inherit;
-    font-size: 0.88rem;
-    line-height: 1.45;
+    /* The session's text size, as the messages it answers. */
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-body));
+    line-height: 1.5;
     resize: none;
     box-sizing: border-box;
   }

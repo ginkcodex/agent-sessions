@@ -39,7 +39,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Host switch chat guard | [host-switch-chat-guard](../plan/host-switch-chat-guard.md) | [host-switch-chat-guard/](host-switch-chat-guard/README.md) | 2/3 ✅ · 1 ⬜ |
 | Codex daemon chat | [codex-daemon-chat](../plan/codex-daemon-chat.md) | [codex-daemon-chat/](codex-daemon-chat/README.md) | 4/5 ✅ · 1 ⬜ |
 | Chat adapter setup | [chat-adapter-setup](../plan/chat-adapter-setup.md) | [chat-adapter-setup/](chat-adapter-setup/README.md) | 4/5 ✅ · 1 ⬜ |
-| Chat questions | [chat-questions](../plan/chat-questions.md) | [chat-questions/](chat-questions/README.md) | 9/10 ✅ · 1 🟡 |
+| Chat questions | [chat-questions](../plan/chat-questions.md) | [chat-questions/](chat-questions/README.md) | 10/11 ✅ · 1 🟡 |
 | Orphaned task notifications | [orphan-task-notifications](../plan/orphan-task-notifications.md) | [orphan-task-notifications/](orphan-task-notifications/README.md) | 1/1 ✅ |
 | Idle rendering | [idle-rendering](../plan/idle-rendering.md) | [idle-rendering/](idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](../plan/file-translate.md) | [file-translate/](file-translate/README.md) | 2/2 ✅ |
@@ -74,7 +74,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Selected-text menu and contextual translation | [selection-translate](../plan/selection-translate.md) | [selection-translate/](selection-translate/README.md) | 5/5 ✅ |
 | Internal terminal maximization | [terminal-maximize](../plan/terminal-maximize.md) | [terminal-maximize/](terminal-maximize/README.md) | 2/2 ✅ |
 | Split terminals | [terminal-split](../plan/terminal-split.md) | [terminal-split/](terminal-split/README.md) | 4/4 ✅ |
-| Font settings: editor, docs and session content | [font-settings](../plan/font-settings.md) | [font-settings/](font-settings/README.md) | 9/10 ✅ · 1 🟡 |
+| Font settings: editor, docs and session content | [font-settings](../plan/font-settings.md) | [font-settings/](font-settings/README.md) | 10/11 ✅ · 1 🟡 |
 | Editor back and forward | [editor-history](../plan/editor-history.md) | [editor-history/](editor-history/README.md) | 3/4 ✅ · 1 🟡 |
 | Two-finger swipe back and forward | [swipe-navigation](../plan/swipe-navigation.md) | [swipe-navigation/](swipe-navigation/README.md) | 1/3 ✅ · 1 🟡 · 1 ⬜ |
 | Two-finger swipe on Windows and Linux | [swipe-navigation-windows-linux](../plan/swipe-navigation-windows-linux.md) | [swipe-navigation-windows-linux/](swipe-navigation-windows-linux/README.md) | 7/10 ✅ · 2 🟡 · 1 ➖ |

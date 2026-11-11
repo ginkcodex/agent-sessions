@@ -764,7 +764,9 @@
 
 <svelte:window onkeydown={handleWindowKey} />
 
+<!-- The session text size reaches the messages, the live chat and the composer. -->
 <div class="transcript-pane" role="region" aria-label="Session content"
+  style:--session-font-size={sessionFontSize}
   onmouseover={(event) => hoveredLink = browserLinkDestination(event.target, event.currentTarget)}
   onmouseout={(event) => hoveredLink = browserLinkDestination(event.relatedTarget, event.currentTarget)}
   onmouseleave={() => hoveredLink = ''}
@@ -839,7 +841,6 @@
     <div
       bind:this={containerEl}
       class="messages-scroll-area"
-      style:--session-font-size={sessionFontSize}
       role="region"
       aria-label="Messages list"
       onscroll={handleScroll}
