@@ -151,10 +151,16 @@ The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
   `session/load` return are part of the chat state, and
   `config_option_update` and `current_mode_update` keep them current.
   `Start` can apply saved choices before the first prompt.
+- **Turns.** `Prompt` returns once the turn has started and refuses a second
+  prompt while one runs. The turn's end arrives as an event, so a long turn
+  never holds a binding or an RPC call open.
 - **Events** go through the existing `Emitter`:
-  - `chat:update {chatId, seq, kind, ...}` for session updates, permission
-    requests, turn start and end, and the session the chat is linked to;
-  - `chat:exit {chatId, reason, stderrTail}`.
+  - `chat:update {chatId, seq, kind, ...}`, where `kind` is `started` (the
+    chat state, with the linked session), `session_update`, `permission`,
+    `permission_resolved`, `turn_start`, `turn_end` (stop reason, or error
+    and `authMethods`) or `config_options`;
+  - `chat:exit {chatId, seq, reason, error, stderrTail}`, the chat's last
+    event, with `reason` `closed`, `exited` or `crashed`.
 - **Linking.** A chat is linked to the `SessionRef` named by the `sessionId`
   that ACP returns. The spike confirmed that this is the agent's own session
   ID for all three agents.

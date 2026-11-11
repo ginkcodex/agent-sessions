@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ginkcode/agent-sessions/internal/acp/acptest"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 )
 
@@ -12,7 +13,10 @@ import (
 //
 // Engines without a configured data directory log failed code checks to a
 // temporary one, never the developer's.
+//
+// The binary also runs as the fake ACP agent of the chat tests.
 func TestMain(m *testing.M) {
+	acptest.Main()
 	loginShellPath = func(string) []string { return nil }
 	logs, err := os.MkdirTemp("", "engine-check-logs-")
 	if err != nil {

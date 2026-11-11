@@ -146,7 +146,7 @@ func (a *agent) request(ctx context.Context, method string, params json.RawMessa
 	case acp.MethodSessionNew:
 		a.mu.Lock()
 		a.next++
-		id := fmt.Sprintf("fake-%d", a.next)
+		id := fmt.Sprintf("fake-%d-%d", os.Getpid(), a.next)
 		a.mu.Unlock()
 		return acp.SessionSetup{SessionID: id, ConfigOptions: a.configOptions()}, nil
 	case acp.MethodSessionLoad, acp.MethodSessionResume:
