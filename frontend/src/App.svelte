@@ -44,6 +44,7 @@
   import { launcher } from './lib/stores/launcher.svelte';
   import { translateSettings } from './lib/stores/translate.svelte';
   import { terminals } from './lib/stores/terminals.svelte';
+  import { chats } from './lib/stores/chats.svelte';
   import { fileActions } from './lib/stores/fileActions.svelte';
   import { filePrompt } from './lib/stores/filePrompt.svelte';
   import { confirmEndingTerminals } from './lib/closeConfirm';
@@ -182,6 +183,9 @@
     alerts.init();
     newSession.init();
     sessionLinks.init();
+    void chats.init();
+    // Chats run on this computer; a host switch ends them.
+    const offChatReset = connectionStore.onReset(() => chats.reset());
     isWails = isDesktop();
     api
       .appVersion()
@@ -312,6 +316,8 @@
       search.destroy();
       alerts.destroy();
       terminals.destroy();
+      offChatReset();
+      chats.destroy();
       sessionLinks.destroy();
       appState.destroy();
       discovery.destroy();

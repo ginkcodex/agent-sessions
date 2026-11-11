@@ -80,7 +80,12 @@ import type {
   AgentNotification,
   NotificationStatus,
   AgentStatus,
+  ChatAgent,
+  ChatConfigOption,
+  ChatStartRequest,
+  ChatState,
 } from '../types.js';
+import { MockChats } from './mockChat';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
 import { capPage } from '../pageCap';
@@ -869,6 +874,74 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   async clearNotification(tab: string): Promise<void> {
     this.notifications = this.notifications.filter((n) => n.tab !== tab);
+  }
+
+  /** The scripted ACP agent behind the chat methods. */
+  readonly chat = new MockChats({
+    emit: (name, payload) => this.emit(name, payload),
+    local: () => this.connState.phase === 'local',
+    save: (ref, dir, messages) => this.saveChatTurn(ref, dir, messages),
+  });
+
+  async chatAgents(): Promise<ChatAgent[]> {
+    return this.chat.agents();
+  }
+
+  async chatStart(req: ChatStartRequest): Promise<ChatState> {
+    return this.chat.start(req);
+  }
+
+  async chatPrompt(chatId: string, text: string): Promise<void> {
+    return this.chat.prompt(chatId, text);
+  }
+
+  async chatCancel(chatId: string): Promise<void> {
+    return this.chat.cancel(chatId);
+  }
+
+  async chatRespond(chatId: string, permissionId: string, optionId: string): Promise<void> {
+    return this.chat.respond(chatId, permissionId, optionId);
+  }
+
+  async chatSetOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]> {
+    return this.chat.setOption(chatId, configId, value);
+  }
+
+  async chatClose(chatId: string): Promise<void> {
+    return this.chat.close(chatId);
+  }
+
+  async chatList(): Promise<ChatState[]> {
+    return this.chat.list();
+  }
+
+  /** Saves a chat turn as the agent would, and reports the session changed. */
+  private saveChatTurn(ref: SessionRef, dir: string, messages: Message[]): void {
+    const now = new Date().toISOString();
+    const known = this.sessions.some((s) => s.ref.agent === ref.agent && s.ref.id === ref.id);
+    const prompt = messages.find((m) => m.role === 'user')?.parts[0]?.text ?? 'Chat';
+    if (!known) {
+      this.sessions = [
+        ...this.sessions,
+        { ref, cwd: dir, title: prompt, firstPrompt: prompt, createdAt: now, updatedAt: now, counts: { user: 0, assistant: 0, toolCalls: 0 }, tokens: { input: 0, output: 0 } },
+      ];
+    }
+    const list = [...(this.messages[ref.id] ?? this.sampleMessages[ref.id] ?? []), ...messages];
+    this.messages[ref.id] = list;
+    this.sessions = this.sessions.map((s) =>
+      s.ref.agent === ref.agent && s.ref.id === ref.id
+        ? {
+            ...s,
+            updatedAt: now,
+            counts: {
+              user: list.filter((m) => m.role === 'user').length,
+              assistant: list.filter((m) => m.role === 'assistant').length,
+              toolCalls: list.reduce((n, m) => n + m.parts.filter((p) => p.kind === 'tool').length, 0),
+            },
+          }
+        : s,
+    );
+    this.emit('catalog:changed', { changed: [ref], removed: null, groupsDirty: !known });
   }
 
   /** The mock panel's running terminals by id. */
@@ -2030,6 +2103,8 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   }
 
   async connect(alias: string, succeed: boolean = true): Promise<void> {
+    // As the backend does, connecting ends this computer's chats first.
+    this.chat.closeAll();
     this.connState.generation++;
     const gen = this.connState.generation;
     this.connState = {

@@ -20,6 +20,10 @@
 - `AdapterMissing.svelte`: the install command to copy, and the host it
   applies to.
 - An exit or error banner with the stderr tail, and Restart.
+- A reloaded page loses the permission cards: `ChatList` returns no pending
+  requests, so the store (ACP-08) finds the chat but not its cards. Add the
+  pending requests to `ChatState` (engine and binding) and seed the queue
+  from them in `chats.init()`, or cancel them on reload.
 - An auth error shows the agent's `authMethods` description (for example
   "Run `opencode auth login`") with an action that opens a terminal tab in
   the chat's directory.

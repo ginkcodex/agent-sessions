@@ -86,6 +86,8 @@ import type {
   ChatConfigOption,
   ChatStartRequest,
   ChatState,
+  ChatUpdateEvent,
+  ChatExitEvent,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
 import { createAppBinding } from './appBinding';
@@ -161,6 +163,26 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   openNewSessionInTerminal(agent: AgentID, dir: string): Promise<void>;
   /** Which agents' CLIs are installed on the selected host. */
   newSessionAgents(): Promise<AgentStatus[]>;
+  /** Each agent's ACP adapter: whether a chat can start it, and how to install it. */
+  chatAgents(): Promise<ChatAgent[]>;
+  /**
+   * Starts an agent's ACP adapter in req.dir, for a new session or the one
+   * req.resume names. Its events arrive as chat:update and chat:exit, and
+   * can arrive before this returns.
+   */
+  chatStart(req: ChatStartRequest): Promise<ChatState>;
+  /** Sends a prompt; returns once the turn has started. */
+  chatPrompt(chatId: string, text: string): Promise<void>;
+  /** Cancels the running turn; pending permission requests end cancelled. */
+  chatCancel(chatId: string): Promise<void>;
+  /** Answers a permission request with one of its options, or cancelled when optionId is empty. */
+  chatRespond(chatId: string, permissionId: string, optionId: string): Promise<void>;
+  /** Sets a session option (mode, model, effort) and returns them all. */
+  chatSetOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]>;
+  /** Ends the chat and its agent. */
+  chatClose(chatId: string): Promise<void>;
+  /** The window's open chats, for a reloaded page. */
+  chatList(): Promise<ChatState[]>;
   openHandoffInTerminal(req: HandoffRequest): Promise<void>;
   openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
   /** Starts a tab in the built-in terminal panel; size is its first size. */
@@ -485,6 +507,18 @@ export const GIT_CHANGES_UNSUPPORTED = 'Git changes are not supported by this ve
 export const BLAME_UNSUPPORTED = 'Line blame is not supported by this version of the app backend.';
 export const SEARCH_FILES_UNSUPPORTED = 'Searching file contents is not supported by this version of the app backend.';
 export const REPLACE_FILES_UNSUPPORTED = 'Replacing in files is not supported by this version of the app backend.';
+
+export const CHAT_UNSUPPORTED = 'Chat is not supported by this version of the app backend.';
+
+type ChatBindingName =
+  | 'ChatAgents'
+  | 'ChatStart'
+  | 'ChatPrompt'
+  | 'ChatCancel'
+  | 'ChatRespond'
+  | 'ChatSetOption'
+  | 'ChatClose'
+  | 'ChatList';
 
 function normalizeError(err: unknown): Error {
   if (err instanceof Error) return err;
@@ -898,6 +932,54 @@ class WailsBackendAPI implements BackendAPI {
     } catch (e) {
       throw normalizeError(e);
     }
+  }
+
+  private chatBinding<K extends ChatBindingName>(name: K): NonNullable<WailsAppBinding[K]> {
+    const fn = this.binding[name];
+    if (!fn) throw new Error(CHAT_UNSUPPORTED);
+    return fn.bind(this.binding) as NonNullable<WailsAppBinding[K]>;
+  }
+
+  async chatAgents(): Promise<ChatAgent[]> {
+    try { return (await this.chatBinding('ChatAgents')()) ?? []; }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatStart(req: ChatStartRequest): Promise<ChatState> {
+    try { return await this.chatBinding('ChatStart')(req); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatPrompt(chatId: string, text: string): Promise<void> {
+    try { await this.chatBinding('ChatPrompt')(chatId, text); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatCancel(chatId: string): Promise<void> {
+    try { await this.chatBinding('ChatCancel')(chatId); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatRespond(chatId: string, permissionId: string, optionId: string): Promise<void> {
+    try { await this.chatBinding('ChatRespond')(chatId, permissionId, optionId); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatSetOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]> {
+    try { return (await this.chatBinding('ChatSetOption')(chatId, configId, value)) ?? []; }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatClose(chatId: string): Promise<void> {
+    try { await this.chatBinding('ChatClose')(chatId); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatList(): Promise<ChatState[]> {
+    // An older backend has no chats.
+    if (!this.binding.ChatList) return [];
+    try { return (await this.binding.ChatList()) ?? []; }
+    catch (e) { throw normalizeError(e); }
   }
 
   async openHandoffInTerminal(req: HandoffRequest): Promise<void> {
@@ -1609,6 +1691,8 @@ export function createAPI(): BackendAPI {
   // to answer, so their states can be seen.
   const mock = new MockBackendAPI();
   mock.agentTurnMs = 2400;
+  // The mock chat agent streams at about an agent's pace.
+  mock.chat.stepMs = 60;
   return mock;
 }
 
@@ -1632,6 +1716,11 @@ const UNGUARDED = new Set<string>([
   'terminalFonts',
   'setTerminal',
   'setTerminalOpen',
+  // Ending a chat, its turn or a permission request must reach the backend
+  // after a host switch too: the chat belongs to this computer.
+  'chatCancel',
+  'chatRespond',
+  'chatClose',
   // Panel terminals outlive a host switch: their input, output and shells
   // are not tied to the loaded data. Agent launches are.
   'panelShell',
@@ -1693,6 +1782,10 @@ export const MOUSE_NAVIGATE_EVENT = 'nav:mouse';
 export const SWIPE_NAVIGATE_EVENT = 'nav:swipe';
 export const TERMINAL_DATA_EVENT = 'term:data';
 export const TERMINAL_EXIT_EVENT = 'term:exit';
+/** A chat's update; see ChatUpdateEvent. */
+export const CHAT_UPDATE_EVENT = 'chat:update';
+/** A chat ended; see ChatExitEvent. */
+export const CHAT_EXIT_EVENT = 'chat:exit';
 /** The user clicked an agent alert: { id } is the tab to show. */
 export const NOTIFY_OPEN_EVENT = 'notify:open';
 
@@ -1718,6 +1811,20 @@ export function subscribeTerminalExit(
 ): () => void {
   return backend.onEvent(TERMINAL_EXIT_EVENT, (event: TerminalExitEvent) => {
     if (!event || typeof event.id !== 'string') return;
+    fn(event);
+  });
+}
+
+export function subscribeChatUpdate(fn: (event: ChatUpdateEvent) => void, backend: BackendAPI = api): () => void {
+  return backend.onEvent(CHAT_UPDATE_EVENT, (event: ChatUpdateEvent) => {
+    if (!event || typeof event.chatId !== 'string' || typeof event.seq !== 'number' || typeof event.kind !== 'string') return;
+    fn(event);
+  });
+}
+
+export function subscribeChatExit(fn: (event: ChatExitEvent) => void, backend: BackendAPI = api): () => void {
+  return backend.onEvent(CHAT_EXIT_EVENT, (event: ChatExitEvent) => {
+    if (!event || typeof event.chatId !== 'string' || typeof event.seq !== 'number') return;
     fn(event);
   });
 }

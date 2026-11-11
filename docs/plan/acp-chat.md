@@ -196,8 +196,12 @@ The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
   agent for browser development and tests.
 - **`stores/chats.svelte.ts`:**
   - the state of each chat (starting, idle, working, exited);
-  - a pure live-tail reducer that turns updates into `Message`-shaped items;
-  - a permission queue.
+  - a permission queue;
+  - events put back in `seq` order. Events that come before `ChatStart`
+    answers are held for that chat. Events from before a host switch are
+    dropped, with their chats.
+- **`chatTail.ts`:** the pure live-tail reducer (text, thought, tool and plan
+  items) and `reconcile`, which drops what saved messages cover.
 - **`components/chat/`:**
   - `ChatComposer`: send, and cancel while a turn runs, with pickers for the
     session options (mode, model, effort). The last choice is remembered per

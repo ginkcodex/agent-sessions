@@ -648,6 +648,104 @@ export interface ChatState {
   working: boolean;
 }
 
+/** An ACP content block; chats only read text. */
+export interface AcpContentBlock {
+  type: string;
+  text?: string;
+  [key: string]: unknown;
+}
+
+/** Content of an ACP tool call: a block, a diff, or a terminal. */
+export interface AcpToolCallContent {
+  type: string;
+  content?: AcpContentBlock;
+  path?: string;
+  oldText?: string | null;
+  newText?: string;
+  terminalId?: string;
+}
+
+/**
+ * An ACP tool call, from tool_call or tool_call_update. An update sets only
+ * the fields it carries.
+ */
+export interface AcpToolCall {
+  toolCallId: string;
+  title?: string;
+  kind?: string;
+  status?: string;
+  content?: AcpToolCallContent[];
+  locations?: { path: string; line?: number }[];
+  rawInput?: unknown;
+  rawOutput?: unknown;
+  _meta?: Record<string, unknown>;
+  /** The agent's own tool name; not in the protocol, but sent by the adapters. */
+  name?: string;
+}
+
+/** An ACP session/update. Kinds the app does not know are kept as they came. */
+export interface AcpSessionUpdate {
+  sessionUpdate: string;
+  [key: string]: unknown;
+}
+
+export interface ChatPermissionOption {
+  optionId: string;
+  name: string;
+  /** allow_once, allow_always, reject_once or reject_always. */
+  kind: string;
+}
+
+/** A permission request, or its outcome once resolved. */
+export interface ChatPermission {
+  id: string;
+  toolCall?: AcpToolCall;
+  options?: ChatPermissionOption[];
+  /** "selected" or "cancelled" once resolved. */
+  outcome?: string;
+  optionId?: string;
+}
+
+/** A way to log in that the agent offers. */
+export interface ChatAuthMethod {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export type ChatUpdateKind =
+  | 'started'
+  | 'session_update'
+  | 'permission'
+  | 'permission_resolved'
+  | 'turn_start'
+  | 'turn_end'
+  | 'config_options';
+
+/** The payload of chat:update. seq counts a chat's events from 1, chat:exit included. */
+export interface ChatUpdateEvent {
+  chatId: string;
+  seq: number;
+  kind: ChatUpdateKind | string;
+  state?: ChatState;
+  update?: AcpSessionUpdate;
+  permission?: ChatPermission;
+  stopReason?: string;
+  error?: string;
+  authMethods?: ChatAuthMethod[];
+  configOptions?: ChatConfigOption[];
+}
+
+/** The payload of chat:exit, a chat's last event. */
+export interface ChatExitEvent {
+  chatId: string;
+  seq: number;
+  /** closed: the chat was closed; exited: the agent quit; crashed: it failed. */
+  reason: 'closed' | 'exited' | 'crashed' | string;
+  error?: string;
+  stderrTail?: string;
+}
+
 export interface TerminalDataEvent {
   id: string;
   /** Output, base64-encoded. */

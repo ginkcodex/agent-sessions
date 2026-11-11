@@ -32,7 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| ACP chat mode | [acp-chat](../plan/acp-chat.md) | [acp-chat/](acp-chat/README.md) | 7/15 ✅ · 8 ⬜ |
+| ACP chat mode | [acp-chat](../plan/acp-chat.md) | [acp-chat/](acp-chat/README.md) | 8/15 ✅ · 7 ⬜ |
 | Idle rendering | [idle-rendering](../plan/idle-rendering.md) | [idle-rendering/](idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](../plan/file-translate.md) | [file-translate/](file-translate/README.md) | 2/2 ✅ |
 | Print page setup | [print-page-setup](../plan/print-page-setup.md) | [print-page-setup/](print-page-setup/README.md) | 1/1 ✅ |
