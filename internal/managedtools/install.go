@@ -55,6 +55,7 @@ type spec struct {
 	produce                     func(ctx context.Context, i *Installer, stage, work string) error
 	validate                    func(dir string) error
 	needsNode                   bool
+	minNode                     int // oldest host Node.js major, when needsNode
 }
 
 // Installer is connection-owned. Construct with the app data directory, not a
@@ -100,8 +101,10 @@ func New(data string, binding Binding, goRoot func() string) (*Installer, error)
 	if _, ok := ruffArchives[platform()]; !ok || (runtime.GOOS != "darwin" && runtime.GOOS != "linux") {
 		return nil, errors.New("managed tools: unsupported platform")
 	}
-	return &Installer{binding: binding, root: Root(data), goRoot: goRoot, now: time.Now,
-		fetch: fetchHTTPS, command: runGo, build: buildGo, gopls: validateGopls}, nil
+	return &Installer{
+		binding: binding, root: Root(data), goRoot: goRoot, now: time.Now,
+		fetch: fetchHTTPS, command: runGo, build: buildGo, gopls: validateGopls,
+	}, nil
 }
 
 // UseHostNode sets how the host's Node.js is found. Without it, npm servers always
@@ -128,14 +131,15 @@ type InstallReport struct {
 // installations are not failures and are not reported.
 func (i *Installer) SetFailureLog(log func(InstallReport)) { i.failureLog = log }
 
-// usableHostNode is the host Node.js when it also has its bundled npm.
-func (i *Installer) usableHostNode() (prefix, version string) {
+// usableHostNode is the host Node.js when it also has its bundled npm and is
+// at least minMajor.
+func (i *Installer) usableHostNode(minMajor int) (prefix, version string) {
 	if i.hostNode == nil {
 		return "", ""
 	}
 	prefix, version = i.hostNode()
 	major, err := strconv.Atoi(strings.Split(strings.TrimPrefix(version, "v"), ".")[0])
-	if prefix == "" || err != nil || major < 18 || !filepath.IsAbs(prefix) || validateNode(prefix) != nil {
+	if prefix == "" || err != nil || major < minMajor || !filepath.IsAbs(prefix) || validateNode(prefix) != nil {
 		return "", ""
 	}
 	return prefix, version
@@ -158,19 +162,27 @@ func Proposable(tool string) bool { return slices.Contains(proposable, tool) }
 // ProposableTools lists every tool a client may name in a proposal.
 func ProposableTools() []string { return slices.Clone(proposable) }
 
+// AdapterTools lists the proposable ACP chat adapters; the rest are language
+// servers.
+func AdapterTools() []string { return slices.Clone(adapterTools) }
+
 func nodeSpec() spec {
-	return spec{name: "node", version: nodeVersion, policy: nodePolicy, main: "bin/node", validate: validateNode, step: "downloading Node.js",
+	return spec{
+		name: "node", version: nodeVersion, policy: nodePolicy, main: "bin/node", validate: validateNode, step: "downloading Node.js",
 		produce: func(ctx context.Context, i *Installer, stage, work string) error {
 			return i.installArchive(ctx, nodeArchives[platform()], work, stage)
-		}}
+		},
+	}
 }
 
 func ruffSpec() spec {
-	return spec{name: "ruff", version: ruffVersion, policy: ruffPolicy, main: "ruff", step: "downloading Ruff",
+	return spec{
+		name: "ruff", version: ruffVersion, policy: ruffPolicy, main: "ruff", step: "downloading Ruff",
 		validate: func(dir string) error { return executableFile(filepath.Join(dir, "ruff")) },
 		produce: func(ctx context.Context, i *Installer, stage, work string) error {
 			return i.installArchive(ctx, ruffArchives[platform()], work, stage)
-		}}
+		},
+	}
 }
 
 func rustAnalyzerSpec() spec {
@@ -185,18 +197,22 @@ func rustAnalyzerSpec() spec {
 }
 
 func npmSpec(pkg npmPackage) spec {
-	return spec{name: pkg.name, version: pkg.version, policy: npmPolicy, main: pkg.main, validate: pkg.validate, needsNode: true, step: "installing the " + pkg.name + " packages with npm",
+	return spec{
+		name: pkg.name, version: pkg.version, policy: pkg.policy(), main: pkg.main, validate: pkg.validate, needsNode: true, minNode: pkg.nodeMajor(), step: "installing the " + pkg.name + " packages with npm",
 		produce: func(ctx context.Context, i *Installer, stage, _ string) error {
 			return installNPM(ctx, pkg, stage, i.nodeDir, i.command)
-		}}
+		},
+	}
 }
 
 func goplsSpec(i *Installer, tool TrustedGo, r goplsRelease) spec {
-	return spec{name: "gopls", version: r.Version, policy: goplsPolicy, main: "gopls", step: "building gopls",
+	return spec{
+		name: "gopls", version: r.Version, policy: goplsPolicy, main: "gopls", step: "building gopls",
 		validate: func(dir string) error { return i.gopls(filepath.Join(dir, "gopls"), r) },
 		produce: func(ctx context.Context, i *Installer, stage, _ string) error {
 			return i.build(ctx, stage, tool, r)
-		}}
+		},
+	}
 }
 
 // Propose replaces the previous single-use proposal. It never creates
@@ -235,16 +251,27 @@ func (i *Installer) Propose(tool string) (Proposal, error) {
 		s = rustAnalyzerSpec()
 		a := rustAnalyzerArchives[platform]
 		source, integ = a.URL, "sha256:"+a.SHA256
-	case "vtsls", "pyright", "svelte-language-server", "vue-typescript-plugin":
+	case "vtsls", "pyright", "svelte-language-server", "vue-typescript-plugin", "claude-agent-acp", "codex-acp":
 		pkg := npmPackages[tool]()
 		s = npmSpec(pkg)
 		source = fmt.Sprintf("%s (%s)", npmRegistry, pkg.source)
 		integ = fmt.Sprintf("npm lockfile sha256:%x; every package checked against its sha512; install scripts off", sha256.Sum256(pkg.lockfile))
-		if prefix, version := i.usableHostNode(); prefix != "" {
+		if pkg.omitOptional {
+			integ += "; optional packages (platform binaries) left out"
+		}
+		if prefix, version := i.usableHostNode(s.minNode); prefix != "" {
 			note = "Uses Node.js " + version + " from " + prefix + "; Node.js is not downloaded."
-		} else if _, err := i.discover(nodeSpec()); err != nil {
-			a := nodeArchives[platform]
-			note = "Also downloads Node.js " + nodeVersion + " to run it: " + a.URL + " (sha256:" + a.SHA256 + ")."
+		} else {
+			if _, version := i.usableHostNode(hostNodeMinMajor); version != "" {
+				// The host's Node.js runs language servers but not this entry.
+				note = fmt.Sprintf("Node.js %s on this host is older than %d. ", version, s.minNode)
+			}
+			if _, err := i.discover(nodeSpec()); err != nil {
+				a := nodeArchives[platform]
+				note += "Also downloads Node.js " + nodeVersion + " to run it: " + a.URL + " (sha256:" + a.SHA256 + ")."
+			} else if note != "" {
+				note += "Uses the app's Node.js " + nodeVersion + "."
+			}
 		}
 	}
 	i.mu.Lock()
@@ -332,7 +359,7 @@ func (i *Installer) Install(ctx context.Context, current Binding, token string) 
 	defer func() { _ = lock.Unlock() }()
 	if s.needsNode {
 		// Like Zed, use the host's Node.js when it can run npm servers; else the app's own.
-		i.nodeDir, _ = i.usableHostNode()
+		i.nodeDir, _ = i.usableHostNode(s.minNode)
 		if i.nodeDir == "" {
 			if _, err = i.place(ctx, nodeSpec()); err != nil {
 				return "", err

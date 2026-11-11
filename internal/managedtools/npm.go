@@ -12,41 +12,89 @@ import (
 
 // npmPackage describes a pinned npm server and its runtime metadata checks.
 // bin is the command npm links to main; a TypeScript plugin has none.
+// omitOptional installs without optional dependencies; minNode is the oldest
+// host Node.js major the entry runs on (0: hostNodeMinMajor).
 type npmPackage struct {
 	name, version, main, bin, source string
 	manifest, lockfile               []byte
 	versions                         map[string]string
+	omitOptional                     bool
+	minNode                          int
 }
 
 // npmPackages are the catalog's npm installs by tool name.
 var npmPackages = map[string]func() npmPackage{
 	"vtsls": vtslsPackage, "pyright": pyrightPackage,
 	"svelte-language-server": svelteLSPackage, "vue-typescript-plugin": vuePluginPackage,
+	"claude-agent-acp": claudeACPPackage, "codex-acp": codexACPPackage,
 }
 
 func vtslsPackage() npmPackage {
-	return npmPackage{"vtsls", vtslsVersion, vtslsMain, "vtsls",
-		fmt.Sprintf("@vtsls/language-server %s, TypeScript %s, %d locked packages", vtslsVersion, vtslsTypeScript, vtslsLockPackages),
-		vtslsPackageJSON, vtslsLockfile, map[string]string{"@vtsls/language-server": vtslsVersion, "typescript": vtslsTypeScript}}
+	return npmPackage{
+		name: "vtsls", version: vtslsVersion, main: vtslsMain, bin: "vtsls",
+		source:   fmt.Sprintf("@vtsls/language-server %s, TypeScript %s, %d locked packages", vtslsVersion, vtslsTypeScript, vtslsLockPackages),
+		manifest: vtslsPackageJSON, lockfile: vtslsLockfile,
+		versions: map[string]string{"@vtsls/language-server": vtslsVersion, "typescript": vtslsTypeScript},
+	}
 }
 
 func pyrightPackage() npmPackage {
-	return npmPackage{"pyright", pyrightVersion, pyrightMain, "pyright-langserver",
-		fmt.Sprintf("pyright %s, %d locked packages", pyrightVersion, pyrightLockPackages),
-		pyrightPackageJSON, pyrightLockfile, map[string]string{"pyright": pyrightVersion}}
+	return npmPackage{
+		name: "pyright", version: pyrightVersion, main: pyrightMain, bin: "pyright-langserver",
+		source:   fmt.Sprintf("pyright %s, %d locked packages", pyrightVersion, pyrightLockPackages),
+		manifest: pyrightPackageJSON, lockfile: pyrightLockfile,
+		versions: map[string]string{"pyright": pyrightVersion},
+	}
 }
 
 func svelteLSPackage() npmPackage {
-	return npmPackage{"svelte-language-server", svelteLSVersion, svelteLSMain, "svelteserver",
-		fmt.Sprintf("svelte-language-server %s, Svelte %s, TypeScript %s, %d locked packages", svelteLSVersion, svelteLSSvelte, svelteLSTypeScript, svelteLSLockPackages),
-		svelteLSPackageJSON, svelteLSLockfile, map[string]string{"svelte-language-server": svelteLSVersion, "svelte-language-server/node_modules/svelte": svelteLSSvelte, "typescript": svelteLSTypeScript}}
+	return npmPackage{
+		name: "svelte-language-server", version: svelteLSVersion, main: svelteLSMain, bin: "svelteserver",
+		source:   fmt.Sprintf("svelte-language-server %s, Svelte %s, TypeScript %s, %d locked packages", svelteLSVersion, svelteLSSvelte, svelteLSTypeScript, svelteLSLockPackages),
+		manifest: svelteLSPackageJSON, lockfile: svelteLSLockfile,
+		versions: map[string]string{"svelte-language-server": svelteLSVersion, "svelte-language-server/node_modules/svelte": svelteLSSvelte, "typescript": svelteLSTypeScript},
+	}
 }
 
 func vuePluginPackage() npmPackage {
-	return npmPackage{"vue-typescript-plugin", vuePluginVersion, vuePluginMain, "",
-		fmt.Sprintf("@vue/typescript-plugin %s, %d locked packages", vuePluginVersion, vuePluginLockPackages),
-		vuePluginPackageJSON, vuePluginLockfile, map[string]string{"@vue/typescript-plugin": vuePluginVersion}}
+	return npmPackage{
+		name: "vue-typescript-plugin", version: vuePluginVersion, main: vuePluginMain,
+		source:   fmt.Sprintf("@vue/typescript-plugin %s, %d locked packages", vuePluginVersion, vuePluginLockPackages),
+		manifest: vuePluginPackageJSON, lockfile: vuePluginLockfile,
+		versions: map[string]string{"@vue/typescript-plugin": vuePluginVersion},
+	}
 }
+
+func claudeACPPackage() npmPackage {
+	return npmPackage{
+		name: "claude-agent-acp", version: claudeACPVersion, main: claudeACPMain, bin: "claude-agent-acp",
+		source:   fmt.Sprintf("@agentclientprotocol/claude-agent-acp %s, Claude Agent SDK %s, %d locked packages", claudeACPVersion, claudeACPSDK, claudeACPLockPackages),
+		manifest: claudeACPPackageJSON, lockfile: claudeACPLockfile,
+		versions:     map[string]string{"@agentclientprotocol/claude-agent-acp": claudeACPVersion, "@anthropic-ai/claude-agent-sdk": claudeACPSDK},
+		omitOptional: true, minNode: adapterMinNodeMajor,
+	}
+}
+
+func codexACPPackage() npmPackage {
+	return npmPackage{
+		name: "codex-acp", version: codexACPVersion, main: codexACPMain, bin: "codex-acp",
+		source:   fmt.Sprintf("@agentclientprotocol/codex-acp %s, @openai/codex %s, %d locked packages", codexACPVersion, codexACPCodex, codexACPLockPackages),
+		manifest: codexACPPackageJSON, lockfile: codexACPLockfile,
+		versions:     map[string]string{"@agentclientprotocol/codex-acp": codexACPVersion, "@openai/codex": codexACPCodex},
+		omitOptional: true, minNode: adapterMinNodeMajor,
+	}
+}
+
+// policy is the receipt policy the package installs under.
+func (pkg npmPackage) policy() string {
+	if pkg.omitOptional {
+		return npmOmitOptionalPolicy
+	}
+	return npmPolicy
+}
+
+// nodeMajor is the oldest host Node.js major the package runs on.
+func (pkg npmPackage) nodeMajor() int { return max(pkg.minNode, hostNodeMinMajor) }
 
 // installNPM runs `npm ci` of the embedded lockfile in stage with the
 // selected Node.js. npm ci installs exactly the locked tree and checks every
@@ -93,7 +141,11 @@ func installNPM(ctx context.Context, pkg npmPackage, stage, nodeDir string, comm
 		"npm_config_ignore_scripts=true", "npm_config_update_notifier=false",
 		"NODE_OPTIONS=", "NO_UPDATE_NOTIFIER=1",
 	}
-	_, err := command(ctx, node, stage, env, npm, "ci", "--ignore-scripts", "--no-audit", "--no-fund", "--loglevel=error")
+	args := []string{npm, "ci", "--ignore-scripts", "--no-audit", "--no-fund", "--loglevel=error"}
+	if pkg.omitOptional {
+		args = append(args, "--omit=optional")
+	}
+	_, err := command(ctx, node, stage, env, args...)
 	return err
 }
 

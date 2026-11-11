@@ -384,7 +384,7 @@ func TestVtslsInstallReusesHostNode(t *testing.T) {
 	if err := os.Remove(filepath.Join(host, "lib/node_modules/npm/bin/npm-cli.js")); err != nil {
 		t.Fatal(err)
 	}
-	if prefix, _ := i.usableHostNode(); prefix != "" {
+	if prefix, _ := i.usableHostNode(hostNodeMinMajor); prefix != "" {
 		t.Fatal(prefix)
 	}
 }

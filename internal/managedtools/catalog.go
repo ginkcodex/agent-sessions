@@ -13,7 +13,12 @@ import (
 // the user's environment have none (docs/plan/code-diagnostics-zed-model.md).
 
 // Tools a client may propose. Node.js is installed only as an npm server's runtime.
-var proposable = []string{"gopls", "ruff", "vtsls", "pyright", "rust-analyzer", "svelte-language-server"}
+// The ACP adapters are chat's, not code diagnostics': codediagnostics never
+// lists them, so its automatic installs never pick them.
+var (
+	adapterTools = []string{"claude-agent-acp", "codex-acp"}
+	proposable   = append([]string{"gopls", "ruff", "vtsls", "pyright", "rust-analyzer", "svelte-language-server"}, adapterTools...)
+)
 
 type artifact struct{ URL, SHA256 string }
 
@@ -60,6 +65,27 @@ const (
 	vuePluginVersion      = "3.3.13"
 	vuePluginMain         = "node_modules/@vue/typescript-plugin/index.js"
 	vuePluginLockPackages = 21
+
+	// npm servers run on a host Node.js of this major or later (else the
+	// pinned one); an entry may ask for a later one.
+	hostNodeMinMajor = 18
+
+	// The ACP chat adapters (docs/plan/acp-adapter-install.md). Their optional
+	// dependencies are native agent binaries the app never runs: chat points
+	// the adapter at the user's own CLI. So they install without them, under
+	// a policy of their own, and need Node.js 22 (claude-agent-acp's engines).
+	npmOmitOptionalPolicy = "npm-ci-lockfile-ignore-scripts-omit-optional-v1"
+	adapterMinNodeMajor   = 22
+
+	claudeACPVersion      = "0.106.0"
+	claudeACPSDK          = "0.3.322" // @anthropic-ai/claude-agent-sdk
+	claudeACPMain         = "node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js"
+	claudeACPLockPackages = 115
+
+	codexACPVersion      = "2.6.0"
+	codexACPCodex        = "0.166.0" // @openai/codex, the JS launcher only
+	codexACPMain         = "node_modules/@agentclientprotocol/codex-acp/dist/index.js"
+	codexACPLockPackages = 30
 
 	rustAnalyzerVersion = "2026-10-26"
 	// The receipt policy also carries the pinned asset digest for the platform.
@@ -111,6 +137,14 @@ var (
 	vuePluginPackageJSON []byte
 	//go:embed vue-typescript-plugin/package-lock.json
 	vuePluginLockfile []byte
+	//go:embed claude-agent-acp/package.json
+	claudeACPPackageJSON []byte
+	//go:embed claude-agent-acp/package-lock.json
+	claudeACPLockfile []byte
+	//go:embed codex-acp/package.json
+	codexACPPackageJSON []byte
+	//go:embed codex-acp/package-lock.json
+	codexACPLockfile []byte
 )
 
 func platform() string { return runtime.GOOS + "/" + runtime.GOARCH }

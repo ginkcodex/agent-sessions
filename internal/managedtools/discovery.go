@@ -31,7 +31,7 @@ func (i *Installer) Discover(tool string) (string, error) {
 		return i.discover(ruffSpec())
 	case "rust-analyzer":
 		return i.discover(rustAnalyzerSpec())
-	case "vtsls", "pyright", "svelte-language-server", "vue-typescript-plugin":
+	case "vtsls", "pyright", "svelte-language-server", "vue-typescript-plugin", "claude-agent-acp", "codex-acp":
 		return i.discover(npmSpec(npmPackages[tool]()))
 	case "node":
 		return i.discover(nodeSpec())
@@ -84,7 +84,8 @@ func IsPinnedRustAnalyzer(path string) bool {
 
 // Dirs returns the directories of valid installs that tool discovery searches
 // after the user's own: gopls's, Ruff's and rust-analyzer's directories, npm servers'
-// node_modules/.bin and Node.js's bin.
+// node_modules/.bin and Node.js's bin. The chat adapters are not listed: code
+// diagnostics never runs them.
 func (i *Installer) Dirs() []string {
 	var dirs []string
 	for _, tool := range []string{"gopls", "ruff", "rust-analyzer", "vtsls", "pyright", "svelte-language-server", "node"} {
