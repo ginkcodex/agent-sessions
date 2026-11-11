@@ -61,7 +61,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | ACP adapter install | [acp-adapter-install](docs/plan/acp-adapter-install.md) | [acp-adapter-install/](docs/tasks/acp-adapter-install/README.md) | 4/5 ✅ · 1 ⬜ |
 | ACP chat mode | [acp-chat](docs/plan/acp-chat.md) | [acp-chat/](docs/tasks/acp-chat/README.md) | 16/17 ✅ · 1 🟡 |
 | Chat attachments | [chat-attachments](docs/plan/chat-attachments.md) | [chat-attachments/](docs/tasks/chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
-| Chat end guard | [chat-end-guard](docs/plan/chat-end-guard.md) | [chat-end-guard/](docs/tasks/chat-end-guard/README.md) | 1/5 ✅ · 4 ⬜ |
+| Chat end guard | [chat-end-guard](docs/plan/chat-end-guard.md) | [chat-end-guard/](docs/tasks/chat-end-guard/README.md) | 2/5 ✅ · 3 ⬜ |
 | Orphaned task notifications | [orphan-task-notifications](docs/plan/orphan-task-notifications.md) | [orphan-task-notifications/](docs/tasks/orphan-task-notifications/README.md) | 1/1 ✅ |
 | Idle rendering | [idle-rendering](docs/plan/idle-rendering.md) | [idle-rendering/](docs/tasks/idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](docs/plan/file-translate.md) | [file-translate/](docs/tasks/file-translate/README.md) | 2/2 ✅ |

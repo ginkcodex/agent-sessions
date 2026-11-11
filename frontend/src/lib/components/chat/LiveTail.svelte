@@ -37,6 +37,9 @@
     crashed: 'The agent stopped unexpectedly.',
     disconnected: 'The connection to the host dropped, which ended the chat.',
   };
+  // The agent's own log helps only when it stopped by itself; a chat the
+  // user ended, or a dropped connection, says so in one line.
+  let exitLog = $derived(chat.exit && (chat.exit.reason === 'exited' || chat.exit.reason === 'crashed') ? chat.exit.stderrTail : undefined);
 </script>
 
 <div class="live-tail" data-live-tail aria-live="polite">
@@ -94,8 +97,11 @@
       <Icon name={chat.exit.reason === 'crashed' ? 'triangle-alert' : 'info'} size={14} />
       <div class="exit-text">
         <span>{EXITS[chat.exit.reason] ?? 'The chat ended.'}{chat.exit.error ? ` ${chat.exit.error}` : ''}</span>
-        {#if chat.exit.stderrTail}
-          <pre class="stderr">{chat.exit.stderrTail}</pre>
+        {#if exitLog}
+          <details class="exit-log">
+            <summary>Show the agent's log</summary>
+            <pre class="stderr">{exitLog}</pre>
+          </details>
         {/if}
       </div>
     </div>
@@ -165,8 +171,19 @@
     filter: brightness(1.08);
   }
 
+  .exit-log summary {
+    width: fit-content;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .exit-log summary:hover {
+    color: var(--text-primary);
+  }
+
   .stderr {
-    margin: 0;
+    margin: 6px 0 0;
     max-height: 160px;
     overflow: auto;
     font-family: var(--font-mono);

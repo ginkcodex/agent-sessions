@@ -276,7 +276,16 @@ test('the live tail shows the streamed messages, then the chat state under them'
     exit: { chatId: 'c1', seq: 4, reason: 'crashed', error: 'exit status 1', stderrTail: 'panic: <oops>' },
   }));
   assert.match(crashed, /The agent stopped unexpectedly\. exit status 1/);
-  assert.match(crashed, /<pre class="stderr[^"]*">panic: <oops><\/pre>/);
+  // The agent's log, folded.
+  assert.match(crashed, /<details class="exit-log[^"]*"><summary[^>]*>Show the agent's log<\/summary> <pre class="stderr[^"]*">panic: <oops><\/pre><\/details>/);
+  assert.match(await renderLiveTail(chat({ phase: 'exited', exit: { chatId: 'c1', seq: 4, reason: 'exited', stderrTail: 'bye' } })), /Show the agent's log/);
+
+  // A chat the user ended, or a dropped connection, says so in one line.
+  for (const [reason, text] of [['closed', 'The chat ended.'], ['disconnected', 'The connection to the host dropped, which ended the chat.']]) {
+    const html = await renderLiveTail(chat({ phase: 'exited', exit: { chatId: 'c1', seq: 4, reason, stderrTail: '[session/create] sessionId=x phase=settings' } }));
+    assert.match(html, new RegExp(`<span>${text.replace(/\./g, '\\.')}</span>`), reason);
+    assert.doesNotMatch(html, /session\/create|exit-log/, reason);
+  }
 });
 
 test('the session header says when a chat drives the session', async () => {
