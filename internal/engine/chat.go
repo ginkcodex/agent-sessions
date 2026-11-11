@@ -582,6 +582,17 @@ func (m *ChatManager) Close(chatID string) error {
 	return nil
 }
 
+// Any reports whether a chat is open. It only reads the chat map, so a
+// window's close guard may call it on the UI thread.
+func (m *ChatManager) Any() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.chats) > 0
+}
+
 // CloseAll closes every chat and waits for them.
 func (m *ChatManager) CloseAll() {
 	if m == nil {

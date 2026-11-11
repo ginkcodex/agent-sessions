@@ -229,6 +229,29 @@ func (a *App) ChatList() []engine.ChatState {
 	return out
 }
 
+// SetChatsOpen tells the window's close guard whether the window has an
+// open chat. A host's chats run on the host, which the guard cannot ask
+// without waiting; the frontend knows them. Closing the window or quitting
+// then asks first, as it does for running terminals.
+func (a *App) SetChatsOpen(open bool) {
+	a.chatsOpen.Store(open)
+}
+
+// windowBusy reports whether closing the window would end something that
+// runs: a terminal or a chat. The close guard calls it on the UI thread, so
+// it never waits. This computer's chats are read here too, so a window
+// whose frontend has not reported a new chat yet still asks.
+func (a *App) windowBusy() bool {
+	if a.terminals != nil && a.terminals.AnyRunning() {
+		return true
+	}
+	if a.chatsOpen.Load() {
+		return true
+	}
+	m, err := a.ownChats()
+	return err == nil && m.Any()
+}
+
 // closeChats ends this computer's chats of this window. A host's chats end
 // with the connection to it.
 func (a *App) closeChats() {

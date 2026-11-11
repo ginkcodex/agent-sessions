@@ -272,6 +272,8 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   /** Arm native close coordination before mounting any editable document. */
   enableFileEditing(): Promise<boolean>;
   completeFileClose(id: number, allow: boolean): Promise<void>;
+  /** Tells the close guard whether the window has an open chat, so a close or quit asks first. */
+  setChatsOpen(open: boolean): Promise<void>;
   revealFile(dir: string, path: string): Promise<void>;
   copyFile(dir: string, path: string): Promise<void>;
   downloadFile(dir: string, path: string): Promise<string>;
@@ -452,6 +454,7 @@ export interface WailsAppBinding {
   ReplaceInFiles?(dir: string, req: ReplaceRequest, host: string): Promise<ReplaceResult>;
   EnableFileEditing(): Promise<boolean>;
   CompleteFileClose(id: number, allow: boolean): Promise<void>;
+  SetChatsOpen(open: boolean): Promise<void>;
   RevealFile(dir: string, path: string): Promise<void>;
   CopyFile(dir: string, path: string): Promise<void>;
   DownloadFile(dir: string, path: string): Promise<string>;
@@ -1319,6 +1322,10 @@ class WailsBackendAPI implements BackendAPI {
     try { await this.binding.CompleteFileClose(id, allow); } catch (e) { throw normalizeError(e); }
   }
 
+  async setChatsOpen(open: boolean): Promise<void> {
+    try { await this.binding.SetChatsOpen(open); } catch (e) { throw normalizeError(e); }
+  }
+
   async revealFile(dir: string, path: string): Promise<void> {
     try {
       await this.binding.RevealFile(dir, path);
@@ -1737,6 +1744,8 @@ const UNGUARDED = new Set<string>([
   'onEvent',
   'enableFileEditing',
   'completeFileClose',
+  // The window's chats, whichever host they run on.
+  'setChatsOpen',
   // Canceling must reach the backend even after a host switch, to stop a
   // search the switch made stale.
   'cancelSearch',

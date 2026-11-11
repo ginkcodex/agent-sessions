@@ -444,3 +444,52 @@ func TestDeleteRefusedWhileChatOwnsSession(t *testing.T) {
 		t.Fatalf("delete after close = %+v, %v", rep, err)
 	}
 }
+
+// A window with an open chat asks before it closes or the app quits: this
+// computer's chats from the chat manager, a host's from what the frontend
+// says (SetChatsOpen).
+func TestOpenChatsGuardTheWindowClose(t *testing.T) {
+	a := NewAppWithService(chatTestService())
+	log := useChatEngine(t, a)
+	a.fileClose.busy = a.windowBusy
+	closes := func() bool {
+		prevent, id := a.fileClose.request()
+		if id != 0 {
+			a.fileClose.complete(id, false)
+		}
+		return !prevent
+	}
+	if !closes() {
+		t.Fatal("a window without chats asked before closing")
+	}
+
+	st, err := a.ChatStart(engine.ChatStartRequest{Agent: model.AgentClaude, Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closes() {
+		t.Fatal("a window with a local chat closed unasked")
+	}
+	if id, answer := a.fileClose.requestHeld(); id == 0 || answer == nil {
+		t.Fatal("a quit with a local chat went ahead unasked")
+	} else {
+		a.fileClose.complete(id, false)
+	}
+	if err := a.ChatClose(st.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	log.waitExit(t, st.ChatID)
+	if !closes() {
+		t.Fatal("the window still asked after its chat ended")
+	}
+
+	// A chat on a host: only the frontend knows.
+	a.SetChatsOpen(true)
+	if closes() {
+		t.Fatal("a window with a host's chat closed unasked")
+	}
+	a.SetChatsOpen(false)
+	if !closes() {
+		t.Fatal("the window still asked once its chats ended")
+	}
+}

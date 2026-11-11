@@ -151,6 +151,7 @@ export const APP_METHODS = [
   'SearchSession',
   'SetAgentSettings',
   'SetAllowPermanentDelete',
+  'SetChatsOpen',
   'SetHostEnv',
   'SetManageEnabled',
   'SetPrunePromptHistory',

@@ -1349,6 +1349,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   async enableFileEditing(): Promise<boolean> { return true; }
   async completeFileClose(_id: number, _allow: boolean): Promise<void> {}
+  async setChatsOpen(_open: boolean): Promise<void> {}
 
   async listDirectory(_dir: string, path: string): Promise<DirectoryEntries> {
     return path === 'node_modules'

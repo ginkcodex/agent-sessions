@@ -22,7 +22,7 @@
     applyError = '';
     try {
       const choice = await filePrompt.ask(host ? 'Reconnect to apply coding agents?' : 'Restart to apply coding agents?',
-        host ? 'Reconnecting ends the current host connection. Running remote terminal processes may end.' : 'Restarting closes this window and ends its running terminal processes, including coding agents. Unsaved files will be checked before closing.',
+        host ? 'Reconnecting ends the current host connection. Running remote terminal processes may end.' : 'Restarting closes this window and ends its running terminal processes and chats, including coding agents. Unsaved files will be checked before closing.',
         [{ value: 'apply', label: host ? 'Reconnect' : 'Restart', danger: true }]);
       if (choice !== 'apply' || owner !== epoch() || link.stale || link.locked) return;
       if (host) {
