@@ -301,3 +301,30 @@ test('sequence skips an event that never comes once too many wait behind it', ()
   assert.equal(r.ready[0].seq, 2);
   assert.equal(r.seq.next, MAX_HELD_EVENTS + 3);
 });
+
+test('a prompt of only files starts a user item that waits for its turn to be saved', () => {
+  const files = [{ name: 'shot.png', mimeType: 'image/png', size: 70, data: 'iVBORw0KGgo=' }, { name: 'notes.md', mimeType: 'text/markdown', size: 12 }];
+  let t = beginTurn(emptyTail(), { text: '', sentAt: Date.parse('2026-11-11T10:00:00Z'), attachments: files });
+  assert.deepEqual(t.items.map((i) => [i.type, i.role, i.text]), [['text', 'user', '']]);
+  assert.deepEqual(t.items[0].attachments, files);
+  // No text and no files: no user item.
+  assert.deepEqual(beginTurn(emptyTail(), { text: '', sentAt: 0 }).items, []);
+
+  t = apply(t, chunk('agent_message_chunk', 'Got them', 'm1'));
+  const saved = [
+    msg('u1', 'user', [{ kind: 'file', file: { name: 'shot.png' } }, { kind: 'file', file: { name: 'notes.md' } }]),
+    msg('m1', 'assistant', [{ kind: 'text', text: 'Got them' }]),
+  ];
+  // The turn runs: nothing in it is known to be saved yet.
+  assert.equal(reconcile(t, saved), t);
+  // Once it ends with its last message saved, the whole turn goes.
+  assert.deepEqual(reconcile(endTurn(t), saved).items, []);
+});
+
+test('a prompt with text and files keeps both on its user item and matches its saved text', () => {
+  const files = [{ name: 'notes.md', mimeType: 'text/markdown', size: 12 }];
+  const t = endTurn(beginTurn(emptyTail(), { text: 'read this', sentAt: Date.parse('2026-11-11T10:00:00Z'), attachments: files }));
+  assert.equal(t.items[0].text, 'read this');
+  assert.deepEqual(t.items[0].attachments, files);
+  assert.deepEqual(reconcile(t, [msg('u1', 'user', [{ kind: 'text', text: 'read this' }, { kind: 'file', file: { name: 'notes.md' } }])]).items, []);
+});

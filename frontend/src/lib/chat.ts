@@ -1,6 +1,6 @@
 // What the chat UI shows: the live tail as transcript messages, and which
 // agents can chat. Every function here is pure.
-import type { AgentID, ChatAgent, ChatPermission, Message, Part, ToolStatus } from './types';
+import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatPermission, Message, Part, ToolStatus } from './types';
 import { toolOutput, type ChatTail, type TailDiff, type TailItem, type TailTool } from './chatTail';
 
 /**
@@ -19,7 +19,10 @@ export function tailMessages(tail: ChatTail): Message[] {
         id: `live:${it.key}`,
         role: 'user',
         time: it.sentAt ? new Date(it.sentAt).toISOString() : '',
-        parts: [{ kind: 'text', text: it.text }],
+        parts: [
+          ...(it.text ? [{ kind: 'text' as const, text: it.text }] : []),
+          ...(it.attachments ?? []).map((a): Part => ({ kind: 'file', file: { name: a.name, mime: a.mimeType, size: a.size, ...(a.data && { data: a.data }) } })),
+        ],
       });
       continue;
     }
@@ -162,4 +165,42 @@ function commandText(input: unknown): string {
 
 function shellWord(arg: string): string {
   return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+/** The most files one message may carry, as the backend checks. */
+export const MAX_CHAT_ATTACHMENTS = 10;
+
+/**
+ * The composer's files with newly prepared ones added, in order: images are
+ * skipped for an agent that takes none, and files past the limit, each with
+ * why, after those the backend skipped.
+ */
+export function addAttachments(
+  current: readonly ChatAttachment[],
+  result: ChatAttachResult,
+  agent: { name: string; images: boolean },
+): ChatAttachResult {
+  const attachments = [...current];
+  const skipped = [...result.skipped];
+  for (const a of result.attachments) {
+    if (a.kind === 'image' && !agent.images) skipped.push({ name: a.name, reason: `${agent.name} does not take images` });
+    else if (attachments.length >= MAX_CHAT_ATTACHMENTS) skipped.push({ name: a.name, reason: `a message can carry at most ${MAX_CHAT_ATTACHMENTS} attachments` });
+    else attachments.push(a);
+  }
+  return { attachments, skipped };
+}
+
+/** The toast for files that could not be attached, or null when none. */
+export function skippedToast(skipped: ChatAttachResult['skipped']): { title: string; body: string } | null {
+  if (skipped.length === 0) return null;
+  if (skipped.length === 1) {
+    const { name, reason } = skipped[0];
+    return { title: `Could not attach ${name}`, body: reason.charAt(0).toUpperCase() + reason.slice(1) };
+  }
+  return { title: `Could not attach ${skipped.length} files`, body: skipped.map((s) => `${s.name}: ${s.reason}`).join('; ') };
+}
+
+/** Whether the composer can send: an idle chat, and text or a file. */
+export function canSendPrompt(phase: string, sending: boolean, text: string, attachments: number): boolean {
+  return phase === 'idle' && !sending && (text.trim() !== '' || attachments > 0);
 }

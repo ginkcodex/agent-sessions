@@ -390,3 +390,55 @@ test('every way a chat ends clears its waiting permission cards', async () => {
     assert.deepEqual(store.chats, []);
   });
 });
+
+test('a prompt carries its files: the live tail shows them, the saved turn replaces them', async () => {
+  const { mockAttachFiles } = await import('../src/lib/mock/mockChat.ts');
+  await withChats(async ({ store, mock }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR });
+    assert.deepEqual(chat.promptCapabilities, { image: true, embeddedContext: true });
+
+    const picked = mockAttachFiles(['/home/mock/shot.png', '/home/mock/plan.md']);
+    assert.deepEqual(picked.attachments.map((a) => [a.kind, a.name]), [['image', 'shot.png'], ['text', 'plan.md']]);
+    await store.prompt(chat.chatId, '', picked.attachments);
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+
+    const done = store.byChatId(chat.chatId);
+    const user = done.tail.items[0];
+    assert.equal(user.role, 'user');
+    assert.equal(user.text, '');
+    // The live tail keeps an image's bytes to show it, not a text file's text.
+    assert.deepEqual(user.attachments.map((a) => [a.name, a.mimeType, !!a.data]), [['shot.png', 'image/png', true], ['plan.md', 'text/plain', false]]);
+    assert.match(done.tail.items.at(-1).text, /You sent 2 files \(shot\.png, plan\.md\)/);
+
+    const page = await mock.getMessages(done.session, -1, 100);
+    const saved = page.messages.filter((m) => m.role === 'user').at(-1);
+    assert.deepEqual(saved.parts.map((p) => [p.kind, p.file?.name]), [['file', 'shot.png'], ['file', 'plan.md']]);
+    store.reconcile(chat.chatId, page.messages);
+    assert.deepEqual(store.byChatId(chat.chatId).tail.items, []);
+  });
+});
+
+test('a refused prompt with files starts no turn and leaves no stale prompt', async () => {
+  const { mockAttachFiles } = await import('../src/lib/mock/mockChat.ts');
+  await withChats(async ({ store }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR });
+    const many = mockAttachFiles(Array.from({ length: 12 }, (_, i) => `/p/f${i}.txt`));
+    assert.equal(many.attachments.length, 10);
+    assert.deepEqual(many.skipped.map((s) => s.name), ['f10.txt', 'f11.txt']);
+    await assert.rejects(store.prompt(chat.chatId, '', [...many.attachments, ...many.attachments.slice(0, 1)]), /at most 10/);
+    assert.equal(store.byChatId(chat.chatId).phase, 'idle');
+    // The next prompt's turn shows its own text, not the refused files.
+    await store.prompt(chat.chatId, 'just text');
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    const users = store.byChatId(chat.chatId).tail.items.filter((i) => i.role === 'user');
+    assert.deepEqual(users.map((u) => [u.text, u.attachments]), [['just text', undefined]]);
+  });
+});
+
+test('the mock prepares pasted images and refuses what is not one', async () => {
+  const { mockAttachFiles, mockAttachImage, MOCK_IMAGE_PNG } = await import('../src/lib/mock/mockChat.ts');
+  const pasted = mockAttachImage('', MOCK_IMAGE_PNG);
+  assert.deepEqual([pasted.kind, pasted.name, pasted.mimeType], ['image', 'Pasted image', 'image/png']);
+  assert.throws(() => mockAttachImage('clip', btoa('plain text')), /clip/);
+  assert.deepEqual(mockAttachFiles(['/p/report.pdf']).skipped.map((s) => s.name), ['report.pdf']);
+});

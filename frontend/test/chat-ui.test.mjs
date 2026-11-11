@@ -1,7 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applySessionUpdate, beginTurn, emptyTail, endTurn } from '../src/lib/chatTail.ts';
-import { chatAgentAvailable, permissionView, planMarkdown, tailMessages, toolStatus, unifiedDiff } from '../src/lib/chat.ts';
+import {
+  addAttachments,
+  canSendPrompt,
+  chatAgentAvailable,
+  MAX_CHAT_ATTACHMENTS,
+  permissionView,
+  planMarkdown,
+  skippedToast,
+  tailMessages,
+  toolStatus,
+  unifiedDiff,
+} from '../src/lib/chat.ts';
 import { fixtureStore, loadServerComponent, loadServerModule, renderSessionHeader, renderWithFixture, renderedButtons, unescapeHTML } from './helpers.mjs';
 
 const SENT = Date.parse('2026-11-11T10:00:00Z');
@@ -123,6 +134,10 @@ async function renderComposer(c, props = {}) {
   }
   composerModule ??= await loadServerComponent(COMPOSER_URL, [
     ["import ChatOptions from './ChatOptions.svelte';", 'const ChatOptions = globalThis.__chatOptions;'],
+    ["import { onMount } from 'svelte';", 'const onMount = () => {};'],
+    ["import { api } from '../../api';", 'const api = {};'],
+    ["'../../chat'", lib('../../chat.ts', COMPOSER_URL)],
+    ["import AttachmentChips from './AttachmentChips.svelte';", 'const AttachmentChips = () => {};'],
     ["import { chats } from '../../stores/chats.svelte';", fixtureStore('chats')],
     ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
     ["'../../link'", lib('../../link.ts', COMPOSER_URL)],
@@ -559,4 +574,85 @@ test('a chosen option is set and remembered for the next new chat of the agent o
   } finally {
     restore();
   }
+});
+
+// --- Attachments -----------------------------------------------------------
+
+const image = (name) => ({ kind: 'image', name, mimeType: 'image/png', size: 70, data: 'iVBORw0KGgo=' });
+const textFile = (name) => ({ kind: 'text', name, mimeType: 'text/plain', size: 5, text: 'hello', uri: `file:///p/${name}` });
+
+test('a prompt with files shows them in the live user message, an image from its bytes', () => {
+  const tail = beginTurn(emptyTail(), {
+    text: '',
+    sentAt: SENT,
+    attachments: [{ name: 'shot.png', mimeType: 'image/png', size: 70, data: 'iVBORw0KGgo=' }, { name: 'notes.txt', mimeType: 'text/plain', size: 5 }],
+  });
+  const [user] = tailMessages(tail);
+  assert.equal(user.role, 'user');
+  assert.deepEqual(user.parts, [
+    { kind: 'file', file: { name: 'shot.png', mime: 'image/png', size: 70, data: 'iVBORw0KGgo=' } },
+    { kind: 'file', file: { name: 'notes.txt', mime: 'text/plain', size: 5 } },
+  ], 'no empty text part');
+  const [withText] = tailMessages(beginTurn(emptyTail(), { text: 'look', sentAt: SENT, attachments: [{ name: 'a.txt', mimeType: 'text/plain', size: 1 }] }));
+  assert.deepEqual(withText.parts.map((p) => p.kind), ['text', 'file']);
+});
+
+test('files are added in order, skipping images the agent does not take and those past the limit', () => {
+  const agent = { name: 'Codex', images: false };
+  let r = addAttachments([textFile('a.txt')], { attachments: [image('shot.png'), textFile('b.txt')], skipped: [{ name: 'app.bin', reason: 'not a text file' }] }, agent);
+  assert.deepEqual(r.attachments.map((a) => a.name), ['a.txt', 'b.txt']);
+  assert.deepEqual(r.skipped, [{ name: 'app.bin', reason: 'not a text file' }, { name: 'shot.png', reason: 'Codex does not take images' }]);
+
+  const nine = Array.from({ length: MAX_CHAT_ATTACHMENTS - 1 }, (_, i) => textFile(`f${i}.txt`));
+  r = addAttachments(nine, { attachments: [image('x.png'), textFile('y.txt')], skipped: [] }, { name: 'Claude', images: true });
+  assert.equal(r.attachments.length, MAX_CHAT_ATTACHMENTS);
+  assert.equal(r.attachments.at(-1).name, 'x.png');
+  assert.deepEqual(r.skipped, [{ name: 'y.txt', reason: 'a message can carry at most 10 attachments' }]);
+});
+
+test('the toast for skipped files names one file and its reason, or counts several', () => {
+  assert.equal(skippedToast([]), null);
+  assert.deepEqual(skippedToast([{ name: 'app.bin', reason: 'is not a text file' }]), { title: 'Could not attach app.bin', body: 'Is not a text file' });
+  assert.deepEqual(skippedToast([{ name: 'a', reason: 'x' }, { name: 'b', reason: 'y' }]), { title: 'Could not attach 2 files', body: 'a: x; b: y' });
+});
+
+test('a prompt of only files can be sent; nothing at all cannot', () => {
+  assert.equal(canSendPrompt('idle', false, '', 1), true);
+  assert.equal(canSendPrompt('idle', false, '  \n', 0), false);
+  assert.equal(canSendPrompt('idle', false, 'hi', 0), true);
+  assert.equal(canSendPrompt('working', false, 'hi', 1), false);
+  assert.equal(canSendPrompt('idle', true, 'hi', 1), false);
+});
+
+test('the attach button shows when the agent says what a prompt may carry, and the card takes dropped files', async () => {
+  const caps = { image: true, embeddedContext: true };
+  const idle = await renderComposer(chat({ promptCapabilities: caps }));
+  assert.deepEqual(composerButtons(idle), ['Attach images or files', 'End chat', 'Send (disabled)']);
+  assert.match(idle, /<form[^>]*data-file-drop-target="chat"/);
+
+  const starting = await renderComposer(chat({ phase: 'starting', promptCapabilities: caps }));
+  assert.deepEqual(composerButtons(starting), ['Attach images or files (disabled)', 'End chat (disabled)', 'Send (disabled)']);
+  assert.doesNotMatch(starting, /data-file-drop-target/);
+
+  // An agent (or an older host) that does not say: text only.
+  const unknown = await renderComposer(chat());
+  assert.deepEqual(composerButtons(unknown), ['End chat', 'Send (disabled)']);
+  assert.doesNotMatch(unknown, /data-file-drop-target/);
+
+  const ended = await renderComposer(chat({ phase: 'exited', promptCapabilities: caps }));
+  assert.doesNotMatch(ended, /Attach images or files/);
+  assert.doesNotMatch(ended, /data-file-drop-target/);
+});
+
+const CHIPS_URL = new URL('../src/lib/components/chat/AttachmentChips.svelte', import.meta.url);
+let chipsModule;
+
+test('attached files show as chips: a thumbnail or an icon, the name, and a remove button', async () => {
+  chipsModule ??= await loadServerComponent(CHIPS_URL, [["'../../format'", lib('../../format.ts', CHIPS_URL)]]);
+  const html = unescapeHTML(await renderWithFixture(chipsModule, {}, { attachments: [image('shot.png'), textFile('notes.txt')], onRemove: () => {} }));
+  assert.match(html, /<ul class="chips[^"]*" aria-label="Attached files">/);
+  assert.match(html, /<img src="data:image\/png;base64,iVBORw0KGgo="/);
+  assert.equal([...html.matchAll(/<img /g)].length, 1, 'a text file has no thumbnail');
+  assert.match(html, /title="notes\.txt \(5 B\)"/);
+  assert.deepEqual(composerButtons(html), ['Remove shot.png', 'Remove notes.txt']);
 });

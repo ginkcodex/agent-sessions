@@ -5,6 +5,8 @@ import type {
   AcpSessionUpdate,
   AgentID,
   ChatAgent,
+  ChatAttachment,
+  ChatAttachResult,
   ChatConfigOption,
   ChatPermission,
   ChatStartRequest,
@@ -13,6 +15,7 @@ import type {
   Message,
   SessionRef,
 } from '../types.js';
+import { sniffImageFormat } from '../images';
 
 const AGENTS: { agent: AgentID; name: string; install: string; adapter: string; managed?: { version: string; main: string } }[] = [
   {
@@ -39,6 +42,46 @@ export const MOCK_MANAGED_TOOLS = '/home/mock/.local/share/agent-sessions/manage
 export function mockManagedAdapter(tool: string): { agent: AgentID; version: string; package: string } | undefined {
   const a = AGENTS.find((x) => x.managed && x.adapter === tool);
   return a?.managed && { agent: a.agent, version: a.managed.version, package: `@agentclientprotocol/${a.adapter}` };
+}
+
+/** A made-up 24×24 gradient, the image every mock pick and drop attaches. */
+export const MOCK_IMAGE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAIAAABvFaqvAAAEl0lEQVR42g3TER/3IBAH8OflPDgcDofD4XDwQDAIgiAIgiAIgiA4CIIgCILgYBAM/riX8gw6/H7ud3f9+Utxon2mbaF1pWWjeafpoPGkQGig1HPqJLWaGku1pwqoTFQUyhtlSOmg14+Sl/7785fhxPrM2sLqysrG8s7SweLJgLBAmefMSWY1M5ZpzxQwmZgojDfGkNHBrh8jL/sgjhPvM28LrysvG887TwePJwfCA+Wecye51dxYrj1XwGXionDeOENOB79+nLz8gwROos+iLaKuomwi7yIdIp4CiAhUeC6cFFYLY4X2QoGQSYgieBMMBR3i+gnyig+SOMk+y7bIusqyybzLdMh4SiAyUOm5dFJaLY2V2ksFUiYpiuRNMpR0yOsnySs/SOGk+qzaouqqyqbyrtKh4qmAqEDVl8ZJZbUyVmmvFCiZlCiKN8VQ0aGunyKv+iCNk+6zbouuqy6bzrtOh46nBqLDtyiundRWa/M9rxVombQomjfNUNOhr58mr/4gg5Pps2mLqaspm8m7SYeJpwFiAjWeG/fF0sZYo71RYGQyohjeDENDh7l+hrzmgyxOts+2Lbautmw27zYdNp4WiA3Uem6dtFZb8xVvFViZrCiWN8vQ0mGvnyWv/SCHk+uza4urqyuby7tLh4unA+ICdZ47J53VzlinvVPgZHKiON4cQ0eHu36OvO6DPE6+z74tvq6+bD7vPh0+nh6ID9R77p30XzPGeu29Ai+TF8Xz5hl6Ovz18+T1HxRwCn0ObQl1DWULeQ/pCPEMQEKgwfPgZLA6GBu0DwqCTEGUwFtgGOgI1y+QN3wQ4AR9hrZAXaFskHdIB8QTgECg4PkXBqwGY0F7UAAygSjAGzAEOuD6AXnhgyJOsc+xLbGusWwx7zEdMZ4RSAw0eh6djFZHY6P2UUGUKYoSeYsMIx3x+kXyxg9KOKU+p7akuqaypbyndKR4JiAp0OR5+sZrdTI2aZ8UJJmSKIm3xDDRka5fIm/6oIxT7nNuS65rLlvOe05HjmcGkgPNnmcns9XZ2Kx9VpBlyqJk3jLDTEe+fpm8+YMKTqXPpS2lrqVsJe8lHSWeBUgJ9FtPcbJYXYwt2hcFRaYiSuGtMCx0lOtXyFs+qOJU+1zbUutay1bzXtNR41mB1ECr59XJanU1tmpfFVSZqiiVt8qw0lGvXyVv/aCGU+tza0uraytby3tLR4tnA9ICbd/BONmsbsY27ZuCJlMTpfHWGDY62vVr5G0f1HHqfe5t6XXtZet57+no8exAeqDd8+5kt7ob27XvCrpMXZTOW2fY6ejXr5O3fxDihH3GtmBdsWyYd0wHxhOBfAeHnqOTaDUai9qjApQJRUHekCHSgdcPyYsfdON09/luy13Xu2x33u903PG8gdyB3p7fTt5W38be2t8KbpluUW7eboY3Hff1u8l7f9DAafR5tGXUdZRt5H2kY8RzABnfF/B8ODmsHsYO7YeCIdMQZfA2GA46xvUb5B0f9OD09Plpy1PXp2xP3p90PPF8gDyBPp4/Tj5WP8Y+2j8KHpkeUR7eHoYPHc/1e8j7/PsPnsD5Lu/zGO8AAAAASUVORK5CYII=';
+
+const MOCK_MAX_ATTACHMENTS = 10;
+
+/**
+ * Files as the app prepares them, made up from their names: images by
+ * their extension get MOCK_IMAGE_PNG, documents and archives are refused,
+ * and anything else is a text file. Nothing is read.
+ */
+export function mockAttachFiles(paths: string[]): ChatAttachResult {
+  const out: ChatAttachResult = { attachments: [], skipped: [] };
+  for (const path of paths) {
+    const name = path.split(/[\\/]/).pop() || path;
+    if (out.attachments.length === MOCK_MAX_ATTACHMENTS) {
+      out.skipped.push({ name, reason: `a message can carry at most ${MOCK_MAX_ATTACHMENTS} attachments` });
+    } else if (/\.(png|jpe?g|gif|webp)$/i.test(name)) {
+      out.attachments.push({ kind: 'image', name, mimeType: 'image/png', size: base64Size(MOCK_IMAGE_PNG), data: MOCK_IMAGE_PNG, uri: `file://${path}` });
+    } else if (/\.(pdf|zip|gz|tar|exe|bin|iso|docx?|xlsx?)$/i.test(name)) {
+      out.skipped.push({ name, reason: 'is neither an image nor a text file; only images and text files can be attached' });
+    } else {
+      const text = `Made-up contents of ${name}, from the mock backend.\n`;
+      out.attachments.push({ kind: 'text', name, mimeType: 'text/plain', size: text.length, text, uri: `file://${path}` });
+    }
+  }
+  return out;
+}
+
+/** A pasted image as the app prepares it. */
+export function mockAttachImage(name: string, data: string): ChatAttachment {
+  const label = name || 'Pasted image';
+  const format = sniffImageFormat(data);
+  if (!format) throw new Error(`${label}: is not a PNG, JPEG, GIF or WebP image`);
+  return { kind: 'image', name: label, mimeType: `image/${format}`, size: base64Size(data), data };
+}
+
+function base64Size(data: string): number {
+  return Math.floor((data.length * 3) / 4) - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0);
 }
 
 export const CHAT_REMOTE_ERROR = "this host's agent-sessions does not support chat; reconnect to update it";
@@ -68,6 +111,7 @@ export interface MockChatHost {
  * - "fail": the turn fails; "login": the turn needs a login;
  * - "crash": the agent dies;
  * - "hang": the turn runs until cancelled.
+ * The reply says how many files the prompt carried.
  */
 export class MockChats {
   /** The pause between two streamed steps; 0 in tests. */
@@ -119,6 +163,7 @@ export class MockChats {
           { id: 'mode', name: 'Mode', category: 'mode', type: 'select', currentValue: 'ask', options: [{ value: 'ask', name: 'Ask' }, { value: 'auto', name: 'Auto' }] },
           { id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'mock-large', options: [{ value: 'mock-large', name: 'Mock Large' }, { value: 'mock-small', name: 'Mock Small' }] },
         ],
+        promptCapabilities: { image: true, embeddedContext: true },
         working: false,
       },
       seq: 0,
@@ -134,15 +179,17 @@ export class MockChats {
     return structuredClone(chat.state);
   }
 
-  async prompt(chatId: string, text: string): Promise<void> {
+  async prompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<void> {
     this.requireAvailable();
     const chat = this.get(chatId);
+    if (!text && attachments.length === 0) throw new Error('the message is empty');
+    if (attachments.length > MOCK_MAX_ATTACHMENTS) throw new Error(`a message can carry at most ${MOCK_MAX_ATTACHMENTS} attachments`);
     if (chat.turn) throw new Error('chat: a turn is already running');
     const turn = { cancelled: false };
     chat.turn = turn;
     chat.state.working = true;
     this.update(chat, { kind: 'turn_start' });
-    void this.run(chat, turn, text);
+    void this.run(chat, turn, text, attachments);
   }
 
   async cancel(chatId: string): Promise<void> {
@@ -252,11 +299,17 @@ export class MockChats {
     });
   }
 
-  private async run(chat: MockChat, turn: { cancelled: boolean }, text: string): Promise<void> {
+  private async run(chat: MockChat, turn: { cancelled: boolean }, text: string, attachments: ChatAttachment[]): Promise<void> {
     const n = ++chat.nextMessage;
     const msg = `msg_mock_${chat.state.chatId}_${n}`;
     const tool = `toolu_mock_${chat.state.chatId}_${n}`;
-    const saved: Message[] = [{ id: `user_mock_${chat.state.chatId}_${n}`, role: 'user', time: new Date().toISOString(), parts: [{ kind: 'text', text }] }];
+    // The agent saves the files with the prompt; the mock keeps an image's
+    // bytes in the part, where an agent's log would have them.
+    const prompt: Message['parts'] = [
+      ...(text ? [{ kind: 'text' as const, text }] : []),
+      ...attachments.map((a): Message['parts'][number] => ({ kind: 'file', file: { name: a.name, mime: a.mimeType, size: a.size, ...(a.data && { data: a.data }) } })),
+    ];
+    const saved: Message[] = [{ id: `user_mock_${chat.state.chatId}_${n}`, role: 'user', time: new Date().toISOString(), parts: prompt }];
     // The turn runs on the model the session has now, as an agent's does.
     const model = chat.state.configOptions.find((o) => o.id === 'model')?.currentValue;
     const reply: Message = { id: msg, role: 'assistant', time: new Date().toISOString(), model: typeof model === 'string' ? model : 'mock-large', parts: [] };
@@ -337,7 +390,9 @@ export class MockChats {
         while (!turn.cancelled) await new Promise((resolve) => setTimeout(resolve, Math.max(this.stepMs, 10)));
       }
       this.session(chat, plan(2));
-      const answer = `Done. You said "${text}", and the mock project has a README. This reply streams a word at a time, as an agent's would.`;
+      const files = `${attachments.length} file${attachments.length === 1 ? '' : 's'} (${attachments.map((a) => a.name).join(', ')})`;
+      const said = attachments.length === 0 ? `You said "${text}"` : text ? `You said "${text}", with ${files} attached` : `You sent ${files}`;
+      const answer = `Done. ${said}, and the mock project has a README. This reply streams a word at a time, as an agent's would.`;
       await this.stream(chat, turn, 'agent_message_chunk', msg, answer);
       if (turn.cancelled) {
         stopReason = 'cancelled';

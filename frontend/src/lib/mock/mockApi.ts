@@ -84,8 +84,10 @@ import type {
   ChatConfigOption,
   ChatStartRequest,
   ChatState,
+  ChatAttachment,
+  ChatAttachResult,
 } from '../types.js';
-import { MOCK_MANAGED_TOOLS, MockChats, mockManagedAdapter } from './mockChat';
+import { MOCK_MANAGED_TOOLS, MockChats, mockAttachFiles, mockAttachImage, mockManagedAdapter } from './mockChat';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
 import { capPage } from '../pageCap';
@@ -943,8 +945,21 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     return this.chat.start(req);
   }
 
-  async chatPrompt(chatId: string, text: string): Promise<void> {
-    return this.chat.prompt(chatId, text);
+  async chatPrompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<void> {
+    return this.chat.prompt(chatId, text, attachments);
+  }
+
+  /** The mock "picks" two made-up files: a small image and a text file. */
+  async chatPickAttachments(_chatId: string): Promise<ChatAttachResult> {
+    return mockAttachFiles(['/home/mock/Pictures/screenshot.png', '/home/mock/notes/plan.md']);
+  }
+
+  async chatAttachFiles(paths: string[]): Promise<ChatAttachResult> {
+    return mockAttachFiles(paths);
+  }
+
+  async chatAttachImage(name: string, data: string): Promise<ChatAttachment> {
+    return mockAttachImage(name, data);
   }
 
   async chatCancel(chatId: string): Promise<void> {

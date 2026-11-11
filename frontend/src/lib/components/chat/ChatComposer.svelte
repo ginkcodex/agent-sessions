@@ -1,9 +1,16 @@
 <script lang="ts">
   // Where the user writes to a chat's agent: send, cancel the running turn,
-  // end the chat, and pick the session's options. One card: the text box,
-  // then a toolbar with End chat on the left and, on the right, the context
-  // in use, the pickers and a round send (or, while a turn runs, stop) button.
+  // end the chat, and pick the session's options. One card: the attached
+  // files, the text box, then a toolbar with Attach and End chat on the left
+  // and, on the right, the context in use, the pickers and a round send (or,
+  // while a turn runs, stop) button. Files dropped on the card and images
+  // pasted into it are attached too.
+  import { onMount } from 'svelte';
   import type { Chat } from '../../stores/chats.svelte';
+  import type { ChatAttachment, ChatAttachResult } from '../../types';
+  import { api } from '../../api';
+  import { addAttachments, canSendPrompt, skippedToast } from '../../chat';
+  import AttachmentChips from './AttachmentChips.svelte';
   import { chats } from '../../stores/chats.svelte';
   import { toast } from '../../stores/toast.svelte';
   import { isStaleReply } from '../../link';
@@ -28,12 +35,19 @@
   let { chat, focus, onRestart, onOption }: Props = $props();
 
   let text = $state('');
+  let attachments = $state<ChatAttachment[]>([]);
   let sending = $state(false);
+  let attaching = $state(false);
   let input: HTMLTextAreaElement | undefined = $state();
+  let form: HTMLFormElement | undefined = $state();
 
   let agentName = $derived(ALL_AGENTS.find((a) => a.id === chat.agent)?.label ?? chat.agent);
   let closed = $derived(chat.phase === 'exited');
-  let canSend = $derived(chat.phase === 'idle' && !sending && text.trim() !== '');
+  // A chat whose agent (or host) does not say what a prompt may carry takes
+  // text only.
+  let caps = $derived(chat.promptCapabilities);
+  let canAttach = $derived(!!caps && !closed && chat.phase !== 'starting');
+  let canSend = $derived(canSendPrompt(chat.phase, sending, text, attachments.length));
   let placeholder = $derived(
     chat.phase === 'starting'
       ? `Starting ${agentName}…`
@@ -65,18 +79,82 @@
 
   async function send(): Promise<void> {
     if (!canSend) return;
-    const prompt = text;
+    const prompt = text.trim() === '' ? '' : text;
+    const files = $state.snapshot(attachments) as ChatAttachment[];
     text = '';
+    attachments = [];
     sending = true;
     try {
-      await chats.prompt(chat.chatId, prompt);
+      await chats.prompt(chat.chatId, prompt, files);
     } catch (err) {
-      // Nothing was sent: give the text back unless a new one was started.
+      // Nothing was sent: give the text and the files back unless new ones
+      // were started.
       if (text === '') text = prompt;
+      if (attachments.length === 0) attachments = files;
       if (!isStaleReply(err)) toast.show({ title: 'Could not send the message', body: errorText(err, 'The agent did not take it.'), tone: 'error' });
     } finally {
       sending = false;
     }
+  }
+
+  /** Adds prepared files, and says which could not be attached and why. */
+  function add(result: ChatAttachResult): void {
+    const next = addAttachments(attachments, result, { name: agentName, images: !!caps?.image });
+    attachments = next.attachments;
+    const note = skippedToast(next.skipped);
+    if (note) toast.show({ ...note, tone: 'error' });
+  }
+
+  async function attach(prepare: () => Promise<ChatAttachResult>): Promise<void> {
+    attaching = true;
+    try {
+      add(await prepare());
+    } catch (err) {
+      if (!isStaleReply(err)) toast.show({ title: 'Could not attach the files', body: errorText(err, 'Please try again.'), tone: 'error' });
+    } finally {
+      attaching = false;
+    }
+  }
+
+  function pick(): void {
+    if (canAttach && !attaching) void attach(() => api.chatPickAttachments(chat.chatId)).then(() => input?.focus());
+  }
+
+  function remove(index: number): void {
+    attachments = attachments.filter((_, i) => i !== index);
+    input?.focus();
+  }
+
+  // Files dropped on this composer; the terminal panel leaves them alone.
+  onMount(() =>
+    api.onFileDrop((x, y, paths) => {
+      if (!form || !canAttach) return;
+      if (document.elementFromPoint(x, y)?.closest('[data-file-drop-target="chat"]') !== form) return;
+      void attach(() => api.chatAttachFiles(paths));
+    }),
+  );
+
+  // A pasted image is attached; pasted text, even with a picture of it
+  // beside (as office apps copy), is pasted as text.
+  function onPaste(e: ClipboardEvent): void {
+    const data = e.clipboardData;
+    if (!canAttach || !data || data.types.includes('text/plain')) return;
+    const images = [...data.files].filter((f) => f.type.startsWith('image/'));
+    if (images.length === 0) return;
+    e.preventDefault();
+    void attach(async () => {
+      const out: ChatAttachResult = { attachments: [], skipped: [] };
+      for (const f of images) {
+        const name = f.name || 'Pasted image';
+        try {
+          out.attachments.push(await api.chatAttachImage(name, await fileBase64(f)));
+        } catch (err) {
+          const reason = errorText(err, 'could not be read');
+          out.skipped.push({ name, reason: reason.startsWith(`${name}: `) ? reason.slice(name.length + 2) : reason });
+        }
+      }
+      return out;
+    });
   }
 
   function onKeydown(e: KeyboardEvent): void {
@@ -92,11 +170,21 @@
       if (!isStaleReply(err)) toast.show({ title: `Could not ${what}`, body: errorText(err, 'Please try again.'), tone: 'error' });
     }
   }
+
+  /** A file's bytes in base64. */
+  async function fileBase64(f: Blob): Promise<string> {
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
 </script>
 
 <form
+  bind:this={form}
   class="chat-composer"
   data-chat-composer
+  data-file-drop-target={canAttach ? 'chat' : undefined}
   aria-label="Chat with {agentName}"
   onsubmit={(e) => {
     e.preventDefault();
@@ -104,6 +192,9 @@
   }}
 >
   <div class="card" class:disabled={chat.phase === 'starting' || closed}>
+    {#if attachments.length > 0}
+      <AttachmentChips {attachments} onRemove={remove} />
+    {/if}
     <textarea
       bind:this={input}
       bind:value={text}
@@ -117,6 +208,7 @@
       autocapitalize="off"
       disabled={chat.phase === 'starting' || closed}
       onkeydown={onKeydown}
+      onpaste={onPaste}
     ></textarea>
     <span id={hintId} class="sr-only">Enter sends, Shift+Enter starts a new line.</span>
     <div class="toolbar">
@@ -127,6 +219,11 @@
           <button type="button" class="text primary" title="Start {agentName} again for this session" onclick={onRestart}>Restart</button>
         {/if}
       {:else}
+        {#if caps}
+          <button type="button" class="icon" data-chat-attach title="Attach images or files" disabled={!canAttach || attaching} onclick={pick}
+            ><Icon name="plus" size={17} /><span class="sr-only">Attach images or files</span></button
+          >
+        {/if}
         <button
           type="button"
           class="icon"
@@ -184,7 +281,8 @@
     transition: border-color var(--dur-fast) var(--ease-out);
   }
 
-  .card:focus-within:not(.disabled) {
+  .card:focus-within:not(.disabled),
+  .chat-composer:global(.file-drop-target-active) .card {
     border-color: color-mix(in srgb, var(--accent-color) 55%, var(--border-strong));
   }
 

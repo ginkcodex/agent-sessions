@@ -249,6 +249,8 @@ export interface FileRef {
   mime?: string;
   size?: number;
   ref?: string;
+  /** An image's bytes in base64 that the window holds (a chat prompt's attachment): shown without fetching. */
+  data?: string;
 }
 
 export interface ToolCall {

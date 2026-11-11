@@ -1,6 +1,7 @@
 import { api, subscribeChatExit, subscribeChatUpdate } from '../api';
 import type {
   ChatAgent,
+  ChatAttachment,
   ChatAuthMethod,
   ChatConfigOption,
   ChatExitEvent,
@@ -22,6 +23,7 @@ import {
   sequence,
   type ChatSequence,
   type ChatTail,
+  type TailPrompt,
 } from '../chatTail';
 
 /**
@@ -43,6 +45,8 @@ export interface Chat {
   session?: SessionRef;
   agentInfo?: ChatState['agentInfo'];
   configOptions: ChatConfigOption[];
+  /** What a prompt may carry besides text; unknown while starting and from an older host. */
+  promptCapabilities?: ChatState['promptCapabilities'];
   phase: ChatPhase;
   tail: ChatTail;
   /** Permission requests waiting for an answer, oldest first. */
@@ -62,7 +66,7 @@ export interface Chat {
 interface Internal {
   seq: ChatSequence<ChatEvent>;
   /** The prompt sent and waiting for its turn_start. */
-  prompt?: { text: string; sentAt: number };
+  prompt?: TailPrompt;
 }
 
 /** Events kept for chats whose start has not answered yet. */
@@ -216,18 +220,27 @@ export class ChatsStore {
     return this.byKey(key)!;
   }
 
-  /** Sends a prompt. The chat shows as working until the turn ends. */
-  async prompt(chatId: string, text: string): Promise<void> {
+  /**
+   * Sends a prompt, its text and attached files. The chat shows as working
+   * until the turn ends; the live tail shows the files, an image from its
+   * bytes, until the saved message does.
+   */
+  async prompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<void> {
     const chat = this.byChatId(chatId);
     const state = this.internal.get(chat?.key ?? '');
     if (!chat || !state) throw new Error('The chat is not open.');
-    state.prompt = { text, sentAt: Date.now() };
+    const prompt: TailPrompt = {
+      text,
+      sentAt: Date.now(),
+      ...(attachments.length > 0 && { attachments: attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, size: a.size, ...(a.kind === 'image' && a.data && { data: a.data }) })) }),
+    };
+    state.prompt = prompt;
     this.update(chat.key, (c) => ({ ...c, phase: c.phase === 'idle' ? 'working' : c.phase, error: undefined, authMethods: undefined }));
     try {
-      await api.chatPrompt(chatId, text);
+      await api.chatPrompt(chatId, text, attachments);
     } catch (e) {
       // The turn did not start: no turn_start came for this prompt.
-      if (state.prompt?.text === text) state.prompt = undefined;
+      if (state.prompt === prompt) state.prompt = undefined;
       this.update(chat.key, (c) => (c.phase === 'working' && !c.tail.turnOpen ? { ...c, phase: 'idle' } : c));
       throw e;
     }
@@ -297,6 +310,7 @@ export class ChatsStore {
       session: st.session,
       agentInfo: st.agentInfo,
       configOptions: st.configOptions ?? [],
+      promptCapabilities: st.promptCapabilities,
     };
   }
 

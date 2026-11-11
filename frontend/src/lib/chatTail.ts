@@ -15,6 +15,24 @@ export interface TailText {
   text: string;
   /** For a prompt sent from this window: when it was sent, in ms. */
   sentAt?: number;
+  /** For a prompt sent from this window: the files it carried. */
+  attachments?: TailAttachment[];
+}
+
+/** A file sent with a prompt; an image keeps its bytes to show. */
+export interface TailAttachment {
+  name: string;
+  mimeType: string;
+  size: number;
+  /** An image's bytes in base64. */
+  data?: string;
+}
+
+/** A prompt sent from this window. */
+export interface TailPrompt {
+  text: string;
+  sentAt: number;
+  attachments?: TailAttachment[];
 }
 
 /** The agent's thinking. */
@@ -90,12 +108,13 @@ export function emptyTail(): ChatTail {
   return { turn: 0, turnOpen: false, items: [], nextKey: 1 };
 }
 
-/** Starts a turn; prompt is the text sent from this window, if any. */
-export function beginTurn(tail: ChatTail, prompt?: { text: string; sentAt: number }): ChatTail {
+/** Starts a turn; prompt is what was sent from this window, if anything. */
+export function beginTurn(tail: ChatTail, prompt?: TailPrompt): ChatTail {
   const turn = tail.turn + 1;
   const next: ChatTail = { ...tail, turn, turnOpen: true };
-  if (!prompt?.text) return next;
-  const item: TailText = { type: 'text', key: `i${tail.nextKey}`, turn, role: 'user', text: prompt.text, sentAt: prompt.sentAt };
+  const attachments = prompt?.attachments?.length ? prompt.attachments : undefined;
+  if (!prompt || (!prompt.text && !attachments)) return next;
+  const item: TailText = { type: 'text', key: `i${tail.nextKey}`, turn, role: 'user', text: prompt.text, sentAt: prompt.sentAt, ...(attachments && { attachments }) };
   return { ...next, items: [...tail.items, item], nextKey: tail.nextKey + 1 };
 }
 
@@ -294,6 +313,8 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
           // Claude saves prompts without an ID: fall back to the text.
           if (it.messageId && byId.has(savedMessageId(it.messageId))) return true;
           const text = it.text.trim();
+          // A prompt of only files waits for its turn to be saved.
+          if (!text) return false;
           return prompts.some((p) => p.text === text && (Number.isNaN(p.time) || it.sentAt === undefined || p.time >= it.sentAt - PROMPT_CLOCK_SLACK_MS));
         }
         if (!it.messageId || !complete(i)) return false;

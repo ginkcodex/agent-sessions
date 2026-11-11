@@ -173,8 +173,14 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    * can arrive before this returns.
    */
   chatStart(req: ChatStartRequest): Promise<ChatState>;
-  /** Sends a prompt; returns once the turn has started. */
-  chatPrompt(chatId: string, text: string): Promise<void>;
+  /** Sends a prompt, its text and attached files; returns once the turn has started. */
+  chatPrompt(chatId: string, text: string, attachments?: ChatAttachment[]): Promise<void>;
+  /** Opens the file picker for several files and prepares the picked ones to send; cancelling attaches nothing. */
+  chatPickAttachments(chatId: string): Promise<ChatAttachResult>;
+  /** Prepares files dropped on a chat to send. */
+  chatAttachFiles(paths: string[]): Promise<ChatAttachResult>;
+  /** Prepares a pasted image, its bytes in base64, to send. */
+  chatAttachImage(name: string, data: string): Promise<ChatAttachment>;
   /** Cancels the running turn; pending permission requests end cancelled. */
   chatCancel(chatId: string): Promise<void>;
   /** Answers a permission request with one of its options, or cancelled when optionId is empty. */
@@ -519,11 +525,18 @@ type ChatBindingName =
   | 'ChatAgents'
   | 'ChatStart'
   | 'ChatPrompt'
+  | 'ChatPickAttachments'
+  | 'ChatAttachFiles'
+  | 'ChatAttachImage'
   | 'ChatCancel'
   | 'ChatRespond'
   | 'ChatSetOption'
   | 'ChatClose'
   | 'ChatList';
+
+function attachResult(r: ChatAttachResult | null | undefined): ChatAttachResult {
+  return { attachments: r?.attachments ?? [], skipped: r?.skipped ?? [] };
+}
 
 function normalizeError(err: unknown): Error {
   if (err instanceof Error) return err;
@@ -955,8 +968,23 @@ class WailsBackendAPI implements BackendAPI {
     catch (e) { throw normalizeError(e); }
   }
 
-  async chatPrompt(chatId: string, text: string): Promise<void> {
-    try { await this.chatBinding('ChatPrompt')(chatId, text, []); }
+  async chatPrompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<void> {
+    try { await this.chatBinding('ChatPrompt')(chatId, text, attachments); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatPickAttachments(chatId: string): Promise<ChatAttachResult> {
+    try { return attachResult(await this.chatBinding('ChatPickAttachments')(chatId)); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatAttachFiles(paths: string[]): Promise<ChatAttachResult> {
+    try { return attachResult(await this.chatBinding('ChatAttachFiles')(paths)); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatAttachImage(name: string, data: string): Promise<ChatAttachment> {
+    try { return await this.chatBinding('ChatAttachImage')(name, data); }
     catch (e) { throw normalizeError(e); }
   }
 
