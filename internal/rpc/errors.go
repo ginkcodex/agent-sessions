@@ -3,6 +3,7 @@ package rpc
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/engine"
@@ -38,6 +39,14 @@ const (
 	ErrCodePayloadTooLarge  = "payload_too_large"
 	ErrCodeTimeout          = "timeout"
 	ErrCodeSaveIncomplete   = "save_incomplete"
+	// Chat errors (Capabilities.ACPChat).
+	ErrCodeChatNotFound       = "chat_not_found"
+	ErrCodeChatBusy           = "chat_busy"
+	ErrCodeChatClosed         = "chat_closed"
+	ErrCodeChatCannotContinue = "chat_cannot_continue"
+	ErrCodeChatUnsupported    = "chat_unsupported"
+	ErrCodePermissionNotFound = "permission_not_found"
+	ErrCodeSessionOwned       = "session_owned"
 	// ErrCodeGitSync carries files.GitSyncError's own code in ErrorData.Details.
 	ErrCodeGitSync = "git_sync"
 )
@@ -138,6 +147,20 @@ func ToRPCError(err error) *ResponseError {
 		strCode = ErrCodeTimeout
 	case errors.Is(err, files.ErrSaveIncomplete):
 		strCode = ErrCodeSaveIncomplete
+	case errors.Is(err, engine.ErrChatNotFound):
+		strCode = ErrCodeChatNotFound
+	case errors.Is(err, engine.ErrChatBusy):
+		strCode = ErrCodeChatBusy
+	case errors.Is(err, engine.ErrChatClosed):
+		strCode = ErrCodeChatClosed
+	case errors.Is(err, engine.ErrChatCannotContinue):
+		strCode = ErrCodeChatCannotContinue
+	case errors.Is(err, engine.ErrChatUnsupported):
+		strCode = ErrCodeChatUnsupported
+	case errors.Is(err, engine.ErrPermissionNotFound):
+		strCode = ErrCodePermissionNotFound
+	case errors.Is(err, engine.ErrSessionOwned):
+		strCode = ErrCodeSessionOwned
 	default:
 		code = CodeInternalError
 	}
@@ -202,9 +225,26 @@ func FromRPCError(respErr *ResponseError) error {
 		sentinel = ErrTimeout
 	case ErrCodeSaveIncomplete:
 		sentinel = files.ErrSaveIncomplete
+	case ErrCodeChatNotFound:
+		sentinel = engine.ErrChatNotFound
+	case ErrCodeChatBusy:
+		sentinel = engine.ErrChatBusy
+	case ErrCodeChatClosed:
+		sentinel = engine.ErrChatClosed
+	case ErrCodeChatCannotContinue:
+		sentinel = engine.ErrChatCannotContinue
+	case ErrCodeChatUnsupported:
+		sentinel = engine.ErrChatUnsupported
+	case ErrCodePermissionNotFound:
+		sentinel = engine.ErrPermissionNotFound
+	case ErrCodeSessionOwned:
+		sentinel = engine.ErrSessionOwned
 	}
 
 	if sentinel != nil {
+		if rest, ok := strings.CutPrefix(respErr.Message, sentinel.Error()); ok {
+			return fmt.Errorf("%w%s", sentinel, rest)
+		}
 		return fmt.Errorf("%w: %s", sentinel, respErr.Message)
 	}
 	return respErr

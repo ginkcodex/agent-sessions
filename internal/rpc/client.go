@@ -171,6 +171,16 @@ func (c *Client) handleNotification(method string, params json.RawMessage) {
 				if json.Unmarshal(params, &status) == nil {
 					emitter.Emit(method, status)
 				}
+			case engine.ChatUpdateEvent:
+				var ev engine.ChatUpdate
+				if json.Unmarshal(params, &ev) == nil {
+					emitter.Emit(method, ev)
+				}
+			case engine.ChatExitEvent:
+				var ev engine.ChatExit
+				if json.Unmarshal(params, &ev) == nil {
+					emitter.Emit(method, ev)
+				}
 			case NotificationIndexProgress:
 				var p index.FTSProgress
 				if err := json.Unmarshal(params, &p); err == nil {

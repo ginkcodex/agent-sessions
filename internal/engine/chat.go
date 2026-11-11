@@ -107,6 +107,9 @@ type ChatStartRequest struct {
 	Agent  model.AgentID     `json:"agent"`
 	Dir    string            `json:"dir"`
 	Resume *model.SessionRef `json:"resume,omitempty"`
+	// Emitter, when set, takes this chat's events instead of the manager's
+	// emitter: a server sends them to the connection that started the chat.
+	Emitter Emitter `json:"-"`
 }
 
 // ChatState describes an open chat.
@@ -158,6 +161,12 @@ type ChatExit struct {
 	Reason     string `json:"reason"`
 	Error      string `json:"error,omitempty"`
 	StderrTail string `json:"stderrTail,omitempty"`
+}
+
+// ChatBackend is a backend that runs chats.
+type ChatBackend interface {
+	// Chats returns the chat manager; nil when chats cannot run.
+	Chats() *ChatManager
 }
 
 // ChatManagerOptions configures a ChatManager.
@@ -313,7 +322,7 @@ func (m *ChatManager) Start(ctx context.Context, req ChatStartRequest) (ChatStat
 		return ChatState{}, ErrChatUnsupported
 	}
 	ch := &chat{
-		m: m, id: newChatID(), agent: req.Agent, dir: req.Dir,
+		m: m, id: newChatID(), agent: req.Agent, dir: req.Dir, emitter: req.Emitter,
 		perms: map[string]*pendingPermission{}, done: make(chan struct{}),
 	}
 	ch.ctx, ch.cancel = context.WithCancel(context.Background())
@@ -579,6 +588,8 @@ type chat struct {
 	agent model.AgentID
 	dir   string
 	done  chan struct{} // closed once the chat is gone
+	// emitter takes the chat's events; nil means the manager's.
+	emitter Emitter
 
 	// ctx ends when the agent has exited; permission waits use it.
 	ctx    context.Context
@@ -609,6 +620,14 @@ type pendingPermission struct {
 	n      int // the order asked
 	req    acp.RequestPermissionRequest
 	answer chan acp.RequestPermissionResponse // buffered; one send
+}
+
+func (ch *chat) send(name string, payload any) {
+	if ch.emitter != nil {
+		ch.emitter.Emit(name, payload)
+		return
+	}
+	ch.m.emit(name, payload)
 }
 
 func newChatID() string {
@@ -675,7 +694,7 @@ func (ch *chat) emit(u ChatUpdate) {
 func (ch *chat) emitLocked(u ChatUpdate) {
 	ch.seq++
 	u.ChatID, u.Seq = ch.id, ch.seq
-	ch.m.emit(ChatUpdateEvent, u)
+	ch.send(ChatUpdateEvent, u)
 }
 
 func (ch *chat) setReplaying(v bool) {
@@ -805,7 +824,7 @@ func (ch *chat) watch(client *acp.Client) {
 	ch.emitMu.Lock()
 	ch.seq++
 	exit.ChatID, exit.Seq = ch.id, ch.seq
-	ch.m.emit(ChatExitEvent, exit)
+	ch.send(ChatExitEvent, exit)
 	ch.emitMu.Unlock()
 	close(ch.done)
 }

@@ -183,12 +183,21 @@ The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
   no longer show the local chats' events.
 - **Remote:**
   - `Capabilities.ACPChat` and the `chat*` methods on `agent-sessions-cli
-    serve`.
+    serve` (`internal/rpc/chat.go`): `chatAgents`, `chatStart`,
+    `chatPrompt`, `chatCancel`, `chatRespond`, `chatSetOption`, `chatClose`
+    and `chatList`.
   - Updates come back as `Notify("chat:update" | "chat:exit")` and are
-    forwarded through the generation-gated emitter.
-  - Chats belong to the connection, guarded like `code_diagnostics_live.go`.
-    A disconnect closes them and answers pending permissions `cancelled`.
-  - Servers without the capability hide the chat actions.
+    forwarded through the generation-gated emitter. Each chat started over
+    RPC has its own emitter, so its events go only to that connection.
+  - Chats belong to the connection, guarded like `code_diagnostics_live.go`:
+    another connection gets `chat_not_found`. A disconnect closes them and
+    answers pending permissions `cancelled`.
+  - Each connection runs its own `serve` process, so the owner registry is
+    per connection on a host: two windows connected to the same host do not
+    see each other's chats and could both open one session, as two
+    terminals could. This is the "two writers" risk below.
+  - Servers without the capability hide the chat actions; a host that
+    answers method-not-found counts as one without it.
 
 ### Frontend
 
