@@ -137,7 +137,9 @@ installs language servers on its own does not apply to them.
    install a pinned copy for its own use after the user approves.
 3. **The user's own adapter wins.** A copy on PATH or in config.toml runs
    before the managed one, so installing it globally or setting a path keeps
-   working as before.
+   working as before. *Reversed by [chat-adapter-setup](chat-adapter-setup.md):
+   where the app can install, its own copy runs and PATH is not searched;
+   config.toml still wins.*
 4. **Pinned versions.** The app updates an adapter only when a new app release
    bumps the catalog entry. A newer pinned version installs beside the old
    one, after a new consent.
