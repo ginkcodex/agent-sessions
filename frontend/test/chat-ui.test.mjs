@@ -175,6 +175,7 @@ async function renderComposer(c, props = {}) {
 async function renderLiveTail(c, props = {}) {
   liveTailModule ??= await loadServerComponent(LIVE_TAIL_URL, [
     ["'../../chat'", lib('../../chat.ts', LIVE_TAIL_URL)],
+    ["'../../chatQuestions'", lib('../../chatQuestions.ts', LIVE_TAIL_URL)],
     ["'../../portable'", lib('../../portable.ts', LIVE_TAIL_URL)],
     [
       "import MessageBubble from '../transcript/MessageBubble.svelte';",
@@ -308,6 +309,13 @@ test('the live tail shows question cards, waits on them, and shows how a questio
   const waiting = await renderLiveTail(chat({ phase: 'working', questions: [q] }));
   assert.match(waiting, /data-stub-question="q1" data-agent="Codex"/);
   assert.match(waiting, /Codex waits for your answer\./);
+
+  // A late card, or an async question Codex keeps working through, does not hold the turn.
+  for (const other of [{ ...q, late: true }, { ...q, meta: { codex: { delivery: 'async' } } }]) {
+    const html = await renderLiveTail(chat({ phase: 'working', questions: [other] }));
+    assert.match(html, /data-stub-question="q1"/);
+    assert.match(html, /Codex is working…/);
+  }
 
   const tail = addAnswer(beginTurn(emptyTail(), { text: 'go', sentAt: SENT }), { questionId: 'q1', outcome: 'accept', summary: 'Answered: <Extend> · Yes' });
   const done = await renderLiveTail(chat({ phase: 'working', tail }));

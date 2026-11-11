@@ -60,8 +60,19 @@ tag). The ACP schema is `@agentclientprotocol/sdk` 2.6.0, protocol v1.
     or note", _meta: {codex: {questionId, role: "user_note", isSecret}}}`;
   - `_meta.codex.isSecret` on secret questions.
 - `_meta.codex.autoResolutionMs` on the request: Codex withdraws the request
-  after that long (the adapter aborts it).
-- Async questions in an agent message use the same schema, not required.
+  after that long (the adapter aborts it with `$/cancel_request`). Only
+  `null` waits for good; a missing value is read as 0 ms
+  (`Math.max(0, autoResolutionMs ?? 0)`), so the question is withdrawn as
+  soon as it is shown.
+- Async questions (Codex's `request_user_input_async`, an agent message with
+  `delivery: "async"` and questions): the same schema, nothing required,
+  message "Codex keeps working while you answer. An answer sent after it
+  finishes is not delivered.", `_meta.codex.delivery: "async"`, no
+  `toolCallId`. Codex goes on working and streaming; the adapter steers an
+  answer into the running turn, and withdraws every open async question when
+  the turn completes. The Codex 0.167 prompt prefers this tool for questions
+  ("The tool returns immediately without ending the turn or waiting for a
+  reply; any reply arrives asynchronously as a new user message").
 - Answer: the value, and `note:<text>` for the note; "Other" is dropped when
   the answer is read.
 

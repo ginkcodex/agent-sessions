@@ -19,6 +19,7 @@ Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, co
 
 const svelte = (path) => JSON.stringify(new URL(`../node_modules/svelte/src/${path}`, import.meta.url).href);
 const { mount, unmount, flushSync } = await import(new URL('../node_modules/svelte/src/index-client.js', import.meta.url).href);
+const { proxy } = await import(new URL('../node_modules/svelte/src/internal/client/index.js', import.meta.url).href);
 
 async function loadCard() {
   const url = new URL('../src/lib/components/chat/QuestionCard.svelte', import.meta.url);
@@ -39,7 +40,14 @@ async function loadCard() {
 
 const answers = [];
 let answer = async (...args) => answers.push(args);
-globalThis.__card = { chats: { answer: (...args) => answer(...args) } };
+const late = [];
+globalThis.__card = {
+  chats: {
+    answer: (...args) => answer(...args),
+    sendLate: async (...args) => late.push(['send', ...args]),
+    dismissLate: (...args) => late.push(['dismiss', ...args]),
+  },
+};
 const Card = await loadCard();
 
 const opt = (title, description) => ({ const: title, title, ...(description && { description }) });
@@ -92,10 +100,12 @@ const OPENCODE = {
   required: ['approach', 'overwrite'],
 };
 
-function open(question, agentName = 'Claude Code') {
+function open(question, agentName = 'Claude Code', phase = 'working') {
   const target = document.createElement('div');
   document.body.appendChild(target);
-  const component = mount(Card, { target, props: { chat: { chatId: 'c1', key: 'k1' }, question, agentName } });
+  // Reactive props, so a test can change them under the mounted card.
+  const props = proxy({ chat: { chatId: 'c1', key: 'k1', phase }, question, agentName });
+  const component = mount(Card, { target, props });
   flushSync();
   const card = () => target.querySelector('[data-question-card]');
   const buttons = () => [...target.querySelectorAll('button')];
@@ -123,7 +133,11 @@ function open(question, agentName = 'Claude Code') {
     unmount(component);
     target.remove();
   };
-  return { target, card, button, click, tab, shown, checked, key, type, close };
+  const set = (fields) => {
+    Object.assign(props, fields);
+    flushSync();
+  };
+  return { target, card, button, click, tab, shown, checked, key, type, close, set };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -324,6 +338,62 @@ test('Skip declines, and a refused answer keeps the card with why', async () => 
     flushSync();
     assert.match(c.target.querySelector('[role="alert"]').textContent, /no longer pending/);
     assert.ok(!c.button('Skip').disabled, 'the card can be answered again');
+  } finally {
+    c.close();
+    answer = async (...args) => answers.push(args);
+  }
+});
+
+test('a question the agent went on without stays, late, with its draft; its answers go as a message once the turn ends', async () => {
+  answers.length = 0;
+  late.length = 0;
+  const c = open(CODEX, 'Codex');
+  try {
+    c.click('1. Extend');
+    assert.equal(c.shown(), 'token');
+    c.type(c.target.querySelector('input[data-field="token"]'), 'abc');
+
+    // The agent withdraws it; the turn is still streaming.
+    c.set({ question: { ...CODEX, late: true } });
+    assert.ok(c.card().dataset.late !== undefined);
+    assert.match(c.target.textContent, /Codex asked/);
+    assert.match(c.target.textContent, /Codex went on without your answer\. You can still send it as a message\. Hidden answers are not put in a message\./);
+    assert.doesNotMatch(c.target.textContent, /goes on without an answer after/, 'no countdown once it went on');
+    assert.equal(c.target.querySelector('input[data-field="token"]').value, 'abc', 'the draft is kept');
+    c.click('Review');
+    assert.match(c.target.textContent, /Extend/);
+    assert.doesNotMatch(c.target.textContent, /needs an answer/, 'required no longer applies');
+    const send = c.button('Send as message');
+    assert.ok(send.disabled, 'nothing is sent while the agent works');
+    assert.match(c.target.textContent, /Codex is still working\. Send your answers once it finishes\./);
+
+    c.set({ chat: { chatId: 'c1', key: 'k1', phase: 'idle' } });
+    assert.ok(!c.button('Send as message').disabled);
+    c.click('Send as message');
+    await settle();
+    assert.deepEqual(late, [['send', 'c1', 'q-codex', 'My answer to your question:\n- Which approach should I take? — Extend']]);
+    assert.deepEqual(answers, [], 'the agent is not answered through the withdrawn request');
+  } finally {
+    c.close();
+  }
+});
+
+test('a late card is dismissed, and a reply refused as it went late gives way to the note', async () => {
+  late.length = 0;
+  answer = async () => {
+    throw new Error('the question is no longer pending: q-one');
+  };
+  const c = open(ONE, 'Claude Code', 'idle');
+  try {
+    c.click('2. No, keep it');
+    c.click('Submit');
+    await settle();
+    flushSync();
+    assert.match(c.target.querySelector('[role="alert"]').textContent, /no longer pending/);
+    c.set({ question: { ...ONE, late: true } });
+    assert.equal(c.target.querySelector('[role="alert"]'), null, 'the late note replaces the error');
+    c.click('Dismiss');
+    assert.deepEqual(late, [['dismiss', 'c1', 'q-one']]);
   } finally {
     c.close();
     answer = async (...args) => answers.push(args);

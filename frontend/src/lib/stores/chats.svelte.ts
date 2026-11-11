@@ -38,6 +38,12 @@ export type ChatPhase = 'starting' | 'idle' | 'working' | 'exited';
 
 type ChatEvent = (ChatUpdateEvent & { exit?: undefined }) | { seq: number; chatId: string; exit: ChatExitEvent };
 
+/** A question on a chat's card. */
+export type ChatPendingQuestion = ChatQuestion & {
+  /** The agent went on without the answer: it can only go as a message. */
+  late?: boolean;
+};
+
 export interface Chat {
   /** This store's key for the chat, set before the backend names it. */
   key: string;
@@ -55,8 +61,11 @@ export interface Chat {
   tail: ChatTail;
   /** Permission requests waiting for an answer, oldest first. */
   permissions: ChatPermission[];
-  /** The agent's questions waiting for an answer, oldest first. */
-  questions: ChatQuestion[];
+  /**
+   * The agent's questions waiting for an answer, oldest first, then the late
+   * ones it went on without, whose answers can still go as a message.
+   */
+  questions: ChatPendingQuestion[];
   /** How the last turn ended: end_turn, cancelled, max_tokens… */
   stopReason?: string;
   /** Why the start or the last turn failed. */
@@ -280,6 +289,21 @@ export class ChatsStore {
     if (chat) this.update(chat.key, (c) => ({ ...c, questions: c.questions.filter((q) => q.id !== questionId) }));
   }
 
+  /**
+   * Sends the answers to a question the agent went on without as the next
+   * prompt, then drops its card. The turn must have ended.
+   */
+  async sendLate(chatId: string, questionId: string, text: string): Promise<void> {
+    await this.prompt(chatId, text);
+    this.dismissLate(chatId, questionId);
+  }
+
+  /** Drops the card of a question the agent went on without. */
+  dismissLate(chatId: string, questionId: string): void {
+    const chat = this.byChatId(chatId);
+    if (chat) this.update(chat.key, (c) => ({ ...c, questions: c.questions.filter((q) => !(q.late && q.id === questionId)) }));
+  }
+
   async setOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]> {
     const options = await api.chatSetOption(chatId, configId, value);
     const chat = this.byChatId(chatId);
@@ -416,10 +440,13 @@ export class ChatsStore {
         state.asked.delete(id);
         const outcome = e.question?.outcome;
         // A cancelled question goes with its turn; the others leave a line.
+        // One the agent went on without stays, late, so the user can still
+        // send the answers as a message.
         const line = asked && outcome && outcome !== 'cancel' ? summary(questionForm(asked), outcome, e.question?.content) : undefined;
         this.update(key, (c) => ({
           ...c,
-          questions: c.questions.filter((q) => q.id !== id),
+          questions:
+            outcome === 'withdrawn' ? c.questions.map((q) => (q.id === id ? { ...q, late: true } : q)) : c.questions.filter((q) => q.id !== id),
           tail: line ? addAnswer(c.tail, { questionId: id, ...(asked?.toolCallId && { toolCallId: asked.toolCallId }), outcome: outcome!, summary: line }) : c.tail,
         }));
         return;
@@ -438,14 +465,15 @@ export class ChatsStore {
         return;
       }
       case 'turn_end':
-        // Requests end with their turn; the backend has answered them.
-        state.asked.clear();
+        // Permission requests end with their turn; the backend has answered
+        // them. A question goes only with its question_resolved: the agent
+        // may still wait for it (Codex's async questions outlive the prompt
+        // until the adapter withdraws them), and a late one stays.
         this.update(key, (c) => ({
           ...c,
           phase: c.phase === 'exited' ? c.phase : 'idle',
           tail: endTurn(c.tail),
           permissions: [],
-          questions: [],
           stopReason: e.stopReason || undefined,
           error: e.error || undefined,
           authMethods: e.authMethods?.length ? e.authMethods : undefined,

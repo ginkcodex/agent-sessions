@@ -2,10 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   answered,
+  asksWhileWorking,
   choose,
   chooseOwn,
   clear,
   content,
+  lateBlocker,
+  lateMessage,
   missing,
   problem,
   questionForm,
@@ -241,4 +244,36 @@ test('the summary line for each way a question ends', () => {
   assert.equal(summary(form, 'decline'), 'Skipped the question');
   assert.equal(summary(form, 'withdrawn'), 'The agent went on without an answer');
   assert.equal(summary(form, 'cancel'), 'The question was cancelled');
+});
+
+test('a late answer: required questions do not block it, one answer does, and a hidden one is left out', () => {
+  const form = questionForm(CODEX);
+  const [approach, name] = form.questions;
+  let d = {};
+  assert.equal(lateBlocker(form, d), 'Answer a question to send it.');
+  d = choose(d, approach.key, 'Rewrite');
+  assert.equal(lateBlocker(form, d), undefined, 'the unanswered required Name does not block a message');
+  assert.equal(lateMessage(form, d), 'My answer to your question:\n- Which approach should I take? — Rewrite');
+  d = setOwn(d, approach, 'Both, in two steps');
+  d = setText(d, name.key, 'settings');
+  assert.equal(
+    lateMessage(form, d),
+    'My answers to your questions:\n- Which approach should I take? — Both, in two steps\n- What should the module be called? — settings',
+  );
+
+  const oc = questionForm(OPENCODE);
+  const retries = oc.questions.find((q) => q.key === 'retries');
+  assert.equal(lateBlocker(oc, setNumber({}, retries.key, '9')), 'Retries: At most 5.', 'a problem still blocks');
+
+  const token = { key: 'token', type: 'string', title: 'Which token?', description: 'Token', _meta: codexMeta({ isSecret: true }) };
+  const typed = setText({}, 'token', 'abc');
+  assert.equal(lateBlocker(questionForm({ id: 'q', message: '', fields: [token] }), typed), 'Answer a question to send it.', 'a hidden answer alone cannot go as a message');
+  const withToken = questionForm({ ...CODEX, fields: [...CODEX.fields, token] });
+  assert.equal(lateMessage(withToken, { ...d, ...typed }), lateMessage(form, d), 'the hidden answer is left out');
+});
+
+test("Codex's async question keeps the agent working", () => {
+  assert.equal(asksWhileWorking({ ...CODEX, meta: { codex: { delivery: 'async' } } }), true);
+  assert.equal(asksWhileWorking(CODEX), false);
+  assert.equal(asksWhileWorking(CLAUDE), false);
 });

@@ -491,18 +491,72 @@ test("Codex's required questions are refused unanswered; Skip declines", async (
   });
 });
 
-test('a withdrawn question leaves its card and says the agent went on', async () => {
+test('a withdrawn question says the agent went on, and stays late until dismissed', async () => {
   await withChats(async ({ store, mock }) => {
     mock.chat.withdrawMs = 20;
     const chat = await store.start({ agent: 'codex', dir: DIR, questions: true });
     await store.prompt(chat.chatId, 'withdraw the question');
     const q = await pendingQuestion(store, chat.chatId);
     assert.deepEqual(q.meta, { codex: { autoResolutionMs: 20 } });
+    assert.equal(q.late, undefined);
     await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
     const c = store.byChatId(chat.chatId);
-    assert.deepEqual(c.questions, []);
+    assert.deepEqual(c.questions, [{ ...q, late: true }], 'the card stays, late');
     assert.equal(c.tail.items.find((i) => i.type === 'answer').summary, 'The agent went on without an answer');
     await assert.rejects(store.answer(chat.chatId, q.id, 'accept', {}), /no longer pending/);
+    assert.equal(store.byChatId(chat.chatId).questions.length, 1, 'a refused answer keeps the late card');
+
+    store.dismissLate(chat.chatId, q.id);
+    assert.deepEqual(store.byChatId(chat.chatId).questions, []);
+  });
+});
+
+test("Codex's async question outlives the streamed reply, goes late at the turn's end, and its answers go as a message", async () => {
+  await withChats(async ({ store }) => {
+    const chat = await store.start({ agent: 'codex', dir: DIR, questions: true });
+    await store.prompt(chat.chatId, 'ask me an async question');
+    const q = await pendingQuestion(store, chat.chatId);
+    assert.deepEqual(q.meta, { codex: { delivery: 'async' } });
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    let c = store.byChatId(chat.chatId);
+    assert.match(c.tail.items.findLast((i) => i.type === 'text').text, /keep working while you answer.*No answer came before I finished\./s);
+    assert.deepEqual(c.questions.map((x) => [x.id, x.late]), [[q.id, true]], 'the end of the turn does not take the card');
+
+    await store.sendLate(chat.chatId, q.id, 'My answer to your question:\n- Which implementation approach should I take? — New module');
+    assert.deepEqual(store.byChatId(chat.chatId).questions, [], 'a sent late answer drops its card');
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    c = store.byChatId(chat.chatId);
+    assert.match(c.tail.items.findLast((i) => i.role === 'user').text, /^My answer to your question:\n- Which implementation approach should I take\? — New module$/);
+  });
+});
+
+test('a question still open at turn_end stays until its resolution, then goes late', async () => {
+  await withChats(async ({ store, mock }) => {
+    const chat = await store.start({ agent: 'codex', dir: DIR, questions: true });
+    // The agent's events as the backend sends them: Codex's adapter may end
+    // the prompt before it withdraws an async question.
+    const agent = mock.chat.chats.get(chat.chatId);
+    const send = (fields) => mock.chat.update(agent, fields);
+    const q = { id: 'question-9', message: 'Codex keeps working while you answer.', fields: [{ key: 'a', type: 'string', title: 'Why?' }], meta: { codex: { delivery: 'async' } } };
+    send({ kind: 'turn_start' });
+    send({ kind: 'question', question: q });
+    send({ kind: 'turn_end', stopReason: 'end_turn' });
+    let c = store.byChatId(chat.chatId);
+    assert.equal(c.phase, 'idle');
+    assert.deepEqual(c.questions, [q], 'the end of the turn does not take a pending question');
+
+    send({ kind: 'question_resolved', question: { id: q.id, outcome: 'withdrawn' } });
+    c = store.byChatId(chat.chatId);
+    assert.deepEqual(c.questions, [{ ...q, late: true }]);
+    assert.equal(c.tail.items.find((i) => i.type === 'answer').summary, 'The agent went on without an answer');
+
+    send({ kind: 'turn_start' });
+    send({ kind: 'turn_end', stopReason: 'end_turn' });
+    assert.deepEqual(store.byChatId(chat.chatId).questions, [{ ...q, late: true }], 'a late card stays across turns');
+
+    agent && mock.chat.close(chat.chatId);
+    await until('exit', () => store.byChatId(chat.chatId).phase === 'exited');
+    assert.deepEqual(store.byChatId(chat.chatId).questions, [], 'the chat ending clears every card');
   });
 });
 

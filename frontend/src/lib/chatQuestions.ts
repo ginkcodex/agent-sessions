@@ -360,6 +360,35 @@ export function submitBlocker(form: QuestionForm, draft: Draft): string | undefi
   return undefined;
 }
 
+/**
+ * Why a late answer (a question the agent went on without) cannot be sent as
+ * a message yet. Required questions do not block it; it needs one answer, and
+ * a hidden answer does not count, since it is never put in a message.
+ */
+export function lateBlocker(form: QuestionForm, draft: Draft): string | undefined {
+  const bad = problems(form, draft)[0];
+  if (bad) return `${bad.question.header}: ${bad.problem}`;
+  if (!form.questions.some((q) => !q.secret && answered(q, draft[q.key]))) return 'Answer a question to send it.';
+  return undefined;
+}
+
+/**
+ * A late answer as the message sent to the agent: each answered question and
+ * its answer. Hidden answers are left out: a message is saved in the
+ * transcript.
+ */
+export function lateMessage(form: QuestionForm, draft: Draft): string {
+  const sent = content(form, draft);
+  const lines = form.questions.flatMap((q) => {
+    if (q.secret) return [];
+    const a = answerText(q, sent);
+    if (!a) return [];
+    const asked = q.text.replace(/\s+/g, ' ').trim() || q.header;
+    return [`- ${asked} — ${a}`];
+  });
+  return `${lines.length === 1 ? 'My answer to your question' : 'My answers to your questions'}:\n${lines.join('\n')}`;
+}
+
 /** The content to send for the draft: only the answered fields, in the form's shape. */
 export function content(form: QuestionForm, draft: Draft): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -414,6 +443,15 @@ export function answerText(q: FormQuestion, sent: Readonly<Record<string, unknow
     default:
       return v === undefined || v === '' ? undefined : String(v);
   }
+}
+
+/**
+ * The agent keeps working while the question is open: a Codex async question
+ * (`_meta.codex.delivery` "async"), withdrawn when the turn ends.
+ */
+export function asksWhileWorking(q: ChatQuestion): boolean {
+  const codex = q.meta?.codex;
+  return !!codex && typeof codex === 'object' && (codex as Record<string, unknown>).delivery === 'async';
 }
 
 /** The line shown in place of a resolved question. */

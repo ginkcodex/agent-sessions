@@ -2,10 +2,10 @@
   // A question from a chat's agent, as its terminal asks it: one question, or
   // one tab per question and a Review tab. Answers can change until Submit.
   // Nothing is chosen for the user: a default is marked, not picked, and
-  // Enter does not submit.
+  // Enter does not submit. When the agent goes on without the answer, the card
+  // stays, late, with the draft: the answers can still go as a message.
   import { tick } from 'svelte';
-  import type { ChatQuestion } from '../../types';
-  import type { Chat } from '../../stores/chats.svelte';
+  import type { Chat, ChatPendingQuestion } from '../../stores/chats.svelte';
   import { chats } from '../../stores/chats.svelte';
   import {
     answerText,
@@ -14,6 +14,8 @@
     chooseOwn,
     clear,
     content,
+    lateBlocker,
+    lateMessage,
     problem,
     questionForm,
     setNumber,
@@ -31,7 +33,7 @@
 
   interface Props {
     chat: Chat;
-    question: ChatQuestion;
+    question: ChatPendingQuestion;
     agentName: string;
   }
 
@@ -45,14 +47,27 @@
   let error = $state<string | undefined>();
   let card = $state<HTMLElement | undefined>();
 
+  let late = $derived(!!question.late);
   let several = $derived(form.questions.length > 1);
   let reviewing = $derived(several && tab >= form.questions.length);
   let current = $derived(reviewing ? undefined : form.questions[Math.min(tab, form.questions.length - 1)]);
-  let blocker = $derived(submitBlocker(form, draft));
+  let blocker = $derived(
+    !late
+      ? submitBlocker(form, draft)
+      : chat.phase === 'idle'
+        ? lateBlocker(form, draft)
+        : `${agentName} is still working. Send your answers once it finishes.`,
+  );
   let sent = $derived(content(form, draft));
   let canSubmit = $derived(!sending && !blocker);
   let lastQuestion = $derived(!several || tab === form.questions.length - 1);
-  let waitHint = $derived(autoResolutionHint(question.meta));
+  let waitHint = $derived(late ? undefined : autoResolutionHint(question.meta));
+  let hasSecret = $derived(form.questions.some((q) => q.secret));
+
+  // A reply refused because the agent went on is answered by the late note.
+  $effect(() => {
+    if (late) error = undefined;
+  });
 
   // Codex answers a question by itself after a while; say so.
   function autoResolutionHint(meta: Record<string, unknown> | undefined): string | undefined {
@@ -134,12 +149,17 @@
 
   async function reply(action: 'accept' | 'decline'): Promise<void> {
     if (sending || (action === 'accept' && blocker)) return;
+    if (late && action === 'decline') {
+      chats.dismissLate(chat.chatId, question.id);
+      return;
+    }
     sending = true;
     error = undefined;
     try {
-      await chats.answer(chat.chatId, question.id, action, action === 'accept' ? sent : undefined);
+      if (late) await chats.sendLate(chat.chatId, question.id, lateMessage(form, draft));
+      else await chats.answer(chat.chatId, question.id, action, action === 'accept' ? sent : undefined);
     } catch (err) {
-      if (!isStaleReply(err)) error = errorText(err, 'The agent no longer waits for this answer.');
+      if (!isStaleReply(err)) error = errorText(err, late ? 'The message was not sent.' : 'The agent no longer waits for this answer.');
     } finally {
       sending = false;
     }
@@ -170,17 +190,23 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <section
   class="question-card"
+  class:late
   data-question-card={question.id}
-  aria-label="{agentName} asks"
+  data-late={late || undefined}
+  aria-label={late ? `${agentName} asked` : `${agentName} asks`}
   tabindex="-1"
   bind:this={card}
   onkeydown={onKeydown}
 >
   <header>
     <Icon name="circle-help" size={14} />
-    <span class="asks">{agentName} asks</span>
+    <span class="asks">{late ? `${agentName} asked` : `${agentName} asks`}</span>
   </header>
-  {#if form.message && (several || form.message !== current?.text)}
+  {#if late}
+    <p class="late-note" data-late-note>
+      {agentName} went on without your answer. You can still send it as a message.{hasSecret ? ' Hidden answers are not put in a message.' : ''}
+    </p>
+  {:else if form.message && (several || form.message !== current?.text)}
     <p class="message">{form.message}</p>
   {/if}
 
@@ -211,7 +237,7 @@
     <div class="question" role="tabpanel" data-question={q.key}>
       {#if !several && q.header !== q.text}<p class="header">{q.header}</p>{/if}
       <p class="text">
-        {q.text}{#if q.required}<span class="required" title="Needs an answer"> *</span>{/if}
+        {q.text}{#if q.required && !late}<span class="required" title="Needs an answer"> *</span>{/if}
       </p>
 
       {#if q.kind === 'choice'}
@@ -335,7 +361,8 @@
             {:else if shown}
               <span class="review-answer">{shown}</span>
             {:else}
-              <span class="unanswered" class:required={q.required}>{q.required ? 'Not answered — needs an answer' : 'Not answered'}</span>
+              {@const needed = q.required && !late}
+              <span class="unanswered" class:required={needed}>{needed ? 'Not answered — needs an answer' : 'Not answered'}</span>
             {/if}
             <button type="button" class="link" onclick={() => void go(i)}>Change</button>
           </li>
@@ -344,17 +371,17 @@
     </div>
   {/if}
 
-  {#if error}<p class="problem" role="alert">Could not send the answer: {error}</p>{/if}
+  {#if error}<p class="problem" role="alert">Could not send the {late ? 'message' : 'answer'}: {error}</p>{/if}
 
   <footer>
     {#if blocker && (reviewing || lastQuestion)}<p class="blocker" role="status">{blocker}</p>{/if}
     <div class="actions">
       {#if reviewing || lastQuestion}
-        <button type="button" class="submit" disabled={!canSubmit} title={blocker} onkeydown={holdEnter} onclick={() => void reply('accept')}>Submit</button>
+        <button type="button" class="submit" disabled={!canSubmit} title={blocker} onkeydown={holdEnter} onclick={() => void reply('accept')}>{late ? 'Send as message' : 'Submit'}</button>
       {:else}
         <button type="button" class="next" onclick={() => void go(tab + 1)}>Next</button>
       {/if}
-      <button type="button" class="skip" disabled={sending} onclick={() => void reply('decline')}>Skip</button>
+      <button type="button" class="skip" disabled={sending} onclick={() => void reply('decline')}>{late ? 'Dismiss' : 'Skip'}</button>
       {#if several}<span class="keys">1–9 choose · ← → move between questions</span>{:else if current?.options.length || current?.kind === 'boolean'}<span class="keys">1–9 choose</span>{/if}
     </div>
     {#if waitHint}<p class="hint">{waitHint}</p>{/if}
@@ -375,6 +402,16 @@
     font-size: 0.8rem;
     line-height: 1.4;
     outline: none;
+  }
+
+  .question-card.late {
+    border-style: dashed;
+    border-color: var(--border-color);
+    background: var(--bg-secondary);
+  }
+
+  .late-note {
+    color: var(--text-secondary);
   }
 
   .question-card:focus-visible {

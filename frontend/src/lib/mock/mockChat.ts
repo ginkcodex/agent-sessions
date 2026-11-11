@@ -125,7 +125,9 @@ export interface MockChatHost {
  * - "hang": the turn runs until cancelled;
  * - "question": the agent asks the user, with a form shaped like
  *   its adapter's; "withdraw": it asks, then goes on without the answer
- *   after withdrawMs, as Codex's auto-resolution does.
+ *   after withdrawMs, as Codex's auto-resolution does; "async": Codex asks
+ *   without waiting, keeps streaming, and withdraws the question when the
+ *   turn ends, as its async questions do.
  * The reply says how many files the prompt carried.
  */
 export class MockChats {
@@ -444,7 +446,23 @@ export class MockChats {
         }
       }
 
-      if (/question|withdraw/i.test(text)) {
+      // A late answer (QuestionCard's "Send as message") is a plain prompt.
+      const lateAnswer = /^My answers? to your questions?:/.test(text);
+      if (!lateAnswer && /async/i.test(text) && chat.questions) {
+        // Codex's request_user_input_async: the turn goes on, and the adapter
+        // withdraws the question when the turn completes.
+        let got: MockAnswer | undefined;
+        void this.askQuestion(chat, mockAsyncQuestion()).then((a) => (got = a));
+        await this.stream(chat, turn, 'agent_message_chunk', msg, 'I asked which approach you prefer, and I keep working while you answer: reading the module, checking its tests, and drafting both approaches. ');
+        if (turn.cancelled) {
+          stopReason = 'cancelled';
+          return;
+        }
+        chat.question?.answer({ outcome: 'withdrawn' });
+        const said = got?.outcome === 'accept' ? `You answered ${JSON.stringify(got.content ?? {})} in time.` : 'No answer came before I finished.';
+        await this.stream(chat, turn, 'agent_message_chunk', msg, said + ' ');
+        reply.parts.push({ kind: 'text', text: said });
+      } else if (!lateAnswer && /question|withdraw/i.test(text)) {
         const ask = `${tool}_ask`;
         let said: string;
         if (!chat.questions) {
@@ -510,6 +528,19 @@ const EXTRAS = [
   { const: 'Changelog entry', title: 'Changelog entry' },
 ];
 const OVERWRITE = 'This will overwrite src/config.ts. Continue?';
+
+/** A made-up Codex async question, as codex-acp asks it (docs/plan/chat-questions-adapters.md). */
+function mockAsyncQuestion(): Omit<ChatQuestion, 'id'> {
+  const meta = (extra: Record<string, unknown>) => ({ codex: { isSecret: false, ...extra } });
+  return {
+    message: 'Codex keeps working while you answer. An answer sent after it finishes is not delivered.',
+    fields: [
+      { key: 'question_0', type: 'string', title: 'Which implementation approach should I take?', oneOf: [...APPROACHES, { const: 'Other', title: 'Other', description: 'Provide a different answer in the note field.' }], _meta: meta({ isOther: true }) },
+      { key: 'question_0_note', type: 'string', title: 'Additional answer or note', _meta: meta({ questionId: 'question_0', role: 'user_note' }) },
+    ],
+    meta: { codex: { delivery: 'async' } },
+  };
+}
 
 /** A made-up question in the shape the agent's adapter sends (docs/plan/chat-questions-adapters.md). */
 function mockQuestion(agent: AgentID, toolCallId: string, withdrawMs?: number): Omit<ChatQuestion, 'id'> {

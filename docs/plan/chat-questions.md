@@ -96,8 +96,14 @@ A card in the chat, where permission cards are, styled after them:
 - **Skip** answers `decline`. Claude Code tells the model the user skipped;
   Codex gets no answers; OpenCode cancels the question. Cancelling the turn,
   closing the chat or the agent exiting answers `cancel`.
-- **Withdrawn:** when the agent withdraws the question or the turn ends, the
-  card goes away, as a permission card does.
+- **Withdrawn:** when the agent withdraws the question, a line in the live
+  tail says it went on without an answer, and the card stays as a late
+  question (CQ-08): the same answers, kept as drafted, and Submit becomes
+  "Send as message", which sends them as the next prompt once the turn has
+  ended. Required questions no longer block it; at least one answer does.
+  A hidden (secret) answer is never put in a message. Dismiss drops the card.
+  The end of a turn alone does not remove a question: only its resolution
+  does, since the agent may still be waiting for it.
 
 After Submit the card is replaced by a one-line summary in the live tail
 ("Answered: Extend existing module · Unit tests, Documentation · Yes,
@@ -160,9 +166,15 @@ An invalid answer is refused to the frontend; nothing is sent to the agent.
 - **A question waits for the user.** The turn blocks until it is answered,
   skipped or withdrawn; the chat shows the card where the user looks, and the
   turn can still be cancelled.
-- **Codex's auto-resolution** may withdraw a question while the user is
-  answering; the card then goes away and a line in the live tail says the
-  agent went on without an answer.
+- **Codex goes on without the answer.** Its blocking questions carry
+  `autoResolutionMs`, and the adapter withdraws them after that long, at
+  once when the value is missing. Codex 0.167 mostly asks through
+  `request_user_input_async`: the tool returns at once, Codex keeps working
+  and streaming, and the adapter withdraws the question when the turn ends.
+  Either way the card used to vanish while text still streamed. The late
+  question (CQ-08) keeps the answers reachable: they go to the agent as a
+  message, as Codex itself suggests ("Send it as a new message if it still
+  matters").
 
 ## Release criteria
 

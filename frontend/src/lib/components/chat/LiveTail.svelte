@@ -5,6 +5,7 @@
   import type { Chat } from '../../stores/chats.svelte';
   import type { TranscriptMode } from '../../transcript';
   import { tailBlocks } from '../../chat';
+  import { asksWhileWorking } from '../../chatQuestions';
   import { ALL_AGENTS } from '../../portable';
   import MessageBubble from '../transcript/MessageBubble.svelte';
   import PermissionCard from './PermissionCard.svelte';
@@ -23,7 +24,8 @@
   let { chat, sessionRef, mode = 'activity', onFileLink, onOpenTerminal }: Props = $props();
 
   let blocks = $derived(tailBlocks(chat.tail));
-  let waiting = $derived(chat.permissions.length + chat.questions.length > 0);
+  // A late question, or one the agent keeps working through, does not hold the turn.
+  let waiting = $derived(chat.permissions.length > 0 || chat.questions.some((q) => !q.late && !asksWhileWorking(q)));
   let agentName = $derived(ALL_AGENTS.find((a) => a.id === chat.agent)?.label ?? chat.agent);
   // A turn that stopped short says why; a normal end says nothing.
   const STOPS: Record<string, string> = {
