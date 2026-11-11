@@ -1,13 +1,13 @@
 # ACP chat mode — tasks
 
 - **Plan:** [acp-chat.md](../../plan/acp-chat.md)
-- **Progress:** 2/15 done
+- **Progress:** 3/15 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
 | [ACP-01](ACP-01.md) | ✅ Done | Plan, task group, SPEC and M8 non-goal reversal | 1.5 h | — |
 | [ACP-02](ACP-02.md) | ✅ Done | Spike with the real adapters: capabilities, storage, IDs, load and resume | 4 h | ACP-01 |
-| [ACP-03](ACP-03.md) | ⬜ Not started | `internal/acp` protocol types and two-way JSON-RPC connection | 4 h | ACP-02 |
+| [ACP-03](ACP-03.md) | ✅ Done | `internal/acp` protocol types and two-way JSON-RPC connection | 4 h | ACP-02 |
 | [ACP-04](ACP-04.md) | ⬜ Not started | Agent process, tree kill, client lifecycle, fake agent | 4 h | ACP-03 |
 | [ACP-05](ACP-05.md) | ⬜ Not started | Adapter commands, detection and overrides per provider | 3 h | ACP-04 |
 | [ACP-06](ACP-06.md) | ⬜ Not started | Engine chat manager: owners, events, permissions, cleanup | 4 h | ACP-05 |

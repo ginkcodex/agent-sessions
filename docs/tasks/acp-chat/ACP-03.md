@@ -1,6 +1,6 @@
 # ACP-03 — ACP protocol types and JSON-RPC connection
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 4 h
 - **Depends on:** ACP-02
 - **Plan:** [acp-chat.md](../../plan/acp-chat.md)
@@ -41,3 +41,47 @@ New package `internal/acp`:
 Unit tests with an in-process fake agent over `io.Pipe`: ordering,
 concurrency (`-race`), unknown updates, malformed and oversized frames, EOF
 and cancellation.
+
+## Evidence
+
+- **Added:**
+  - `internal/acp/types.go`: protocol v1 types.
+    - `SessionUpdate` keeps the raw JSON and the `sessionUpdate` kind, and
+      decodes known kinds with `AsChunk`, `AsToolCall`, `AsPlan`,
+      `AsConfigOptions` and `AsCurrentMode`.
+    - `ToolCall` uses pointers, so absent fields stay distinguishable in a
+      `tool_call_update`.
+    - `mcpServers` is always sent as `[]`.
+    - `IsAuthRequired` recognizes code `-32000`.
+  - `internal/acp/conn.go`: `Conn`.
+    - The agent's request IDs are kept raw and echoed exactly.
+    - Notifications run on the read loop, in order and before the reply that
+      follows them.
+    - The agent's requests run in goroutines; with no handler they get
+      method-not-found.
+    - A 64 MiB frame cap; an oversized frame ends the connection with
+      `ErrFrameTooLarge`.
+    - `Close` fails pending calls with `ErrClosed`, cancels the handlers'
+      context, closes the writer (the agent's stdin) and drains the rest.
+- **Tests:** `internal/acp/conn_test.go` and `types_test.go` cover:
+  - round trips and agent errors;
+  - request IDs `0` and strings;
+  - method-not-found for `fs/*` and `terminal/*`;
+  - 200 updates in order before the reply;
+  - 50 concurrent calls each way, with replies in reverse order;
+  - malformed lines and unknown reply IDs, which are reported and skipped;
+  - an oversized frame and a frame exactly at the limit;
+  - agent EOF, a last line without a newline, and context cancellation with
+    a late reply;
+  - `Close` with a permission handler waiting;
+  - payload shapes taken from the spike (Claude diff, Codex `_meta` terminal
+    output, grouped config options, permission options).
+- **Results:**
+  - `go test -race -count=30 ./internal/acp` passed, with 92.4 % statement
+    coverage.
+  - `golangci-lint run ./internal/acp/...` reported 0 issues.
+  - All packages compiled (`go test -run 'x^' ./...`).
+- **Not checked:** nothing here talks to a real agent; that starts in
+  ACP-04. The `internal/rpc` framing was not reused, because importing
+  `internal/rpc` would cycle through `engine`. `readLine` is a small copy of
+  it.
