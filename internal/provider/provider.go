@@ -59,6 +59,28 @@ type Provider interface {
 	NewSessionCommand(dir string) Command
 }
 
+// ACPAdapter describes how to start an agent's ACP server: a program the
+// user installs, found the way the agent CLIs are. The app never installs it.
+type ACPAdapter struct {
+	// Executable is the program's name, such as "claude-agent-acp".
+	Executable string
+	// Args follow the executable, such as "acp" for "opencode acp".
+	Args []string
+	// Install is the command that installs Executable, shown when it is
+	// missing.
+	Install string
+	// CLIEnv names the variable that tells the adapter which agent CLI to
+	// drive; it is set to the CLI new sessions would start. Empty when
+	// Executable is the CLI itself.
+	CLIEnv string
+}
+
+// ACPLauncher is implemented by providers whose agent can be driven over
+// the Agent Client Protocol.
+type ACPLauncher interface {
+	ACPAdapter() ACPAdapter
+}
+
 // SourceLoader optionally loads using canonical scan metadata as an untrusted hint.
 // See LoadWithSource for validation, fallback and metadata ownership rules.
 // Implementations must retain standalone Provider.Load behavior without hints.

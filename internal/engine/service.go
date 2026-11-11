@@ -336,15 +336,25 @@ func (s *Service) NewSessionLaunch(agent model.AgentID, dir string) (provider.Co
 	if !ok {
 		return provider.Command{}, fmt.Errorf("%w: %s", ErrUnknownProvider, agent)
 	}
-	if !s.knownDirectory(dir) {
-		return provider.Command{}, fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
-	}
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		return provider.Command{}, fmt.Errorf("the project directory %s no longer exists", dir)
+	if err := s.checkLaunchDir(dir); err != nil {
+		return provider.Command{}, err
 	}
 	cmd := prov.NewSessionCommand(dir)
 	cmd.Dir = dir
 	return cmd, nil
+}
+
+// checkLaunchDir allows starting an agent only in a directory the catalog
+// knows that still exists, so a typo or a stale project never starts one
+// elsewhere.
+func (s *Service) checkLaunchDir(dir string) error {
+	if !s.knownDirectory(dir) {
+		return fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return fmt.Errorf("the project directory %s no longer exists", dir)
+	}
+	return nil
 }
 
 // AgentStatus is whether an agent's CLI is installed where its new sessions

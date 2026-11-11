@@ -253,12 +253,16 @@ func (f finder) desktopAlias(name, path string) bool {
 // posixInstallDirs lists where agent CLIs install themselves outside the
 // system PATH, relative to the home directory: their installers, npm's
 // user prefix, bun and volta. The OpenCode installer adds ~/.opencode/bin
-// to PATH in the shell rc files only.
+// to PATH in the shell rc files only. The ACP adapters are npm packages.
 var posixInstallDirs = map[string][]string{
-	"claude":   {".local/bin", ".claude/local", ".npm-global/bin", ".bun/bin", ".volta/bin"},
-	"opencode": {".opencode/bin", ".bun/bin", ".local/bin", ".npm-global/bin"},
-	"codex":    {".local/bin", ".npm-global/bin", ".bun/bin", ".volta/bin"},
+	"claude":           {".local/bin", ".claude/local", ".npm-global/bin", ".bun/bin", ".volta/bin"},
+	"opencode":         {".opencode/bin", ".bun/bin", ".local/bin", ".npm-global/bin"},
+	"codex":            {".local/bin", ".npm-global/bin", ".bun/bin", ".volta/bin"},
+	"claude-agent-acp": npmInstallDirs,
+	"codex-acp":        npmInstallDirs,
 }
+
+var npmInstallDirs = []string{".npm-global/bin", ".local/bin", ".bun/bin", ".volta/bin"}
 
 // posixSystemDirs are absolute install locations shared by all CLIs.
 var posixSystemDirs = []string{"/usr/local/bin", "/opt/homebrew/bin", "/home/linuxbrew/.linuxbrew/bin"}
@@ -344,6 +348,8 @@ func windowsLocations(name, goarch string) []location {
 			loc("APPDATA", "npm", "opencode.cmd"),
 			loc("LOCALAPPDATA", "Programs", "@opencodedesktop", "resources", "opencode-cli.exe"),
 		)
+	case "claude-agent-acp", "codex-acp":
+		locs = append(locs, loc("APPDATA", "npm", name+".cmd"))
 	}
 	return locs
 }

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 
+	"github.com/ginkcode/agent-sessions/internal/acp"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 )
@@ -26,6 +27,25 @@ func (e *Engine) NewSessionLaunch(_ context.Context, agent model.AgentID, dir st
 // NewSessionAgents reports which agents' CLIs are installed on this machine.
 func (e *Engine) NewSessionAgents(_ context.Context) ([]AgentStatus, error) {
 	return e.svc.NewSessionAgents(), nil
+}
+
+// ChatAgents reports which agents' ACP adapters are installed on this
+// machine, with the config file's overrides applied.
+func (e *Engine) ChatAgents(_ context.Context) ([]ChatAgent, error) {
+	overrides, err := LoadChatAdapters(e.roots.Config)
+	if err != nil {
+		return nil, err
+	}
+	return e.svc.ChatAgents(overrides), nil
+}
+
+// ChatLaunch returns the command that starts agent's ACP adapter in dir.
+func (e *Engine) ChatLaunch(_ context.Context, agent model.AgentID, dir string) (acp.Command, error) {
+	overrides, err := LoadChatAdapters(e.roots.Config)
+	if err != nil {
+		return acp.Command{}, err
+	}
+	return e.svc.ChatLaunch(agent, dir, overrides)
 }
 
 // HandoffLaunch writes the handoff files and returns the target agent's command.

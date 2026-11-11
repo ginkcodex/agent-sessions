@@ -89,7 +89,7 @@ internal/app: bindings, local or remote routing (like launch.go openInTerminal)
    └─ remote: rpc client → serve: chat* methods + Notify(chat:*) → engine.ChatManager
 engine.ChatManager: chats, owners per SessionRef, lifecycle, cleanup
    └─ internal/acp: process, NDJSON JSON-RPC connection, protocol v1 types
-         └─ provider ACPLauncher.ACPCommand(dir): argv and env per agent
+         └─ provider ACPLauncher.ACPAdapter(): adapter name, args, install, CLI env
 ```
 
 ### `internal/acp` (new)
@@ -108,16 +108,38 @@ engine.ChatManager: chats, owners per SessionRef, lifecycle, cleanup
 
 ### Provider seam
 
-The optional interface `provider.ACPLauncher { ACPCommand(dir string)
-(provider.Command, error) }` is implemented for:
+The optional interface `provider.ACPLauncher { ACPAdapter() ACPAdapter }`
+describes each agent's adapter: the program, its arguments, the command that
+installs it, and the variable that points it at the agent's CLI. It is
+implemented for:
 
 - Claude: `claude-agent-acp`, with `CLAUDE_CODE_EXECUTABLE` set to the `claude`
   that `launch.Find` finds;
 - Codex: `codex-acp`, with `CODEX_PATH`;
 - OpenCode: `opencode acp`.
 
-Adapters are found on PATH on the host that holds the project. Settings can
-override the path.
+The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
+
+- Adapters are found like the agent CLIs, by `launch.Find` on the host that
+  holds the project: PATH, then npm's usual prefixes (`~/.npm-global/bin`,
+  nvm, bun, volta, `%APPDATA%\npm` on Windows).
+- The config file can override the path. An override that is unusable is
+  reported, never replaced by the lookup:
+
+  ```toml
+  [chat.adapters]
+  claude-code = "/opt/acp/bin/claude-agent-acp"
+  codex = "~/.npm-global/bin/codex-acp"
+  ```
+
+  The first release edits it only in `config.toml`; there is no Settings
+  field for it.
+- The CLI variable is set only when the user's environment does not set it.
+- When the adapter or the CLI was found off PATH, their directories are put
+  first on the adapter's PATH, so `#!/usr/bin/env node` finds the node that
+  nvm keeps beside them in an app started from a desktop menu.
+- Chats start only in directories the catalog knows, with the same check as
+  `NewSessionLaunch`.
 
 ### `engine.ChatManager` (new)
 

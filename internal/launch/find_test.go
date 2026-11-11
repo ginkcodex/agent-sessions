@@ -297,3 +297,36 @@ func TestFindPosixInstallDirs(t *testing.T) {
 		t.Fatalf("PATH: %+v", got)
 	}
 }
+
+// The ACP adapters are found where npm installs them.
+func TestFindACPAdapters(t *testing.T) {
+	h := newFakeHome(t)
+	if _, err := h.finder("amd64").find("codex-acp"); !errors.Is(err, ErrAgentNotFound) {
+		t.Fatalf("nothing installed: %v", err)
+	}
+	for _, name := range []string{"claude-agent-acp", "codex-acp"} {
+		want := h.file(filepath.Join(h.roaming, "npm", name+".cmd"), 0)
+		if got, err := h.finder("amd64").find(name); err != nil || got.Path != want {
+			t.Fatalf("windows %s: %+v, %v", name, got, err)
+		}
+	}
+
+	platform.SkipWithoutModeBits(t)
+	home := t.TempDir()
+	f := finder{
+		goos:     "linux",
+		getenv:   func(string) string { return "" },
+		lookPath: func(string) (string, error) { return "", errors.New("not found") },
+		home:     home,
+	}
+	want := filepath.Join(home, ".npm-global", "bin", "claude-agent-acp")
+	if err := os.MkdirAll(filepath.Dir(want), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(want, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.find("claude-agent-acp"); err != nil || got.Path != want || got.OnPath {
+		t.Fatalf("npm prefix: %+v, %v", got, err)
+	}
+}
