@@ -258,6 +258,8 @@ export async function renderSessionHeader(fixture, props = {}) {
     ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
     ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
     ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
+    ["import { chats } from '../../stores/chats.svelte';", fixtureStore('chats')],
+    ["import { chatOpen } from '../../stores/chatOpen.svelte';", fixtureStore('chatOpen')],
   ]);
   const meta = {
     ref: { agent: 'codex', id: 's1' },
@@ -270,7 +272,7 @@ export async function renderSessionHeader(fixture, props = {}) {
   };
   return renderWithFixture(
     sessionHeaderModule,
-    { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, toast: {}, preferences: { timeZone: 'utc' }, newSession: { available: false, choices: [], starting: false, refresh() {} }, terminals: { tabFor: () => undefined }, ...fixture },
+    { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, toast: {}, preferences: { timeZone: 'utc' }, newSession: { available: false, choices: [], starting: false, refresh() {} }, terminals: { tabFor: () => undefined }, chats: { forSession: () => undefined }, chatOpen: { opening: false, refresh() {}, canChat: () => false }, ...fixture },
     { meta, mode: 'activity', onModeChange() {}, onResume() {}, ...props },
   );
 }

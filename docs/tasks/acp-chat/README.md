@@ -1,7 +1,7 @@
 # ACP chat mode — tasks
 
 - **Plan:** [acp-chat.md](../../plan/acp-chat.md)
-- **Progress:** 8/15 done
+- **Progress:** 9/15 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -13,7 +13,7 @@
 | [ACP-06](ACP-06.md) | ✅ Done | Engine chat manager: owners, events, permissions, cleanup | 4 h | ACP-05 |
 | [ACP-07](ACP-07.md) | ✅ Done | Local bindings, quit cleanup, manage lock | 3 h | ACP-06 |
 | [ACP-08](ACP-08.md) | ✅ Done | Frontend API, mock agent, chat store and live-tail reducer | 4 h | ACP-07 |
-| [ACP-09](ACP-09.md) | ⬜ Not started | Chat UI, entry points, terminal/chat exclusivity | 4 h | ACP-08 |
+| [ACP-09](ACP-09.md) | ✅ Done | Chat UI, entry points, terminal/chat exclusivity | 4 h | ACP-08 |
 | [ACP-10](ACP-10.md) | ⬜ Not started | Permission cards, fail-closed paths, missing adapter | 3 h | ACP-09 |
 | [ACP-11](ACP-11.md) | ⬜ Not started | Reconcile with saved transcripts; continue existing sessions | 4 h | ACP-10 |
 | [ACP-12](ACP-12.md) | ⬜ Not started | Remote chat over RPC with connection ownership | 4 h | ACP-06 |

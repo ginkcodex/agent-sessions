@@ -142,6 +142,20 @@ export class ChatsStore {
     return this.chats.find((c) => c.phase !== 'exited' && c.session?.agent === ref.agent && c.session.id === ref.id);
   }
 
+  /**
+   * The chat the session's view shows: the one that drives it, else the
+   * last one that ended and was not dismissed.
+   */
+  viewFor(ref: SessionRef): Chat | undefined {
+    const live = this.forSession(ref);
+    if (live) return live;
+    for (let i = this.chats.length - 1; i >= 0; i--) {
+      const c = this.chats[i];
+      if (c.session?.agent === ref.agent && c.session.id === ref.id) return c;
+    }
+    return undefined;
+  }
+
   async loadAgents(): Promise<ChatAgent[]> {
     const owner = epoch();
     this.agentsLoading = true;

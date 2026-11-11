@@ -41,6 +41,7 @@ function open({ busy = false, empty = false, locked = false, callback = true } =
     appState: {}, handoff: {}, exporter: {}, toast: {}, agentSettings: { activeAgents: [] },
     link: { locked }, launcher: { canOpen: false }, preferences: { timeZone: 'utc' },
     newSession: { available: false, choices: [] }, terminals: { tabFor: () => undefined },
+    chats: { forSession: () => undefined }, chatOpen: { opening: false, refresh() {}, canChat: () => false },
   };
   const target = document.createElement('div');
   document.body.appendChild(target);

@@ -85,7 +85,8 @@ export class MockChats {
         chatId: `chat-${n}`,
         agent: req.agent,
         dir: req.dir,
-        session: req.resume ?? { agent: req.agent, id: `mock-chat-${n}-${Date.now()}` },
+        // A copy: what the UI passes may be reactive state, which does not clone.
+        session: req.resume ? { agent: req.resume.agent, id: req.resume.id } : { agent: req.agent, id: `mock-chat-${n}-${Date.now()}` },
         agentInfo: { name: a.adapter, version: '0.0.0-mock' },
         configOptions: [
           { id: 'mode', name: 'Mode', category: 'mode', type: 'select', currentValue: 'ask', options: [{ value: 'ask', name: 'Ask' }, { value: 'auto', name: 'Auto' }] },

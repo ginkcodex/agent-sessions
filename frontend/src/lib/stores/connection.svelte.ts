@@ -49,6 +49,7 @@ const LOCAL_CAPABILITIES: HostCapabilities = {
   gitHistory: true,
   gitHistoryActions: true,
   gitHistoryCompare: true,
+  acpChat: true,
 };
 
 export class ConnectionStore {
@@ -100,6 +101,11 @@ export class ConnectionStore {
 
   get canSearch(): boolean {
     return this.capabilities.search;
+  }
+
+  /** Whether chats can start: on this computer only, for now. */
+  get canChat(): boolean {
+    return this.phase === 'local' && this.capabilities.acpChat === true;
   }
 
   async init(): Promise<void> {

@@ -1125,6 +1125,8 @@ export interface HostCapabilities {
   search: boolean;
   /** Absent on older servers, which only filter search by an absolute directory. */
   searchPath?: boolean;
+  /** Chats with agents over ACP; absent on servers without them. */
+  acpChat?: boolean;
 }
 
 export interface ConnectionState {

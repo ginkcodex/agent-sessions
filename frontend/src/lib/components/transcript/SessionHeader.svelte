@@ -20,6 +20,8 @@
   import { newSession } from '../../stores/newSession.svelte';
   import { terminals } from '../../stores/terminals.svelte';
   import { newSessionShortcutLabel } from '../../terminal';
+  import { chats } from '../../stores/chats.svelte';
+  import { chatOpen } from '../../stores/chatOpen.svelte';
 
   interface Props {
     meta: SessionMeta;
@@ -88,7 +90,19 @@
   $effect(() => {
     void link.dataHost;
     if (newSession.available) void newSession.refresh();
+    chatOpen.refresh();
   });
+
+  // A chat drives this session: the terminal does not resume it meanwhile.
+  let liveChat = $derived(chats.forSession(meta.ref));
+  let canChatHere = $derived(chatOpen.canChat(meta.ref.agent) && !meta.cwdMissing);
+  // New chats: every agent whose ACP adapter the host has.
+  let chatChoices = $derived(ALL_AGENTS.filter((a) => chatOpen.canChat(a.id)));
+
+  function startChat(agent: AgentID) {
+    newMenuOpen = false;
+    void chatOpen.startNew(agent, meta.cwd);
+  }
 
   function startNew(agent: AgentID) {
     newMenuOpen = false;
@@ -184,7 +198,9 @@
     </div>
 
     <div class="header-actions">
-      {#if runningTab}
+      {#if liveChat}
+        <span class="running-badge" title="This session is running in a chat below">● Live in chat</span>
+      {:else if runningTab}
         <span class="running-badge" title="This session is running in the terminal panel">● Running</span>
       {/if}
       {#if launcher.canOpen || canOpenOther}
@@ -222,6 +238,7 @@
               if (resumeMenuOpen) {
                 moreMenuOpen = false;
                 newMenuOpen = false;
+                chatOpen.refresh();
               }
             }}
           >
@@ -272,6 +289,22 @@
                   <span>Copy command</span>
                 </button>
               {/if}
+              {#if canChatHere && !liveChat}
+                <button
+                  type="button"
+                  class="action-menu-item"
+                  role="menuitem"
+                  title="Continue this session in a chat in this window, which shows the agent's reply as it streams"
+                  disabled={chatOpen.opening}
+                  onclick={() => {
+                    resumeMenuOpen = false;
+                    void chatOpen.openSession(meta);
+                  }}
+                >
+                  <Icon name="message-square" size={14} />
+                  <span>Open in chat</span>
+                </button>
+              {/if}
             </div>
           {/if}
         </div>
@@ -311,6 +344,7 @@
                 resumeMenuOpen = false;
                 moreMenuOpen = false;
                 void newSession.refresh();
+                chatOpen.refresh();
               }
             }}
           >
@@ -334,6 +368,22 @@
                   {/if}
                 </button>
               {/each}
+              {#if chatChoices.length > 0}
+                <div class="menu-heading" role="presentation">Chat</div>
+                {#each chatChoices as choice (choice.id)}
+                  <button
+                    type="button"
+                    class="action-menu-item"
+                    role="menuitem"
+                    title="Start a new {choice.label} session in a chat in this window, in {meta.cwd}"
+                    disabled={chatOpen.opening}
+                    onclick={() => startChat(choice.id)}
+                  >
+                    <AgentIcon agent={choice.id} size={14} />
+                    <span>New {choice.label} chat</span>
+                  </button>
+                {/each}
+              {/if}
             </div>
           {/if}
         </div>

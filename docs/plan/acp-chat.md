@@ -214,8 +214,20 @@ The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
     `opencode auth login`") with an action to open a terminal tab.
 - **Entry points:**
   - "Open in Chat" in the `Resume ▾` menu;
-  - a Chat choice in New Session;
+  - a Chat choice in New Session: a "Chat" group in the header's `New ▾`
+    menu, and "New chat" in an empty workspace;
   - a "Live in chat" state in the session header.
+
+  They show only for agents whose adapter was found, on hosts with the
+  capability. `stores/chatOpen.svelte.ts` opens chats from them.
+- **A new chat before its first save:** the view selects the chat's session
+  right away. Until the agent saves it, `getMessages` fails; while a chat
+  holds the session, the view shows an empty transcript with the live tail and
+  a small "New <agent> chat" header. The catalog change from the first save
+  reloads the view.
+- **Exclusivity:** a session runs in a terminal tab or a chat, never both.
+  Opening a chat for a session a tab runs is refused with "Show terminal";
+  Resume for a session a chat drives is refused with "Show chat".
 
 ### Saved transcript and live tail
 

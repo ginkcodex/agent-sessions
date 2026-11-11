@@ -6,6 +6,7 @@
   import { files } from '../../stores/files.svelte';
   import { link } from '../../stores/link.svelte';
   import { workspaceStars } from '../../stores/workspaceStars.svelte';
+  import { chatOpen } from '../../stores/chatOpen.svelte';
   import type { AgentID } from '../../types';
 
   let { cwd }: { cwd: string } = $props();
@@ -15,6 +16,7 @@
     untrack(() => {
       void newSession.refresh().then(() => { agent = newSession.defaultAgent; });
       agent = newSession.defaultAgent;
+      chatOpen.refresh();
     });
   });
   let blocked = $derived(link.stale || link.locked);
@@ -46,6 +48,9 @@
   </select>
   <button type="button" class="primary" disabled={blocked || !newSession.available || newSession.starting || !!newSession.choices.find(c => c.agent === agent)?.missing} onclick={() => void newSession.start(agent, cwd)}>New session</button>
   <div class="secondary">
+    {#if chatOpen.canChat(agent)}
+      <button type="button" disabled={blocked || chatOpen.opening} title="Start a new session in a chat in this window" onclick={() => void chatOpen.startNew(agent, cwd)}>New chat</button>
+    {/if}
     <button type="button" disabled={blocked} onclick={() => void terminals.newShell(cwd)}>Open shell</button>
     <button type="button" disabled={blocked} onclick={() => void files.show(cwd)}>Go to File</button>
   </div>
