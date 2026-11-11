@@ -458,6 +458,72 @@ func TestChatRPCAttachments(t *testing.T) {
 	}
 }
 
+// The agent's questions reach the client in order and its answers go back;
+// a host too old for questions starts chats without them.
+func TestChatRPCQuestions(t *testing.T) {
+	b, dir := newChatBackend(t)
+	x := connectChat(t, b)
+	res, err := x.c.Initialize(t.Context(), InitializeRequest{})
+	if err != nil || !res.Capabilities.ChatQuestions {
+		t.Fatal(res, err)
+	}
+	ctx := t.Context()
+	st, err := x.c.ChatStart(ctx, engine.ChatStartRequest{Agent: model.AgentClaude, Dir: dir, Questions: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := x.c.ChatPrompt(ctx, st.ChatID, "question claude", nil); err != nil {
+		t.Fatal(err)
+	}
+	asked := x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatQuestionAsked)).Question
+	var keys []string
+	for _, f := range asked.Fields {
+		keys = append(keys, f.Key)
+	}
+	if strings.Join(keys, " ") != "question_0 question_0_custom question_1 question_1_custom" || len(asked.Fields[0].OneOf) != 2 || asked.Fields[2].Items == nil {
+		t.Fatalf("asked = %+v", asked)
+	}
+	if err := x.c.ChatAnswer(ctx, st.ChatID, "question-x", acp.ElicitationDecline, nil); !errors.Is(err, engine.ErrQuestionNotFound) {
+		t.Fatalf("unknown question: %v", err)
+	}
+	if err := x.c.ChatAnswer(ctx, st.ChatID, asked.ID, acp.ElicitationAccept, map[string]any{"question_0": "Something else"}); err == nil || !strings.Contains(err.Error(), "not one of the options") {
+		t.Fatalf("bad answer: %v", err)
+	}
+	answer := map[string]any{"question_0": "New module", "question_1": []string{"Unit tests"}}
+	if err := x.c.ChatAnswer(ctx, st.ChatID, asked.ID, acp.ElicitationAccept, answer); err != nil {
+		t.Fatal(err)
+	}
+	resolved := x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatQuestionResolved)).Question
+	if resolved.ID != asked.ID || resolved.Outcome != acp.ElicitationAccept || resolved.Content["question_0"] != "New module" {
+		t.Fatalf("resolved = %+v", resolved)
+	}
+	got := x.events.waitUpdate(t, st.ChatID, func(u engine.ChatUpdate) bool { return chunkText(u) != "" })
+	if want := `accept {"question_0":"New module","question_1":["Unit tests"]}`; chunkText(got) != want {
+		t.Fatalf("agent got %q, want %q", chunkText(got), want)
+	}
+	x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatTurnEnded))
+
+	// A host too old for questions: answers are refused, and a new chat
+	// does not ask the agent to send them.
+	x.c.mu.Lock()
+	x.c.caps.ChatQuestions = false
+	x.c.mu.Unlock()
+	if err := x.c.ChatAnswer(ctx, st.ChatID, asked.ID, acp.ElicitationDecline, nil); !errors.Is(err, ErrNoChatQuestions) {
+		t.Fatalf("old host: %v", err)
+	}
+	old, err := x.c.ChatStart(ctx, engine.ChatStartRequest{Agent: model.AgentClaude, Dir: t.TempDir(), Questions: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := x.c.ChatPrompt(ctx, old.ChatID, "question claude", nil); err != nil {
+		t.Fatal(err)
+	}
+	x.events.waitUpdate(t, old.ChatID, kindIs(engine.ChatTurnEnded))
+	if got := x.events.waitUpdate(t, old.ChatID, func(u engine.ChatUpdate) bool { return chunkText(u) != "" }); chunkText(got) != "no elicitation" {
+		t.Fatalf("old host's agent: %q", chunkText(got))
+	}
+}
+
 func TestChatRPCCapability(t *testing.T) {
 	ctx := t.Context()
 	calls := func(c *Client) map[string]error {
@@ -470,6 +536,7 @@ func TestChatRPCCapability(t *testing.T) {
 			"prompt":  c.ChatPrompt(ctx, "c", "hi", nil),
 			"cancel":  c.ChatCancel(ctx, "c"),
 			"respond": c.ChatRespond(ctx, "c", "p", "o"),
+			"answer":  c.ChatAnswer(ctx, "c", "q", acp.ElicitationDecline, nil),
 			"close":   c.ChatClose(ctx, "c"),
 		}
 	}
@@ -492,6 +559,7 @@ func TestChatRPCCapability(t *testing.T) {
 			if tc.force {
 				x.c.mu.Lock()
 				x.c.caps.ACPChat = true
+				x.c.caps.ChatQuestions = true
 				x.c.mu.Unlock()
 			}
 			for name, err := range calls(x.c) {
@@ -517,7 +585,7 @@ func TestChatRPCCapability(t *testing.T) {
 	})
 	// An absent capability is omitted, so old peers see the same JSON.
 	raw, err := json.Marshal(Capabilities{})
-	if err != nil || strings.Contains(string(raw), "acpChat") {
+	if err != nil || strings.Contains(string(raw), "acpChat") || strings.Contains(string(raw), "chatQuestions") {
 		t.Fatal(string(raw), err)
 	}
 	if _, err := (&Client{}).ChatStart(ctx, engine.ChatStartRequest{}); !errors.Is(err, engine.ErrUnsupportedAction) {

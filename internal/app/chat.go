@@ -26,6 +26,7 @@ type chatService interface {
 	ChatPrompt(ctx context.Context, chatID, text string, atts []chatattach.Attachment) error
 	ChatCancel(ctx context.Context, chatID string) error
 	ChatRespond(ctx context.Context, chatID, permissionID, optionID string) error
+	ChatAnswer(ctx context.Context, chatID, questionID, action string, content map[string]any) error
 	ChatSetOption(ctx context.Context, chatID, configID string, value any) ([]acp.ConfigOption, error)
 	ChatClose(ctx context.Context, chatID string) error
 	ChatList(ctx context.Context) ([]engine.ChatState, error)
@@ -52,6 +53,10 @@ func (l localChatService) ChatCancel(_ context.Context, chatID string) error {
 
 func (l localChatService) ChatRespond(_ context.Context, chatID, permissionID, optionID string) error {
 	return l.m.Respond(chatID, permissionID, optionID)
+}
+
+func (l localChatService) ChatAnswer(_ context.Context, chatID, questionID, action string, content map[string]any) error {
+	return l.m.Answer(chatID, questionID, action, content)
 }
 
 func (l localChatService) ChatSetOption(ctx context.Context, chatID, configID string, value any) ([]acp.ConfigOption, error) {
@@ -120,6 +125,10 @@ func (r remoteChats) ChatCancel(ctx context.Context, chatID string) error {
 
 func (r remoteChats) ChatRespond(ctx context.Context, chatID, permissionID, optionID string) error {
 	return remoteErr(r.chatService.ChatRespond(ctx, chatID, permissionID, optionID))
+}
+
+func (r remoteChats) ChatAnswer(ctx context.Context, chatID, questionID, action string, content map[string]any) error {
+	return remoteErr(r.chatService.ChatAnswer(ctx, chatID, questionID, action, content))
 }
 
 func (r remoteChats) ChatSetOption(ctx context.Context, chatID, configID string, value any) ([]acp.ConfigOption, error) {
@@ -193,6 +202,17 @@ func (a *App) ChatRespond(chatID, permissionID, optionID string) error {
 		return err
 	}
 	return s.ChatRespond(a.appCtx(), chatID, permissionID, optionID)
+}
+
+// ChatAnswer answers one of the agent's questions (a question update):
+// action is accept, with content checked against the question's form, or
+// decline (the user skipped it) or cancel.
+func (a *App) ChatAnswer(chatID, questionID, action string, content map[string]any) error {
+	s, err := a.chats()
+	if err != nil {
+		return err
+	}
+	return s.ChatAnswer(a.appCtx(), chatID, questionID, action, content)
 }
 
 // ChatSetOption sets one of the session's options (mode, model, effort) and

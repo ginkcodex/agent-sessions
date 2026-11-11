@@ -23,6 +23,7 @@ export const APP_METHODS = [
   'CancelSearch',
   'ChangeCodeDiagnosticDocument',
   'ChatAgents',
+  'ChatAnswer',
   'ChatAttachFiles',
   'ChatAttachImage',
   'ChatCancel',

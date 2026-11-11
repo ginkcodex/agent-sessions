@@ -63,6 +63,9 @@ type Capabilities struct {
 	ACPChat bool `json:"acpChat,omitempty"`
 	// ChatAttachments: chatPrompt takes attachments (images and text files).
 	ChatAttachments bool `json:"chatAttachments,omitempty"`
+	// ChatQuestions: chatStart takes the questions flag, and chatAnswer
+	// answers the agents' questions (chat question updates).
+	ChatQuestions   bool `json:"chatQuestions,omitempty"`
 	AgentSettings   bool `json:"agentSettings,omitempty"`
 	DiscoveryStatus bool `json:"discoveryStatus,omitempty"`
 	GitDiff         bool `json:"gitDiff,omitempty"`

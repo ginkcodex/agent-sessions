@@ -154,6 +154,7 @@ func TestErrors_RoundTripSentinels(t *testing.T) {
 		engine.ErrChatCannotContinue,
 		engine.ErrChatUnsupported,
 		engine.ErrPermissionNotFound,
+		engine.ErrQuestionNotFound,
 		engine.ErrSessionOwned,
 	}
 

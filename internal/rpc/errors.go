@@ -46,6 +46,7 @@ const (
 	ErrCodeChatCannotContinue = "chat_cannot_continue"
 	ErrCodeChatUnsupported    = "chat_unsupported"
 	ErrCodePermissionNotFound = "permission_not_found"
+	ErrCodeQuestionNotFound   = "question_not_found"
 	ErrCodeSessionOwned       = "session_owned"
 	// ErrCodeGitSync carries files.GitSyncError's own code in ErrorData.Details.
 	ErrCodeGitSync = "git_sync"
@@ -159,6 +160,8 @@ func ToRPCError(err error) *ResponseError {
 		strCode = ErrCodeChatUnsupported
 	case errors.Is(err, engine.ErrPermissionNotFound):
 		strCode = ErrCodePermissionNotFound
+	case errors.Is(err, engine.ErrQuestionNotFound):
+		strCode = ErrCodeQuestionNotFound
 	case errors.Is(err, engine.ErrSessionOwned):
 		strCode = ErrCodeSessionOwned
 	default:
@@ -237,6 +240,8 @@ func FromRPCError(respErr *ResponseError) error {
 		sentinel = engine.ErrChatUnsupported
 	case ErrCodePermissionNotFound:
 		sentinel = engine.ErrPermissionNotFound
+	case ErrCodeQuestionNotFound:
+		sentinel = engine.ErrQuestionNotFound
 	case ErrCodeSessionOwned:
 		sentinel = engine.ErrSessionOwned
 	}

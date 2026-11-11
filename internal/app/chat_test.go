@@ -177,6 +177,58 @@ func TestChatBindingsLocal(t *testing.T) {
 	}
 }
 
+// The agent's question reaches the window, and ChatAnswer sends the
+// answer back, on this computer and on a host.
+func TestChatAnswerBinding(t *testing.T) {
+	for _, where := range []string{"local", "remote"} {
+		t.Run(where, func(t *testing.T) {
+			var a *App
+			var log *chatLog
+			if where == "local" {
+				a = NewAppWithService(chatTestService())
+				log = useChatEngine(t, a)
+			} else {
+				a, log = remoteChatApp(t)
+			}
+			st, err := a.ChatStart(engine.ChatStartRequest{Agent: model.AgentClaude, Dir: t.TempDir(), Questions: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := a.ChatPrompt(st.ChatID, "question claude", nil); err != nil {
+				t.Fatal(err)
+			}
+			var asked *engine.ChatQuestion
+			log.waitFor(t, "question", func(u []engine.ChatUpdate, _ []engine.ChatExit) bool {
+				i := slices.IndexFunc(u, func(u engine.ChatUpdate) bool { return u.ChatID == st.ChatID && u.Kind == engine.ChatQuestionAsked })
+				if i >= 0 {
+					asked = u[i].Question
+				}
+				return i >= 0
+			})
+			if got := a.ChatList(); len(got) != 1 || len(got[0].Questions) != 1 || got[0].Questions[0].ID != asked.ID {
+				t.Fatalf("ChatList = %+v", got)
+			}
+			if err := a.ChatAnswer(st.ChatID, "question-x", acp.ElicitationDecline, nil); !errors.Is(err, engine.ErrQuestionNotFound) {
+				t.Fatalf("unknown question: %v", err)
+			}
+			if err := a.ChatAnswer(st.ChatID, asked.ID, acp.ElicitationAccept, map[string]any{"question_0": "New module"}); err != nil {
+				t.Fatal(err)
+			}
+			if end := log.waitTurnEnd(t, st.ChatID); end.StopReason != "end_turn" {
+				t.Fatalf("turn end = %+v", end)
+			}
+			log.waitFor(t, "the answer", func(u []engine.ChatUpdate, _ []engine.ChatExit) bool {
+				return slices.ContainsFunc(u, func(u engine.ChatUpdate) bool {
+					return u.ChatID == st.ChatID && u.Kind == engine.ChatQuestionResolved && u.Question.Outcome == acp.ElicitationAccept
+				})
+			})
+			if got := a.ChatList(); len(got) != 1 || len(got[0].Questions) != 0 {
+				t.Fatalf("ChatList after the answer = %+v", got)
+			}
+		})
+	}
+}
+
 // remoteChatApp shows a host whose server runs chats with the fake agent,
 // over a real rpc pair. Its events reach the returned log through the
 // generation-gated emitter, as a dialled host's do.
@@ -291,6 +343,9 @@ func TestChatRefusedForHosts(t *testing.T) {
 		}
 		if _, err := a.ChatSetOption("chat-1", "mode", "plan"); !errors.Is(err, want) {
 			t.Errorf("%s ChatSetOption: %v", name, err)
+		}
+		if err := a.ChatAnswer("chat-1", "question-1", acp.ElicitationDecline, nil); !errors.Is(err, want) {
+			t.Errorf("%s ChatAnswer: %v", name, err)
 		}
 		if err := a.ChatClose("chat-1"); !errors.Is(err, want) {
 			t.Errorf("%s ChatClose: %v", name, err)
