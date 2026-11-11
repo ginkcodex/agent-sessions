@@ -48,6 +48,7 @@ const (
 	ErrCodePermissionNotFound = "permission_not_found"
 	ErrCodeQuestionNotFound   = "question_not_found"
 	ErrCodeSessionOwned       = "session_owned"
+	ErrCodeSessionInUse       = "session_in_use"
 	// ErrCodeGitSync carries files.GitSyncError's own code in ErrorData.Details.
 	ErrCodeGitSync = "git_sync"
 )
@@ -164,6 +165,8 @@ func ToRPCError(err error) *ResponseError {
 		strCode = ErrCodeQuestionNotFound
 	case errors.Is(err, engine.ErrSessionOwned):
 		strCode = ErrCodeSessionOwned
+	case errors.Is(err, engine.ErrSessionInUse):
+		strCode = ErrCodeSessionInUse
 	default:
 		code = CodeInternalError
 	}
@@ -244,6 +247,8 @@ func FromRPCError(respErr *ResponseError) error {
 		sentinel = engine.ErrQuestionNotFound
 	case ErrCodeSessionOwned:
 		sentinel = engine.ErrSessionOwned
+	case ErrCodeSessionInUse:
+		sentinel = engine.ErrSessionInUse
 	}
 
 	if sentinel != nil {

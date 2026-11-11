@@ -156,6 +156,7 @@ func TestErrors_RoundTripSentinels(t *testing.T) {
 		engine.ErrPermissionNotFound,
 		engine.ErrQuestionNotFound,
 		engine.ErrSessionOwned,
+		engine.ErrSessionInUse,
 	}
 
 	for _, tc := range testCases {
@@ -177,6 +178,10 @@ func TestErrors_SentinelMessageOnce(t *testing.T) {
 	got := FromRPCError(ToRPCError(sent))
 	if !errors.Is(got, engine.ErrSessionOwned) || got.Error() != sent.Error() {
 		t.Fatalf("got %q, want %q", got, sent)
+	}
+	inUse := &engine.SessionInUseError{Agent: model.AgentCodex, Err: errors.New("acp: in use (code -32600)")}
+	if got := FromRPCError(ToRPCError(inUse)); !errors.Is(got, engine.ErrSessionInUse) || got.Error() != engine.ErrSessionInUse.Error() {
+		t.Fatalf("got %q", got)
 	}
 	other := FromRPCError(&ResponseError{Code: CodeAppError, Message: "gone", Data: &ErrorData{Code: ErrCodeChatNotFound}})
 	if !errors.Is(other, engine.ErrChatNotFound) || other.Error() != "chat not found: gone" {

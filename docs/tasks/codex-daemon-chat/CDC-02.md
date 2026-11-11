@@ -1,6 +1,6 @@
 # CDC-02 — A clear "session in use" error with Try again
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 2 h
 - **Depends on:** CDC-01
 - **Plan:** [codex-daemon-chat.md](../../plan/codex-daemon-chat.md)
@@ -32,3 +32,20 @@
   round trip keeps `errors.Is(err, ErrSessionInUse)` and the text.
 - Frontend: a refused start shows the new toast; its action retries and
   succeeds.
+
+## Evidence
+
+- `acp.Error.Reason` and `acp.IsSessionInUse` read `data.reason`;
+  `engine.chatError` turns `thread_active_writer` into
+  `SessionInUseError` (`errors.Is` `ErrSessionInUse`, and still `errors.As`
+  the agent's `*acp.Error`). `rpc` carries it as `session_in_use`.
+- The fake agent (`acptest`) refuses session "in-use" as codex-acp does.
+  `TestChatSessionInUse`: the start fails with the plain text, the refused
+  chat lets go of the session, other reasons are not mistaken for it.
+  `TestErrors_*`: the code round-trips and the text is not repeated.
+- Frontend: `a session Codex still holds says so and offers to try again`:
+  the toast, and Try again starting the same session, which then opens.
+- Ran `go test ./internal/acp/... ./internal/rpc/... ./internal/engine/...`,
+  `npm test` (1353 pass) and `npm run check` (0 errors); golangci-lint
+  reports nothing new in the changed files.
+- Not checked: the toast in the running app, and a host's chat (CDC-05).

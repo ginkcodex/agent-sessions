@@ -45,9 +45,9 @@ The evidence and the spike are in
 - `engine` recognises the ACP error whose `data.reason` is
   `thread_active_writer` and returns a `SessionInUseError` wrapping a new
   sentinel, `ErrSessionInUse`:
-  "Codex has this session open elsewhere: in its CLI, app or IDE extension,
-  or for about a minute after one of them closed it. Close it there, or try
-  again in a minute."
+  "the session is open in another Codex client: its CLI, app or IDE
+  extension, or one that closed it in the last minute. Close it there, or
+  try again in a minute."
 - `rpc` carries it as `session_in_use`, both ways, so a host's chat gives
   the same text as a local one, without the `rpc error -32603` and
   `(code -32600)` wrapping.

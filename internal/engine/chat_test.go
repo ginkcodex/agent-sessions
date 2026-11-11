@@ -495,6 +495,36 @@ func TestChatAuthRequired(t *testing.T) {
 	}
 }
 
+// A session another Codex process holds is refused with a plain message, and
+// the refused chat lets go of the session.
+func TestChatSessionInUse(t *testing.T) {
+	f := newChatFixture(t)
+	ref := model.SessionRef{Agent: model.AgentClaude, ID: "in-use"}
+	_, err := f.m.Start(chatCtx(t), ChatStartRequest{Agent: model.AgentClaude, Dir: f.dir, Resume: &ref})
+	var inUse *SessionInUseError
+	if !errors.As(err, &inUse) || !errors.Is(err, ErrSessionInUse) || inUse.Agent != model.AgentClaude {
+		t.Fatalf("start = %v", err)
+	}
+	if err.Error() != ErrSessionInUse.Error() {
+		t.Fatalf("error = %q", err)
+	}
+	var agentErr *acp.Error
+	if !errors.As(err, &agentErr) || agentErr.Reason() != acp.ReasonThreadActiveWriter {
+		t.Fatalf("agent error = %v", agentErr)
+	}
+	// Other agent errors pass through unchanged.
+	if (&acp.Error{Code: acp.CodeInvalidRequest, Message: "x", Data: json.RawMessage(`{"reason":"other"}`)}).Reason() != "other" ||
+		acp.IsSessionInUse(&acp.Error{Code: acp.CodeInvalidRequest, Message: "x"}) {
+		t.Fatal("reason misread")
+	}
+	// The session is free for the next try.
+	ok := model.SessionRef{Agent: model.AgentClaude, ID: "free"}
+	f.start(t, &ok)
+	if _, err := f.m.Start(chatCtx(t), ChatStartRequest{Agent: model.AgentClaude, Dir: f.dir, Resume: &ref}); !errors.Is(err, ErrSessionInUse) {
+		t.Fatalf("retry = %v", err)
+	}
+}
+
 func TestChatOwnership(t *testing.T) {
 	f := newChatFixture(t)
 	ref := model.SessionRef{Agent: model.AgentClaude, ID: "old-1"}

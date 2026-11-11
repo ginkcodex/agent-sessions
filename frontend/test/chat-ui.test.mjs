@@ -461,6 +461,32 @@ test('opening starts a chat, a new one selects its session, and a failed start s
   });
 });
 
+test('a session Codex still holds says so and offers to try again', async () => {
+  await withOpener({}, async ({ opener, toasts, calls }) => {
+    const start = globalThis.__openerFixture.chats.start;
+    let refusals = 1;
+    globalThis.__openerFixture.chats.start = async (req) => {
+      if (refusals-- > 0) {
+        // As engine.ErrSessionInUse reads locally and after crossing rpc.
+        throw new Error('the session is open in another Codex client: its CLI, app or IDE extension, or one that closed it in the last minute. Close it there, or try again in a minute');
+      }
+      return start(req);
+    };
+    assert.equal(await opener.openSession(META), false);
+    const shown = toasts.at(-1);
+    assert.equal(shown.title, 'Codex is still using this session');
+    assert.match(shown.body, /about a minute/);
+    assert.equal(shown.actions[0].label, 'Try again');
+    assert.equal(opener.focusRequest, 0);
+
+    shown.actions[0].onSelect();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(calls, [['start', { agent: 'codex', dir: '/p', resume: META.ref, questions: true }]], 'the same session again');
+    assert.equal(opener.focusRequest, 1);
+    assert.equal(toasts.length, 1);
+  });
+});
+
 // --- Permission cards and missing adapters ----------------------------------
 
 test('a permission card offers every option and chooses none', async () => {

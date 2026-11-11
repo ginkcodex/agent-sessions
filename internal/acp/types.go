@@ -51,6 +51,29 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("acp: %s (code %d)", e.Message, e.Code)
 }
 
+// Reason is data.reason, which some adapters set to say why they refused a
+// request (codex-acp: "thread_active_writer"), or "" without one.
+func (e *Error) Reason() string {
+	var d struct {
+		Reason string `json:"reason"`
+	}
+	if len(e.Data) == 0 || json.Unmarshal(e.Data, &d) != nil {
+		return ""
+	}
+	return d.Reason
+}
+
+// ReasonThreadActiveWriter is codex-acp's reason when another Codex process,
+// usually Codex's background daemon, holds the session's writer lock.
+const ReasonThreadActiveWriter = "thread_active_writer"
+
+// IsSessionInUse reports whether err is the agent refusing a session that
+// another of its own processes has open.
+func IsSessionInUse(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Reason() == ReasonThreadActiveWriter
+}
+
 // MethodNotFound is the reply to a request the client does not handle.
 func MethodNotFound(method string) *Error {
 	return &Error{Code: CodeMethodNotFound, Message: "method not found: " + method}

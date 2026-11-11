@@ -39,6 +39,10 @@
 //	ACPTEST_NO_LOAD=1        do not advertise session/load
 //	ACPTEST_STDERR_BYTES=N   write N bytes of numbered stderr lines at start
 //	ACPTEST_TEXT_ONLY=1      advertise no image or embedded-context prompts
+//
+// Loading or resuming the session "in-use" fails as codex-acp does while
+// another Codex process holds the session: -32600 with data.reason
+// "thread_active_writer".
 package acptest
 
 import (
@@ -226,6 +230,10 @@ func (a *agent) request(ctx context.Context, method string, params json.RawMessa
 		var p acp.LoadSessionRequest
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, &acp.Error{Code: acp.CodeInvalidParams, Message: err.Error()}
+		}
+		if p.SessionID == "in-use" {
+			return nil, &acp.Error{Code: acp.CodeInvalidRequest, Message: "Invalid request: This Codex session is in use by another Codex client",
+				Data: json.RawMessage(`{"reason":"thread_active_writer","threadId":"in-use","details":"thread in-use already has an active writer"}`)}
 		}
 		a.mu.Lock()
 		a.opened[p.SessionID] = method

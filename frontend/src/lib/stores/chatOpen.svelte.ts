@@ -1,6 +1,6 @@
 import { untrack } from 'svelte';
 import type { AgentID, SessionMeta, SessionRef } from '../types';
-import { isStaleReply } from '../link';
+import { isSessionInUseError, isStaleReply } from '../link';
 import { errorText } from '../manage';
 import { chatAgentAvailable } from '../chat';
 import { choicesToApply, loadChoices, saveChoice } from '../chatOptions';
@@ -55,9 +55,12 @@ export class ChatOpener {
       return true;
     }
     if (this.refuseChat(ref)) return false;
-    return this.run(async () => {
-      await chats.start({ agent: ref.agent, dir: meta.cwd, resume: { agent: ref.agent, id: ref.id }, questions: true });
-    });
+    return this.run(
+      async () => {
+        await chats.start({ agent: ref.agent, dir: meta.cwd, resume: { agent: ref.agent, id: ref.id }, questions: true });
+      },
+      () => this.openSession(meta),
+    );
   }
 
   /**
@@ -124,14 +127,17 @@ export class ChatOpener {
     if (chat.phase !== 'exited') return Promise.resolve(false);
     const ref = chat.session;
     if (saved && ref && this.refuseChat(ref)) return Promise.resolve(false);
-    return this.run(async () => {
-      if (saved && ref) {
-        await chats.start({ agent: chat.agent, dir: chat.dir, resume: { agent: ref.agent, id: ref.id }, questions: true });
-      } else {
-        await this.startFresh(chat.agent, chat.dir);
-      }
-      chats.dismiss(chat.key);
-    });
+    return this.run(
+      async () => {
+        if (saved && ref) {
+          await chats.start({ agent: chat.agent, dir: chat.dir, resume: { agent: ref.agent, id: ref.id }, questions: true });
+        } else {
+          await this.startFresh(chat.agent, chat.dir);
+        }
+        chats.dismiss(chat.key);
+      },
+      () => this.restart(chat, saved),
+    );
   }
 
   /**
@@ -168,7 +174,9 @@ export class ChatOpener {
     return true;
   }
 
-  private async run(start: () => Promise<void>): Promise<boolean> {
+  // Runs start, and says why it failed. again opens the same session again,
+  // offered when the agent says another of its clients has the session.
+  private async run(start: () => Promise<void>, again?: () => Promise<boolean>): Promise<boolean> {
     if (this.opening) return false;
     this.opening = true;
     try {
@@ -176,7 +184,17 @@ export class ChatOpener {
       this.focus();
       return true;
     } catch (err) {
-      if (!isStaleReply(err)) toast.show({ title: 'Could not start the chat', body: errorText(err, 'The agent did not start.'), tone: 'error' });
+      if (isStaleReply(err)) return false;
+      if (again && isSessionInUseError(err)) {
+        toast.show({
+          title: 'Codex is still using this session',
+          body: 'Codex keeps a session open for about a minute after its CLI, app or IDE extension closes it, and refuses the chat until then. Close it there, or try again in a minute.',
+          tone: 'error',
+          actions: [{ label: 'Try again', onSelect: () => void again() }],
+        });
+      } else {
+        toast.show({ title: 'Could not start the chat', body: errorText(err, 'The agent did not start.'), tone: 'error' });
+      }
       return false;
     } finally {
       this.opening = false;

@@ -78,7 +78,22 @@ var (
 	ErrSessionOwned = errors.New("the session is already open in a chat")
 	// ErrEmptyPrompt means a prompt had neither text nor attachments.
 	ErrEmptyPrompt = errors.New("the message is empty")
+	// ErrSessionInUse is wrapped by SessionInUseError.
+	ErrSessionInUse = errors.New("the session is open in another Codex client: its CLI, app or IDE extension, " +
+		"or one that closed it in the last minute. Close it there, or try again in a minute")
 )
+
+// SessionInUseError means the agent refused the session because another of
+// its own clients has it open: Codex's daemon keeps a session for a minute
+// after its CLI quits. Err is the agent's error.
+type SessionInUseError struct {
+	Agent model.AgentID
+	Err   error
+}
+
+func (e *SessionInUseError) Error() string { return ErrSessionInUse.Error() }
+
+func (e *SessionInUseError) Unwrap() []error { return []error{ErrSessionInUse, e.Err} }
 
 // SessionOwnedError refuses a second chat for a session.
 type SessionOwnedError struct {
@@ -486,6 +501,9 @@ func (m *ChatManager) start(ctx context.Context, ch *chat, req ChatStartRequest)
 func (m *ChatManager) chatError(agent model.AgentID, client *acp.Client, err error) error {
 	if acp.IsAuthRequired(err) {
 		return &AuthRequiredError{Agent: agent, Methods: client.Info().AuthMethods, Err: err}
+	}
+	if acp.IsSessionInUse(err) {
+		return &SessionInUseError{Agent: agent, Err: err}
 	}
 	return err
 }
