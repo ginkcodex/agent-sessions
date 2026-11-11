@@ -7,6 +7,7 @@ import {
   chatAgentAvailable,
   endChatQuestion,
   MAX_CHAT_ATTACHMENTS,
+  pendingChatMeta,
   permissionView,
   planMarkdown,
   skippedToast,
@@ -327,6 +328,32 @@ test('the session header says when a chat drives the session', async () => {
   const both = await renderSessionHeader({ chats: { forSession: () => undefined }, terminals: { tabFor: () => ({ id: 't1' }) }, ...host });
   assert.match(both, /● Running/);
   assert.doesNotMatch(both, /Live in chat/);
+});
+
+test('a new chat keeps the session header layout before its agent saves the session', async () => {
+  const ref = { agent: 'claude-code', id: 'new-1' };
+  const meta = pendingChatMeta(ref, { dir: '/home/me/proj', phase: 'idle' }, 'Claude Code');
+  assert.equal(meta.title, 'New Claude Code chat');
+  assert.equal(meta.live, true);
+  assert.equal(pendingChatMeta(ref, { dir: '/x', phase: 'exited' }, 'Claude Code').live, false);
+
+  const html = unescapeHTML(await renderSessionHeader(
+    { link: { dataHost: undefined }, launcher: { canOpen: true }, chats: { forSession: () => chat() } },
+    { meta, pending: true, onFind() {} },
+  ));
+  for (const part of ['header-top-row', 'header-title-row', 'header-meta-row', 'aria-label="Transcript display"', 'aria-label="Find in session"', '● Live in chat']) {
+    assert.ok(html.includes(part), `the pending header has ${part}`);
+  }
+  assert.match(html, /<h2 class="title-text[^"]*"[^>]*>\s*New Claude Code chat/);
+  assert.match(html, /class="cwd-text[^"]*">\/home\/me\/proj</);
+  assert.match(html, /class="action-btn resume-btn[^"]*" title="Available once the agent saves this session" disabled[^>]*>Resume/);
+  assert.doesNotMatch(html, /More ways to resume/);
+  assert.match(html, /more-btn[^"]*"[^>]*disabled/);
+  assert.doesNotMatch(html, /msgs|Token use|header-time-row/, 'no counts, tokens or times before the session is saved');
+
+  const saved = await renderSessionHeader({ link: { dataHost: undefined }, launcher: { canOpen: true } });
+  assert.match(saved, /msgs/);
+  assert.doesNotMatch(saved, /more-btn[^"]*"[^>]*disabled/);
 });
 
 // --- Terminal and chat exclusivity -------------------------------------------

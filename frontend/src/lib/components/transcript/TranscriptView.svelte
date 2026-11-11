@@ -43,6 +43,7 @@
   import { chats } from '../../stores/chats.svelte';
   import { chatOpen } from '../../stores/chatOpen.svelte';
   import { ALL_AGENTS } from '../../portable';
+  import { pendingChatMeta } from '../../chat';
   import LiveTail from '../chat/LiveTail.svelte';
   import ChatComposer from '../chat/ChatComposer.svelte';
 
@@ -809,12 +810,17 @@
         {printPreparing}
       />
     {:else if chat}
-      <!-- A new chat's session, before its agent saves it. -->
-      <div class="chat-header">
-        <Icon name="message-square" size={14} />
-        <span class="chat-header-title">New {chatAgentName} chat</span>
-        <span class="chat-header-dir" title={chat.dir}>{chat.dir}</span>
-      </div>
+      <!-- A new chat's session, before its agent saves it: the same header,
+           so the layout does not change when the session's data arrives. -->
+      <SessionHeader
+        meta={pendingChatMeta(appState.selectedSessionRef, chat, chatAgentName)}
+        pending
+        {mode}
+        onModeChange={(next) => (mode = next)}
+        onResume={() => {}}
+        onFind={toggleFind}
+        findOpen={find.open}
+      />
     {/if}
 
     {#if jumpNotice}
@@ -986,31 +992,6 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
-  }
-
-  .chat-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-  }
-
-  .chat-header-title {
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-
-  .chat-header-dir {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
   }
 
   /* Holds the find bar over the messages' top right corner. */

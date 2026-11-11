@@ -59,7 +59,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
 | ACP adapter install | [acp-adapter-install](docs/plan/acp-adapter-install.md) | [acp-adapter-install/](docs/tasks/acp-adapter-install/README.md) | 4/5 ✅ · 1 ⬜ |
-| ACP chat mode | [acp-chat](docs/plan/acp-chat.md) | [acp-chat/](docs/tasks/acp-chat/README.md) | 16/17 ✅ · 1 🟡 |
+| ACP chat mode | [acp-chat](docs/plan/acp-chat.md) | [acp-chat/](docs/tasks/acp-chat/README.md) | 17/18 ✅ · 1 🟡 |
 | Chat attachments | [chat-attachments](docs/plan/chat-attachments.md) | [chat-attachments/](docs/tasks/chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
 | Chat end guard | [chat-end-guard](docs/plan/chat-end-guard.md) | [chat-end-guard/](docs/tasks/chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
 | Chat adapter setup | [chat-adapter-setup](docs/plan/chat-adapter-setup.md) | [chat-adapter-setup/](docs/tasks/chat-adapter-setup/README.md) | 4/5 ✅ · 1 ⬜ |

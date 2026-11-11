@@ -43,6 +43,11 @@
     /** Prepares the full Chat-level conversation in the shared print editor. */
     onPrint?: () => void;
     printPreparing?: boolean;
+    /**
+     * A new chat's session its agent has not saved yet: the same layout, with
+     * Resume and the ⋯ menu disabled and no counts, tokens or times.
+     */
+    pending?: boolean;
   }
 
   let {
@@ -57,7 +62,10 @@
     findOpen = false,
     onPrint,
     printPreparing = false,
+    pending = false,
   }: Props = $props();
+
+  const PENDING_TITLE = 'Available once the agent saves this session';
 
   // The agent's name, for the icon badge's tooltip and screen readers.
   let agentName = $derived(ALL_AGENTS.find((a) => a.id === meta.ref.agent)?.label ?? meta.ref.agent);
@@ -206,7 +214,9 @@
       {:else if runningTab}
         <span class="running-badge" title="This session is running in the terminal panel">● Running</span>
       {/if}
-      {#if launcher.canOpen || canOpenOther}
+      {#if pending}
+        <button type="button" class="action-btn resume-btn" title={PENDING_TITLE} disabled>Resume</button>
+      {:else if launcher.canOpen || canOpenOther}
         <div class="menu-container resume-split" bind:this={resumeMenuRoot}>
           {#if runningTab}
             {@const tabId = runningTab.id}
@@ -429,7 +439,8 @@
           type="button"
           class="action-btn icon-btn more-btn"
           class:active={moreMenuOpen}
-          title={printPreparing ? 'Preparing conversation for printing…' : 'Continue in another agent, export, or print'}
+          disabled={pending}
+          title={pending ? PENDING_TITLE : printPreparing ? 'Preparing conversation for printing…' : 'Continue in another agent, export, or print'}
           aria-busy={printPreparing}
           aria-label="More actions"
           aria-haspopup="menu"
@@ -571,6 +582,7 @@
       </div>
     {/if}
 
+    {#if !pending}
     <div class="meta-item count-item">
       <Icon name="message-square" size={13} class="meta-icon" />
       <span class="count-val">{messageTotal} msgs</span>
@@ -598,8 +610,10 @@
         </span>
       {/if}
     </div>
+    {/if}
   </div>
 
+  {#if !pending}
   <div class="header-time-row">
     {#each [{ label: 'Created', value: meta.createdAt }, { label: 'Updated', value: meta.updatedAt }] as stamp (stamp.label)}
       {#if isKnownTime(stamp.value)}
@@ -610,6 +624,7 @@
       {/if}
     {/each}
   </div>
+  {/if}
 </header>
 
 <style>
@@ -907,6 +922,19 @@
   .action-btn.find-btn.active:hover {
     background-color: var(--active-bg);
     color: var(--accent-color);
+  }
+
+  /* A new chat's session, not saved yet: Resume and ⋯ wait for it. */
+  .action-btn.resume-btn:disabled:not(.resume-main) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .action-btn.more-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background-color: transparent;
+    color: var(--text-secondary);
   }
 
   .action-btn.more-btn.active {

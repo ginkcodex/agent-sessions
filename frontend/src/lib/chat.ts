@@ -1,7 +1,25 @@
 // What the chat UI shows: the live tail as transcript messages, and which
 // agents can chat. Every function here is pure.
-import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatPermission, Message, Part, ToolStatus } from './types';
+import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatPermission, Message, Part, SessionMeta, SessionRef, ToolStatus } from './types';
 import { toolOutput, type ChatTail, type TailAnswer, type TailDiff, type TailItem, type TailTool } from './chatTail';
+
+/**
+ * What the session header shows for a new chat's session before its agent
+ * saves it: the agent, the directory and "New <agent> chat", with no counts,
+ * tokens or times yet. SessionHeader takes it with pending set.
+ */
+export function pendingChatMeta(ref: SessionRef, chat: { dir: string; phase: string }, agentName: string): SessionMeta {
+  return {
+    ref,
+    cwd: chat.dir,
+    title: `New ${agentName} chat`,
+    createdAt: '',
+    updatedAt: '',
+    counts: { user: 0, assistant: 0, toolCalls: 0 },
+    tokens: { input: 0, output: 0 },
+    live: chat.phase !== 'exited',
+  };
+}
 
 /** A piece of the live tail: a transcript message, or how a question ended. */
 export type TailBlock = { kind: 'message'; message: Message } | { kind: 'answer'; answer: TailAnswer };
