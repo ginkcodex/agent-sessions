@@ -30,7 +30,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [chat-attachments.md](chat-attachments.md) | [chat-attachments](../tasks/chat-attachments/README.md) | Attach images and text files to a chat message from a + button, a drop or a paste |
 | [chat-end-guard.md](chat-end-guard.md) | [chat-end-guard](../tasks/chat-end-guard/README.md) | A one-line notice when the user ends a chat; ask before ending a working chat, and before closing or quitting with open chats |
 | [chat-adapter-setup.md](chat-adapter-setup.md) | [chat-adapter-setup](../tasks/chat-adapter-setup/README.md) | A short Chat settings section: the app's own pinned adapters, one-click Install, and Update when the copy is older than the pin |
-| [chat-questions.md](chat-questions.md) | [chat-questions](../tasks/chat-questions/README.md) | Show an agent's questions in a chat as a card with tabs, choices and an own answer, changeable until Submit |
+| [chat-questions.md](chat-questions.md) | [chat-questions](../tasks/chat-questions/README.md) | Show an agent's questions in a chat with compact tabs, clear choices and a custom answer, changeable until Submit |
 | [orphan-task-notifications.md](orphan-task-notifications.md) | [orphan-task-notifications](../tasks/orphan-task-notifications/README.md) | Show the notification Claude Code writes for background tasks orphaned by a previous run as a notification, not raw XML |
 | [idle-rendering.md](idle-rendering.md) | [idle-rendering](../tasks/idle-rendering/README.md) | Reduce idle animations and unnecessary compositing; native GPU validation gates |
 | [file-translate.md](file-translate.md) | [file-translate](../tasks/file-translate/README.md) | Translate complete Markdown files from the preview context menu without selecting text |
@@ -74,6 +74,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [aur-package.md](aur-package.md) | [aur-package](../tasks/aur-package/README.md) | Arch Linux: `agent-sessions-bin` on the AUR from each stable release's `.deb`, published by CI |
 | [remote-reconnect.md](remote-reconnect.md) | [remote-reconnect](../tasks/remote-reconnect/README.md) | Faster recovery from interrupted SSH and WSL connections: liveness watchdog, fresh redial, bounded retries, same-host reload |
 | [terminal-cwd-matching.md](terminal-cwd-matching.md) | [terminal-cwd-matching](../tasks/terminal-cwd-matching/README.md) | Match shell workspaces by detected cwd while preserving agent identity and active equal matches |
+| [codex-guardian-ancestry.md](codex-guardian-ancestry.md) | [codex-guardian-ancestry](../tasks/codex-guardian-ancestry/README.md) | Link Guardian reviews to their main session for browsing, counts and cleanup |
 
 ## Supporting documents
 

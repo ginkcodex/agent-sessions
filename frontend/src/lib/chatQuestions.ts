@@ -82,7 +82,8 @@ export interface DraftAnswer {
 export type Draft = Readonly<Record<string, DraftAnswer>>;
 
 const OWN_SUFFIX = '_custom';
-const CODEX_OTHER = 'Other';
+// codex-acp 2.6.0 uses “None of the above”; also accept the legacy “Other” shape.
+const CODEX_OTHER = ['None of the above', 'Other'];
 
 function codexMeta(f: ChatQuestionField): Record<string, unknown> | undefined {
   const codex = f._meta?.codex;
@@ -142,7 +143,7 @@ function pairs(fields: readonly ChatQuestionField[], required: ReadonlySet<strin
     if (!q || !isPlainText(f) || out.has(q.key)) continue;
     const kind = kindOf(q);
     if (kind === 'choice') {
-      const other = choicesOf(q).some((o) => o.const === CODEX_OTHER) ? CODEX_OTHER : undefined;
+      const other = CODEX_OTHER.find((value) => choicesOf(q).some((o) => o.const === value));
       if (required.has(q.key) && !other) continue;
       out.set(q.key, { own: f, ownValue: other });
     } else if (kind === 'multi' && !required.has(q.key)) {

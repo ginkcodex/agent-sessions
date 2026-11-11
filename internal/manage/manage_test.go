@@ -18,6 +18,8 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/provider/codex"
 	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
@@ -608,18 +610,40 @@ func TestDelete_UnknownRefFailsClosed(t *testing.T) {
 func TestDelete_CodexChildFirstOrder(t *testing.T) {
 	roots := testRoots(t)
 	child := codexMeta(roots.Codex, uuidB)
-	child.ParentID = uuidA
+	// Ancestry must come from the provider, not a hand-built catalog.
 	parent := codexMeta(roots.Codex, uuidA)
 	catalog := []model.SessionMeta{parent, child}
 	for _, m := range catalog {
 		if err := os.MkdirAll(filepath.Dir(m.SourcePath), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(m.SourcePath, []byte(`{}`), 0o600); err != nil {
+		payload := `{"id":"` + m.Ref.ID + `"}`
+		if m.Ref.ID == uuidB {
+			payload = `{"id":"` + uuidB + `","parent_thread_id":"` + uuidA + `","source":{"subagent":{"other":"guardian"}},"thread_source":"guardian_review"}`
+		}
+		if err := os.WriteFile(m.SourcePath, []byte(`{"type":"session_meta","payload":`+payload+"}\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
+	db, err := sql.Open("sqlite", filepath.Join(roots.Codex, "state_5.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE threads (id TEXT PRIMARY KEY); CREATE TABLE thread_spawn_edges (parent_thread_id TEXT, child_thread_id TEXT);`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 	backdate(t, roots.Codex)
+	scanned, err := codex.New(roots.Codex, nil).Scan(context.Background(), provider.ScanState{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog = scanned.Changed
+	if len(catalog) != 2 {
+		t.Fatalf("scanned catalog = %+v", catalog)
+	}
 	exec := &recordingExec{}
 	m, _ := newTestManager(t, roots, WithExec(exec.exec))
 	enableAll(t, m)

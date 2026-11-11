@@ -144,3 +144,14 @@ Things to look for:
 - `AGENTS.md` in the repo root is untracked and not part of this work.
 - Other QA tasks still need approval to run: ACP-14 (partial), AAI-05, CA-06,
   CEG-05, CAS-05 and CQ-07.
+
+## Live-test follow-up (2026-11-11, CQ-09)
+
+The live async single-choice answer was delivered during the turn; the grouped
+questions were selectable but the user supplied a screenshot of poor layout.
+The installed adapter actually uses “None of the above”, so the previous
+“Other”-only matching left a duplicate custom-answer option visible. CQ-09
+adds both-value matching, compact tabs for full-sentence labels and visible
+radio indicators. Full frontend suite/check/build and browser component checks
+pass; see [CQ-09](docs/tasks/chat-questions/CQ-09.md). These source changes
+have not yet been verified in a rebuilt desktop client. CQ-07 is partial.

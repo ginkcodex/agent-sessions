@@ -218,9 +218,10 @@
     <div class="tabs" role="tablist" aria-label="Questions">
       {#each form.questions as q, i (q.key)}
         {@const done = answered(q, draft[q.key]) && !problem(q, draft[q.key])}
-        <button type="button" role="tab" class="tab" class:done aria-selected={tab === i} data-tab={q.key} onclick={() => void go(i)}>
-          <span class="tab-mark" aria-hidden="true">{#if done}<Icon name="check" size={12} />{:else}{i + 1}{/if}</span>
-          <span>{q.header}</span>
+        {@const compact = q.header === q.text || q.header.length > 36}
+        <button type="button" role="tab" class="tab" class:done aria-label={q.header} title={q.text} aria-selected={tab === i} data-tab={q.key} onclick={() => void go(i)}>
+          <span class="tab-mark" aria-hidden="true">{#if done}<Icon name="check" size={12} />{:else if !compact}{i + 1}{/if}</span>
+          <span class="tab-label">{compact ? `Question ${i + 1}` : q.header}</span>
           {#if done}<span class="sr-only">(answered)</span>{/if}
         </button>
       {/each}
@@ -246,6 +247,7 @@
             {@const on = !a?.ownChosen && a?.choice === o.value}
             <button type="button" role="radio" class="option" class:on aria-checked={on} disabled={sending} onclick={() => pick(q, o.value)}>
               <span class="num">{i + 1}.</span>
+              <span class="radio" aria-hidden="true"></span>
               <span class="body">
                 <span class="label">{o.label}{#if o.isDefault}<span class="badge">Default</span>{/if}</span>
                 {#if o.description}<span class="description">{o.description}</span>{/if}
@@ -257,6 +259,7 @@
             <div class="option own" class:on>
               <button type="button" role="radio" class="own-pick" aria-checked={on} aria-label="Type your own answer" disabled={sending} onclick={() => pickOwn(q)}>
                 <span class="num">{q.options.length + 1}.</span>
+                <span class="radio" aria-hidden="true"></span>
               </button>
               <input
                 type={q.secret ? 'password' : 'text'}
@@ -308,6 +311,7 @@
             {@const on = a?.yes === yes}
             <button type="button" role="radio" class="option" class:on aria-checked={on} disabled={sending} onclick={() => pickYes(q, yes)}>
               <span class="num">{i + 1}.</span>
+              <span class="radio" aria-hidden="true"></span>
               <span class="label">{yes ? 'Yes' : 'No'}</span>
             </button>
           {/each}
@@ -392,6 +396,7 @@
   .question-card {
     display: flex;
     flex-direction: column;
+    min-width: 0;
     gap: 8px;
     margin: 0 0 14px 28px;
     padding: 10px 12px;
@@ -449,6 +454,9 @@
   .tab {
     display: inline-flex;
     align-items: center;
+    max-width: 190px;
+    min-width: 0;
+    text-align: left;
     gap: 5px;
     padding: 3px 9px;
     border: 1px solid transparent;
@@ -457,6 +465,19 @@
     color: var(--text-secondary);
     font-size: 0.75rem;
     cursor: pointer;
+  }
+
+  .tab-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tab:focus-visible,
+  .option:focus-visible,
+  .own-pick:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
   }
 
   .tab[aria-selected='true'] {
@@ -470,6 +491,7 @@
     align-items: center;
     justify-content: center;
     min-width: 14px;
+    flex-shrink: 0;
     color: var(--text-muted);
     font-size: 0.68rem;
   }
@@ -514,7 +536,7 @@
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    padding: 5px 10px;
+    padding: 8px 10px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background: var(--bg-secondary);
@@ -544,6 +566,10 @@
   }
 
   .own-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    align-self: stretch;
     padding: 0;
     border: none;
     background: none;
@@ -555,6 +581,22 @@
     min-width: 1.4em;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  .radio {
+    box-sizing: border-box;
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    border: 1px solid var(--text-muted);
+    border-radius: 50%;
+    background: var(--bg-primary);
+  }
+
+  [aria-checked='true'] > .radio {
+    border: 4px solid #3b82f6;
   }
 
   .box {

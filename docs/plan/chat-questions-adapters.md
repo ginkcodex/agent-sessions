@@ -93,3 +93,14 @@ tag). The ACP schema is `@agentclientprotocol/sdk` 2.6.0, protocol v1.
     the required keys.
 - Answer: a custom text replaces a single choice's value, or is added to a
   multi-select's values. Anything but `accept` cancels the form.
+
+## Live Codex correction (CQ-09)
+
+The installed codex-acp 2.6.0 source uses `USER_INPUT_OTHER_OPTION =
+"None of the above"`, not the `Other` value described above and used by
+the original fixtures. Its note prefix is `user_note: `, not `note:`.
+The live screenshot confirms the visible “None of the above” option next to
+the custom input. The frontend now recognizes both sentinel values only
+when pairing a Codex note, hides that sentinel and sends its original value
+with the note. This preserves legacy fixture coverage without assuming
+that real 2.6.0 sends the old shape.

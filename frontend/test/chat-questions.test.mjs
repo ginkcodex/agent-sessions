@@ -277,3 +277,31 @@ test("Codex's async question keeps the agent working", () => {
   assert.equal(asksWhileWorking(CODEX), false);
   assert.equal(asksWhileWorking(CLAUDE), false);
 });
+
+test('current Codex custom sentinel is hidden only with a paired note and is preserved on submission', () => {
+  for (const required of [[], ['color']]) {
+    const question = {
+      id: 'current-codex',
+      fields: [
+        { key: 'color', type: 'string', title: 'Pick a color', oneOf: [opt('Red'), opt('None of the above')], _meta: codexMeta({ isOther: true }) },
+        { key: 'color_note', type: 'string', title: 'Additional answer or note', _meta: codexMeta({ questionId: 'color', role: 'user_note' }) },
+      ],
+      required,
+    };
+    const form = questionForm(question);
+    const [color] = form.questions;
+    assert.equal(form.questions.length, 1);
+    assert.deepEqual(color.options.map((o) => o.value), ['Red']);
+    assert.equal(color.ownValue, 'None of the above');
+    const draft = setOwn({}, color, 'Purple');
+    assert.deepEqual(content(form, draft), { color: 'None of the above', color_note: 'Purple' });
+    assert.equal(summary(form, 'accept', content(form, draft)), 'Answered: Purple');
+    const unpaired = questionForm({ ...question, fields: [question.fields[0]] });
+    assert.deepEqual(unpaired.questions[0].options.map((o) => o.value), ['Red', 'None of the above']);
+  }
+  const ordinary = questionForm({ id: 'ordinary', fields: [
+    { key: 'color', type: 'string', oneOf: [opt('Other'), opt('None of the above')] },
+    { key: 'color_custom', type: 'string' },
+  ] });
+  assert.deepEqual(ordinary.questions[0].options.map((o) => o.value), ['Other', 'None of the above']);
+});

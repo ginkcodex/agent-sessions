@@ -63,7 +63,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Chat attachments | [chat-attachments](docs/plan/chat-attachments.md) | [chat-attachments/](docs/tasks/chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
 | Chat end guard | [chat-end-guard](docs/plan/chat-end-guard.md) | [chat-end-guard/](docs/tasks/chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
 | Chat adapter setup | [chat-adapter-setup](docs/plan/chat-adapter-setup.md) | [chat-adapter-setup/](docs/tasks/chat-adapter-setup/README.md) | 4/5 ✅ · 1 ⬜ |
-| Chat questions | [chat-questions](docs/plan/chat-questions.md) | [chat-questions/](docs/tasks/chat-questions/README.md) | 7/8 ✅ · 1 ⬜ |
+| Chat questions | [chat-questions](docs/plan/chat-questions.md) | [chat-questions/](docs/tasks/chat-questions/README.md) | 8/9 ✅ · 1 🟡 |
 | Orphaned task notifications | [orphan-task-notifications](docs/plan/orphan-task-notifications.md) | [orphan-task-notifications/](docs/tasks/orphan-task-notifications/README.md) | 1/1 ✅ |
 | Idle rendering | [idle-rendering](docs/plan/idle-rendering.md) | [idle-rendering/](docs/tasks/idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](docs/plan/file-translate.md) | [file-translate/](docs/tasks/file-translate/README.md) | 2/2 ✅ |
@@ -107,3 +107,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Wails v3 upgrade | [wails-v3-upgrade](docs/plan/wails-v3-upgrade.md) | [wails-v3-upgrade/](docs/tasks/wails-v3-upgrade/README.md) | 1/2 ✅ · 1 ⬜ |
 | Arch Linux AUR package | [aur-package](docs/plan/aur-package.md) | [aur-package/](docs/tasks/aur-package/README.md) | 4/7 ✅ · 3 🟡 |
 | Remote reconnect | [remote-reconnect](docs/plan/remote-reconnect.md) | [remote-reconnect/](docs/tasks/remote-reconnect/README.md) | 8/8 ✅ |
+| Codex Guardian ancestry | [codex-guardian-ancestry](docs/plan/codex-guardian-ancestry.md) | [codex-guardian-ancestry/](docs/tasks/codex-guardian-ancestry/README.md) | 1/1 ✅ |

@@ -257,7 +257,7 @@ test('required questions keep Submit off and say which; a secret is typed hidden
   try {
     assert.match(c.target.textContent, /Codex goes on without an answer after about 60 seconds\./);
     assert.deepEqual(
-      [...c.target.querySelectorAll('[role="radio"]')].map((b) => b.textContent.trim()),
+      [...c.target.querySelectorAll('[role="radio"]')].map((b) => b.textContent.trim().replace(/\s+/g, ' ')),
       ['1. Extend', '2. Rewrite', '3.'],
       'Codex’s Other is the own answer, not an option',
     );
@@ -397,5 +397,37 @@ test('a late card is dismissed, and a reply refused as it went late gives way to
   } finally {
     c.close();
     answer = async (...args) => answers.push(args);
+  }
+});
+
+test('live Codex long questions use compact tabs and one custom-answer control', async () => {
+  answers.length = 0;
+  const title = 'Custom-answer test: pick a color, or use the text field to enter a different color.';
+  const question = {
+    id: 'live-codex',
+    fields: [
+      { key: 'color', type: 'string', title, oneOf: [opt('Red'), opt('Green'), opt('Blue'), opt('None of the above', 'Provide a different answer in the note field.')], _meta: { codex: { isOther: true } } },
+      { key: 'color_note', type: 'string', title: 'Additional answer or note', _meta: { codex: { questionId: 'color', role: 'user_note' } } },
+      { key: 'confirm', type: 'boolean', title: 'Do you see the options and their selection indicators correctly?' },
+    ],
+    meta: { codex: { delivery: 'async' } },
+  };
+  const c = open(question, 'Codex');
+  try {
+    assert.deepEqual([...c.target.querySelectorAll('[role="tab"]')].map((t) => t.textContent.trim()), ['Question 1', 'Question 2', 'Review']);
+    assert.equal(c.tab('color').getAttribute('aria-label'), title);
+    assert.equal(c.tab('color').title, title);
+    assert.ok(!c.target.textContent.includes('None of the above'));
+    assert.equal(c.target.querySelectorAll('[role="radio"] .radio').length, 4);
+    c.key('4');
+    c.type(document.activeElement, 'Purple');
+    c.click('Next');
+    assert.equal(c.target.querySelectorAll('[role="radio"] .radio').length, 2);
+    c.click('1. Yes');
+    c.click('Submit');
+    await settle();
+    assert.deepEqual(answers, [['c1', 'live-codex', 'accept', { color: 'None of the above', color_note: 'Purple', confirm: true }]]);
+  } finally {
+    c.close();
   }
 });

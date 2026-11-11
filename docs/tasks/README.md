@@ -37,7 +37,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Chat attachments | [chat-attachments](../plan/chat-attachments.md) | [chat-attachments/](chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
 | Chat end guard | [chat-end-guard](../plan/chat-end-guard.md) | [chat-end-guard/](chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
 | Chat adapter setup | [chat-adapter-setup](../plan/chat-adapter-setup.md) | [chat-adapter-setup/](chat-adapter-setup/README.md) | 4/5 ✅ · 1 ⬜ |
-| Chat questions | [chat-questions](../plan/chat-questions.md) | [chat-questions/](chat-questions/README.md) | 7/8 ✅ · 1 ⬜ |
+| Chat questions | [chat-questions](../plan/chat-questions.md) | [chat-questions/](chat-questions/README.md) | 8/9 ✅ · 1 🟡 |
 | Orphaned task notifications | [orphan-task-notifications](../plan/orphan-task-notifications.md) | [orphan-task-notifications/](orphan-task-notifications/README.md) | 1/1 ✅ |
 | Idle rendering | [idle-rendering](../plan/idle-rendering.md) | [idle-rendering/](idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](../plan/file-translate.md) | [file-translate/](file-translate/README.md) | 2/2 ✅ |
@@ -81,3 +81,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Wails v3 upgrade | [wails-v3-upgrade](../plan/wails-v3-upgrade.md) | [wails-v3-upgrade/](wails-v3-upgrade/README.md) | 1/2 ✅ · 1 ⬜ |
 | Arch Linux AUR package | [aur-package](../plan/aur-package.md) | [aur-package/](aur-package/README.md) | 4/7 ✅ · 3 🟡 |
 | Remote reconnect | [remote-reconnect](../plan/remote-reconnect.md) | [remote-reconnect/](remote-reconnect/README.md) | 8/8 ✅ |
+| Codex Guardian ancestry | [codex-guardian-ancestry](../plan/codex-guardian-ancestry.md) | [codex-guardian-ancestry/](codex-guardian-ancestry/README.md) | 1/1 ✅ |

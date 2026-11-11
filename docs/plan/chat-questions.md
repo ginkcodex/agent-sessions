@@ -192,3 +192,20 @@ An invalid answer is refused to the frontend; nothing is sent to the agent.
   not run marked so.
 
 Tasks: [chat-questions](../tasks/chat-questions/README.md).
+
+### Live Codex layout correction (CQ-09)
+
+The live screenshot shows full question sentences wrapping across navigation
+tabs, weak selection indicators and both a synthetic “None of the above”
+option and a custom-answer input. Use numbered Question tabs when no short
+header is available, constrain tab widths, and show radio indicators for single
+choices and booleans. Pair Codex notes with either the current “None of the
+above” sentinel or the legacy “Other”, retaining the exact value on submit.
+Only hide a sentinel when a paired Codex note exists; other agents' choices
+must stay intact. Keep agent transcript text: removing duplicate-looking
+prose risks hiding useful content.
+
+Release criteria: regression coverage for current and legacy adapter shapes,
+custom-answer submission and long-label navigation; frontend checks and build.
+Verify the layout with long questions in light/dark themes and a narrow panel
+if a browser is available. Real installed-client validation remains separate.
