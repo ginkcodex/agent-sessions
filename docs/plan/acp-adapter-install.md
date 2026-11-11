@@ -84,8 +84,14 @@ installing the agent is out of scope.
 1. the `[chat.adapters]` override in config.toml;
 2. PATH and the usual install locations, as today (the user's own copy wins);
 3. the managed copy: `Discover("<id>")` gives the main script; the command is
-   `<node> <main>`, with the managed or host Node.js that the install used,
-   and that Node's directory first on PATH.
+   `<node> <main>`, with that Node's directory first on PATH. The Node.js is
+   chosen at launch the way the install chose it: the host's when it is 22
+   or later, else the app's own (`Runtime("<id>")`). The packages have no
+   native code, so either runs them.
+
+Finding a managed copy only reads the app data folder (`managedtools.Open`,
+a read-only view without a host binding), so listing chat agents writes
+nothing.
 
 `ChatAgent` gains:
 

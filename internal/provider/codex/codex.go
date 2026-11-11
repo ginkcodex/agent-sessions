@@ -158,6 +158,7 @@ func (p *Provider) ACPAdapter() provider.ACPAdapter {
 		Executable: "codex-acp",
 		Install:    "npm install -g @agentclientprotocol/codex-acp",
 		CLIEnv:     "CODEX_PATH",
+		Managed:    "codex-acp",
 	}
 }
 

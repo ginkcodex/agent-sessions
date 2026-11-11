@@ -59,8 +59,9 @@ type Provider interface {
 	NewSessionCommand(dir string) Command
 }
 
-// ACPAdapter describes how to start an agent's ACP server: a program the
-// user installs, found the way the agent CLIs are. The app never installs it.
+// ACPAdapter describes how to start an agent's ACP server: a program found
+// the way the agent CLIs are, or the app's own copy when Managed names one
+// and the user approved its install (docs/plan/acp-adapter-install.md).
 type ACPAdapter struct {
 	// Executable is the program's name, such as "claude-agent-acp".
 	Executable string
@@ -73,6 +74,9 @@ type ACPAdapter struct {
 	// drive; it is set to the CLI new sessions would start. Empty when
 	// Executable is the CLI itself.
 	CLIEnv string
+	// Managed is the managed-tools catalog ID of the app's own copy, or empty
+	// when the app cannot install the adapter.
+	Managed string
 }
 
 // ACPLauncher is implemented by providers whose agent can be driven over

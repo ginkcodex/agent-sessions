@@ -84,13 +84,27 @@ type ChatAgent struct {
 	Override bool `json:"override,omitempty"`
 	// Install is the command that installs the adapter.
 	Install string `json:"install"`
+	// InstallTool is the managed-tools catalog ID the app can install the
+	// adapter as on this host, or empty when it cannot.
+	InstallTool string `json:"installTool,omitempty"`
+	// Managed is true when the adapter that would run is the app's own copy.
+	Managed bool `json:"managed,omitempty"`
 	// Problem says why the adapter is not available.
 	Problem string `json:"problem,omitempty"`
 }
 
+// ManagedAdapters finds the app's own adapter installs on this host, by
+// managed-tools catalog ID. Nil when this host cannot install them.
+type ManagedAdapters interface {
+	// Discover returns a valid install's main script.
+	Discover(tool string) (string, error)
+	// Runtime returns the Node.js that runs it.
+	Runtime(tool string) (string, error)
+}
+
 // ChatAgents reports, for each provider with an ACP adapter, whether the
 // adapter is installed, found the way ChatLaunch finds it. Nothing is run.
-func (s *Service) ChatAgents(overrides ChatAdapters) []ChatAgent {
+func (s *Service) ChatAgents(overrides ChatAdapters, managed ManagedAdapters) []ChatAgent {
 	out := []ChatAgent{}
 	for _, prov := range s.providers {
 		l, ok := prov.(provider.ACPLauncher)
@@ -99,10 +113,13 @@ func (s *Service) ChatAgents(overrides ChatAdapters) []ChatAgent {
 		}
 		a := l.ACPAdapter()
 		st := ChatAgent{Agent: prov.ID(), Name: prov.DisplayName(), Install: a.Install, Override: overrides[prov.ID()] != ""}
-		if exe, err := findAdapter(a, overrides[prov.ID()]); err != nil {
+		if managed != nil {
+			st.InstallTool = a.Managed
+		}
+		if exe, err := findAdapter(a, overrides[prov.ID()], managed); err != nil {
 			st.Problem = err.Error()
 		} else {
-			st.Available, st.Path = true, exe.Path
+			st.Available, st.Path, st.Managed = true, exe.path, exe.managed
 		}
 		out = append(out, st)
 	}
@@ -111,7 +128,7 @@ func (s *Service) ChatAgents(overrides ChatAdapters) []ChatAgent {
 
 // ChatLaunch returns the command that starts agent's ACP adapter in dir.
 // Like NewSessionLaunch, it only starts in directories the catalog knows.
-func (s *Service) ChatLaunch(agent model.AgentID, dir string, overrides ChatAdapters) (acp.Command, error) {
+func (s *Service) ChatLaunch(agent model.AgentID, dir string, overrides ChatAdapters, managed ManagedAdapters) (acp.Command, error) {
 	prov, ok := s.providers.Get(agent)
 	if !ok {
 		return acp.Command{}, fmt.Errorf("%w: %s", ErrUnknownProvider, agent)
@@ -124,18 +141,19 @@ func (s *Service) ChatLaunch(agent model.AgentID, dir string, overrides ChatAdap
 		return acp.Command{}, err
 	}
 	a := l.ACPAdapter()
-	exe, err := findAdapter(a, overrides[agent])
+	exe, err := findAdapter(a, overrides[agent], managed)
 	if err != nil {
 		return acp.Command{}, fmt.Errorf("%w: %s. Install it with: %s", ErrAdapterNotFound, err.Error(), a.Install)
 	}
-	cmd := acp.Command{Argv: append([]string{exe.Path}, a.Args...), Dir: dir}
+	cmd := acp.Command{Argv: append(slices.Clone(exe.argv), a.Args...), Dir: dir}
 
 	// An app started from a desktop menu may lack the PATH entries that hold
 	// the adapter and its interpreter (an npm package run by node, which nvm
-	// keeps beside it), so their directories go first.
+	// keeps beside it), so their directories go first. A managed adapter runs
+	// with the Node.js that runs it first.
 	var dirs []string
-	if !exe.OnPath {
-		dirs = append(dirs, filepath.Dir(exe.Path))
+	if exe.dir != "" {
+		dirs = append(dirs, exe.dir)
 	}
 	if a.CLIEnv != "" && os.Getenv(a.CLIEnv) == "" {
 		if argv := prov.NewSessionCommand(dir).Argv; len(argv) > 0 {
@@ -156,20 +174,57 @@ func (s *Service) ChatLaunch(agent model.AgentID, dir string, overrides ChatAdap
 	return cmd, nil
 }
 
-// findAdapter returns the configured adapter when there is one, else looks
-// it up like the agent CLIs.
-func findAdapter(a provider.ACPAdapter, override string) (launch.Executable, error) {
-	if override == "" {
-		exe, err := findAgent(a.Executable)
+// adapterCommand is a found adapter: the command that starts it, the path
+// reported for it, and a directory that goes first on its PATH.
+type adapterCommand struct {
+	argv    []string
+	path    string
+	dir     string
+	managed bool
+}
+
+// findAdapter returns the configured adapter when there is one. Otherwise it
+// looks the adapter up like the agent CLIs, so the user's own copy wins, and
+// then takes the app's managed copy.
+func findAdapter(a provider.ACPAdapter, override string, managed ManagedAdapters) (adapterCommand, error) {
+	if override != "" {
+		path, err := configuredAdapter(override)
 		if err != nil {
-			hint := strings.TrimPrefix(err.Error(), launch.ErrAgentNotFound.Error()+": ")
-			if !strings.Contains(hint, "Windows program") {
-				hint = a.Executable + " was not found on PATH or in its usual install locations"
-			}
-			return launch.Executable{}, errors.New(hint)
+			return adapterCommand{}, err
 		}
-		return launch.Executable{Path: exe.Path, OnPath: exe.OnPath}, nil
+		return adapterCommand{argv: []string{path}, path: path, dir: filepath.Dir(path)}, nil
 	}
+	exe, err := findAgent(a.Executable)
+	if err == nil {
+		c := adapterCommand{argv: []string{exe.Path}, path: exe.Path}
+		if !exe.OnPath {
+			c.dir = filepath.Dir(exe.Path)
+		}
+		return c, nil
+	}
+	hint := strings.TrimPrefix(err.Error(), launch.ErrAgentNotFound.Error()+": ")
+	if !strings.Contains(hint, "Windows program") {
+		hint = a.Executable + " was not found on PATH or in its usual install locations"
+	}
+	if managed == nil || a.Managed == "" {
+		return adapterCommand{}, errors.New(hint)
+	}
+	main, err := managed.Discover(a.Managed)
+	if os.IsNotExist(err) {
+		return adapterCommand{}, errors.New(hint)
+	}
+	if err != nil {
+		return adapterCommand{}, fmt.Errorf("the app's copy of %s is damaged; install it again", a.Executable)
+	}
+	node, err := managed.Runtime(a.Managed)
+	if err != nil {
+		return adapterCommand{}, fmt.Errorf("the app's copy of %s has no Node.js to run it; install it again", a.Executable)
+	}
+	return adapterCommand{argv: []string{node, main}, path: main, dir: filepath.Dir(node), managed: true}, nil
+}
+
+// configuredAdapter checks an adapter path from the config file.
+func configuredAdapter(override string) (string, error) {
 	path := override
 	if rest, ok := strings.CutPrefix(path, "~"); ok && (rest == "" || rest[0] == '/' || rest[0] == filepath.Separator) {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -177,16 +232,16 @@ func findAdapter(a provider.ACPAdapter, override string) (launch.Executable, err
 		}
 	}
 	if !filepath.IsAbs(path) {
-		return launch.Executable{}, fmt.Errorf("the configured adapter path %q is not absolute", override)
+		return "", fmt.Errorf("the configured adapter path %q is not absolute", override)
 	}
 	info, err := os.Stat(path)
 	switch {
 	case err != nil:
-		return launch.Executable{}, fmt.Errorf("the configured adapter %s does not exist", path)
+		return "", fmt.Errorf("the configured adapter %s does not exist", path)
 	case !info.Mode().IsRegular():
-		return launch.Executable{}, fmt.Errorf("the configured adapter %s is not a file", path)
+		return "", fmt.Errorf("the configured adapter %s is not a file", path)
 	case runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0:
-		return launch.Executable{}, fmt.Errorf("the configured adapter %s is not executable", path)
+		return "", fmt.Errorf("the configured adapter %s is not executable", path)
 	}
-	return launch.Executable{Path: path}, nil
+	return path, nil
 }

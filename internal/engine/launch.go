@@ -2,8 +2,10 @@ package engine
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/ginkcode/agent-sessions/internal/acp"
+	mt "github.com/ginkcode/agent-sessions/internal/managedtools"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 )
@@ -36,7 +38,7 @@ func (e *Engine) ChatAgents(_ context.Context) ([]ChatAgent, error) {
 	if err != nil {
 		return nil, err
 	}
-	return e.svc.ChatAgents(overrides), nil
+	return e.svc.ChatAgents(overrides, e.managedAdapters()), nil
 }
 
 // ChatLaunch returns the command that starts agent's ACP adapter in dir.
@@ -45,7 +47,29 @@ func (e *Engine) ChatLaunch(_ context.Context, agent model.AgentID, dir string) 
 	if err != nil {
 		return acp.Command{}, err
 	}
-	return e.svc.ChatLaunch(agent, dir, overrides)
+	return e.svc.ChatLaunch(agent, dir, overrides, e.managedAdapters())
+}
+
+// managedAdapters reads this host's managed adapter installs. It is nil when
+// the app cannot install tools here (Windows, or an injected remote host).
+// Reading needs no host identity, so nothing is written.
+func (e *Engine) managedAdapters() ManagedAdapters {
+	e.mu.Lock()
+	injected := e.liveInjection != nil && e.liveInjection.Host != ""
+	e.mu.Unlock()
+	if injected {
+		return nil
+	}
+	roots, err := e.appRoots()
+	if err != nil || !filepath.IsAbs(roots.Data) {
+		return nil
+	}
+	r, err := mt.Open(roots.Data)
+	if err != nil {
+		return nil
+	}
+	r.UseHostNode(hostNode)
+	return r
 }
 
 // HandoffLaunch writes the handoff files and returns the target agent's command.

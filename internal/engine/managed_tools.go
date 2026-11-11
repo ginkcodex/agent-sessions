@@ -16,6 +16,7 @@ type managedInstaller interface {
 	Dismiss()
 	Install(context.Context, mt.Binding, string) (string, error)
 	Discover(string) (string, error)
+	Runtime(string) (string, error)
 	Dirs() []string
 }
 

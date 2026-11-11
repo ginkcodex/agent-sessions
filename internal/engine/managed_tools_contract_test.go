@@ -107,7 +107,7 @@ func TestManagedContractStatusAndUnavailable(t *testing.T) {
 		}
 		return
 	}
-	want := map[string]string{"gopls": "missingTool", "ruff": "missingTool", "vtsls": "missingTool", "pyright": "missingTool", "rust-analyzer": "missingTool", "svelte-language-server": "missingTool"}
+	want := map[string]string{"gopls": "missingTool", "ruff": "missingTool", "vtsls": "missingTool", "pyright": "missingTool", "rust-analyzer": "missingTool", "svelte-language-server": "missingTool", "claude-agent-acp": "missingTool", "codex-acp": "missingTool"}
 	if err != nil || out.State != "idle" || !maps.Equal(out.Tools, want) || e.LiveCodeDiagnosticsReady() {
 		t.Fatalf("%+v %v", out, err)
 	}

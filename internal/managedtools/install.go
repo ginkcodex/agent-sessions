@@ -107,6 +107,19 @@ func New(data string, binding Binding, goRoot func() string) (*Installer, error)
 	}, nil
 }
 
+// Open returns a read-only view of this host's managed installs, for callers
+// that only find tools (Discover, Runtime, Dirs). It has no host binding, so
+// it can neither propose nor install.
+func Open(data string) (*Installer, error) {
+	if !filepath.IsAbs(data) || filepath.Clean(data) != data {
+		return nil, errors.New("managed tools: app data required")
+	}
+	if _, ok := ruffArchives[platform()]; !ok || (runtime.GOOS != "darwin" && runtime.GOOS != "linux") {
+		return nil, errors.New("managed tools: unsupported platform")
+	}
+	return &Installer{root: Root(data)}, nil
+}
+
 // UseHostNode sets how the host's Node.js is found. Without it, npm servers always
 // uses the app's own Node.js.
 func (i *Installer) UseHostNode(find func() (prefix, version string)) { i.hostNode = find }
@@ -221,6 +234,9 @@ func goplsSpec(i *Installer, tool TrustedGo, r goplsRelease) spec {
 func (i *Installer) Propose(tool string) (Proposal, error) {
 	if !Proposable(tool) {
 		return Proposal{}, errors.New("managed tools: unknown tool")
+	}
+	if !hostBinding(i.binding) {
+		return Proposal{}, errors.New("managed tools: read-only")
 	}
 	var (
 		s        spec

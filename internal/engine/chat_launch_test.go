@@ -87,8 +87,8 @@ func TestProvidersDeclareACPAdapters(t *testing.T) {
 		prov provider.Provider
 		want provider.ACPAdapter
 	}{
-		{claude.New("", nil), provider.ACPAdapter{Executable: "claude-agent-acp", Install: "npm install -g @agentclientprotocol/claude-agent-acp", CLIEnv: "CLAUDE_CODE_EXECUTABLE"}},
-		{codex.New("", nil), provider.ACPAdapter{Executable: "codex-acp", Install: "npm install -g @agentclientprotocol/codex-acp", CLIEnv: "CODEX_PATH"}},
+		{claude.New("", nil), provider.ACPAdapter{Executable: "claude-agent-acp", Install: "npm install -g @agentclientprotocol/claude-agent-acp", CLIEnv: "CLAUDE_CODE_EXECUTABLE", Managed: "claude-agent-acp"}},
+		{codex.New("", nil), provider.ACPAdapter{Executable: "codex-acp", Install: "npm install -g @agentclientprotocol/codex-acp", CLIEnv: "CODEX_PATH", Managed: "codex-acp"}},
 		{opencode.New("", nil), provider.ACPAdapter{Executable: "opencode", Args: []string{"acp"}, Install: "npm install -g opencode-ai"}},
 	} {
 		l, ok := tc.prov.(provider.ACPLauncher)
@@ -104,7 +104,7 @@ func TestProvidersDeclareACPAdapters(t *testing.T) {
 func TestChatAgents(t *testing.T) {
 	svc, _ := chatService(t)
 	looked := stubFind(t, nil)
-	got := svc.ChatAgents(nil)
+	got := svc.ChatAgents(nil, nil)
 	want := []ChatAgent{{
 		Agent: model.AgentClaude, Name: "Claude Code", Install: "npm install -g fake-acp",
 		Problem: "fake-acp was not found on PATH or in its usual install locations",
@@ -118,7 +118,7 @@ func TestChatAgents(t *testing.T) {
 	}
 
 	stubFind(t, map[string]launch.Executable{"fake-acp": {Path: "/opt/bin/fake-acp", OnPath: true}})
-	if got := svc.ChatAgents(nil); len(got) != 1 || !got[0].Available || got[0].Path != "/opt/bin/fake-acp" || got[0].Problem != "" {
+	if got := svc.ChatAgents(nil, nil); len(got) != 1 || !got[0].Available || got[0].Path != "/opt/bin/fake-acp" || got[0].Problem != "" {
 		t.Fatalf("found: %+v", got)
 	}
 }
@@ -129,7 +129,7 @@ func TestChatAgentsKeepsWSLHint(t *testing.T) {
 		return launch.Executable{}, fmt.Errorf("%w: /mnt/c/npm/%s is a Windows program; install %s inside the WSL distribution", launch.ErrAgentNotFound, name, name)
 	}
 	t.Cleanup(func() { findAgent = launch.Find })
-	if got := svc.ChatAgents(nil); !strings.Contains(got[0].Problem, "is a Windows program") {
+	if got := svc.ChatAgents(nil, nil); !strings.Contains(got[0].Problem, "is a Windows program") {
 		t.Fatalf("problem = %q", got[0].Problem)
 	}
 }
@@ -153,7 +153,7 @@ func TestChatAgentOverrides(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			*looked = nil
-			got := svc.ChatAgents(ChatAdapters{model.AgentClaude: tc.path})[0]
+			got := svc.ChatAgents(ChatAdapters{model.AgentClaude: tc.path}, nil)[0]
 			if !got.Override {
 				t.Fatalf("override not reported: %+v", got)
 			}
@@ -177,7 +177,7 @@ func TestChatAgentOverrides(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	inHome := executable(t, filepath.Join(home, "acp", "fake-acp"), 0o755)
-	if got := svc.ChatAgents(ChatAdapters{model.AgentClaude: "~/acp/fake-acp"})[0]; got.Path != inHome {
+	if got := svc.ChatAgents(ChatAdapters{model.AgentClaude: "~/acp/fake-acp"}, nil)[0]; got.Path != inHome {
 		t.Fatalf("~ override: %+v", got)
 	}
 }
@@ -189,7 +189,7 @@ func TestChatLaunch(t *testing.T) {
 		"fake":     {Path: "/usr/bin/fake", OnPath: true},
 	})
 	t.Setenv("FAKE_CLI", "")
-	cmd, err := svc.ChatLaunch(model.AgentClaude, dir, nil)
+	cmd, err := svc.ChatLaunch(model.AgentClaude, dir, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestChatLaunch(t *testing.T) {
 
 	// The user's own setting wins.
 	t.Setenv("FAKE_CLI", "/custom/fake")
-	if cmd, _ := svc.ChatLaunch(model.AgentClaude, dir, nil); len(cmd.Env) != 0 {
+	if cmd, _ := svc.ChatLaunch(model.AgentClaude, dir, nil, nil); len(cmd.Env) != 0 {
 		t.Fatalf("env = %q", cmd.Env)
 	}
 }
@@ -221,7 +221,7 @@ func TestChatLaunchPrependsInstallDirs(t *testing.T) {
 	})
 	t.Setenv("FAKE_CLI", "")
 	t.Setenv("PATH", "/usr/bin")
-	cmd, err := svc.ChatLaunch(model.AgentClaude, dir, nil)
+	cmd, err := svc.ChatLaunch(model.AgentClaude, dir, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,30 +235,30 @@ func TestChatLaunchPrependsInstallDirs(t *testing.T) {
 func TestChatLaunchRefusals(t *testing.T) {
 	svc, dir := chatService(t)
 	stubFind(t, nil)
-	if _, err := svc.ChatLaunch(model.AgentClaude, dir, nil); !errors.Is(err, ErrAdapterNotFound) || !strings.Contains(err.Error(), "npm install -g fake-acp") {
+	if _, err := svc.ChatLaunch(model.AgentClaude, dir, nil, nil); !errors.Is(err, ErrAdapterNotFound) || !strings.Contains(err.Error(), "npm install -g fake-acp") {
 		t.Fatalf("missing adapter: %v", err)
 	}
 	stubFind(t, map[string]launch.Executable{"fake-acp": {Path: "/opt/bin/fake-acp", OnPath: true}})
-	if _, err := svc.ChatLaunch(model.AgentClaude, filepath.Dir(dir), nil); !errors.Is(err, ErrUnknownDirectory) {
+	if _, err := svc.ChatLaunch(model.AgentClaude, filepath.Dir(dir), nil, nil); !errors.Is(err, ErrUnknownDirectory) {
 		t.Fatalf("unknown directory: %v", err)
 	}
-	if _, err := svc.ChatLaunch(model.AgentCodex, dir, nil); !errors.Is(err, ErrChatUnsupported) {
+	if _, err := svc.ChatLaunch(model.AgentCodex, dir, nil, nil); !errors.Is(err, ErrChatUnsupported) {
 		t.Fatalf("no adapter: %v", err)
 	}
-	if _, err := svc.ChatLaunch(model.AgentOpenCode, dir, nil); !errors.Is(err, ErrUnknownProvider) {
+	if _, err := svc.ChatLaunch(model.AgentOpenCode, dir, nil, nil); !errors.Is(err, ErrUnknownProvider) {
 		t.Fatalf("unknown provider: %v", err)
 	}
 	if err := os.Remove(dir); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.ChatLaunch(model.AgentClaude, dir, nil); err == nil || !strings.Contains(err.Error(), "no longer exists") {
+	if _, err := svc.ChatLaunch(model.AgentClaude, dir, nil, nil); err == nil || !strings.Contains(err.Error(), "no longer exists") {
 		t.Fatalf("removed directory: %v", err)
 	}
 	// An unusable override is reported, not replaced by the lookup.
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.ChatLaunch(model.AgentClaude, dir, ChatAdapters{model.AgentClaude: "/nope/fake-acp"}); !errors.Is(err, ErrAdapterNotFound) {
+	if _, err := svc.ChatLaunch(model.AgentClaude, dir, ChatAdapters{model.AgentClaude: "/nope/fake-acp"}, nil); !errors.Is(err, ErrAdapterNotFound) {
 		t.Fatalf("bad override: %v", err)
 	}
 }
@@ -328,5 +328,142 @@ func TestEngineChatAgentsReadsConfig(t *testing.T) {
 	}
 	if _, err := eng.ChatLaunch(ctx, model.AgentClaude, dir); err == nil {
 		t.Fatal("launch with a malformed config")
+	}
+}
+
+// fakeManaged is a managed-tools view with one adapter install, or none.
+type fakeManaged struct {
+	main, node    string
+	err, nodeErr  error
+	looked, nodes []string
+}
+
+func (f *fakeManaged) Discover(tool string) (string, error) {
+	f.looked = append(f.looked, tool)
+	if f.main == "" && f.err == nil {
+		return "", os.ErrNotExist
+	}
+	return f.main, f.err
+}
+
+func (f *fakeManaged) Runtime(tool string) (string, error) {
+	f.nodes = append(f.nodes, tool)
+	return f.node, f.nodeErr
+}
+
+// managedChatService is chatService with an adapter the app can install as
+// the catalog entry id.
+func managedChatService(t *testing.T, id string) (*Service, string) {
+	t.Helper()
+	dir := t.TempDir()
+	a := fakeAdapter
+	a.Managed = id
+	svc := NewService(nil, provider.Set{acpFake{providertest.NewFake(model.AgentClaude, "Claude Code"), a}})
+	svc.Catalog().Apply(provider.ScanResult{Changed: []model.SessionMeta{{Ref: model.SessionRef{Agent: model.AgentClaude, ID: "d"}, CWD: dir}}})
+	return svc, dir
+}
+
+func TestChatAgentsManagedAdapter(t *testing.T) {
+	svc, _ := managedChatService(t, "fake-managed")
+	stubFind(t, nil)
+	main := filepath.FromSlash("/data/managed-tools/fake-managed-1/node_modules/fake/dist/index.js")
+
+	// No managed installs on this host: nothing to offer.
+	if got := svc.ChatAgents(nil, nil)[0]; got.InstallTool != "" || got.Available || got.Managed {
+		t.Fatalf("no managed tools: %+v", got)
+	}
+	// Installable but not installed: the PATH hint stays the problem.
+	none := &fakeManaged{}
+	got := svc.ChatAgents(nil, none)[0]
+	if got.InstallTool != "fake-managed" || got.Available || got.Managed || !strings.Contains(got.Problem, "was not found on PATH") {
+		t.Fatalf("not installed: %+v", got)
+	}
+	// Installed: available as the app's copy, without running anything.
+	installed := &fakeManaged{main: main, node: "/data/managed-tools/node/bin/node"}
+	got = svc.ChatAgents(nil, installed)[0]
+	if !got.Available || !got.Managed || got.Path != main || got.InstallTool != "fake-managed" || got.Problem != "" {
+		t.Fatalf("installed: %+v", got)
+	}
+	// A damaged install, or one without a Node.js, is reported as such.
+	if got := svc.ChatAgents(nil, &fakeManaged{err: errors.New("invalid receipt")})[0]; got.Available || !strings.Contains(got.Problem, "is damaged; install it again") {
+		t.Fatalf("damaged: %+v", got)
+	}
+	if got := svc.ChatAgents(nil, &fakeManaged{main: main, nodeErr: os.ErrNotExist})[0]; got.Available || !strings.Contains(got.Problem, "has no Node.js") {
+		t.Fatalf("no node: %+v", got)
+	}
+
+	// The user's own copy on PATH wins; the managed one is not even looked up.
+	stubFind(t, map[string]launch.Executable{"fake-acp": {Path: "/opt/bin/fake-acp", OnPath: true}})
+	installed.looked = nil
+	if got := svc.ChatAgents(nil, installed)[0]; !got.Available || got.Managed || got.Path != "/opt/bin/fake-acp" || len(installed.looked) != 0 {
+		t.Fatalf("PATH wins: %+v, looked %q", got, installed.looked)
+	}
+	// So does an override, even an unusable one.
+	stubFind(t, nil)
+	if got := svc.ChatAgents(ChatAdapters{model.AgentClaude: "/nope/fake-acp"}, installed)[0]; got.Available || got.Managed || !strings.Contains(got.Problem, "does not exist") || len(installed.looked) != 0 {
+		t.Fatalf("override wins: %+v, looked %q", got, installed.looked)
+	}
+
+	// An adapter the app cannot install (OpenCode's) offers nothing.
+	svc2, _ := chatService(t)
+	if got := svc2.ChatAgents(nil, none)[0]; got.InstallTool != "" || got.Managed {
+		t.Fatalf("no catalog entry: %+v", got)
+	}
+}
+
+func TestChatLaunchManagedAdapter(t *testing.T) {
+	svc, dir := managedChatService(t, "fake-managed")
+	stubFind(t, map[string]launch.Executable{"fake": {Path: "/usr/bin/fake", OnPath: true}})
+	t.Setenv("FAKE_CLI", "")
+	t.Setenv("PATH", "/usr/bin")
+	nodeBin := filepath.FromSlash("/data/managed-tools/node/bin")
+	main := filepath.FromSlash("/data/managed-tools/fake-managed-1/node_modules/fake/dist/index.js")
+	m := &fakeManaged{main: main, node: filepath.Join(nodeBin, "node")}
+	cmd, err := svc.ChatLaunch(model.AgentClaude, dir, nil, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cmd.Argv, []string{filepath.Join(nodeBin, "node"), main}) || cmd.Dir != dir {
+		t.Fatalf("cmd = %+v", cmd)
+	}
+	if !reflect.DeepEqual(m.looked, []string{"fake-managed"}) || !reflect.DeepEqual(m.nodes, []string{"fake-managed"}) {
+		t.Fatalf("looked up %q, %q", m.looked, m.nodes)
+	}
+	// The adapter's own node calls find the same Node.js, and it drives the
+	// user's CLI as before.
+	if v, _ := envValue(cmd.Env, "PATH"); v != nodeBin+string(os.PathListSeparator)+"/usr/bin" {
+		t.Fatalf("PATH = %q", v)
+	}
+	if v, _ := envValue(cmd.Env, "FAKE_CLI"); v != "/usr/bin/fake" {
+		t.Fatalf("env = %q", cmd.Env)
+	}
+	// Not installed: refused with the install command, as before.
+	if _, err := svc.ChatLaunch(model.AgentClaude, dir, nil, &fakeManaged{}); !errors.Is(err, ErrAdapterNotFound) || !strings.Contains(err.Error(), "npm install -g fake-acp") {
+		t.Fatalf("missing: %v", err)
+	}
+}
+
+// The engine offers managed installs where the installer runs and reads
+// them from its own app data, writing nothing.
+func TestEngineChatAgentsOffersManagedInstall(t *testing.T) {
+	svc, _ := managedChatService(t, "claude-agent-acp")
+	stubFind(t, nil)
+	cfg, data := t.TempDir(), t.TempDir()
+	eng := NewEngine(WithService(svc), WithRoots(paths.Roots{Config: cfg, Data: data}))
+	got, err := eng.ChatAgents(context.Background())
+	if err != nil || len(got) != 1 {
+		t.Fatal(got, err)
+	}
+	want := "claude-agent-acp"
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		want = ""
+	}
+	if got[0].InstallTool != want || got[0].Available || got[0].Managed || !strings.Contains(got[0].Problem, "was not found on PATH") {
+		t.Fatalf("got %+v", got[0])
+	}
+	for _, dir := range []string{cfg, data} {
+		if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+			t.Fatalf("%s written: %v", dir, entries)
+		}
 	}
 }

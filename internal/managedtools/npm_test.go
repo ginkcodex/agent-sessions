@@ -318,3 +318,39 @@ func TestACPAdapterInstallAndDiscovery(t *testing.T) {
 		}
 	}
 }
+
+// The read-only view finds an install and its Node.js but cannot propose.
+func TestOpenRuntime(t *testing.T) {
+	i, data := fixture(t)
+	r, err := Open(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Propose("claude-agent-acp"); err == nil {
+		t.Fatal("read-only view proposed")
+	}
+	if _, err := Open("relative"); err == nil {
+		t.Fatal("relative data accepted")
+	}
+	host := filepath.Join(filepath.Dir(i.root), "host-node")
+	writeTree(t, host, map[string]string{"bin/node": "node", "lib/node_modules/npm/bin/npm-cli.js": "npm"})
+	if err := os.Chmod(filepath.Join(host, "bin/node"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	version := "20.11.0"
+	r.UseHostNode(func() (string, string) { return host, version })
+	// Node.js 20 runs language servers but not the adapters, and the app has none.
+	if got, err := r.Runtime("pyright"); err != nil || got != filepath.Join(host, "bin/node") {
+		t.Fatal(got, err)
+	}
+	if _, err := r.Runtime("claude-agent-acp"); !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	version = "22.1.0"
+	if got, err := r.Runtime("codex-acp"); err != nil || got != filepath.Join(host, "bin/node") {
+		t.Fatal(got, err)
+	}
+	if _, err := r.Runtime("ruff"); err == nil {
+		t.Fatal("runtime of a non-npm tool")
+	}
+}

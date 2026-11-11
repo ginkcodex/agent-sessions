@@ -39,6 +39,20 @@ func (i *Installer) Discover(tool string) (string, error) {
 	return "", errors.New("managed tools: unknown tool")
 }
 
+// Runtime returns the Node.js executable that runs tool, an npm entry: the
+// host's when it is new enough for tool, else the app's own. Read-only like
+// Discover; the packages have no native code, so any such Node.js runs them.
+func (i *Installer) Runtime(tool string) (string, error) {
+	pkg, ok := npmPackages[tool]
+	if !ok {
+		return "", errors.New("managed tools: unknown tool")
+	}
+	if prefix, _ := i.usableHostNode(pkg().nodeMajor()); prefix != "" {
+		return filepath.Join(prefix, "bin", "node"), nil
+	}
+	return i.Discover("node")
+}
+
 func (i *Installer) discover(s spec) (string, error) {
 	dir := filepath.Join(i.root, installDir(s.name, s.version))
 	// Not installed is "missing" however the app data directory looks; only an

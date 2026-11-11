@@ -604,6 +604,13 @@ export interface ChatAgent {
   override?: boolean;
   /** The command that installs the adapter. */
   install: string;
+  /**
+   * The managed-tools catalog ID the app can install the adapter as on this
+   * host; absent when it cannot (Windows, OpenCode, an older server).
+   */
+  installTool?: string;
+  /** True when the adapter that would run is the app's own copy. */
+  managed?: boolean;
   /** Why the adapter is not available. */
   problem?: string;
 }

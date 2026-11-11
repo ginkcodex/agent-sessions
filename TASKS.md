@@ -58,7 +58,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| ACP adapter install | [acp-adapter-install](docs/plan/acp-adapter-install.md) | [acp-adapter-install/](docs/tasks/acp-adapter-install/README.md) | 2/5 ✅ · 3 ⬜ |
+| ACP adapter install | [acp-adapter-install](docs/plan/acp-adapter-install.md) | [acp-adapter-install/](docs/tasks/acp-adapter-install/README.md) | 3/5 ✅ · 2 ⬜ |
 | ACP chat mode | [acp-chat](docs/plan/acp-chat.md) | [acp-chat/](docs/tasks/acp-chat/README.md) | 14/15 ✅ · 1 🟡 |
 | Idle rendering | [idle-rendering](docs/plan/idle-rendering.md) | [idle-rendering/](docs/tasks/idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](docs/plan/file-translate.md) | [file-translate/](docs/tasks/file-translate/README.md) | 2/2 ✅ |
