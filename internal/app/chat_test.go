@@ -225,6 +225,11 @@ func TestChatAnswerBinding(t *testing.T) {
 			if got := a.ChatList(); len(got) != 1 || len(got[0].Questions) != 0 {
 				t.Fatalf("ChatList after the answer = %+v", got)
 			}
+			// Windows cannot remove the agent's working directory while it runs.
+			if err := a.ChatClose(st.ChatID); err != nil {
+				t.Fatal(err)
+			}
+			log.waitExit(t, st.ChatID)
 		})
 	}
 }

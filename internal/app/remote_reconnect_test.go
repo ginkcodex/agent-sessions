@@ -13,9 +13,7 @@ import (
 )
 
 func TestConnection_SilentMasterCleanup(t *testing.T) {
-	prev := reconnectBackoff
-	reconnectBackoff = []time.Duration{time.Millisecond}
-	defer func() { reconnectBackoff = prev }()
+	useReconnectBackoff(t, time.Millisecond)
 	for _, mode := range []string{"silent", "busy", "plain", "stop-fails", "disconnect"} {
 		t.Run(mode, func(t *testing.T) {
 			states := make(chan ConnectionState, 16)

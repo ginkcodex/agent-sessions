@@ -57,9 +57,7 @@ func (l *phaseLog) waitFor(t *testing.T, from int, timeout time.Duration, ok fun
 
 func sshdConnection(t *testing.T, h *sshtest.Host) (*connection, *phaseLog) {
 	t.Helper()
-	prev := reconnectBackoff
-	reconnectBackoff = []time.Duration{200 * time.Millisecond}
-	t.Cleanup(func() { reconnectBackoff = prev })
+	useReconnectBackoff(t, 200*time.Millisecond)
 	return sshdConnectionProduction(t, h)
 }
 
