@@ -190,6 +190,30 @@ func TextBlock(text string) ContentBlock {
 	return ContentBlock{Type: "text", Text: text}
 }
 
+// ImageBlock is an image content block; data is the image in base64. Only
+// for agents that advertise promptCapabilities.image.
+func ImageBlock(mimeType, data string) ContentBlock {
+	return ContentBlock{Type: "image", MimeType: mimeType, Data: data}
+}
+
+// TextResource is the text of an embedded resource.
+type TextResource struct {
+	URI      string `json:"uri"`
+	MimeType string `json:"mimeType,omitempty"`
+	// Text is sent even when empty: the protocol requires it.
+	Text string `json:"text"`
+}
+
+// ResourceBlock embeds a text resource in a prompt. Only for agents that
+// advertise promptCapabilities.embeddedContext.
+func ResourceBlock(r TextResource) ContentBlock {
+	raw, err := json.Marshal(r)
+	if err != nil { // unreachable: strings only
+		panic(err)
+	}
+	return ContentBlock{Type: "resource", Resource: raw}
+}
+
 type PromptRequest struct {
 	SessionID string         `json:"sessionId"`
 	Prompt    []ContentBlock `json:"prompt"`

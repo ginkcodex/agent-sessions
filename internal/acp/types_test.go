@@ -175,3 +175,23 @@ func TestCanResume(t *testing.T) {
 		t.Fatal("resume: {} not supported")
 	}
 }
+
+func TestPromptBlocks(t *testing.T) {
+	for _, c := range []struct {
+		block ContentBlock
+		want  string
+	}{
+		{ImageBlock("image/png", "iVBORw0KGgo="), `{"type":"image","data":"iVBORw0KGgo=","mimeType":"image/png"}`},
+		{ResourceBlock(TextResource{URI: "file:///p/a.go", MimeType: "text/x-go", Text: "package a\n"}), `{"type":"resource","resource":{"uri":"file:///p/a.go","mimeType":"text/x-go","text":"package a\n"}}`},
+		// An empty file still sends its (empty) text.
+		{ResourceBlock(TextResource{URI: "file:///p/empty.txt"}), `{"type":"resource","resource":{"uri":"file:///p/empty.txt","text":""}}`},
+	} {
+		b, err := json.Marshal(c.block)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(b) != c.want {
+			t.Errorf("got %s, want %s", b, c.want)
+		}
+	}
+}
