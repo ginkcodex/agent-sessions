@@ -14,6 +14,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/acp"
 	"github.com/ginkcode/agent-sessions/internal/acp/acptest"
+	"github.com/ginkcode/agent-sessions/internal/chatattach"
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/model"
 )
@@ -180,7 +181,7 @@ func TestChatRPCRoundTrip(t *testing.T) {
 		t.Fatalf("started = %+v", started)
 	}
 
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "stream 3"); err != nil {
+	if err := x.c.ChatPrompt(ctx, st.ChatID, "stream 3", nil); err != nil {
 		t.Fatal(err)
 	}
 	x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatTurnEnded))
@@ -204,14 +205,14 @@ func TestChatRPCRoundTrip(t *testing.T) {
 	}
 
 	// A permission request comes back as an event and is answered by ID.
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "permission"); err != nil {
+	if err := x.c.ChatPrompt(ctx, st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	perm := x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatPermissionAsked))
 	if perm.Permission == nil || len(perm.Permission.Options) != 3 {
 		t.Fatalf("permission = %+v", perm)
 	}
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "again"); !errors.Is(err, engine.ErrChatBusy) {
+	if err := x.c.ChatPrompt(ctx, st.ChatID, "again", nil); !errors.Is(err, engine.ErrChatBusy) {
 		t.Fatalf("second prompt: %v", err)
 	}
 	if err := x.c.ChatRespond(ctx, st.ChatID, "nope", "allow-once"); !errors.Is(err, engine.ErrPermissionNotFound) {
@@ -222,7 +223,7 @@ func TestChatRPCRoundTrip(t *testing.T) {
 	}
 	x.events.waitUpdate(t, st.ChatID, func(u engine.ChatUpdate) bool { return chunkText(u) == "allowed:allow-once" })
 
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "hang"); err != nil {
+	if err := x.c.ChatPrompt(ctx, st.ChatID, "hang", nil); err != nil {
 		t.Fatal(err)
 	}
 	// The cancel may reach the agent before the prompt; repeat until it ends.
@@ -262,7 +263,7 @@ func TestChatRPCRoundTrip(t *testing.T) {
 	x.events.mu.Unlock()
 
 	// A closed chat is forgotten: the connection no longer reaches it.
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "hi"); !errors.Is(err, engine.ErrChatNotFound) {
+	if err := x.c.ChatPrompt(ctx, st.ChatID, "hi", nil); !errors.Is(err, engine.ErrChatNotFound) {
 		t.Fatalf("prompt after close: %v", err)
 	}
 	if list, err := x.c.ChatList(ctx); err != nil || len(list) != 0 {
@@ -283,13 +284,13 @@ func TestChatRPCOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.c.ChatPrompt(ctx, st.ChatID, "permission"); err != nil {
+	if err := a.c.ChatPrompt(ctx, st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	perm := a.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatPermissionAsked))
 
 	for name, call := range map[string]func() error{
-		"prompt":  func() error { return other.c.ChatPrompt(ctx, st.ChatID, "hi") },
+		"prompt":  func() error { return other.c.ChatPrompt(ctx, st.ChatID, "hi", nil) },
 		"cancel":  func() error { return other.c.ChatCancel(ctx, st.ChatID) },
 		"respond": func() error { return other.c.ChatRespond(ctx, st.ChatID, perm.Permission.ID, "allow-once") },
 		"option": func() error {
@@ -344,7 +345,7 @@ func TestChatRPCDisconnectClosesChats(t *testing.T) {
 		}
 		chats = append(chats, st)
 		pids = append(pids, agentPID(t, st))
-		if err := x.c.ChatPrompt(ctx, st.ChatID, "spawn"); err != nil {
+		if err := x.c.ChatPrompt(ctx, st.ChatID, "spawn", nil); err != nil {
 			t.Fatal(err)
 		}
 		u := x.events.waitUpdate(t, st.ChatID, func(u engine.ChatUpdate) bool { return strings.HasPrefix(chunkText(u), "child ") })
@@ -356,7 +357,7 @@ func TestChatRPCDisconnectClosesChats(t *testing.T) {
 		x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatTurnEnded))
 	}
 	// One chat waits on a permission request when the connection goes.
-	if err := x.c.ChatPrompt(ctx, chats[0].ChatID, "permission"); err != nil {
+	if err := x.c.ChatPrompt(ctx, chats[0].ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	x.events.waitUpdate(t, chats[0].ChatID, kindIs(engine.ChatPermissionAsked))
@@ -409,6 +410,54 @@ func TestChatRPCStartAfterDisconnect(t *testing.T) {
 	})
 }
 
+func TestChatRPCAttachments(t *testing.T) {
+	b, dir := newChatBackend(t)
+	x := connectChat(t, b)
+	res, err := x.c.Initialize(t.Context(), InitializeRequest{})
+	if err != nil || !res.Capabilities.ChatAttachments {
+		t.Fatal(res, err)
+	}
+	ctx := t.Context()
+	st, err := x.c.ChatStart(ctx, engine.ChatStartRequest{Agent: model.AgentClaude, Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.PromptCapabilities == nil || !st.PromptCapabilities.Image {
+		t.Fatalf("prompt capabilities = %+v", st.PromptCapabilities)
+	}
+	txt := chatattach.Attachment{Kind: chatattach.KindText, Name: "a.txt", MimeType: "text/plain", Text: "hi", URI: "file:///c/a.txt"}
+	if err := x.c.ChatPrompt(ctx, st.ChatID, "blocks", []chatattach.Attachment{txt}); err != nil {
+		t.Fatal(err)
+	}
+	x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatTurnEnded))
+	var text string
+	x.events.mu.Lock()
+	for _, u := range x.events.updates {
+		text += chunkText(u)
+	}
+	x.events.mu.Unlock()
+	if want := "text blocks\nresource file:///c/a.txt text/plain hi"; text != want {
+		t.Fatalf("blocks = %q, want %q", text, want)
+	}
+	// The server checks what a peer sends.
+	bad := txt
+	bad.Text = "a\x00b"
+	if err := x.c.ChatPrompt(ctx, st.ChatID, "x", []chatattach.Attachment{bad}); err == nil || !strings.Contains(err.Error(), "a.txt") {
+		t.Fatalf("bad attachment: %v", err)
+	}
+
+	// A host too old for attachments: text still goes, attachments do not.
+	x.c.mu.Lock()
+	x.c.caps.ChatAttachments = false
+	x.c.mu.Unlock()
+	if err := x.c.ChatPrompt(ctx, st.ChatID, "x", []chatattach.Attachment{txt}); !errors.Is(err, ErrNoChatAttachments) {
+		t.Fatalf("old host: %v", err)
+	}
+	if err := x.c.ChatPrompt(ctx, st.ChatID, "stream 1", nil); err != nil {
+		t.Fatalf("old host, text only: %v", err)
+	}
+}
+
 func TestChatRPCCapability(t *testing.T) {
 	ctx := t.Context()
 	calls := func(c *Client) map[string]error {
@@ -418,7 +467,7 @@ func TestChatRPCCapability(t *testing.T) {
 		_, list := c.ChatList(ctx)
 		return map[string]error{
 			"agents": agents, "start": start, "option": option, "list": list,
-			"prompt":  c.ChatPrompt(ctx, "c", "hi"),
+			"prompt":  c.ChatPrompt(ctx, "c", "hi", nil),
 			"cancel":  c.ChatCancel(ctx, "c"),
 			"respond": c.ChatRespond(ctx, "c", "p", "o"),
 			"close":   c.ChatClose(ctx, "c"),

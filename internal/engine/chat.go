@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/acp"
+	"github.com/ginkcode/agent-sessions/internal/chatattach"
 	"github.com/ginkcode/agent-sessions/internal/model"
 )
 
@@ -66,6 +67,8 @@ var (
 	ErrPermissionNotFound = errors.New("the permission request is no longer pending")
 	// ErrSessionOwned is wrapped by SessionOwnedError.
 	ErrSessionOwned = errors.New("the session is already open in a chat")
+	// ErrEmptyPrompt means a prompt had neither text nor attachments.
+	ErrEmptyPrompt = errors.New("the message is empty")
 )
 
 // SessionOwnedError refuses a second chat for a session.
@@ -122,6 +125,9 @@ type ChatState struct {
 	Session       model.SessionRef    `json:"session"`
 	AgentInfo     *acp.Implementation `json:"agentInfo,omitempty"`
 	ConfigOptions []acp.ConfigOption  `json:"configOptions"`
+	// PromptCapabilities says what a prompt may carry besides text. A
+	// server too old for attachments leaves it out.
+	PromptCapabilities *acp.PromptCapabilities `json:"promptCapabilities,omitempty"`
 	// Working is true while a prompt turn runs.
 	Working bool `json:"working"`
 	// Permissions are the requests waiting for an answer, oldest first, so
@@ -441,9 +447,16 @@ func (m *ChatManager) release(ch *chat) {
 	m.owners.release(ch.id)
 }
 
-// Prompt sends text as a new turn and returns once the turn has started.
-// Its updates follow as events, then ChatTurnEnded.
-func (m *ChatManager) Prompt(chatID, text string) error {
+// Prompt sends text and attachments as a new turn and returns once the
+// turn has started. Its updates follow as events, then ChatTurnEnded. An
+// attachment the agent cannot take refuses the whole prompt.
+func (m *ChatManager) Prompt(chatID, text string, atts []chatattach.Attachment) error {
+	if text == "" && len(atts) == 0 {
+		return ErrEmptyPrompt
+	}
+	if err := chatattach.Check(atts); err != nil {
+		return err
+	}
 	ch, err := m.get(chatID)
 	if err != nil {
 		return err
@@ -457,6 +470,11 @@ func (m *ChatManager) Prompt(chatID, text string) error {
 		ch.mu.Unlock()
 		return ErrChatBusy
 	}
+	blocks, err := chatattach.Blocks(text, atts, ch.client.Info().AgentCapabilities.PromptCapabilities)
+	if err != nil {
+		ch.mu.Unlock()
+		return err
+	}
 	ch.working = true
 	ch.work.Add(1)
 	client, sessionID := ch.client, ch.ref.ID
@@ -466,7 +484,7 @@ func (m *ChatManager) Prompt(chatID, text string) error {
 	go func() {
 		defer ch.work.Done()
 		// The turn runs until it ends or the agent goes away; Cancel stops it.
-		stop, err := client.Prompt(context.Background(), sessionID, []acp.ContentBlock{acp.TextBlock(text)})
+		stop, err := client.Prompt(context.Background(), sessionID, blocks)
 		ev := ChatUpdate{Kind: ChatTurnEnded, StopReason: stop}
 		if err != nil {
 			err = m.chatError(ch.agent, client, err)
@@ -659,10 +677,13 @@ func (ch *chat) state() (ChatState, bool) {
 		tool := p.req.ToolCall
 		st.Permissions = append(st.Permissions, ChatPermission{ID: id, ToolCall: &tool, Options: slices.Clone(p.req.Options)})
 	}
-	if info := ch.client.Info().AgentInfo; info != nil {
-		i := *info
+	info := ch.client.Info()
+	if info.AgentInfo != nil {
+		i := *info.AgentInfo
 		st.AgentInfo = &i
 	}
+	caps := info.AgentCapabilities.PromptCapabilities
+	st.PromptCapabilities = &caps
 	return st, true
 }
 

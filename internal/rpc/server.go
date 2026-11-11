@@ -379,6 +379,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 	_, caps.Workspaces = s.backend.(engine.WorkspaceBackend)
 	_, caps.SessionSearch = s.backend.(engine.SessionSearchBackend)
 	caps.ACPChat = chatManager(s.backend) != nil
+	caps.ChatAttachments = caps.ACPChat
 	s.chats.mu.Lock()
 	s.chats.enabled = caps.ACPChat
 	s.chats.mu.Unlock()

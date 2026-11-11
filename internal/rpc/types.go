@@ -60,7 +60,9 @@ type Capabilities struct {
 	RenameSession bool `json:"renameSession,omitempty"`
 	// ACPChat: the chat* methods run agents through their ACP adapters on
 	// the host, with chat:update and chat:exit notifications.
-	ACPChat         bool `json:"acpChat,omitempty"`
+	ACPChat bool `json:"acpChat,omitempty"`
+	// ChatAttachments: chatPrompt takes attachments (images and text files).
+	ChatAttachments bool `json:"chatAttachments,omitempty"`
 	AgentSettings   bool `json:"agentSettings,omitempty"`
 	DiscoveryStatus bool `json:"discoveryStatus,omitempty"`
 	GitDiff         bool `json:"gitDiff,omitempty"`

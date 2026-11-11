@@ -18,6 +18,8 @@
 //	             "child <pid>"
 //	stubborn     from now on, ignores a closed stdin (SIGTERM still works)
 //	immortal     from now on, ignores a closed stdin and SIGTERM
+//	blocks       one chunk listing the prompt's blocks, as describeBlocks
+//	             does; also any prompt that does not start with text
 //	anything     echoed back as one chunk
 //
 // Environment, set through Command's env:
@@ -26,6 +28,7 @@
 //	ACPTEST_NO_RESUME=1      do not advertise session/resume
 //	ACPTEST_NO_LOAD=1        do not advertise session/load
 //	ACPTEST_STDERR_BYTES=N   write N bytes of numbered stderr lines at start
+//	ACPTEST_TEXT_ONLY=1      advertise no image or embedded-context prompts
 package acptest
 
 import (
@@ -143,6 +146,10 @@ func (a *agent) request(ctx context.Context, method string, params json.RawMessa
 			AgentCapabilities: acp.AgentCapabilities{
 				LoadSession:         os.Getenv("ACPTEST_NO_LOAD") == "",
 				SessionCapabilities: caps,
+				PromptCapabilities: acp.PromptCapabilities{
+					Image:           os.Getenv("ACPTEST_TEXT_ONLY") == "",
+					EmbeddedContext: os.Getenv("ACPTEST_TEXT_ONLY") == "",
+				},
 			},
 			AuthMethods: []acp.AuthMethod{{ID: "fake-login", Name: "Login", Description: "Run `fake auth login` in the terminal"}},
 			AgentInfo:   &acp.Implementation{Name: "acptest", Version: "1"},
@@ -230,6 +237,9 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 	if len(fields) > 0 {
 		word = fields[0]
 	}
+	if len(p.Prompt) > 0 && p.Prompt[0].Type != "text" {
+		word = "blocks"
+	}
 	if word == "crash" {
 		_, _ = os.Stderr.WriteString("fake agent crashed\n")
 		os.Exit(3)
@@ -309,6 +319,9 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 		}
 		a.chunk(p.SessionID, "msg_spawn", fmt.Sprintf("child %d", child.Process.Pid))
 		return end(acp.StopEndTurn)
+	case "blocks":
+		a.chunk(p.SessionID, "msg_blocks", describeBlocks(p.Prompt))
+		return end(acp.StopEndTurn)
 	case "stubborn", "immortal":
 		a.mu.Lock()
 		a.stubborn = true
@@ -321,4 +334,26 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 	}
 	a.chunk(p.SessionID, "msg_echo", text)
 	return end(acp.StopEndTurn)
+}
+
+// describeBlocks lists a prompt's blocks, one per line: "text <text>",
+// "image <mimeType> <bytes of base64>", "resource <uri> <mimeType> <text>",
+// or the block's type.
+func describeBlocks(blocks []acp.ContentBlock) string {
+	lines := make([]string, 0, len(blocks))
+	for _, b := range blocks {
+		switch b.Type {
+		case "text":
+			lines = append(lines, "text "+b.Text)
+		case "image":
+			lines = append(lines, fmt.Sprintf("image %s %d", b.MimeType, len(b.Data)))
+		case "resource":
+			var r acp.TextResource
+			_ = json.Unmarshal(b.Resource, &r)
+			lines = append(lines, fmt.Sprintf("resource %s %s %s", r.URI, r.MimeType, r.Text))
+		default:
+			lines = append(lines, b.Type)
+		}
+	}
+	return strings.Join(lines, "\n")
 }

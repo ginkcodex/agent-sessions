@@ -8,8 +8,13 @@ import (
 	"sync"
 
 	"github.com/ginkcode/agent-sessions/internal/acp"
+	"github.com/ginkcode/agent-sessions/internal/chatattach"
 	"github.com/ginkcode/agent-sessions/internal/engine"
 )
+
+// ErrNoChatAttachments means the host's agent-sessions is too old to send
+// attachments to its agents.
+var ErrNoChatAttachments = errors.New("this host's agent-sessions cannot send attachments to agents; reconnect to update it")
 
 // maxChatPromptBytes bounds a prompt's text. Prompts are typed by a person;
 // this only keeps a peer from handing the agent a frame-sized one.
@@ -25,10 +30,12 @@ type chatRPC struct {
 	owned   map[string]bool
 }
 
-// ChatPromptParams sends text to a chat's agent.
+// ChatPromptParams sends text and attachments to a chat's agent. A server
+// without Capabilities.ChatAttachments ignores Attachments.
 type ChatPromptParams struct {
-	ChatID string `json:"chatId"`
-	Text   string `json:"text"`
+	ChatID      string                  `json:"chatId"`
+	Text        string                  `json:"text"`
+	Attachments []chatattach.Attachment `json:"attachments,omitempty"`
 }
 
 // ChatParams names a chat.
@@ -102,12 +109,13 @@ func (s *Server) dispatchChat(ctx context.Context, backend engine.Backend, req R
 
 	// The rest name a chat this connection must own.
 	var p struct {
-		ChatID       string `json:"chatId"`
-		Text         string `json:"text"`
-		PermissionID string `json:"permissionId"`
-		OptionID     string `json:"optionId"`
-		ConfigID     string `json:"configId"`
-		Value        any    `json:"value"`
+		ChatID       string                  `json:"chatId"`
+		Text         string                  `json:"text"`
+		Attachments  []chatattach.Attachment `json:"attachments"`
+		PermissionID string                  `json:"permissionId"`
+		OptionID     string                  `json:"optionId"`
+		ConfigID     string                  `json:"configId"`
+		Value        any                     `json:"value"`
 	}
 	if err := json.Unmarshal(req.Params, &p); err != nil {
 		return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
@@ -120,7 +128,8 @@ func (s *Server) dispatchChat(ctx context.Context, backend engine.Backend, req R
 		if len(p.Text) > maxChatPromptBytes {
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: "the prompt is too long"}
 		}
-		return nil, m.Prompt(p.ChatID, p.Text)
+		// The engine checks the attachments' number and sizes.
+		return nil, m.Prompt(p.ChatID, p.Text, p.Attachments)
 	case "chatCancel":
 		return nil, m.Cancel(p.ChatID)
 	case "chatRespond":
@@ -215,12 +224,17 @@ func (c *Client) ChatStart(ctx context.Context, req engine.ChatStartRequest) (en
 	return out, c.chatCall(ctx, "chatStart", req, &out)
 }
 
-// ChatPrompt sends text to the chat's agent.
-func (c *Client) ChatPrompt(ctx context.Context, chatID, text string) error {
-	if !c.Capabilities().ACPChat {
+// ChatPrompt sends text and attachments to the chat's agent. A host that
+// would drop the attachments refuses them with ErrNoChatAttachments.
+func (c *Client) ChatPrompt(ctx context.Context, chatID, text string, atts []chatattach.Attachment) error {
+	caps := c.Capabilities()
+	if !caps.ACPChat {
 		return engine.ErrUnsupportedAction
 	}
-	return c.chatCall(ctx, "chatPrompt", ChatPromptParams{ChatID: chatID, Text: text}, nil)
+	if len(atts) > 0 && !caps.ChatAttachments {
+		return ErrNoChatAttachments
+	}
+	return c.chatCall(ctx, "chatPrompt", ChatPromptParams{ChatID: chatID, Text: text, Attachments: atts}, nil)
 }
 
 // ChatCancel cancels the chat's running turn.

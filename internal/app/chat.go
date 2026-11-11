@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ginkcode/agent-sessions/internal/acp"
+	"github.com/ginkcode/agent-sessions/internal/chatattach"
 	"github.com/ginkcode/agent-sessions/internal/engine"
 )
 
@@ -22,7 +23,7 @@ var errChatUnavailable = errors.New("chat is not available")
 type chatService interface {
 	ChatAgents(ctx context.Context) ([]engine.ChatAgent, error)
 	ChatStart(ctx context.Context, req engine.ChatStartRequest) (engine.ChatState, error)
-	ChatPrompt(ctx context.Context, chatID, text string) error
+	ChatPrompt(ctx context.Context, chatID, text string, atts []chatattach.Attachment) error
 	ChatCancel(ctx context.Context, chatID string) error
 	ChatRespond(ctx context.Context, chatID, permissionID, optionID string) error
 	ChatSetOption(ctx context.Context, chatID, configID string, value any) ([]acp.ConfigOption, error)
@@ -41,8 +42,8 @@ func (l localChatService) ChatStart(ctx context.Context, req engine.ChatStartReq
 	return l.m.Start(ctx, req)
 }
 
-func (l localChatService) ChatPrompt(_ context.Context, chatID, text string) error {
-	return l.m.Prompt(chatID, text)
+func (l localChatService) ChatPrompt(_ context.Context, chatID, text string, atts []chatattach.Attachment) error {
+	return l.m.Prompt(chatID, text, atts)
 }
 
 func (l localChatService) ChatCancel(_ context.Context, chatID string) error {
@@ -109,8 +110,8 @@ func (r remoteChats) ChatStart(ctx context.Context, req engine.ChatStartRequest)
 	return out, remoteErr(err)
 }
 
-func (r remoteChats) ChatPrompt(ctx context.Context, chatID, text string) error {
-	return remoteErr(r.chatService.ChatPrompt(ctx, chatID, text))
+func (r remoteChats) ChatPrompt(ctx context.Context, chatID, text string, atts []chatattach.Attachment) error {
+	return remoteErr(r.chatService.ChatPrompt(ctx, chatID, text, atts))
 }
 
 func (r remoteChats) ChatCancel(ctx context.Context, chatID string) error {
@@ -171,7 +172,7 @@ func (a *App) ChatPrompt(chatID, text string) error {
 	if err != nil {
 		return err
 	}
-	return s.ChatPrompt(a.appCtx(), chatID, text)
+	return s.ChatPrompt(a.appCtx(), chatID, text, nil)
 }
 
 // ChatCancel cancels the chat's running turn and answers its pending

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/acp"
 	"github.com/ginkcode/agent-sessions/internal/acp/acptest"
+	"github.com/ginkcode/agent-sessions/internal/chatattach"
 	"github.com/ginkcode/agent-sessions/internal/manage"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
@@ -154,7 +156,7 @@ func (f *chatFixture) start(t *testing.T, resume *model.SessionRef) ChatState {
 func (f *chatFixture) turn(t *testing.T, chatID, text string) ChatUpdate {
 	t.Helper()
 	before, _ := f.events.of(chatID)
-	if err := f.m.Prompt(chatID, text); err != nil {
+	if err := f.m.Prompt(chatID, text, nil); err != nil {
 		t.Fatal(err)
 	}
 	return f.events.wait(t, chatID, func(u ChatUpdate) bool { return u.Kind == ChatTurnEnded && u.Seq > uint64(len(before)) })
@@ -230,7 +232,7 @@ func TestChatNewSessionStreams(t *testing.T) {
 	if _, ok := f.m.Owned(st.Session); ok {
 		t.Fatal("session still owned after close")
 	}
-	if err := f.m.Prompt(st.ChatID, "x"); !errors.Is(err, ErrChatNotFound) {
+	if err := f.m.Prompt(st.ChatID, "x", nil); !errors.Is(err, ErrChatNotFound) {
 		t.Fatalf("prompt after close = %v", err)
 	}
 	if err := f.m.Close(st.ChatID); !errors.Is(err, ErrChatNotFound) {
@@ -238,13 +240,86 @@ func TestChatNewSessionStreams(t *testing.T) {
 	}
 }
 
+func TestChatPromptWithAttachments(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.start(t, nil)
+	if st.PromptCapabilities == nil || !st.PromptCapabilities.Image || !st.PromptCapabilities.EmbeddedContext {
+		t.Fatalf("prompt capabilities = %+v", st.PromptCapabilities)
+	}
+	img := chatattach.Attachment{Kind: chatattach.KindImage, Name: "dot.png", MimeType: "image/png", Data: base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\nxxxx"))}
+	txt := chatattach.Attachment{Kind: chatattach.KindText, Name: "a.go", MimeType: "text/x-go", Text: "package a", URI: "file:///p/a.go"}
+
+	// The agent gets the text, then each attachment in order.
+	before, _ := f.events.of(st.ChatID)
+	if err := f.m.Prompt(st.ChatID, "blocks please", []chatattach.Attachment{txt, img}); err != nil {
+		t.Fatal(err)
+	}
+	f.events.wait(t, st.ChatID, func(u ChatUpdate) bool { return u.Kind == ChatTurnEnded && u.Seq > uint64(len(before)) })
+	u, _ := f.events.of(st.ChatID)
+	want := "text blocks please\nresource file:///p/a.go text/x-go package a\nimage image/png 16"
+	if got := chunks(u[len(before):]); len(got) != 1 || got[0] != want {
+		t.Fatalf("blocks = %q, want %q", got, want)
+	}
+
+	// Attachments alone are a prompt; nothing at all is not.
+	before, _ = f.events.of(st.ChatID)
+	if err := f.m.Prompt(st.ChatID, "", []chatattach.Attachment{img}); err != nil {
+		t.Fatal(err)
+	}
+	f.events.wait(t, st.ChatID, func(u ChatUpdate) bool { return u.Kind == ChatTurnEnded && u.Seq > uint64(len(before)) })
+	u, _ = f.events.of(st.ChatID)
+	if got := chunks(u[len(before):]); len(got) != 1 || got[0] != "image image/png 16" {
+		t.Fatalf("blocks = %q", got)
+	}
+	if err := f.m.Prompt(st.ChatID, "", nil); !errors.Is(err, ErrEmptyPrompt) {
+		t.Fatalf("empty prompt: %v", err)
+	}
+	// A malformed attachment refuses the prompt before any turn starts.
+	bad := img
+	bad.MimeType = "image/jpeg"
+	before, _ = f.events.of(st.ChatID)
+	if err := f.m.Prompt(st.ChatID, "x", []chatattach.Attachment{bad}); err == nil || !strings.Contains(err.Error(), "dot.png") {
+		t.Fatalf("bad attachment: %v", err)
+	}
+	if after, _ := f.events.of(st.ChatID); len(after) != len(before) {
+		t.Fatalf("a refused prompt sent %d events", len(after)-len(before))
+	}
+}
+
+func TestChatAgentWithoutImages(t *testing.T) {
+	f := newChatFixture(t, "ACPTEST_TEXT_ONLY=1")
+	st := f.start(t, nil)
+	if st.PromptCapabilities == nil || st.PromptCapabilities.Image || st.PromptCapabilities.EmbeddedContext {
+		t.Fatalf("prompt capabilities = %+v", st.PromptCapabilities)
+	}
+	img := chatattach.Attachment{Kind: chatattach.KindImage, Name: "dot.png", MimeType: "image/png", Data: base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\nxxxx"))}
+	if err := f.m.Prompt(st.ChatID, "look", []chatattach.Attachment{img}); !errors.Is(err, chatattach.ErrNoImages) {
+		t.Fatalf("image to a text-only agent: %v", err)
+	}
+	if got := f.m.Chats(); len(got) != 1 || got[0].Working {
+		t.Fatalf("a refused prompt left the chat working: %+v", got)
+	}
+	// A text file goes in as text instead.
+	txt := chatattach.Attachment{Kind: chatattach.KindText, Name: "a.txt", MimeType: "text/plain", Text: "hi"}
+	before, _ := f.events.of(st.ChatID)
+	if err := f.m.Prompt(st.ChatID, "blocks", []chatattach.Attachment{txt}); err != nil {
+		t.Fatal(err)
+	}
+	f.events.wait(t, st.ChatID, func(u ChatUpdate) bool { return u.Kind == ChatTurnEnded && u.Seq > uint64(len(before)) })
+	u, _ := f.events.of(st.ChatID)
+	want := "text blocks\ntext Attached file a.txt:\n\n```\nhi\n```"
+	if got := chunks(u[len(before):]); len(got) != 1 || got[0] != want {
+		t.Fatalf("blocks = %q, want %q", got, want)
+	}
+}
+
 func TestChatRefusesConcurrentPrompt(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.start(t, nil)
-	if err := f.m.Prompt(st.ChatID, "hang"); err != nil {
+	if err := f.m.Prompt(st.ChatID, "hang", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.m.Prompt(st.ChatID, "stream 1"); !errors.Is(err, ErrChatBusy) {
+	if err := f.m.Prompt(st.ChatID, "stream 1", nil); !errors.Is(err, ErrChatBusy) {
 		t.Fatalf("second prompt = %v", err)
 	}
 	if got := f.m.Chats(); !got[0].Working {
@@ -275,7 +350,7 @@ func TestChatRefusesConcurrentPrompt(t *testing.T) {
 func TestChatPermissionAnswered(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.start(t, nil)
-	if err := f.m.Prompt(st.ChatID, "permission"); err != nil {
+	if err := f.m.Prompt(st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatPermissionAsked)).Permission
@@ -320,7 +395,7 @@ func TestChatPermissionAnswered(t *testing.T) {
 func TestChatCancelAnswersPermission(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.start(t, nil)
-	if err := f.m.Prompt(st.ChatID, "permission"); err != nil {
+	if err := f.m.Prompt(st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatPermissionAsked)).Permission
@@ -342,7 +417,7 @@ func TestChatCancelAnswersPermission(t *testing.T) {
 func TestChatCloseDuringPermission(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.start(t, nil)
-	if err := f.m.Prompt(st.ChatID, "permission"); err != nil {
+	if err := f.m.Prompt(st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatPermissionAsked)).Permission
@@ -574,7 +649,7 @@ func TestChatCloseAll(t *testing.T) {
 		st := f.start(t, nil)
 		ids = append(ids, st.ChatID)
 		if text != "" {
-			if err := f.m.Prompt(st.ChatID, text); err != nil {
+			if err := f.m.Prompt(st.ChatID, text, nil); err != nil {
 				t.Fatal(err)
 			}
 		}
