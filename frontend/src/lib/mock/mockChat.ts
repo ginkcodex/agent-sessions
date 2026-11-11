@@ -17,7 +17,7 @@ import type {
 const AGENTS: { agent: AgentID; name: string; install: string; adapter: string }[] = [
   { agent: 'claude-code', name: 'Claude Code', install: 'npm install -g @agentclientprotocol/claude-agent-acp', adapter: 'claude-agent-acp' },
   { agent: 'codex', name: 'Codex', install: 'npm install -g @agentclientprotocol/codex-acp', adapter: 'codex-acp' },
-  { agent: 'opencode', name: 'OpenCode', install: 'curl -fsSL https://opencode.ai/install | bash', adapter: 'opencode' },
+  { agent: 'opencode', name: 'OpenCode', install: 'npm install -g opencode-ai', adapter: 'opencode' },
 ];
 
 export const CHAT_REMOTE_ERROR = "chat works for this computer's sessions only; connected hosts do not support it yet";
@@ -26,7 +26,7 @@ interface MockChat {
   state: ChatState;
   seq: number;
   turn: { cancelled: boolean } | null;
-  permission: { id: string; answer: (optionId: string) => void } | null;
+  permission: { request: ChatPermission; answer: (optionId: string) => void } | null;
   nextPerm: number;
   nextMessage: number;
   closed: boolean;
@@ -126,7 +126,7 @@ export class MockChats {
 
   async respond(chatId: string, permissionId: string, optionId: string): Promise<void> {
     const chat = this.get(chatId);
-    if (chat.permission?.id !== permissionId) throw new Error(`the permission request is no longer pending: ${permissionId}`);
+    if (chat.permission?.request.id !== permissionId) throw new Error(`the permission request is no longer pending: ${permissionId}`);
     chat.permission.answer(optionId);
   }
 
@@ -146,7 +146,7 @@ export class MockChats {
   }
 
   async list(): Promise<ChatState[]> {
-    return [...this.chats.values()].map((c) => structuredClone(c.state));
+    return [...this.chats.values()].map((c) => structuredClone({ ...c.state, permissions: c.permission ? [c.permission.request] : [] }));
   }
 
   /** Ends every chat, as a host switch or the window closing does. */
@@ -200,26 +200,26 @@ export class MockChats {
     }
   }
 
-  private ask(chat: MockChat, toolCallId: string, title: string): Promise<string> {
+  private ask(chat: MockChat, toolCall: ChatPermission['toolCall']): Promise<string> {
     const id = `perm-${++chat.nextPerm}`;
+    const permission: ChatPermission = {
+      id,
+      toolCall,
+      options: [
+        { optionId: 'allow-once', name: 'Allow', kind: 'allow_once' },
+        { optionId: 'allow-always', name: 'Always allow edits', kind: 'allow_always' },
+        { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+      ],
+    };
     return new Promise((resolve) => {
       chat.permission = {
-        id,
+        request: permission,
         answer: (optionId) => {
-          if (chat.permission?.id !== id) return;
+          if (chat.permission?.request.id !== id) return;
           chat.permission = null;
           this.update(chat, { kind: 'permission_resolved', permission: { id, outcome: optionId ? 'selected' : 'cancelled', ...(optionId && { optionId }) } });
           resolve(optionId);
         },
-      };
-      const permission: ChatPermission = {
-        id,
-        toolCall: { toolCallId, title, kind: 'edit', status: 'pending' },
-        options: [
-          { optionId: 'allow-once', name: 'Allow', kind: 'allow_once' },
-          { optionId: 'allow-always', name: 'Always allow edits', kind: 'allow_always' },
-          { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
-        ],
       };
       this.update(chat, { kind: 'permission', permission });
     });
@@ -282,7 +282,15 @@ export class MockChats {
         const path = `${chat.state.dir}/NOTES.md`;
         const write = `${tool}_write`;
         this.session(chat, { sessionUpdate: 'tool_call', toolCallId: write, name: 'Write', title: 'Write NOTES.md', kind: 'edit', status: 'pending', locations: [{ path }], rawInput: { file_path: path } });
-        const answer = await this.ask(chat, write, 'Write NOTES.md');
+        const content = '# Notes\n\nWritten by the mock agent.\n';
+        const answer = await this.ask(chat, {
+          toolCallId: write,
+          title: 'Write NOTES.md',
+          kind: 'edit',
+          status: 'pending',
+          rawInput: { file_path: path, content },
+          content: [{ type: 'diff', path, oldText: null, newText: content }],
+        });
         if (turn.cancelled || !answer) {
           stopReason = 'cancelled';
           return;
@@ -291,7 +299,6 @@ export class MockChats {
           this.session(chat, { sessionUpdate: 'tool_call_update', toolCallId: write, status: 'failed', content: [{ type: 'content', content: { type: 'text', text: 'The user declined this tool call' } }] });
           reply.parts.push({ kind: 'tool', tool: { id: write, name: 'Write', input: { file_path: path }, output: 'The user declined this tool call', status: 'error' } });
         } else {
-          const content = '# Notes\n\nWritten by the mock agent.\n';
           this.session(chat, { sessionUpdate: 'tool_call_update', toolCallId: write, status: 'completed', content: [{ type: 'diff', path, oldText: null, newText: content }] });
           reply.parts.push({ kind: 'tool', tool: { id: write, name: 'Write', input: { file_path: path, content }, output: 'File created', status: 'completed' } });
         }

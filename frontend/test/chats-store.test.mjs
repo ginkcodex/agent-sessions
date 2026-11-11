@@ -279,3 +279,60 @@ test('chats refuse a connected host', async () => {
     assert.match(store.agentsError, /this computer's sessions only/);
   });
 });
+
+test('a reloaded page shows the permission requests still waiting, and they can be answered', async () => {
+  await withChats(
+    async ({ store, mock }) => {
+      const st = await mock.chatStart({ agent: 'codex', dir: DIR });
+      await mock.chatPrompt(st.chatId, 'write notes, ask permission');
+      for (let i = 0; i < 5000 && !(await mock.chatList())[0]?.permissions?.length; i++) await new Promise((resolve) => setTimeout(resolve, 1));
+      await store.init();
+      const c = store.byChatId(st.chatId);
+      assert.equal(c.phase, 'working');
+      assert.deepEqual(c.permissions.map((p) => p.toolCall.title), ['Write NOTES.md']);
+      assert.equal(c.permissions[0].toolCall.content[0].type, 'diff', 'the card can show the change');
+
+      await store.respond(st.chatId, c.permissions[0].id, 'reject');
+      assert.deepEqual(store.byChatId(st.chatId).permissions, []);
+      await until('turn end', () => store.byChatId(st.chatId).phase === 'idle');
+      const write = store.byChatId(st.chatId).tail.items.find((i) => i.toolCallId?.endsWith('_write'));
+      assert.equal(write.status, 'failed', 'the reject reached the agent');
+    },
+    { init: false },
+  );
+});
+
+test('every way a chat ends clears its waiting permission cards', async () => {
+  await withChats(async ({ store, mock }) => {
+    const waiting = async (agent) => {
+      const chat = await store.start({ agent, dir: DIR });
+      await store.prompt(chat.chatId, 'approve this');
+      await until('permission', () => store.byChatId(chat.chatId).permissions.length === 1);
+      return chat;
+    };
+
+    // Closing the chat: the agent's request is answered cancelled first.
+    const closed = await waiting('claude-code');
+    await store.close(closed.chatId);
+    await until('exit', () => store.byChatId(closed.chatId).phase === 'exited');
+    assert.deepEqual(store.byChatId(closed.chatId).permissions, []);
+
+    // The turn ends while a request waits: its card goes with the turn.
+    const ended = await waiting('codex');
+    const agentSide = mock.chat['chats'].get(ended.chatId);
+    mock.emit('chat:update', { chatId: ended.chatId, seq: ++agentSide.seq, kind: 'turn_end', stopReason: 'cancelled' });
+    assert.equal(store.byChatId(ended.chatId).phase, 'idle');
+    assert.deepEqual(store.byChatId(ended.chatId).permissions, []);
+
+    // Quitting the app or the window closing ends every agent.
+    const quit = await waiting('opencode');
+    mock.chat.closeAll();
+    await until('exit', () => store.byChatId(quit.chatId).phase === 'exited');
+    assert.deepEqual(store.byChatId(quit.chatId).permissions, []);
+
+    // A host switch drops the chats and their cards.
+    await waiting('claude-code');
+    store.reset();
+    assert.deepEqual(store.chats, []);
+  });
+});

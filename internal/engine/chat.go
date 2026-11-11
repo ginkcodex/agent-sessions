@@ -118,6 +118,9 @@ type ChatState struct {
 	ConfigOptions []acp.ConfigOption  `json:"configOptions"`
 	// Working is true while a prompt turn runs.
 	Working bool `json:"working"`
+	// Permissions are the requests waiting for an answer, oldest first, so
+	// a reloaded window can show them again.
+	Permissions []ChatPermission `json:"permissions,omitempty"`
 }
 
 // ChatPermission is a permission request, or its outcome once resolved.
@@ -598,6 +601,7 @@ type chat struct {
 }
 
 type pendingPermission struct {
+	n      int // the order asked
 	req    acp.RequestPermissionRequest
 	answer chan acp.RequestPermissionResponse // buffered; one send
 }
@@ -620,6 +624,16 @@ func (ch *chat) state() (ChatState, bool) {
 	}
 	if st.ConfigOptions == nil {
 		st.ConfigOptions = []acp.ConfigOption{}
+	}
+	ids := make([]string, 0, len(ch.perms))
+	for id := range ch.perms {
+		ids = append(ids, id)
+	}
+	slices.SortFunc(ids, func(a, b string) int { return ch.perms[a].n - ch.perms[b].n })
+	for _, id := range ids {
+		p := ch.perms[id]
+		tool := p.req.ToolCall
+		st.Permissions = append(st.Permissions, ChatPermission{ID: id, ToolCall: &tool, Options: slices.Clone(p.req.Options)})
 	}
 	if info := ch.client.Info().AgentInfo; info != nil {
 		i := *info
@@ -724,7 +738,7 @@ func (ch *chat) onPermission(ctx context.Context, req acp.RequestPermissionReque
 	}
 	ch.nextPerm++
 	id := "perm-" + strconv.Itoa(ch.nextPerm)
-	p := &pendingPermission{req: req, answer: make(chan acp.RequestPermissionResponse, 1)}
+	p := &pendingPermission{n: ch.nextPerm, req: req, answer: make(chan acp.RequestPermissionResponse, 1)}
 	ch.perms[id] = p
 	ch.work.Add(1)
 	ch.mu.Unlock()

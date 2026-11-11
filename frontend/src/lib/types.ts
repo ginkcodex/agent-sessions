@@ -646,6 +646,8 @@ export interface ChatState {
   configOptions: ChatConfigOption[];
   /** True while a prompt turn runs. */
   working: boolean;
+  /** The permission requests waiting for an answer, oldest first. */
+  permissions?: ChatPermission[];
 }
 
 /** An ACP content block; chats only read text. */

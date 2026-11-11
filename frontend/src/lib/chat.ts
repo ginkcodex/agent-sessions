@@ -1,6 +1,6 @@
 // What the chat UI shows: the live tail as transcript messages, and which
 // agents can chat. Every function here is pure.
-import type { AgentID, ChatAgent, Message, Part, ToolStatus } from './types';
+import type { AgentID, ChatAgent, ChatPermission, Message, Part, ToolStatus } from './types';
 import { toolOutput, type ChatTail, type TailDiff, type TailItem, type TailTool } from './chatTail';
 
 /**
@@ -97,3 +97,69 @@ export function chatAgentAvailable(agents: readonly ChatAgent[], agent: AgentID)
   return agents.some((a) => a.agent === agent && a.available);
 }
 
+
+/** What a permission request's option does, by its ACP kind. */
+export interface PermissionChoice {
+  optionId: string;
+  /** The agent's own words for the option. */
+  name: string;
+  /** The kind in words; empty for a kind the app does not know. */
+  kindLabel: string;
+  tone: 'allow' | 'reject' | 'other';
+  /** An allow_always choice: it lasts beyond this chat. */
+  lasting: boolean;
+}
+
+/** A permission request as its card shows it. */
+export interface PermissionView {
+  title: string;
+  kind: string;
+  /** The command the tool runs, when it runs one. */
+  command: string;
+  /** Unified diffs of the files the tool would change. */
+  diffs: { path: string; text: string }[];
+  /** The files the tool touches, when it shows no diff of them. */
+  paths: string[];
+  choices: PermissionChoice[];
+}
+
+const KIND_LABELS: Record<string, { label: string; tone: PermissionChoice['tone'] }> = {
+  allow_once: { label: 'Allow once', tone: 'allow' },
+  allow_always: { label: 'Always allow', tone: 'allow' },
+  reject_once: { label: 'Reject once', tone: 'reject' },
+  reject_always: { label: 'Always reject', tone: 'reject' },
+};
+
+/** The parts of a permission request a card shows. Options keep the agent's order. */
+export function permissionView(p: ChatPermission): PermissionView {
+  const tool = p.toolCall;
+  const diffs = (tool?.content ?? [])
+    .filter((c) => c.type === 'diff' && typeof c.path === 'string' && typeof c.newText === 'string')
+    .map((c) => ({ path: c.path!, text: unifiedDiff({ path: c.path!, oldText: c.oldText ?? null, newText: c.newText! }) }));
+  const shown = new Set(diffs.map((d) => d.path));
+  const paths = [...new Set((tool?.locations ?? []).map((l) => l.path).filter((path) => path && !shown.has(path)))];
+  return {
+    title: tool?.title || tool?.name || 'A tool call',
+    kind: tool?.kind ?? '',
+    command: commandText(tool?.rawInput),
+    diffs,
+    paths,
+    choices: (p.options ?? []).map((o) => {
+      const known = KIND_LABELS[o.kind];
+      return { optionId: o.optionId, name: o.name || known?.label || o.optionId, kindLabel: known?.label ?? '', tone: known?.tone ?? 'other', lasting: o.kind === 'allow_always' };
+    }),
+  };
+}
+
+// Claude and OpenCode send the command as a string; Codex as argv.
+function commandText(input: unknown): string {
+  if (!input || typeof input !== 'object') return '';
+  const command = (input as { command?: unknown }).command;
+  if (typeof command === 'string') return command;
+  if (Array.isArray(command) && command.every((a) => typeof a === 'string')) return command.map(shellWord).join(' ');
+  return '';
+}
+
+function shellWord(arg: string): string {
+  return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
+}

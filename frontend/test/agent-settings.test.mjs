@@ -131,6 +131,7 @@ const component = await loadServerComponent(componentURL, [
   ["import { epoch } from '../../link';", 'const epoch = () => 0;'],
   ["import { filePrompt } from '../../stores/filePrompt.svelte';", 'const filePrompt = {};'],
   ["import { fileActions } from '../../stores/fileActions.svelte';", 'const fileActions = {};'],
+  ["import ChatAdapters from '../chat/ChatAdapters.svelte';", 'const ChatAdapters = () => {};'],
   ["import { agentSettings } from '../../stores/agentSettings.svelte';", fixtureStore('agentSettings')],
   ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
   ["'../../hosts'", JSON.stringify(new URL('../src/lib/hosts.ts', import.meta.url).href)],

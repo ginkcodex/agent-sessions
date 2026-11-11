@@ -15,9 +15,11 @@
      * focusHandled, even when the ask came before this composer mounted.
      */
     focus?: { focusRequest: number; focusHandled: number };
+    /** Starts the agent again once the chat ended. */
+    onRestart?: () => void;
   }
 
-  let { chat, focus }: Props = $props();
+  let { chat, focus, onRestart }: Props = $props();
 
   let text = $state('');
   let sending = $state(false);
@@ -95,6 +97,10 @@
   <div class="composer-actions">
     {#if closed}
       <button type="button" class="secondary" onclick={() => chats.dismiss(chat.key)}>Dismiss</button>
+      {#if onRestart}
+        <span class="spacer"></span>
+        <button type="button" class="primary" title="Start {agentName} again for this session" onclick={onRestart}>Restart</button>
+      {/if}
     {:else}
       <button
         type="button"

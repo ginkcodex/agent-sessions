@@ -4,7 +4,7 @@ import { isStaleReply } from '../link';
 import { errorText } from '../manage';
 import { chatAgentAvailable } from '../chat';
 import { appState } from './appState.svelte';
-import { chats } from './chats.svelte';
+import { chats, type Chat } from './chats.svelte';
 import { connectionStore } from './connection.svelte';
 import { link } from './link.svelte';
 import { terminals } from './terminals.svelte';
@@ -53,15 +53,7 @@ export class ChatOpener {
       this.focus();
       return true;
     }
-    const tab = terminals.tabFor(ref, link.dataHost ?? '');
-    if (tab) {
-      toast.show({
-        title: 'This session runs in a terminal',
-        body: 'A session runs in one place at a time. Quit the agent in its terminal tab, then open the session in a chat.',
-        actions: [{ label: 'Show terminal', onSelect: () => terminals.show(tab.id) }],
-      });
-      return false;
-    }
+    if (this.refuseChat(ref)) return false;
     return this.run(async () => {
       await chats.start({ agent: ref.agent, dir: meta.cwd, resume: { agent: ref.agent, id: ref.id } });
     });
@@ -72,6 +64,26 @@ export class ChatOpener {
     return this.run(async () => {
       const chat = await chats.start({ agent, dir });
       if (chat.session) await appState.selectSession(chat.session, 'push');
+    });
+  }
+
+  /**
+   * Starts an ended chat's agent again: it continues the session when the
+   * agent saved it (saved), else it starts a new one in the same directory.
+   * The ended chat goes once the new one runs.
+   */
+  restart(chat: Chat, saved: boolean): Promise<boolean> {
+    if (chat.phase !== 'exited') return Promise.resolve(false);
+    const ref = chat.session;
+    if (saved && ref && this.refuseChat(ref)) return Promise.resolve(false);
+    return this.run(async () => {
+      if (saved && ref) {
+        await chats.start({ agent: chat.agent, dir: chat.dir, resume: { agent: ref.agent, id: ref.id } });
+      } else {
+        const next = await chats.start({ agent: chat.agent, dir: chat.dir });
+        if (next.session) await appState.selectSession(next.session, 'push');
+      }
+      chats.dismiss(chat.key);
     });
   }
 
@@ -93,6 +105,18 @@ export class ChatOpener {
           },
         },
       ],
+    });
+    return true;
+  }
+
+  // A terminal tab runs the session: says so. True when refused.
+  private refuseChat(ref: SessionRef): boolean {
+    const tab = terminals.tabFor(ref, link.dataHost ?? '');
+    if (!tab) return false;
+    toast.show({
+      title: 'This session runs in a terminal',
+      body: 'A session runs in one place at a time. Quit the agent in its terminal tab, then open the session in a chat.',
+      actions: [{ label: 'Show terminal', onSelect: () => terminals.show(tab.id) }],
     });
     return true;
   }

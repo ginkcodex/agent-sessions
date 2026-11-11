@@ -7,6 +7,7 @@
   import { tailMessages } from '../../chat';
   import { ALL_AGENTS } from '../../portable';
   import MessageBubble from '../transcript/MessageBubble.svelte';
+  import PermissionCard from './PermissionCard.svelte';
   import Icon from '../common/Icon.svelte';
 
   interface Props {
@@ -14,9 +15,11 @@
     sessionRef: SessionRef;
     mode?: TranscriptMode;
     onFileLink?: (value: string) => void;
+    /** Opens a terminal tab in the chat's directory, to log in there. */
+    onOpenTerminal?: () => void;
   }
 
-  let { chat, sessionRef, mode = 'activity', onFileLink }: Props = $props();
+  let { chat, sessionRef, mode = 'activity', onFileLink, onOpenTerminal }: Props = $props();
 
   let messages = $derived(tailMessages(chat.tail));
   let agentName = $derived(ALL_AGENTS.find((a) => a.id === chat.agent)?.label ?? chat.agent);
@@ -47,23 +50,36 @@
       <Icon name="loader-circle" size={14} class="spin" />
       <span>{chat.session ? `Opening the session in ${agentName}…` : `Starting ${agentName}…`}</span>
     </div>
-  {:else if chat.phase === 'working'}
+  {:else}
     {#each chat.permissions as permission (permission.id)}
-      <div class="chat-status waiting" role="status">
-        <Icon name="shield-check" size={14} />
-        <span>{agentName} asks for permission: {permission.toolCall?.title || 'a tool call'}</span>
-      </div>
+      <PermissionCard {chat} {permission} {agentName} />
     {/each}
-    <div class="chat-status" role="status">
-      <Icon name="loader-circle" size={14} class="spin" />
-      <span>{agentName} is working…</span>
-    </div>
+    {#if chat.phase === 'working'}
+      <div class="chat-status" role="status">
+        <Icon name="loader-circle" size={14} class="spin" />
+        <span>{chat.permissions.length > 0 ? `${agentName} waits for your answer.` : `${agentName} is working…`}</span>
+      </div>
+    {/if}
   {/if}
 
   {#if chat.error}
     <div class="chat-notice error" role="alert">
       <Icon name="circle-alert" size={14} />
-      <span>{chat.error}</span>
+      <div class="exit-text">
+        <span>{chat.error}</span>
+        {#if chat.authMethods?.length}
+          <ul class="auth-methods">
+            {#each chat.authMethods as method (method.id)}
+              <li><strong>{method.name}</strong>{method.description ? `: ${method.description}` : ''}</li>
+            {/each}
+          </ul>
+          {#if onOpenTerminal}
+            <div>
+              <button type="button" class="notice-action" onclick={onOpenTerminal}>Open a terminal in {chat.dir}</button>
+            </div>
+          {/if}
+        {/if}
+      </div>
     </div>
   {:else if stopNote}
     <div class="chat-notice" role="status">
@@ -107,10 +123,6 @@
     margin-top: 2px;
   }
 
-  .chat-status.waiting {
-    color: var(--text-secondary);
-  }
-
   .chat-notice {
     padding: 8px 10px;
     border: 1px solid var(--border-color);
@@ -129,6 +141,27 @@
     flex-direction: column;
     gap: 6px;
     min-width: 0;
+  }
+
+  .auth-methods {
+    margin: 0;
+    padding-left: 18px;
+  }
+
+  .notice-action {
+    padding: 4px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .notice-action:hover {
+    filter: brightness(1.08);
   }
 
   .stderr {

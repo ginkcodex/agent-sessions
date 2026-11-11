@@ -22,6 +22,7 @@
   import { newSessionShortcutLabel } from '../../terminal';
   import { chats } from '../../stores/chats.svelte';
   import { chatOpen } from '../../stores/chatOpen.svelte';
+  import { manage } from '../../stores/manage.svelte';
 
   interface Props {
     meta: SessionMeta;
@@ -98,6 +99,8 @@
   let canChatHere = $derived(chatOpen.canChat(meta.ref.agent) && !meta.cwdMissing);
   // New chats: every agent whose ACP adapter the host has.
   let chatChoices = $derived(ALL_AGENTS.filter((a) => chatOpen.canChat(a.id)));
+  // Agents the host could chat with once their adapter is installed.
+  let chatMissing = $derived(chatOpen.available && chats.agents.some((a) => !a.available));
 
   function startChat(agent: AgentID) {
     newMenuOpen = false;
@@ -383,6 +386,24 @@
                     <span>New {choice.label} chat</span>
                   </button>
                 {/each}
+              {/if}
+              {#if chatMissing}
+                {#if chatChoices.length === 0}
+                  <div class="menu-heading" role="presentation">Chat</div>
+                {/if}
+                <button
+                  type="button"
+                  class="action-menu-item"
+                  role="menuitem"
+                  title="Some agents need their ACP adapter to chat: see how to install it"
+                  onclick={() => {
+                    newMenuOpen = false;
+                    manage.openSettings('agents');
+                  }}
+                >
+                  <Icon name="settings" size={14} />
+                  <span>Set up chat…</span>
+                </button>
               {/if}
             </div>
           {/if}

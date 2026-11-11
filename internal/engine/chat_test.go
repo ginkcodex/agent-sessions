@@ -282,6 +282,12 @@ func TestChatPermissionAnswered(t *testing.T) {
 	if asked.ID == "" || asked.ToolCall.ToolCallID != "call_p" || len(asked.Options) != 3 {
 		t.Fatalf("asked = %+v", asked)
 	}
+	// A reloaded window finds the waiting request in the chat's state.
+	open := f.m.Chats()
+	if len(open) != 1 || len(open[0].Permissions) != 1 || open[0].Permissions[0].ID != asked.ID ||
+		open[0].Permissions[0].ToolCall.ToolCallID != "call_p" || len(open[0].Permissions[0].Options) != 3 {
+		t.Fatalf("chats = %+v", open)
+	}
 	if err := f.m.Respond(st.ChatID, asked.ID, "bogus"); err == nil {
 		t.Fatal("an option the request did not offer was accepted")
 	}
@@ -305,6 +311,9 @@ func TestChatPermissionAnswered(t *testing.T) {
 	u, _ := f.events.of(st.ChatID)
 	if got := chunks(u); len(got) != 1 || got[0] != "allowed:allow-once" {
 		t.Fatalf("chunks = %q", got)
+	}
+	if open := f.m.Chats(); len(open) != 1 || len(open[0].Permissions) != 0 {
+		t.Fatalf("answered request still listed: %+v", open)
 	}
 }
 

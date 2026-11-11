@@ -6,6 +6,7 @@
   import { epoch } from '../../link';
   import { filePrompt } from '../../stores/filePrompt.svelte';
   import { fileActions } from '../../stores/fileActions.svelte';
+  import ChatAdapters from '../chat/ChatAdapters.svelte';
 
   /** How long the restart prompt stands in for the close confirm. */
   const RESTART_CONFIRMED_MS = 15_000;
@@ -80,6 +81,8 @@
     <p class="error" role="alert">{agentSettings.error}</p>
   {/if}
 </section>
+
+<ChatAdapters />
 
 <style>
   h3 { margin: 0 0 10px; font-size: 14px; }

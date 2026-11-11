@@ -1693,6 +1693,9 @@ export function createAPI(): BackendAPI {
   mock.agentTurnMs = 2400;
   // The mock chat agent streams at about an agent's pace.
   mock.chat.stepMs = 60;
+  // ?mockChatMissing=opencode,codex shows those adapters as not installed.
+  const missing = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('mockChatMissing');
+  for (const agent of missing?.split(',') ?? []) if (agent) mock.chat.missing.add(agent as AgentID);
   return mock;
 }
 

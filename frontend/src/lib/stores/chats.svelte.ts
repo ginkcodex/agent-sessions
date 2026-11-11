@@ -108,8 +108,9 @@ export class ChatsStore {
     if (lifecycle !== this.lifecycle) return;
     for (const st of open) {
       if (this.byChatId(st.chatId)) continue;
-      // The seq the chat is at is not known: its next event sets it.
-      this.add(st.agent, st.dir, { chatId: st.chatId, phase: st.working ? 'working' : 'idle' }, newSequence(), st);
+      // The seq the chat is at is not known: its next event sets it. The
+      // requests still waiting come back as cards.
+      this.add(st.agent, st.dir, { chatId: st.chatId, phase: st.working ? 'working' : 'idle', permissions: st.permissions ?? [] }, newSequence(), st);
     }
   }
 
@@ -370,10 +371,12 @@ export class ChatsStore {
         return;
       }
       case 'turn_end':
+        // Requests end with their turn; the backend has answered them.
         this.update(key, (c) => ({
           ...c,
           phase: c.phase === 'exited' ? c.phase : 'idle',
           tail: endTurn(c.tail),
+          permissions: [],
           stopReason: e.stopReason || undefined,
           error: e.error || undefined,
           authMethods: e.authMethods?.length ? e.authMethods : undefined,

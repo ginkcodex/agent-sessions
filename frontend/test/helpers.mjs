@@ -260,6 +260,7 @@ export async function renderSessionHeader(fixture, props = {}) {
     ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
     ["import { chats } from '../../stores/chats.svelte';", fixtureStore('chats')],
     ["import { chatOpen } from '../../stores/chatOpen.svelte';", fixtureStore('chatOpen')],
+    ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
   ]);
   const meta = {
     ref: { agent: 'codex', id: 's1' },

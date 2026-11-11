@@ -891,6 +891,7 @@
             sessionRef={appState.selectedSessionRef}
             {mode}
             onFileLink={(value) => { if (appState.selectedSessionRef) openMessageFile(value, appState.selectedSessionRef); }}
+            onOpenTerminal={launcher.info.panel ? () => void terminals.newShell(chat.dir) : undefined}
           />
         {:else if !hasMore && messages.length > 0}
           <div class="end-of-transcript-marker">
@@ -928,7 +929,7 @@
     </div>
 
     {#if chat}
-      <ChatComposer {chat} focus={chatOpen} />
+      <ChatComposer {chat} focus={chatOpen} onRestart={() => void chatOpen.restart(chat, !!appState.selectedSessionMeta)} />
     {/if}
   {/if}
 

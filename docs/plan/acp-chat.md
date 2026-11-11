@@ -207,9 +207,16 @@ The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
     session options (mode, model, effort). The last choice is remembered per
     agent and host;
   - `LiveTail`: renders through `MessageBubble` and `transcript/parts`;
-  - `PermissionCard`: no default choice. `allow_always` options are marked
-    as lasting (Codex's writes an exec-policy rule);
-  - `AdapterMissing`: the install command to copy, for the host it applies to;
+  - `PermissionCard`: the tool's kind, title, command or diff, and one
+    button per option with its kind. There is no default choice, nothing
+    takes focus, and Enter does not approve. `allow_always` options are
+    marked as lasting (Codex's writes an exec-policy rule). Waiting requests
+    are part of `ChatState`, so a reloaded window shows them again;
+  - `AdapterMissing`: the install command to copy, for the host it applies
+    to. Settings › Coding agents lists each agent's adapter, and `New ▾`
+    offers "Set up chat…" when one is missing;
+  - an ended chat offers Restart: it continues the session when the agent
+    saved it, else it starts a new chat in the same directory;
   - an auth error shows the agent's `authMethods` text (for example "Run
     `opencode auth login`") with an action to open a terminal tab.
 - **Entry points:**
