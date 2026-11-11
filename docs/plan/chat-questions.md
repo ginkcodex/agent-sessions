@@ -209,3 +209,35 @@ Release criteria: regression coverage for current and legacy adapter shapes,
 custom-answer submission and long-label navigation; frontend checks and build.
 Verify the layout with long questions in light/dark themes and a narrow panel
 if a browser is available. Real installed-client validation remains separate.
+
+### Card look and session text size (CQ-10, CQ-11)
+
+The question card read as a plain form: a blue-tinted box, square option
+rows, "1." numbers and grey buttons, in a smaller size than the messages
+around it. It gets a calmer, card-like look that matches the composer:
+
+- The card: rounded (14 px), the raised surface and shadow the composer uses,
+  a faint accent border; a late card stays dashed and flat.
+- The header: the question icon in a small accent chip and "<Agent> asks".
+- Tabs: a segmented track as in the transcript mode switch; each tab's
+  number in a small circle that turns into a green check once answered.
+- Options: rounded rows with a hover and an accent fill and border when
+  chosen; the radio or check box on the left; the 1–9 shortcut as a keycap
+  at the row's end. The own answer is a row of the same shape with a
+  borderless box.
+- Footer: Next and Submit as the filled accent button, Skip and Dismiss as
+  quiet ones, the keys as keycaps; a line above it.
+- Review: one row per question, divided by thin lines.
+
+Text size: the session's text size (Settings → Appearance) drives the whole
+chat, not only the saved messages. The question and permission cards, the
+live tail's status, answer and notice lines, and the composer's text box
+take `--session-font-size` with the app's type scale (`--type-body` for what
+is read and typed, `--type-small` and below for hints and labels). The
+composer's toolbar keeps its fixed size, as the header does.
+
+Nothing changes in behavior: keys, no preselection, Enter not submitting and
+the accessible names stay as they are.
+
+Release criteria: the card tests pass with the new markup; `npm test`,
+`npm run check`, `npm run build`; a look at the card in light and dark.

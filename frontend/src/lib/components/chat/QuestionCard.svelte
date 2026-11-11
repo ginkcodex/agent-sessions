@@ -199,7 +199,7 @@
   onkeydown={onKeydown}
 >
   <header>
-    <Icon name="circle-help" size={14} />
+    <span class="chip" aria-hidden="true"><Icon name="circle-help" size={14} /></span>
     <span class="asks">{late ? `${agentName} asked` : `${agentName} asks`}</span>
   </header>
   {#if late}
@@ -225,7 +225,7 @@
           {#if done}<span class="sr-only">(answered)</span>{/if}
         </button>
       {/each}
-      <button type="button" role="tab" class="tab" aria-selected={reviewing} data-tab="review" onclick={() => void go(form.questions.length)}>
+      <button type="button" role="tab" class="tab review-tab" aria-selected={reviewing} data-tab="review" onclick={() => void go(form.questions.length)}>
         <span>Review</span>
       </button>
     </div>
@@ -246,7 +246,7 @@
           {#each q.options as o, i (o.value)}
             {@const on = !a?.ownChosen && a?.choice === o.value}
             <button type="button" role="radio" class="option" class:on aria-checked={on} disabled={sending} onclick={() => pick(q, o.value)}>
-              <span class="num">{i + 1}.</span>
+              <span class="num">{i + 1}<span class="sr-only">.</span></span>
               <span class="radio" aria-hidden="true"></span>
               <span class="body">
                 <span class="label">{o.label}{#if o.isDefault}<span class="badge">Default</span>{/if}</span>
@@ -258,7 +258,7 @@
             {@const on = !!a?.ownChosen}
             <div class="option own" class:on>
               <button type="button" role="radio" class="own-pick" aria-checked={on} aria-label="Type your own answer" disabled={sending} onclick={() => pickOwn(q)}>
-                <span class="num">{q.options.length + 1}.</span>
+                <span class="sr-only">{q.options.length + 1}.</span>
                 <span class="radio" aria-hidden="true"></span>
               </button>
               <input
@@ -272,6 +272,7 @@
                 oninput={(e) => (draft = setOwn(draft, q, e.currentTarget.value))}
                 onkeydown={holdEnter}
               />
+              <span class="num" aria-hidden="true">{q.options.length + 1}</span>
             </div>
           {/if}
         </div>
@@ -281,7 +282,7 @@
           {#each q.options as o, i (o.value)}
             {@const on = !!a?.picks?.includes(o.value)}
             <button type="button" role="checkbox" class="option" class:on aria-checked={on} disabled={sending} onclick={() => (draft = toggle(draft, q, o.value))}>
-              <span class="num">{i + 1}.</span>
+              <span class="num">{i + 1}<span class="sr-only">.</span></span>
               <span class="box" aria-hidden="true">{#if on}<Icon name="check" size={12} />{/if}</span>
               <span class="body">
                 <span class="label">{o.label}{#if o.isDefault}<span class="badge">Default</span>{/if}</span>
@@ -291,7 +292,7 @@
           {/each}
           {#if q.ownKey}
             <div class="option own" class:on={!!a?.own?.trim()}>
-              <span class="num">{q.options.length + 1}.</span>
+              <span class="box ghost" aria-hidden="true"></span>
               <input
                 type={q.secret ? 'password' : 'text'}
                 data-own={q.key}
@@ -302,6 +303,7 @@
                 oninput={(e) => (draft = setOwn(draft, q, e.currentTarget.value))}
                 onkeydown={holdEnter}
               />
+              <span class="num" aria-hidden="true">{q.options.length + 1}</span>
             </div>
           {/if}
         </div>
@@ -310,7 +312,7 @@
           {#each [true, false] as yes, i (yes)}
             {@const on = a?.yes === yes}
             <button type="button" role="radio" class="option" class:on aria-checked={on} disabled={sending} onclick={() => pickYes(q, yes)}>
-              <span class="num">{i + 1}.</span>
+              <span class="num">{i + 1}<span class="sr-only">.</span></span>
               <span class="radio" aria-hidden="true"></span>
               <span class="label">{yes ? 'Yes' : 'No'}</span>
             </button>
@@ -380,58 +382,51 @@
   <footer>
     {#if blocker && (reviewing || lastQuestion)}<p class="blocker" role="status">{blocker}</p>{/if}
     <div class="actions">
-      {#if reviewing || lastQuestion}
-        <button type="button" class="submit" disabled={!canSubmit} title={blocker} onkeydown={holdEnter} onclick={() => void reply('accept')}>{late ? 'Send as message' : 'Submit'}</button>
-      {:else}
-        <button type="button" class="next" onclick={() => void go(tab + 1)}>Next</button>
+      {#if several}
+        <span class="keys"><kbd>1</kbd>–<kbd>9</kbd> choose · <kbd>←</kbd><kbd>→</kbd> move between questions</span>
+      {:else if current?.options.length || current?.kind === 'boolean'}
+        <span class="keys"><kbd>1</kbd>–<kbd>9</kbd> choose</span>
       {/if}
       <button type="button" class="skip" disabled={sending} onclick={() => void reply('decline')}>{late ? 'Dismiss' : 'Skip'}</button>
-      {#if several}<span class="keys">1–9 choose · ← → move between questions</span>{:else if current?.options.length || current?.kind === 'boolean'}<span class="keys">1–9 choose</span>{/if}
+      {#if reviewing || lastQuestion}
+        <button type="button" class="primary submit" disabled={!canSubmit} title={blocker} onkeydown={holdEnter} onclick={() => void reply('accept')}>{late ? 'Send as message' : 'Submit'}</button>
+      {:else}
+        <button type="button" class="primary next" onclick={() => void go(tab + 1)}>Next</button>
+      {/if}
     </div>
     {#if waitHint}<p class="hint">{waitHint}</p>{/if}
   </footer>
 </section>
 
 <style>
+  /* Sizes follow the session's text size, as the messages around it do. */
   .question-card {
+    --fs: var(--session-font-size, 14.5px);
+    --done: #16a34a;
     display: flex;
     flex-direction: column;
     min-width: 0;
-    gap: 8px;
-    margin: 0 0 14px 28px;
-    padding: 10px 12px;
-    border: 1px solid rgba(59, 130, 246, 0.5);
-    border-radius: 6px;
-    background: rgba(59, 130, 246, 0.07);
+    gap: 12px;
+    margin: 0 0 16px 28px;
+    padding: 14px 16px 12px;
+    border: 1px solid color-mix(in srgb, var(--accent-color) 30%, var(--border-color));
+    border-radius: 14px;
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-card);
     color: var(--text-primary);
-    font-size: 0.8rem;
-    line-height: 1.4;
+    font-size: calc(var(--fs) * var(--type-body));
+    line-height: 1.5;
     outline: none;
+  }
+
+  .question-card:focus-visible {
+    box-shadow: var(--shadow-card), 0 0 0 2px color-mix(in srgb, var(--accent-color) 22%, transparent);
   }
 
   .question-card.late {
     border-style: dashed;
-    border-color: var(--border-color);
-    background: var(--bg-secondary);
-  }
-
-  .late-note {
-    color: var(--text-secondary);
-  }
-
-  .question-card:focus-visible {
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
-  }
-
-  header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--text-secondary);
-  }
-
-  .asks {
-    font-weight: 600;
+    border-color: var(--border-strong);
+    box-shadow: none;
   }
 
   p {
@@ -439,32 +434,87 @@
     overflow-wrap: anywhere;
   }
 
-  .message {
+  /* Header: the icon in a small accent chip, then who asks. */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     color: var(--text-secondary);
+    font-size: calc(var(--fs) * var(--type-small));
   }
 
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+    color: var(--accent-color);
+  }
+
+  .late .chip {
+    background: var(--segment-track);
+    color: var(--text-muted);
+  }
+
+  .asks {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .message,
+  .late-note {
+    margin-top: -4px;
+    color: var(--text-secondary);
+    font-size: calc(var(--fs) * var(--type-small));
+  }
+
+  /* Tabs: a segmented track, as the transcript mode switch. */
   .tabs {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 6px;
+    align-self: flex-start;
+    max-width: 100%;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--segment-track);
+    box-sizing: border-box;
   }
 
   .tab {
     display: inline-flex;
     align-items: center;
-    max-width: 190px;
+    max-width: 200px;
     min-width: 0;
-    text-align: left;
-    gap: 5px;
-    padding: 3px 9px;
-    border: 1px solid transparent;
-    border-radius: 4px;
+    gap: 6px;
+    padding: 4px 10px 4px 6px;
+    border: none;
+    border-radius: 7px;
     background: transparent;
     color: var(--text-secondary);
-    font-size: 0.75rem;
+    font: inherit;
+    font-size: calc(var(--fs) * var(--type-small));
+    text-align: left;
     cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+
+  .tab:hover {
+    color: var(--text-primary);
+  }
+
+  .tab[aria-selected='true'] {
+    background: var(--segment-thumb);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-thumb);
+  }
+
+  /* The Review tab has no mark. */
+  .tab.review-tab {
+    padding-left: 10px;
   }
 
   .tab-label {
@@ -473,82 +523,113 @@
     text-overflow: ellipsis;
   }
 
-  .tab:focus-visible,
-  .option:focus-visible,
-  .own-pick:focus-visible {
-    outline: 2px solid #3b82f6;
-    outline-offset: 2px;
-  }
-
-  .tab[aria-selected='true'] {
-    border-color: rgba(59, 130, 246, 0.6);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-  }
-
   .tab-mark {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 14px;
     flex-shrink: 0;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--bg-primary);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
     color: var(--text-muted);
-    font-size: 0.68rem;
+    font-size: calc(var(--fs) * var(--type-tag));
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A long title's tab shows "Question n" with no number in the mark. */
+  .tab-mark:empty {
+    display: none;
+  }
+
+  .tab[aria-selected='true'] .tab-mark {
+    background: var(--accent-color);
+    box-shadow: none;
+    color: white;
   }
 
   .tab.done .tab-mark {
-    color: #16a34a;
+    background: var(--done);
+    box-shadow: none;
+    color: white;
+  }
+
+  .tab:focus-visible,
+  .option:focus-visible,
+  .own-pick:focus-visible,
+  .actions button:focus-visible,
+  .link:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
   }
 
   .question,
   .review {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
   }
 
   .header {
-    color: var(--text-muted);
-    font-size: 0.72rem;
+    color: var(--accent-color);
+    font-size: calc(var(--fs) * var(--type-tag));
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.06em;
   }
 
   .text {
     font-weight: 600;
+    line-height: 1.45;
   }
 
   .required {
-    color: #dc2626;
+    color: var(--danger);
   }
 
+  /* Options: rounded rows, the mark on the left and the key at the end. */
   .options {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
   }
 
   .yes-no {
     flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .yes-no .option {
+    flex: 1 1 140px;
   }
 
   .option {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    padding: 8px 10px;
+    gap: 10px;
+    padding: 9px 10px 9px 12px;
     border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background: var(--bg-secondary);
+    border-radius: 10px;
+    background: var(--bg-primary);
     color: var(--text-primary);
-    font-size: 0.78rem;
+    font: inherit;
     text-align: left;
     cursor: pointer;
+    transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-fast) var(--ease-out);
+  }
+
+  button.option:hover:not(:disabled),
+  .option.own:hover {
+    border-color: color-mix(in srgb, var(--accent-color) 45%, var(--border-color));
   }
 
   .option.on {
-    border-color: rgba(59, 130, 246, 0.8);
-    background: rgba(59, 130, 246, 0.14);
+    border-color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 9%, var(--bg-primary));
+    box-shadow: inset 0 0 0 1px var(--accent-color);
   }
 
   .option:disabled {
@@ -556,66 +637,99 @@
     cursor: default;
   }
 
-  button.option:hover:not(:disabled) {
-    filter: brightness(1.08);
-  }
-
   .option.own {
     align-items: center;
-    cursor: default;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    cursor: text;
   }
 
   .own-pick {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
     align-self: stretch;
     padding: 0;
     border: none;
+    border-radius: 50%;
     background: none;
     color: inherit;
     cursor: pointer;
   }
 
+  /* The 1–9 key, as a keycap at the row's end. */
   .num {
-    min-width: 1.4em;
-    color: var(--text-muted);
-    font-variant-numeric: tabular-nums;
+    order: 3;
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
+    min-width: 20px;
+    height: 20px;
+    margin-left: auto;
+    padding: 0 4px;
+    border: 1px solid var(--border-color);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: calc(var(--fs) * var(--type-tag));
+    line-height: 1;
+    box-sizing: border-box;
+  }
+
+  .option.on .num {
+    border-color: color-mix(in srgb, var(--accent-color) 60%, transparent);
+    color: var(--accent-color);
+  }
+
+  .radio,
+  .box {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    margin-top: calc((1.5em - 16px) / 2);
+    border: 1.5px solid var(--border-strong);
+    background: var(--bg-primary);
+    transition: border var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
   }
 
   .radio {
-    box-sizing: border-box;
-    flex: 0 0 14px;
-    width: 14px;
-    height: 14px;
-    margin-top: 2px;
-    border: 1px solid var(--text-muted);
     border-radius: 50%;
-    background: var(--bg-primary);
+  }
+
+  .own .radio,
+  .own .box {
+    margin-top: 0;
   }
 
   [aria-checked='true'] > .radio {
-    border: 4px solid #3b82f6;
+    border: 5px solid var(--accent-color);
   }
 
   .box {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 14px;
-    height: 14px;
-    margin-top: 1px;
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
-    background: var(--bg-primary);
-    color: #16a34a;
+    border-radius: 4px;
+    color: white;
+  }
+
+  [aria-checked='true'] > .box {
+    border-color: var(--accent-color);
+    background: var(--accent-color);
+  }
+
+  .box.ghost {
+    border-style: dashed;
   }
 
   .body {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
     min-width: 0;
   }
 
@@ -624,32 +738,53 @@
   }
 
   .badge {
-    margin-left: 6px;
-    padding: 0 5px;
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
-    color: var(--text-muted);
-    font-size: 0.66rem;
+    display: inline-block;
+    margin-left: 8px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: var(--segment-track);
+    color: var(--text-secondary);
+    font-size: calc(var(--fs) * var(--type-tag));
+    font-weight: 500;
+    line-height: 1.6;
+    vertical-align: 1px;
   }
 
   .description {
     color: var(--text-muted);
-    font-size: 0.74rem;
+    font-size: calc(var(--fs) * var(--type-small));
+    line-height: 1.45;
   }
 
   input {
     flex: 1;
     min-width: 0;
-    padding: 4px 8px;
+    padding: 6px 10px;
     border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border-radius: 10px;
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-size: 0.78rem;
+    font: inherit;
+    transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
   }
 
-  .option.own input {
-    padding: 2px 6px;
+  input::placeholder {
+    color: var(--text-muted);
+  }
+
+  input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 18%, transparent);
+  }
+
+  /* In its row the own answer's box is the row. */
+  .option.own input,
+  .option.own input:focus {
+    padding: 4px 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
   }
 
   .field.number {
@@ -659,46 +794,59 @@
   .hint,
   .keys {
     color: var(--text-muted);
-    font-size: 0.72rem;
+    font-size: calc(var(--fs) * var(--type-small));
   }
 
-  .keys {
-    margin-left: auto;
-  }
-
-  .problem,
-  .blocker {
-    color: #dc2626;
-    font-size: 0.74rem;
+  .problem {
+    color: var(--danger);
+    font-size: calc(var(--fs) * var(--type-small));
   }
 
   .blocker {
     color: var(--text-secondary);
+    font-size: calc(var(--fs) * var(--type-small));
   }
 
+  /* Review: a row per question, divided by thin lines. */
   .review ul {
     margin: 0;
     padding: 0;
     list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-primary);
+    overflow: hidden;
   }
 
   .review li {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 8px;
+    gap: 4px 12px;
+    padding: 8px 12px;
+  }
+
+  .review li + li {
+    border-top: 1px solid var(--border-color);
   }
 
   .review-header {
-    min-width: 10em;
+    flex: 0 0 11em;
+    min-width: 0;
     color: var(--text-secondary);
+    font-size: calc(var(--fs) * var(--type-small));
   }
 
   .review-answer {
+    flex: 1;
+    min-width: 0;
     overflow-wrap: anywhere;
+  }
+
+  .review li > .problem,
+  .unanswered {
+    flex: 1;
+    min-width: 0;
   }
 
   .unanswered {
@@ -707,16 +855,22 @@
   }
 
   .unanswered.required {
-    color: #dc2626;
+    color: var(--danger);
   }
 
   .link {
     padding: 0;
     border: none;
     background: none;
-    color: var(--accent-color, #3b82f6);
-    font-size: 0.74rem;
+    color: var(--accent-color);
+    font: inherit;
+    font-size: calc(var(--fs) * var(--type-small));
+    font-weight: 500;
     cursor: pointer;
+  }
+
+  .link:hover:not(:disabled) {
+    text-decoration: underline;
   }
 
   .link:disabled {
@@ -731,7 +885,9 @@
   footer {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
   }
 
   .actions {
@@ -741,34 +897,73 @@
     gap: 8px;
   }
 
-  .actions button {
-    padding: 5px 12px;
+  .keys {
+    margin-right: auto;
+  }
+
+  kbd {
+    display: inline-block;
+    min-width: 1.5em;
+    margin: 0 1px;
+    padding: 0 4px;
     border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: 0.78rem;
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: var(--bg-primary);
+    font-family: var(--font-mono);
+    font-size: calc(var(--fs) * var(--type-tag));
+    line-height: 1.5;
+    text-align: center;
+    box-sizing: border-box;
+  }
+
+  /* Without a key hint, the buttons still sit at the end. */
+  .actions > button:first-child {
+    margin-left: auto;
+  }
+
+  .actions button {
+    padding: 6px 16px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: calc(var(--fs) * var(--type-small));
+    font-weight: 600;
     cursor: pointer;
-  }
-
-  .actions .submit {
-    border-color: rgba(59, 130, 246, 0.7);
-    background: rgba(59, 130, 246, 0.18);
-  }
-
-  .actions button:disabled {
-    opacity: 0.5;
-    cursor: default;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+      filter var(--dur-fast) var(--ease-out);
   }
 
   .actions button:hover:not(:disabled) {
-    filter: brightness(1.08);
+    background: var(--hover-bg);
+    color: var(--text-primary);
+  }
+
+  .actions .primary {
+    background: var(--accent-color);
+    color: white;
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--accent-color) 35%, transparent);
+  }
+
+  .actions .primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    color: white;
+  }
+
+  .actions button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .sr-only {
     position: absolute;
     width: 1px;
     height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
     overflow: hidden;
     clip: rect(0 0 0 0);
     white-space: nowrap;

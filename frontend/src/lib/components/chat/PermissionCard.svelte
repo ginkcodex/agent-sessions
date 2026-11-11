@@ -50,7 +50,7 @@
 
 <section class="permission-card" data-permission-card={permission.id} aria-label="{agentName} asks for permission">
   <header>
-    <Icon name="shield-check" size={14} />
+    <span class="chip" aria-hidden="true"><Icon name="shield-check" size={14} /></span>
     <span class="asks">{agentName} asks for permission</span>
     {#if view.kind}<span class="kind">{view.kind}</span>{/if}
   </header>
@@ -95,41 +95,60 @@
 </section>
 
 <style>
+  /* The question card's surface in amber; sizes follow the session's text size. */
   .permission-card {
+    --fs: var(--session-font-size, 14.5px);
+    --tone: #d97706;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    margin: 0 0 14px 28px;
-    padding: 10px 12px;
-    border: 1px solid rgba(234, 179, 8, 0.5);
-    border-radius: 6px;
-    background: rgba(234, 179, 8, 0.07);
+    gap: 10px;
+    margin: 0 0 16px 28px;
+    padding: 14px 16px;
+    border: 1px solid color-mix(in srgb, var(--tone) 40%, var(--border-color));
+    border-radius: 14px;
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-card);
     color: var(--text-primary);
-    font-size: 0.8rem;
-    line-height: 1.4;
+    font-size: calc(var(--fs) * var(--type-body));
+    line-height: 1.5;
   }
 
   header {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     color: var(--text-secondary);
+    font-size: calc(var(--fs) * var(--type-small));
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--tone) 15%, transparent);
+    color: var(--tone);
   }
 
   .asks {
     font-weight: 600;
+    color: var(--text-primary);
   }
 
   .kind {
-    padding: 0 6px;
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
-    font-size: 0.7rem;
-    color: var(--text-muted);
+    padding: 0 8px;
+    border-radius: 999px;
+    background: var(--segment-track);
+    color: var(--text-secondary);
+    font-size: calc(var(--fs) * var(--type-tag));
+    line-height: 1.6;
   }
 
   .title {
     margin: 0;
+    font-weight: 600;
     overflow-wrap: anywhere;
   }
 
@@ -137,11 +156,12 @@
     margin: 0;
     max-height: 220px;
     overflow: auto;
-    padding: 6px 8px;
-    border-radius: 4px;
-    background: var(--bg-secondary);
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--code-bg, var(--bg-primary));
     font-family: var(--font-mono);
-    font-size: 0.72rem;
+    font-size: calc(var(--fs) * var(--type-code) * 0.9);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
@@ -161,7 +181,7 @@
   .paths {
     margin: 0;
     padding-left: 18px;
-    font-size: 0.75rem;
+    font-size: calc(var(--fs) * var(--type-small));
   }
 
   .choices {
@@ -174,21 +194,41 @@
     display: inline-flex;
     align-items: baseline;
     gap: 6px;
-    padding: 5px 12px;
+    padding: 6px 14px;
     border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background: var(--bg-secondary);
+    border-radius: 9px;
+    background: var(--bg-primary);
     color: var(--text-primary);
-    font-size: 0.78rem;
+    font: inherit;
+    font-size: calc(var(--fs) * var(--type-small));
+    font-weight: 600;
     cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+  }
+
+  button:hover:not(:disabled) {
+    background: var(--hover-bg);
+  }
+
+  button:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
   }
 
   button.allow {
-    border-color: rgba(22, 163, 74, 0.55);
+    border-color: color-mix(in srgb, #16a34a 55%, var(--border-color));
+  }
+
+  button.allow:hover:not(:disabled) {
+    background: color-mix(in srgb, #16a34a 10%, var(--bg-primary));
   }
 
   button.reject {
-    border-color: rgba(220, 38, 38, 0.55);
+    border-color: color-mix(in srgb, #dc2626 50%, var(--border-color));
+  }
+
+  button.reject:hover:not(:disabled) {
+    background: color-mix(in srgb, #dc2626 9%, var(--bg-primary));
   }
 
   button:disabled {
@@ -196,18 +236,15 @@
     cursor: default;
   }
 
-  button:hover:not(:disabled) {
-    filter: brightness(1.08);
-  }
-
   .choice-kind {
     color: var(--text-muted);
-    font-size: 0.7rem;
+    font-size: calc(var(--fs) * var(--type-tag));
+    font-weight: 500;
   }
 
   .lasting {
     margin: 0;
     color: var(--text-muted);
-    font-size: 0.72rem;
+    font-size: calc(var(--fs) * var(--type-small));
   }
 </style>

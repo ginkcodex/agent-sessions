@@ -65,7 +65,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Host switch chat guard | [host-switch-chat-guard](docs/plan/host-switch-chat-guard.md) | [host-switch-chat-guard/](docs/tasks/host-switch-chat-guard/README.md) | 2/3 ✅ · 1 ⬜ |
 | Codex daemon chat | [codex-daemon-chat](docs/plan/codex-daemon-chat.md) | [codex-daemon-chat/](docs/tasks/codex-daemon-chat/README.md) | 4/5 ✅ · 1 ⬜ |
 | Chat adapter setup | [chat-adapter-setup](docs/plan/chat-adapter-setup.md) | [chat-adapter-setup/](docs/tasks/chat-adapter-setup/README.md) | 4/5 ✅ · 1 ⬜ |
-| Chat questions | [chat-questions](docs/plan/chat-questions.md) | [chat-questions/](docs/tasks/chat-questions/README.md) | 8/9 ✅ · 1 🟡 |
+| Chat questions | [chat-questions](docs/plan/chat-questions.md) | [chat-questions/](docs/tasks/chat-questions/README.md) | 9/10 ✅ · 1 🟡 |
 | Orphaned task notifications | [orphan-task-notifications](docs/plan/orphan-task-notifications.md) | [orphan-task-notifications/](docs/tasks/orphan-task-notifications/README.md) | 1/1 ✅ |
 | Idle rendering | [idle-rendering](docs/plan/idle-rendering.md) | [idle-rendering/](docs/tasks/idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](docs/plan/file-translate.md) | [file-translate/](docs/tasks/file-translate/README.md) | 2/2 ✅ |
@@ -100,7 +100,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Selected-text menu and contextual translation | [selection-translate](docs/plan/selection-translate.md) | [selection-translate/](docs/tasks/selection-translate/README.md) | 5/5 ✅ |
 | Internal terminal maximization | [terminal-maximize](docs/plan/terminal-maximize.md) | [terminal-maximize/](docs/tasks/terminal-maximize/README.md) | 2/2 ✅ |
 | Split terminals | [terminal-split](docs/plan/terminal-split.md) | [terminal-split/](docs/tasks/terminal-split/README.md) | 4/4 ✅ |
-| Font settings: editor, docs and session content | [font-settings](docs/plan/font-settings.md) | [font-settings/](docs/tasks/font-settings/README.md) | 10/11 ✅ · 1 🟡 |
+| Font settings: editor, docs and session content | [font-settings](docs/plan/font-settings.md) | [font-settings/](docs/tasks/font-settings/README.md) | 9/10 ✅ · 1 🟡 |
 | Editor back and forward | [editor-history](docs/plan/editor-history.md) | [editor-history/](docs/tasks/editor-history/README.md) | 3/4 ✅ · 1 🟡 |
 | Two-finger swipe back and forward | [swipe-navigation](docs/plan/swipe-navigation.md) | [swipe-navigation/](docs/tasks/swipe-navigation/README.md) | 1/3 ✅ · 1 🟡 · 1 ⬜ |
 | Two-finger swipe on Windows and Linux | [swipe-navigation-windows-linux](docs/plan/swipe-navigation-windows-linux.md) | [swipe-navigation-windows-linux/](docs/tasks/swipe-navigation-windows-linux/README.md) | 7/10 ✅ · 2 🟡 · 1 ➖ |

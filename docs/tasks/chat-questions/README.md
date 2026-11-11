@@ -1,7 +1,7 @@
 # Chat questions — tasks
 
 - **Plan:** [chat-questions.md](../../plan/chat-questions.md)
-- **Progress:** 8/9 done
+- **Progress:** 9/10 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -14,3 +14,4 @@
 | [CQ-07](CQ-07.md) | 🟡 Partial | Real questions from Claude Code, Codex and OpenCode in a chat | 2 h | CQ-06 |
 | [CQ-08](CQ-08.md) | ✅ Done | Late answers: a withdrawn question stays and its answers go as a message; questions outlive `turn_end` | 3 h | CQ-06 |
 | [CQ-09](CQ-09.md) | ✅ Done | Compact live Codex question layout and current custom-answer sentinel | 2 h | CQ-08 |
+| [CQ-10](CQ-10.md) | ✅ Done | Modern question and permission cards: surface, chip, segmented tabs, keycaps, primary button | 3 h | CQ-09 |
