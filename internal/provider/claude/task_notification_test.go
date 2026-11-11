@@ -87,6 +87,44 @@ func TestTaskNotificationVariants(t *testing.T) {
 	}
 }
 
+// Written when a run starts after the previous one left background tasks
+// running: one task-id per task, plus the harness's own marker ID.
+const orphanNotification = `<task-notification>
+<task-id>task-aaa</task-id>
+<task-id>task-bbb</task-id>
+<task-id>task-ccc</task-id>
+<task-id>__orphan_summary__:shell</task-id>
+<status>stopped</status>
+<summary>3 background shell command tasks didn't finish before the previous session ended. Task ids: task-aaa, task-bbb, task-ccc.</summary>
+<note>No completion record was found for them in the previous session. Task ids in this notification beginning with "__orphan_summary" are internal scan markers, not tasks.</note>
+</task-notification>`
+
+func TestTaskNotificationOrphanedTasks(t *testing.T) {
+	t.Parallel()
+	parts, ok := taskNotificationParts(orphanNotification)
+	if !ok || len(parts) != 2 || parts[0].Kind != model.PartText || parts[1].Kind != model.PartNotice {
+		t.Fatalf("orphan notification: %+v, %v", parts, ok)
+	}
+	if !strings.HasPrefix(parts[0].Text, "**Summary**\n\n3 background shell command tasks") || !strings.Contains(parts[0].Text, "**Note**\n\nNo completion record") {
+		t.Fatalf("chat text = %q", parts[0].Text)
+	}
+	if want := "**Status**\n\nstopped\n\n**Task IDs**\n\ntask-aaa, task-bbb, task-ccc"; parts[1].Text != want {
+		t.Fatalf("notice = %q; want %q", parts[1].Text, want)
+	}
+
+	for _, tc := range []struct{ ids, want string }{
+		{"<task-id>one</task-id>", "**Status**\n\nstopped\n\n**Task ID**\n\none"},
+		{"<task-id>one</task-id><task-id> one </task-id>", "**Status**\n\nstopped\n\n**Task ID**\n\none"},
+		{"<task-id>a&amp;b</task-id><task-id>c</task-id>", "**Status**\n\nstopped\n\n**Task IDs**\n\na&b, c"},
+		{"<task-id>__orphan_summary__:shell</task-id>", "**Status**\n\nstopped"},
+	} {
+		got, ok := taskNotificationParts("<task-notification>" + tc.ids + "<status>stopped</status><summary>s</summary></task-notification>")
+		if !ok || len(got) != 2 || got[1].Text != tc.want {
+			t.Errorf("%s: got %+v, %v; want notice %q", tc.ids, got, ok, tc.want)
+		}
+	}
+}
+
 func TestTaskNotificationFallback(t *testing.T) {
 	t.Parallel()
 	for _, text := range []string{
@@ -97,6 +135,10 @@ func TestTaskNotificationFallback(t *testing.T) {
 		"<task-notification><task-id>123</task-id></task-notification>",
 		"<task-notification><summary>done</summary><unknown>keep me</unknown></task-notification>",
 		"<task-notification><summary>one</summary><summary>two</summary></task-notification>",
+		"<task-notification><task-id>1</task-id><status>stopped</status><status>failed</status></task-notification>",
+		"<task-notification><task-id>a</task-id> b</task-id><task-id>c</task-id><status>stopped</status></task-notification>",
+		"<task-notification><task-id>a</task-id><status>stopped</status><summary>x</task-id></summary></task-notification>",
+		"<task-notification><summary>done</summary><usage><tool_uses>1</tool_uses><tool_uses>2</tool_uses></usage></task-notification>",
 		"<task-notification><result>code </result> example</result></task-notification>",
 		"<task-notification><result>missing end</task-notification>",
 		"<task-notification><summary>done</summary><usage><new>1</new></usage></task-notification>",
@@ -132,6 +174,7 @@ func TestLoadTaskNotification(t *testing.T) {
 		want    model.Role
 	}{
 		{"string", completedNotification, false, model.RoleAssistant},
+		{"orphaned tasks", orphanNotification, false, model.RoleAssistant},
 		{"meta", completedNotification, true, model.RoleAssistant},
 		{"blocks", []map[string]any{{"type": "text", "text": completedNotification}, {"type": "text", "text": ""}}, false, model.RoleAssistant},
 		{"mixed prose", []map[string]any{{"type": "text", "text": completedNotification}, {"type": "text", "text": "My question"}}, false, model.RoleUser},
