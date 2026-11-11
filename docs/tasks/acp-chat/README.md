@@ -18,5 +18,5 @@
 | [ACP-11](ACP-11.md) | ✅ Done | Reconcile with saved transcripts; continue existing sessions | 4 h | ACP-10 |
 | [ACP-12](ACP-12.md) | ✅ Done | Remote chat over RPC with connection ownership | 4 h | ACP-06 |
 | [ACP-13](ACP-13.md) | ✅ Done | Remote routing in the app and frontend | 3 h | ACP-12, ACP-09 |
-| [ACP-14](ACP-14.md) | ⬜ Not started | QA with real agents on Linux, WSL, SSH and Windows | 4 h | ACP-11, ACP-13, ACP-15 |
+| [ACP-14](ACP-14.md) | 🟡 Partial: real-agent, WSL, SSH and Windows checks not run | QA with real agents on Linux, WSL, SSH and Windows | 4 h | ACP-11, ACP-13, ACP-15 |
 | [ACP-15](ACP-15.md) | ✅ Done | Session option pickers: mode, model, effort | 3 h | ACP-09 |

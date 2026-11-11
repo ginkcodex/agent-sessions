@@ -109,12 +109,12 @@ func (x *chatConn) disconnect() {
 	<-x.served
 }
 
-func newChatBackend(t *testing.T, env ...string) (*chatBackend, string) {
+func newChatBackend(t *testing.T) (*chatBackend, string) {
 	t.Helper()
 	dir := t.TempDir()
 	m := engine.NewChatManager(engine.ChatManagerOptions{
 		Launch: func(_ context.Context, _ model.AgentID, d string) (acp.Command, error) {
-			return acptest.Command(d, env...), nil
+			return acptest.Command(d), nil
 		},
 		Agents: func(context.Context) ([]engine.ChatAgent, error) {
 			return []engine.ChatAgent{{Agent: model.AgentClaude, Name: "Claude Code", Available: true}}, nil

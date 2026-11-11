@@ -377,6 +377,6 @@ only once the adapter runs, so the action cannot be hidden ahead of that.
   run marked as such.
 
 Supporting notes: [acp-chat-spike.md](acp-chat-spike.md) (adapter spike,
-ACP-02).
+ACP-02) and [acp-chat-qa.md](acp-chat-qa.md) (QA, ACP-14).
 
 Tasks: [acp-chat](../tasks/acp-chat/README.md).
