@@ -22,6 +22,7 @@ const viewer = await loadServerComponent(VIEWER_URL, [
     "const highlightFile = async () => ''; const splitHighlightedLines = (h) => h.split('\\n'); const splitLines = (t) => t.split('\\n');"],
   ["import { copyToClipboard } from '../../../portable';", 'const copyToClipboard = async () => true;'],
   ["'../../../selectionTranslation'", lib('../../../selectionTranslation.ts')],
+  ["import { fileTranslations, fileTranslationKey } from '../../../stores/fileTranslations.svelte';", "const fileTranslations = { get() {} }; const fileTranslationKey = (...parts) => JSON.stringify(parts);"],
   ["'../../../guidance'", lib('../../../guidance.ts')],
   ["import { translateSettings } from '../../../stores/translate.svelte';", "const translateSettings = { configured: true, language: 'Vietnamese' };"],
   ["import { manage } from '../../../stores/manage.svelte';", 'const manage = { openSettings() {} };'],
@@ -86,7 +87,7 @@ test('Markdown preview reuses contextual selection translation without changing 
   assert.match(source, /\(\) => \(previewTranslation = selected\)/);
   assert.match(source, /range \? holdSelection\(range\)/);
   assert.match(source, /<SelectionTranslation selection=\{previewTranslation\}/);
-  assert.match(source, /void activeTab;[\s\S]*void files\.dir;\s*void link\.dataHost;[\s\S]*void translateSettings\.language;[\s\S]*fileTranslation = null;\s*previewMenu = null;\s*previewTranslation = null;/);
+  assert.match(source, /void activeTab;[\s\S]*void files\.dir;\s*void link\.dataHost;[\s\S]*void translateSettings\.language;[\s\S]*previewMenu = null;\s*previewTranslation = null;/);
 });
 
 test('the docs preview body is the docs size setting, or the presentation size while presenting', async () => {

@@ -54,7 +54,7 @@
   import { manage } from '../../../stores/manage.svelte';
   import { copyFailed } from '../../../guidance';
   import SelectionTranslation from '../../transcript/SelectionTranslation.svelte';
-  import type { Translation } from '../../../stores/translations.svelte';
+  import { fileTranslations, fileTranslationKey } from '../../../stores/fileTranslations.svelte';
 
   let {
     tabs,
@@ -70,14 +70,14 @@
 
   let previewMenu = $state<{ x: number; y: number; selection?: SelectedText } | null>(null);
   let previewTranslation = $state<SelectedText | null>(null);
-  let fileTranslation = $state<Translation | null>(null);
-  let translationRequest = 0;
+  let fileTranslationId = $derived.by(() => fileTranslationKey(link.dataHost, files.dir, activeTab?.path ?? '', translateSettings.language));
+  let fileTranslation = $derived.by(() => canTranslateFile ? fileTranslations.get(fileTranslationId, text) : undefined);
   let previewText = $derived.by(() => showMarkdown && fileTranslation?.status === 'done' && !fileTranslation.showOriginal
     ? fileTranslation.text : text);
   let canTranslateFile = $derived.by(() => showMarkdown && contentShown && textContent && Boolean(text.trim()));
   let translationTooLarge = $derived.by(() => canTranslateFile && new TextEncoder().encode(text).length > 200_000);
 
-  // A translation belongs to this exact source, tab, host and target language.
+  // Dismiss local selections on navigation; cached whole-file work survives.
   $effect(() => {
     void activeTab;
     void files.selected;
@@ -87,8 +87,6 @@
     void contentShown;
     void text;
     void translateSettings.language;
-    untrack(() => translationRequest++);
-    fileTranslation = null;
     previewMenu = null;
     previewTranslation = null;
   });
@@ -124,29 +122,13 @@
     }
   }
 
-  async function translateFile() {
+  function translateFile() {
     if (!canTranslateFile || translationTooLarge || !translateSettings.configured || fileTranslation?.status === 'loading') return;
-    const request = ++translationRequest;
-    const source = text, tab = activeTab, dir = files.dir, host = link.dataHost;
-    const language = translateSettings.language, started = epoch();
-    fileTranslation = { status: 'loading', text: '', error: '', showOriginal: false };
-    let result: Translation;
-    try {
-      result = { status: 'done', text: await api.translate(source), error: '', showOriginal: false };
-    } catch (err) {
-      result = { status: 'error', text: '', error: errorText(err, 'Translation failed'), showOriginal: false };
-    }
-    if (request !== translationRequest || activeTab !== tab || text !== source || files.dir !== dir ||
-      link.dataHost !== host || translateSettings.language !== language || !canTranslateFile) return;
-    if (epoch() !== started) {
-      fileTranslation = null;
-      return;
-    }
-    fileTranslation = result;
+    void fileTranslations.translate(fileTranslationId, text);
   }
 
   function toggleFileTranslation() {
-    if (fileTranslation?.status === 'done') fileTranslation.showOriginal = !fileTranslation.showOriginal;
+    fileTranslations.toggleOriginal(fileTranslationId, text);
   }
 
   let previewMenuItems = $derived.by((): ContextMenuItem[] => {
@@ -1170,7 +1152,6 @@
   }
 
   onDestroy(() => {
-    translationRequest++;
     closeSymbolPopups();
     if (copyTimer) clearTimeout(copyTimer);
     if (pathCopyTimer) clearTimeout(pathCopyTimer);

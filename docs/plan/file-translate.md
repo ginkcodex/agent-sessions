@@ -17,9 +17,17 @@ content.
   translated Markdown in place, without a new backend endpoint or file writes.
 - Offer the action in rendered Markdown previews, the same surface as existing
   selected-text translation. Source, diff, image and editing views stay unchanged.
-- Keep translation state local to the viewer and invalidate it on tab, project,
-  host, content or language changes and teardown. Copy/print use displayed
-  Markdown in preview; Find already observes the rendered preview DOM.
+- Keep file translations in a window/session-memory cache independent of viewer
+  lifetime (FT-02). Scope entries by host, project, path and target language;
+  require exact original source equality before displaying or reusing a result.
+  Closing with Esc, switching tabs or leaving preview does not cancel pending
+  requests or discard completed results. No automatic requests on reopen.
+- Bound the cache to 20 entries and 16 MiB of estimated retained string storage,
+  evicting least recently used entries. App restart clears it; no disk storage.
+  Changed source replaces the cached version when explicitly translated, and
+  an older in-flight reply cannot overwrite the newer entry.
+- Copy/print use displayed Markdown in preview; Find already observes the
+  rendered preview DOM. Preserve original/translation toggle state on reopen.
 
 ## Decisions
 
@@ -40,6 +48,9 @@ request even if the user changes files.
 - Right-click with no selection can translate a complete rendered Markdown
   preview from its source, independent of viewport/rendered DOM.
 - Selected-text translation and existing preview menu actions still work.
+- Closing/reopening preview reuses completed and pending translations without
+  another request when host/project/path/language and source match. Source
+  changes hide old results immediately; cache bounds and stale reply guards hold.
 - Unavailable/non-text/empty/editing content does not expose whole-file translation.
 - Regression tests cover eligibility, complete request payload, loading/result and
   error behavior. Frontend tests, type/component check and production build pass.
