@@ -1,6 +1,6 @@
 # HSG-02 — Connecting, switching and disconnecting ask before ending open chats
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 2 h
 - **Depends on:** HSG-01
 - **Plan:** [host-switch-chat-guard.md](../../plan/host-switch-chat-guard.md)
@@ -35,3 +35,36 @@
 - `close-confirm.test.mjs`: the switch warning's wording.
 - `connection.test.mjs`: the questions, their buttons, cancel and confirm.
 - `npm test`, `npm run check`, `npm run build`.
+
+## Evidence
+
+What was done:
+
+- `closeConfirm.ts`: `endingChatsWarning(chats, action)`; the chat summary,
+  the chat names and the "and N more" list are now shared with
+  `closeWindowWarning`, whose wording is unchanged.
+- `ConnectionStore.endingChats` words the warning while the window's
+  backend serves (`!link.locked`): "Connecting to X", "Disconnecting from
+  X" or "Reconnecting to X". `changeHost` asks "End open chats?" with one
+  danger button when no previous-host terminal is open, else adds the
+  warning under the terminal question, whose buttons become "End chats,
+  keep terminal tabs" and "End chats and terminal tabs". `connect` to the
+  serving host asks the same; a retry of a dropped host goes straight on.
+- The Coding agents reconnect prompt says it ends the host's open chats.
+
+Verified:
+
+- `close-confirm.test.mjs`: the switch warning for one working chat, for
+  several (a starting one counted, exited ones left out), and past six
+  names; the close warning tests pass unchanged.
+- `connection.test.mjs`: Local → host, host → host and host → Local ask
+  with the right action and button; cancel does not connect or disconnect,
+  confirm does. Terminals and a chat ask once, with the chat warning and
+  the new labels; keep, close and cancel behave as before. A locked
+  (dropped) host and exited chats do not ask. Connecting again to the
+  serving host asks "Reconnecting to box". The existing terminal tests pass
+  unchanged.
+- `npm test`: 1353 tests, 1352 passed, 1 skipped. `npm run check`:
+  0 errors, 0 warnings. `npm run build`: built.
+
+Not checked: the questions in the desktop app with real chats (HSG-03).

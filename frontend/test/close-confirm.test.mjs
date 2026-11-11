@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { confirmClosingWindow, closeWindowWarning } from '../src/lib/closeConfirm.ts';
+import { confirmClosingWindow, closeWindowWarning, endingChatsWarning } from '../src/lib/closeConfirm.ts';
 
 const shell = (label, host = '') => ({ label, host, kind: 'shell', status: 'running' });
 const agent = (label, host = '') => ({ label, host, kind: 'agent', status: 'running' });
@@ -53,4 +53,16 @@ test('closing asks while a chat is open, even with no terminal running', async (
   assert.equal(asked, 1);
   assert.equal(await confirmClosingWindow([], [chat('codex', '/p', 'exited')], ask), true);
   assert.equal(asked, 1);
+});
+
+test('a host switch names the open chats it ends; ended ones are not', () => {
+  assert.equal(endingChatsWarning([], 'Connecting to box'), null);
+  assert.equal(endingChatsWarning([chat('codex', '/p', 'exited')], 'Connecting to box'), null);
+  assert.equal(endingChatsWarning([chat('claude-code', '/home/u/agent-sessions', 'working')], 'Disconnecting from box'),
+    'A chat is open and its agent is working. Disconnecting from box ends it:\nChat with Claude Code in agent-sessions (working)');
+  assert.equal(endingChatsWarning([chat('codex', '/a'), chat('opencode', '/b', 'starting'), chat('codex', '/c', 'exited')], 'Connecting to box'),
+    '2 chats are open. Connecting to box ends them:\nChat with Codex in a\nChat with OpenCode in b');
+  const many = endingChatsWarning(Array.from({ length: 8 }, (_, i) => chat('codex', `/d${i}`)), 'Connecting to box');
+  assert.match(many, /^8 chats are open\. /);
+  assert.match(many, /in d5\nand 2 more$/);
 });

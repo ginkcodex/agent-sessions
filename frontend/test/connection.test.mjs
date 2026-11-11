@@ -359,6 +359,8 @@ async function loadConnectionStore() {
     store('link', 'link'),
     ["import { terminals } from './terminals.svelte';", "const terminals = new Proxy({}, { get: (_, key) => (globalThis.__storeFixture.terminals ?? { tabs: [] })[key] });"],
     store('filePrompt', 'filePrompt'),
+    ["import { chats } from './chats.svelte';", "const chats = new Proxy({}, { get: (_, key) => (globalThis.__storeFixture.chats ?? { chats: [] })[key] });"],
+    ["'../closeConfirm'", lib('../closeConfirm.ts')],
   ]);
   return connectionStoreModule;
 }
@@ -429,6 +431,116 @@ test('failed host changes keep previous terminals and same-host retries do not p
     await store.connect('box', {});
     assert.deepEqual(calls, []);
   } finally { delete globalThis.__storeFixture; }
+});
+
+test('host changes ask before ending the window\'s open chats, and cancel safely', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  const open = { chats: [{ agent: 'codex', dir: '/w/api', phase: 'working' }, { agent: 'codex', dir: '/w/old', phase: 'exited' }] };
+  for (const [previous, target, action, label] of [
+    ['', 'box', /Connecting to box ends it/, 'End chats and connect'],
+    ['box', 'other', /Connecting to other ends it/, 'End chats and connect'],
+    ['box', '', /Disconnecting from box ends it/, 'End chats and disconnect'],
+  ]) {
+    for (const choice of ['end', null]) {
+      const calls = [];
+      globalThis.__storeFixture = {
+        link: { dataHost: previous || undefined },
+        api: { connect: async host => calls.push(['connect', host]), disconnect: async () => calls.push(['disconnect']) },
+        chats: open,
+        filePrompt: { ask: async (title, message, choices) => {
+          assert.equal(title, 'End open chats?');
+          assert.match(message, /^A chat is open and its agent is working\./);
+          assert.match(message, action);
+          assert.match(message, /Chat with Codex in api \(working\)$/);
+          assert.deepEqual(choices, [{ value: 'end', label, danger: true }]);
+          calls.push(['prompt']);
+          return choice;
+        } },
+      };
+      try {
+        const store = new ConnectionStore();
+        if (target) await store.connect(target, {});
+        else await store.disconnect();
+        const expected = [['prompt']];
+        if (choice) expected.push(target ? ['connect', target] : ['disconnect']);
+        assert.deepEqual(calls, expected);
+      } finally { delete globalThis.__storeFixture; }
+    }
+  }
+});
+
+test('one question covers the previous host\'s terminals and the open chats', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  for (const choice of ['keep', 'close', null]) {
+    const calls = [];
+    globalThis.__storeFixture = {
+      link: { dataHost: 'box' },
+      api: { connect: async host => calls.push(['connect', host]) },
+      terminals: { tabs: [{ id: 'old', host: 'box' }], close: (id) => calls.push(['close', id]) },
+      chats: { chats: [{ agent: 'claude-code', dir: '/w/api', phase: 'idle' }] },
+      filePrompt: { ask: async (title, message, choices) => {
+        assert.equal(title, 'Terminal tabs from previous host');
+        assert.match(message, /1 terminal tab\(s\) belong to box/);
+        assert.match(message, /\n\nA chat is open\. Connecting to other ends it:\nChat with Claude Code in api$/);
+        assert.deepEqual(choices.map(c => c.label), ['End chats, keep terminal tabs', 'End chats and terminal tabs']);
+        calls.push(['prompt']);
+        return choice;
+      } },
+    };
+    try {
+      await new ConnectionStore().connect('other', {});
+      const expected = [['prompt']];
+      if (choice) expected.push(['connect', 'other']);
+      if (choice === 'close') expected.push(['close', 'old']);
+      assert.deepEqual(calls, expected);
+    } finally { delete globalThis.__storeFixture; }
+  }
+});
+
+test('chats of a host that is not serving, or already ended, do not ask', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  for (const [link, chatList] of [
+    // Dropped: the host's chats ended with the connection.
+    [{ dataHost: 'box', locked: true }, [{ agent: 'codex', dir: '/p', phase: 'working' }]],
+    [{ dataHost: 'box' }, [{ agent: 'codex', dir: '/p', phase: 'exited' }]],
+  ]) {
+    const calls = [];
+    globalThis.__storeFixture = {
+      link,
+      api: { connect: async host => calls.push(['connect', host]), disconnect: async () => calls.push(['disconnect']) },
+      chats: { chats: chatList },
+      filePrompt: { ask: async () => { calls.push(['prompt']); return null; } },
+    };
+    try {
+      const store = new ConnectionStore();
+      await store.connect('other', {});
+      await store.connect('box', {});
+      await store.disconnect();
+      assert.deepEqual(calls, [['connect', 'other'], ['connect', 'box'], ['disconnect']]);
+    } finally { delete globalThis.__storeFixture; }
+  }
+});
+
+test('connecting again to the serving host asks about its chats; a retry does not', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  for (const choice of ['end', null]) {
+    const calls = [];
+    globalThis.__storeFixture = {
+      link: { dataHost: 'box' },
+      api: { connect: async host => calls.push(['connect', host]) },
+      chats: { chats: [{ agent: 'codex', dir: '/p', phase: 'idle' }] },
+      filePrompt: { ask: async (title, message, choices) => {
+        assert.match(message, /Reconnecting to box ends it/);
+        assert.equal(choices[0].label, 'End chats and reconnect');
+        calls.push(['prompt']);
+        return choice;
+      } },
+    };
+    try {
+      await new ConnectionStore().connect('box', {});
+      assert.deepEqual(calls, choice ? [['prompt'], ['connect', 'box']] : [['prompt']]);
+    } finally { delete globalThis.__storeFixture; }
+  }
 });
 
 test('ConnectionStore lists WSL distributions and SSH hosts independently', async () => {
