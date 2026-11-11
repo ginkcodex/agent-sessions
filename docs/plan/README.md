@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [file-translate.md](file-translate.md) | [file-translate](../tasks/file-translate/README.md) | Translate complete Markdown files from the preview context menu without selecting text |
 | [print-page-setup.md](print-page-setup.md) | [print-page-setup](../tasks/print-page-setup/README.md) | Shared paper, orientation and margin controls with native print defaults |
 | [windows-ci-test-stability.md](windows-ci-test-stability.md) | [windows-ci-test-stability](../tasks/windows-ci-test-stability/README.md) | Deterministic Git budgets and watcher startup synchronization in Windows CI tests |
 | [workspace-terminal-selection.md](workspace-terminal-selection.md) | [workspace-terminal-selection](../tasks/workspace-terminal-selection/README.md) | Directory clicks in the workspace tree select the opened session's terminal tab |

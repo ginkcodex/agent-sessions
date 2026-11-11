@@ -22,6 +22,7 @@ const viewer = await loadServerComponent(VIEWER_URL, [
     "const highlightFile = async () => ''; const splitHighlightedLines = (h) => h.split('\\n'); const splitLines = (t) => t.split('\\n');"],
   ["import { copyToClipboard } from '../../../portable';", 'const copyToClipboard = async () => true;'],
   ["'../../../selectionTranslation'", lib('../../../selectionTranslation.ts')],
+  ["import { fileTranslations, fileTranslationKey } from '../../../stores/fileTranslations.svelte';", "const fileTranslations = { get() {} }; const fileTranslationKey = (...parts) => JSON.stringify(parts);"],
   ["'../../../guidance'", lib('../../../guidance.ts')],
   ["import { translateSettings } from '../../../stores/translate.svelte';", "const translateSettings = { configured: true, language: 'Vietnamese' };"],
   ["import { manage } from '../../../stores/manage.svelte';", 'const manage = { openSettings() {} };'],
@@ -79,14 +80,14 @@ const viewer = await loadServerComponent(VIEWER_URL, [
 test('Markdown preview reuses contextual selection translation without changing source menus', () => {
   const source = readFileSync(VIEWER_URL, 'utf8');
   assert.match(source, /class="markdown-preview"[^>]*oncontextmenu=\{openPreviewMenu\}/);
-  assert.match(source, /captureSelection\(event\.currentTarget as HTMLElement, window\.getSelection\(\)\)/);
-  assert.match(source, /return selected \? selectionMenuItems\(/);
+  assert.match(source, /captureSelection\(event\.currentTarget as HTMLElement, selection\)/);
+  assert.match(source, /if \(selected\) return selectionMenuItems\(/);
   // ContextMenu closes before invoking the action: callbacks must retain the selection.
   assert.match(source, /\(\) => void copyPreviewSelection\(selected\.text\)/);
   assert.match(source, /\(\) => \(previewTranslation = selected\)/);
   assert.match(source, /range \? holdSelection\(range\)/);
   assert.match(source, /<SelectionTranslation selection=\{previewTranslation\}/);
-  assert.match(source, /void files\.selected;\s*void showMarkdown;\s*void text;\s*void translateSettings\.language;\s*previewMenu = null;\s*previewTranslation = null;/);
+  assert.match(source, /void activeTab;[\s\S]*void files\.dir;\s*void link\.dataHost;[\s\S]*void translateSettings\.language;[\s\S]*previewMenu = null;\s*previewTranslation = null;/);
 });
 
 test('the docs preview body is the docs size setting, or the presentation size while presenting', async () => {
