@@ -643,19 +643,8 @@
     background-color: currentColor;
   }
 
-  .live-pulse::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background-color: currentColor;
-    animation: live-ring 2s var(--ease-out) infinite;
-  }
-
-  @keyframes live-ring {
-    from { transform: scale(1); opacity: 0.6; }
-    to { transform: scale(2.6); opacity: 0; }
-  }
+  /* Live means an open process, including one waiting for input. Keep its
+     presence indicator static rather than compositing an idle animation. */
 
   .archived-badge {
     padding: 1px 7px;

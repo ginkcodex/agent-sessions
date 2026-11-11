@@ -82,6 +82,7 @@ async function importCompiled(filename, code, replacements) {
   if (iconImport && !replacements.some(([from]) => from === iconImport)) {
     iconModule ??= loadServerComponent(new URL('../src/lib/components/common/Icon.svelte', import.meta.url), [
       ["'../../icons'", JSON.stringify(new URL('../src/lib/icons.ts', import.meta.url).href)],
+      ["'../../animationVisibility'", JSON.stringify(new URL('../src/lib/animationVisibility.ts', import.meta.url).href)],
     ]);
     globalThis.__icon = (await iconModule).default;
     replacements.push([iconImport, 'const Icon = globalThis.__icon;']);

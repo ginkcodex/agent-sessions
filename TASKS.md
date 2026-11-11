@@ -58,6 +58,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Idle rendering | [idle-rendering](docs/plan/idle-rendering.md) | [idle-rendering/](docs/tasks/idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](docs/plan/file-translate.md) | [file-translate/](docs/tasks/file-translate/README.md) | 2/2 ✅ |
 | Print page setup | [print-page-setup](docs/plan/print-page-setup.md) | [print-page-setup/](docs/tasks/print-page-setup/README.md) | 1/1 ✅ |
 | Windows CI test stability | [windows-ci-test-stability](docs/plan/windows-ci-test-stability.md) | [windows-ci-test-stability/](docs/tasks/windows-ci-test-stability/README.md) | 1/1 ✅ |

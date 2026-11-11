@@ -192,16 +192,13 @@ h1, h2, h3, h4 {
   letter-spacing: -0.012em;
 }
 
-/* Icons (Icon.svelte) that show work in progress. */
-.icon.spin {
-  animation: icon-spin 1s linear infinite;
-}
+/* Spinner icons (Icon class="spin") turn in discrete steps from
+   lib/animationVisibility.ts while on screen, not with a CSS animation that
+   would recomposite the window at the display rate. */
 
-@keyframes icon-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+/* Do not pause every animation globally (hidden window, stale pane): dialogs,
+   menus and toasts enter from opacity 0, so a paused clock would leave them
+   invisible. Hidden pages are already throttled by the web view itself. */
 
 /* Menus and popovers open with a short fade and drop. Components use it as
    -global-pop-in. */
@@ -227,8 +224,9 @@ h1, h2, h3, h4 {
   }
 }
 
-/* Reduced motion: transitions and animations end at once. Spinners still
-   turn, slowly, since they say work is going on. */
+/* Reduced motion: transitions and animations end at once. Visible spinner
+   icons still turn, at half speed, since some (icon-only buttons) are the
+   only sign that work is going on; lib/animationVisibility.ts does that. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -237,11 +235,6 @@ h1, h2, h3, h4 {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
-  }
-
-  .icon.spin {
-    animation-duration: 2s !important;
-    animation-iteration-count: infinite !important;
   }
 }
 
