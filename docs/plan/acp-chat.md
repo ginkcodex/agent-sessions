@@ -239,15 +239,35 @@ The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
 ### Saved transcript and live tail
 
 The chat shows the normal `TranscriptView` with a provisional live tail after
-the last saved message. When a refresh brings saved records for the turn, the
-tail drops what they cover:
+the last saved message. When a turn ends, successful or not, the manager asks
+for a rescan of the agent's sessions; the watcher remains the backstop for
+records saved after that scan. When the reloaded transcript brings saved
+records, `reconcile` drops the tail items they cover:
 
-- message and thought items by `messageId`, after removing OpenCode's
-  `:reasoning:N` suffix from thought IDs;
-- tool items by tool call ID for Claude and OpenCode;
-- for Codex, whose live tool IDs (`exec-…`) differ from the saved ones
-  (`call_…`), the tool items of a finished turn once the turn's last
-  `messageId` is saved.
+- text and thought items by `messageId`, once complete (something follows
+  them, or the turn ended), after removing OpenCode's `:reasoning:N` suffix
+  from thought IDs;
+- tool items by tool call ID, once they have a result or the turn ended
+  (Claude and OpenCode);
+- every item of an ended turn once its last message is saved. This covers
+  Codex, whose live tool IDs (`exec-…`) differ from the saved ones
+  (`call_…`), and plans, which are never saved;
+- a prompt sent from the chat, once a saved user message has its text and is
+  no older than a minute before it was sent. Prompts are not echoed during a
+  live turn, and Claude saves them without an ID;
+- every item of a turn before one the saved records reach by an agent's own
+  ID. Agents save turns in order, so what an earlier turn left unsaved (a
+  cancelled reply, a failed prompt) never will be, and would otherwise show
+  below newer saved messages.
+
+What each agent saves, as the spike recorded it and the reducer tests replay
+(`frontend/test/fixtures/acp-agents.json`):
+
+| | Prompt | Reply and thoughts | Tools | After a cancel |
+|---|---|---|---|---|
+| Claude | no ID; matched by text | one saved message per `msg_…` ID | same `toolu_…` IDs | the prompt and "[Request interrupted by user]"; a partial reply is not saved |
+| Codex | `msg_<uuid>`; matched by text | same `msg_…` IDs, text and tools in one message | `call_…`, unlike the live `exec-…` | the prompt only; the partial reply stays in the tail until a later turn is saved |
+| OpenCode | `msg_…`; matched by text | same `msg_…` IDs; thoughts as reasoning parts | same `call_…` IDs | the thought so far, with an "aborted" notice |
 
 Saved logs stay the source of truth. Every agent saves its ACP sessions where
 we read them, so no in-memory log is needed.
@@ -256,9 +276,12 @@ A reject does not end the turn the same way for every agent: Codex and
 OpenCode end it `cancelled`, while Claude goes on. The UI follows `stopReason`.
 
 Continuing an existing session works for all three agents. It uses
-`session/resume` when the agent advertises it (no replay, because the
-transcript already shows the history). Otherwise it uses `session/load` and
-discards the replay.
+`session/resume` when the agent advertises it, with no replay because the
+transcript already shows the history. All three advertise it; the spike
+checked it for Claude and Codex, and ACP-14 checks OpenCode's. Otherwise it
+uses `session/load`, which works for all three, and discards the replay. An agent that advertises
+neither refuses at start with `ErrChatCannotContinue`: capabilities are known
+only once the adapter runs, so the action cannot be hidden ahead of that.
 
 ## Decisions
 
@@ -318,7 +341,8 @@ discards the replay.
   - allow and deny both work, and cancel stops a turn;
   - once saved, the transcript replaces the live tail without duplicates.
 - An existing session of each agent can continue in chat. An agent that
-  advertises neither `session/load` nor `session/resume` hides the action.
+  advertises neither `session/load` nor `session/resume` refuses it with a
+  clear message.
 - The chat shows and changes the session's mode and model.
 - Terminal and chat refuse to drive the same session at once. Delete and move
   refuse while a chat owns the session.

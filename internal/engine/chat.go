@@ -58,6 +58,9 @@ var (
 	ErrChatBusy = errors.New("the agent is still working on the last prompt")
 	// ErrChatClosed means the chat is closing or its agent has exited.
 	ErrChatClosed = errors.New("the chat is closed")
+	// ErrChatCannotContinue means the agent offers neither session/load nor
+	// session/resume, so a saved session cannot continue in a chat.
+	ErrChatCannotContinue = errors.New("the agent's chat adapter cannot continue a saved session")
 	// ErrPermissionNotFound means the permission request was already
 	// answered, or was cancelled.
 	ErrPermissionNotFound = errors.New("the permission request is no longer pending")
@@ -372,6 +375,8 @@ func (m *ChatManager) start(ctx context.Context, ch *chat, req ChatStartRequest)
 		setup, err = client.NewSession(ctx, req.Dir)
 	case client.Info().AgentCapabilities.CanResume():
 		setup, err = client.ResumeSession(ctx, req.Resume.ID, req.Dir)
+	case !client.Info().AgentCapabilities.LoadSession:
+		err = ErrChatCannotContinue
 	default:
 		// The replay arrives before the reply; drop it.
 		ch.setReplaying(true)

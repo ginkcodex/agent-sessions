@@ -12,6 +12,8 @@
 //	hang         waits for session/cancel, then ends cancelled
 //	crash        writes "fake agent crashed" to stderr and exits with status 3
 //	auth         fails with -32000 "Authentication required"
+//	opened       one chunk naming how the session was opened: session/new,
+//	             session/load or session/resume
 //	spawn        starts a child that shares stdout and sleeps; the chunk is
 //	             "child <pid>"
 //	stubborn     from now on, ignores a closed stdin (SIGTERM still works)
@@ -22,6 +24,7 @@
 //
 //	ACPTEST_PROTOCOL=N       reply with protocol version N
 //	ACPTEST_NO_RESUME=1      do not advertise session/resume
+//	ACPTEST_NO_LOAD=1        do not advertise session/load
 //	ACPTEST_STDERR_BYTES=N   write N bytes of numbered stderr lines at start
 package acptest
 
@@ -80,6 +83,7 @@ type agent struct {
 	mu       sync.Mutex
 	next     int
 	turns    map[string]context.CancelFunc
+	opened   map[string]string // session ID -> the method that opened it
 	mode     string
 	stubborn bool
 }
@@ -92,7 +96,7 @@ func run() int {
 		}
 		_, _ = os.Stderr.WriteString(b.String())
 	}
-	a := &agent{turns: map[string]context.CancelFunc{}, mode: "ask", ready: make(chan struct{})}
+	a := &agent{turns: map[string]context.CancelFunc{}, opened: map[string]string{}, mode: "ask", ready: make(chan struct{})}
 	a.conn = acp.NewConn(os.Stdin, os.Stdout, acp.ConnOptions{
 		OnRequest:      a.request,
 		OnNotification: a.notification,
@@ -137,7 +141,7 @@ func (a *agent) request(ctx context.Context, method string, params json.RawMessa
 		return acp.InitializeResponse{
 			ProtocolVersion: version,
 			AgentCapabilities: acp.AgentCapabilities{
-				LoadSession:         true,
+				LoadSession:         os.Getenv("ACPTEST_NO_LOAD") == "",
 				SessionCapabilities: caps,
 			},
 			AuthMethods: []acp.AuthMethod{{ID: "fake-login", Name: "Login", Description: "Run `fake auth login` in the terminal"}},
@@ -147,6 +151,7 @@ func (a *agent) request(ctx context.Context, method string, params json.RawMessa
 		a.mu.Lock()
 		a.next++
 		id := fmt.Sprintf("fake-%d-%d", os.Getpid(), a.next)
+		a.opened[id] = method
 		a.mu.Unlock()
 		return acp.SessionSetup{SessionID: id, ConfigOptions: a.configOptions()}, nil
 	case acp.MethodSessionLoad, acp.MethodSessionResume:
@@ -154,6 +159,9 @@ func (a *agent) request(ctx context.Context, method string, params json.RawMessa
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, &acp.Error{Code: acp.CodeInvalidParams, Message: err.Error()}
 		}
+		a.mu.Lock()
+		a.opened[p.SessionID] = method
+		a.mu.Unlock()
 		if method == acp.MethodSessionLoad {
 			a.update(p.SessionID, map[string]any{"sessionUpdate": acp.UpdateUserMessageChunk, "content": acp.TextBlock("earlier prompt")})
 			a.update(p.SessionID, map[string]any{"sessionUpdate": acp.UpdateAgentMessageChunk, "messageId": "msg_old", "content": acp.TextBlock("earlier reply")})
@@ -276,6 +284,12 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 		default:
 			a.chunk(p.SessionID, "msg_perm", "rejected:"+r.Outcome.OptionID)
 		}
+		return end(acp.StopEndTurn)
+	case "opened":
+		a.mu.Lock()
+		how := a.opened[p.SessionID]
+		a.mu.Unlock()
+		a.chunk(p.SessionID, "msg_opened", how)
 		return end(acp.StopEndTurn)
 	case "hang":
 		<-ctx.Done()

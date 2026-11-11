@@ -403,6 +403,12 @@ func TestChatAuthRequired(t *testing.T) {
 	if len(end.AuthMethods) != 1 || end.AuthMethods[0].ID != "fake-login" || !strings.Contains(end.Error, "fake auth login") {
 		t.Fatalf("turn end = %+v", end)
 	}
+	// A failed turn still asks for a rescan: the agent may have saved the prompt.
+	select {
+	case <-f.refreshed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no rescan after a failed turn")
+	}
 	// Other failures are not mistaken for a login.
 	if end := f.turn(t, st.ChatID, "echo ok"); end.Error != "" || len(end.AuthMethods) != 0 {
 		t.Fatalf("next turn = %+v", end)
@@ -479,9 +485,44 @@ func TestChatLoadDropsReplay(t *testing.T) {
 	ref := model.SessionRef{Agent: model.AgentClaude, ID: "old-1"}
 	st := f.start(t, &ref)
 	f.turn(t, st.ChatID, "hello there")
+	f.turn(t, st.ChatID, "opened")
 	u, _ := f.events.of(st.ChatID)
-	if got := chunks(u); len(got) != 1 || got[0] != "hello there" {
+	if got := chunks(u); strings.Join(got, "|") != "hello there|session/load" {
 		t.Fatalf("chunks = %q", got)
+	}
+}
+
+// A saved session continues with session/resume when the agent offers it,
+// else with session/load; an agent with neither refuses it plainly.
+func TestChatContinuesSession(t *testing.T) {
+	opened := func(t *testing.T, f *chatFixture, resume *model.SessionRef) string {
+		t.Helper()
+		st := f.start(t, resume)
+		f.turn(t, st.ChatID, "opened")
+		u, _ := f.events.of(st.ChatID)
+		if err := f.m.Close(st.ChatID); err != nil {
+			t.Fatal(err)
+		}
+		return strings.Join(chunks(u), "|")
+	}
+	ref := model.SessionRef{Agent: model.AgentClaude, ID: "old-2"}
+	if got := opened(t, newChatFixture(t), &ref); got != "session/resume" {
+		t.Fatalf("with resume: chunks = %q", got)
+	}
+	if got := opened(t, newChatFixture(t, "ACPTEST_NO_RESUME=1"), &ref); got != "session/load" {
+		t.Fatalf("with load only: chunks = %q", got)
+	}
+	if got := opened(t, newChatFixture(t, "ACPTEST_NO_RESUME=1", "ACPTEST_NO_LOAD=1"), nil); got != "session/new" {
+		t.Fatalf("new session: chunks = %q", got)
+	}
+
+	f := newChatFixture(t, "ACPTEST_NO_RESUME=1", "ACPTEST_NO_LOAD=1")
+	_, err := f.m.Start(chatCtx(t), ChatStartRequest{Agent: model.AgentClaude, Dir: f.dir, Resume: &ref})
+	if !errors.Is(err, ErrChatCannotContinue) {
+		t.Fatalf("start = %v", err)
+	}
+	if _, ok := f.m.Owned(ref); ok || len(f.m.Chats()) != 0 {
+		t.Fatalf("a refused chat stays: owned %v, chats %+v", ok, f.m.Chats())
 	}
 }
 

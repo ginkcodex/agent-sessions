@@ -256,7 +256,10 @@ const PROMPT_CLOCK_SLACK_MS = 60_000;
  *   turn ended;
  * - a prompt sent from this window, once a saved user message has its text;
  * - every item of an ended turn whose last agent message is saved. This
- *   covers tool calls the agent saves under other IDs (Codex) and plans.
+ *   covers tool calls the agent saves under other IDs (Codex) and plans;
+ * - every item of a turn before one the saved messages reach by ID. An agent
+ *   saves turns in order, so what an earlier turn left unsaved (a cancelled
+ *   reply, a failed prompt) never will be, and would show out of order.
  */
 export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
   if (tail.items.length === 0 || saved.length === 0) return tail;
@@ -281,7 +284,8 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
     switch (it.type) {
       case 'text': {
         if (it.role === 'user') {
-          if (it.messageId) return byId.has(savedMessageId(it.messageId));
+          // Claude saves prompts without an ID: fall back to the text.
+          if (it.messageId && byId.has(savedMessageId(it.messageId))) return true;
           const text = it.text.trim();
           return prompts.some((p) => p.text === text && (Number.isNaN(p.time) || it.sentAt === undefined || p.time >= it.sentAt - PROMPT_CLOCK_SLACK_MS));
         }
@@ -310,7 +314,15 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
     if (ended(turn) && covered(tail.items[i], i)) savedTurns.add(turn);
   }
 
-  const items = tail.items.filter((it, i) => !savedTurns.has(it.turn) && !covered(it, i));
+  // The latest turn the saved messages reach by an agent's own ID.
+  let reached = 0;
+  for (const it of tail.items) {
+    if (it.turn <= reached) continue;
+    const id = it.type === 'tool' ? it.toolCallId : it.type !== 'plan' && it.messageId ? savedMessageId(it.messageId) : '';
+    if (id && (it.type === 'tool' ? tools.has(id) : byId.has(id))) reached = it.turn;
+  }
+
+  const items = tail.items.filter((it, i) => it.turn >= reached && !savedTurns.has(it.turn) && !covered(it, i));
   return items.length === tail.items.length ? tail : { ...tail, items };
 }
 
