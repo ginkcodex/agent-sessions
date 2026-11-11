@@ -20,7 +20,7 @@ const AGENTS: { agent: AgentID; name: string; install: string; adapter: string }
   { agent: 'opencode', name: 'OpenCode', install: 'npm install -g opencode-ai', adapter: 'opencode' },
 ];
 
-export const CHAT_REMOTE_ERROR = "chat works for this computer's sessions only; connected hosts do not support it yet";
+export const CHAT_REMOTE_ERROR = "this host's agent-sessions does not support chat; reconnect to update it";
 
 interface MockChat {
   state: ChatState;
@@ -34,8 +34,8 @@ interface MockChat {
 
 export interface MockChatHost {
   emit(name: string, payload: unknown): void;
-  /** False while the window shows a host: chats run locally only. */
-  local(): boolean;
+  /** False while the window shows a host whose server has no chats, or none. */
+  available(): boolean;
   /** Saves a finished turn's messages to the session, as an agent does. */
   save(ref: SessionRef, dir: string, messages: Message[]): void;
 }
@@ -62,7 +62,7 @@ export class MockChats {
   }
 
   async agents(): Promise<ChatAgent[]> {
-    this.requireLocal();
+    this.requireAvailable();
     return AGENTS.map((a) =>
       this.missing.has(a.agent)
         ? { agent: a.agent, name: a.name, available: false, install: a.install, problem: `${a.adapter} was not found on PATH` }
@@ -71,7 +71,7 @@ export class MockChats {
   }
 
   async start(req: ChatStartRequest): Promise<ChatState> {
-    this.requireLocal();
+    this.requireAvailable();
     const a = AGENTS.find((x) => x.agent === req.agent);
     if (!a) throw new Error(`chat: ${req.agent} has no ACP adapter`);
     if (this.missing.has(req.agent)) throw new Error(`chat: ${a.adapter} was not found on PATH`);
@@ -108,7 +108,7 @@ export class MockChats {
   }
 
   async prompt(chatId: string, text: string): Promise<void> {
-    this.requireLocal();
+    this.requireAvailable();
     const chat = this.get(chatId);
     if (chat.turn) throw new Error('chat: a turn is already running');
     const turn = { cancelled: false };
@@ -131,7 +131,7 @@ export class MockChats {
   }
 
   async setOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]> {
-    this.requireLocal();
+    this.requireAvailable();
     const chat = this.get(chatId);
     const opt = chat.state.configOptions.find((o) => o.id === configId);
     if (!opt || !opt.options?.some((o) => o.value === value)) throw new Error(`chat: invalid value for ${configId}`);
@@ -154,8 +154,8 @@ export class MockChats {
     for (const chat of [...this.chats.values()]) this.end(chat, 'closed');
   }
 
-  private requireLocal(): void {
-    if (!this.host.local()) throw new Error(CHAT_REMOTE_ERROR);
+  private requireAvailable(): void {
+    if (!this.host.available()) throw new Error(CHAT_REMOTE_ERROR);
   }
 
   private get(chatId: string): MockChat {

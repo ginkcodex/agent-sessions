@@ -1,7 +1,7 @@
 # ACP chat mode — tasks
 
 - **Plan:** [acp-chat.md](../../plan/acp-chat.md)
-- **Progress:** 12/15 done
+- **Progress:** 13/15 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -17,6 +17,6 @@
 | [ACP-10](ACP-10.md) | ✅ Done | Permission cards, fail-closed paths, missing adapter | 3 h | ACP-09 |
 | [ACP-11](ACP-11.md) | ✅ Done | Reconcile with saved transcripts; continue existing sessions | 4 h | ACP-10 |
 | [ACP-12](ACP-12.md) | ✅ Done | Remote chat over RPC with connection ownership | 4 h | ACP-06 |
-| [ACP-13](ACP-13.md) | ⬜ Not started | Remote routing in the app and frontend | 3 h | ACP-12, ACP-09 |
+| [ACP-13](ACP-13.md) | ✅ Done | Remote routing in the app and frontend | 3 h | ACP-12, ACP-09 |
 | [ACP-14](ACP-14.md) | ⬜ Not started | QA with real agents on Linux, WSL, SSH and Windows | 4 h | ACP-11, ACP-13, ACP-15 |
 | [ACP-15](ACP-15.md) | ⬜ Not started | Session option pickers: mode, model, effort | 3 h | ACP-09 |

@@ -198,6 +198,11 @@ The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
     terminals could. This is the "two writers" risk below.
   - Servers without the capability hide the chat actions; a host that
     answers method-not-found counts as one without it.
+  - The app routes each chat call by the host the window shows, like the
+    other remote calls. An offline host answers that it is disconnected.
+  - In the frontend, a host switch or a return to this computer forgets the
+    old chats. When the shown host reconnects, its chats stay as ended
+    ("disconnected"), so Restart can continue their sessions.
 
 ### Frontend
 

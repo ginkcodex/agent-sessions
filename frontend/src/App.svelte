@@ -185,7 +185,7 @@
     sessionLinks.init();
     void chats.init();
     // Chats run on this computer; a host switch ends them.
-    const offChatReset = connectionStore.onReset(() => chats.reset());
+    const offChatReset = connectionStore.onReset((_, __, sameHost) => chats.reset(sameHost));
     isWails = isDesktop();
     api
       .appVersion()

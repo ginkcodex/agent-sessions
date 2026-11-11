@@ -879,7 +879,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   /** The scripted ACP agent behind the chat methods. */
   readonly chat = new MockChats({
     emit: (name, payload) => this.emit(name, payload),
-    local: () => this.connState.phase === 'local',
+    available: () => this.connState.phase === 'local' || (this.connState.phase === 'connected' && this.connState.capabilities?.acpChat === true),
     save: (ref, dir, messages) => this.saveChatTurn(ref, dir, messages),
   });
 
@@ -2103,7 +2103,8 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   }
 
   async connect(alias: string, succeed: boolean = true): Promise<void> {
-    // As the backend does, connecting ends this computer's chats first.
+    // As the backend does, connecting ends the chats of this computer or of
+    // the host left.
     this.chat.closeAll();
     this.connState.generation++;
     const gen = this.connState.generation;
@@ -2136,6 +2137,8 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       replaceFiles: true,
       newSession: true,
       trash: alias !== 'prod-server',
+      // prod-server runs an older agent-sessions, without chats.
+      acpChat: alias !== 'prod-server',
       manage: true,
       export: true,
       import: true,
@@ -2152,6 +2155,8 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   }
 
   async disconnect(): Promise<void> {
+    // The host's chats end with its connection.
+    this.chat.closeAll();
     this.connState.generation++;
     this.connState = {
       phase: 'local',

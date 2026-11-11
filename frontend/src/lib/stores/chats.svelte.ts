@@ -120,9 +120,17 @@ export class ChatsStore {
     this.unsubscribe = null;
   }
 
-  /** Forgets every chat: the window now shows another host. */
-  reset(): void {
-    this.chats = [];
+  /**
+   * The window's connection changed. Another host's chats, or this
+   * computer's, are forgotten. When the same host reconnects (sameHost), its
+   * chats ended with the old connection: they stay, exited, so they can
+   * restart.
+   */
+  reset(sameHost = false): void {
+    // A chat still starting is refused when its start answers.
+    const ended = (c: Chat): Chat =>
+      c.phase === 'exited' ? c : { ...c, phase: 'exited', exit: { chatId: c.chatId, seq: 0, reason: 'disconnected' }, permissions: [], tail: endTurn(c.tail) };
+    this.chats = sameHost ? this.chats.filter((c) => c.phase !== 'starting').map((c) => ({ ...ended(c), epoch: epoch() })) : [];
     this.internal.clear();
     this.early.clear();
     this.earlyCount = 0;

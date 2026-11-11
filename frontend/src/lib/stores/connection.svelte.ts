@@ -73,7 +73,7 @@ export class ConnectionStore {
   private lifecycle = 0;
   private connectionEvents = 0;
   private title = '';
-  private resetCallbacks = new Set<(generation: number, host?: string) => void>();
+  private resetCallbacks = new Set<(generation: number, host?: string, sameHost?: boolean) => void>();
 
   get isRemote(): boolean {
     return this.phase === 'connected' && Boolean(this.host);
@@ -103,9 +103,9 @@ export class ConnectionStore {
     return this.capabilities.search;
   }
 
-  /** Whether chats can start: on this computer only, for now. */
+  /** Whether chats can start: here, or on a connected host whose server runs them. */
   get canChat(): boolean {
-    return this.phase === 'local' && this.capabilities.acpChat === true;
+    return (this.phase === 'local' || this.phase === 'connected') && this.capabilities.acpChat === true;
   }
 
   async init(): Promise<void> {
@@ -149,7 +149,12 @@ export class ConnectionStore {
     this.resetCallbacks.clear();
   }
 
-  onReset(callback: (generation: number, host?: string) => void): () => void {
+  /**
+   * Calls back each time the stores reload for a backend: a host connects,
+   * the window returns to this computer, or sameHost, the shown host
+   * reconnects.
+   */
+  onReset(callback: (generation: number, host?: string, sameHost?: boolean) => void): () => void {
     this.resetCallbacks.add(callback);
     return () => {
       this.resetCallbacks.delete(callback);
@@ -308,7 +313,7 @@ export class ConnectionStore {
     void files.connectionChanged(host);
     for (const cb of this.resetCallbacks) {
       try {
-        cb(this.generation, host);
+        cb(this.generation, host, sameHost);
       } catch {
         // Ignore subscriber errors
       }

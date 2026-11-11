@@ -35,6 +35,7 @@
     closed: 'The chat ended.',
     exited: 'The agent quit.',
     crashed: 'The agent stopped unexpectedly.',
+    disconnected: 'The connection to the host dropped, which ended the chat.',
   };
 </script>
 

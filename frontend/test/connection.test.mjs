@@ -796,6 +796,9 @@ test('failed initial snapshot does not undo newer remote state', async () => {
 
 test('ConnectionStore preserves navigation only for reconnecting the displayed remote host', async () => {
   await startupConnectionFixture(async ({ store, snapshots, listeners, resetOptions }) => {
+    // Subscribers such as the chats store learn it too.
+    const callbacks = [];
+    store.onReset((_, host, sameHost) => callbacks.push([host, sameHost]));
     const init = store.init();
     snapshots[0].resolve({ phase: 'local', generation: 0 });
     await init;
@@ -812,5 +815,30 @@ test('ConnectionStore preserves navigation only for reconnecting the displayed r
     assert.deepEqual(resetOptions, [
       ['box', false], ['box', true], ['box', true], ['other', false], [undefined, false],
     ]);
+    assert.deepEqual(callbacks, resetOptions);
   });
+});
+
+test('ConnectionStore offers chats here and on connected hosts whose server runs them', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  const hadDocument = 'document' in globalThis;
+  const restore = installDesktopRuntime({ Window: { SetTitle: async () => {} } });
+  globalThis.document = { title: '' };
+  globalThis.__storeFixture = { api: {}, link: { seed() {}, update: () => false } };
+  try {
+    const store = new ConnectionStore();
+    store.applyState({ phase: 'local', generation: 0 }, false);
+    assert.equal(store.canChat, true);
+    store.applyState({ phase: 'connected', host: 'box', generation: 1, capabilities: { acpChat: true } }, false);
+    assert.equal(store.canChat, true);
+    // A dropped host keeps its capabilities for the stale view, but no chat starts.
+    store.applyState({ phase: 'reconnecting', host: 'box', generation: 1 }, false);
+    assert.equal(store.canChat, false);
+    store.applyState({ phase: 'connected', host: 'old-box', generation: 2, capabilities: { trash: true } }, false);
+    assert.equal(store.canChat, false, 'an older server has no chats');
+  } finally {
+    delete globalThis.__storeFixture;
+    restore();
+    if (!hadDocument) delete globalThis.document;
+  }
 });

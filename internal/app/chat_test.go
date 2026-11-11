@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
 	"slices"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/providertest"
 	"github.com/ginkcode/agent-sessions/internal/remote"
+	"github.com/ginkcode/agent-sessions/internal/rpc"
 	"github.com/ginkcode/agent-sessions/internal/scan"
 )
 
@@ -175,34 +177,151 @@ func TestChatBindingsLocal(t *testing.T) {
 	}
 }
 
-// Chats run on this computer only until hosts support them.
+// remoteChatApp shows a host whose server runs chats with the fake agent,
+// over a real rpc pair. Its events reach the returned log through the
+// generation-gated emitter, as a dialled host's do.
+func remoteChatApp(t *testing.T) (*App, *chatLog) {
+	t.Helper()
+	eng := engine.NewEngine(
+		engine.WithService(engine.NewService(scan.NewCatalog(), nil)),
+		engine.WithCacheEnabled(false),
+		engine.WithChatLaunch(func(_ context.Context, _ model.AgentID, dir string) (acp.Command, error) {
+			return acptest.Command(dir), nil
+		}),
+	)
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	server, client := rpc.NewServer(eng, inR, outW), rpc.NewClient(outR, inW)
+	done := make(chan struct{})
+	go func() { defer close(done); _ = server.Serve(context.Background()) }()
+	t.Cleanup(func() { _ = client.Close(); _ = server.Close(); <-done; _ = eng.Close() })
+
+	a := NewAppWithService(chatTestService())
+	useChatEngine(t, a)
+	a.conn = newConnection(nil)
+	a.conn.wantHost = "remote-server"
+	a.conn.localActive = false
+	a.conn.gen = 1
+	a.conn.state = ConnectionState{Phase: ConnConnected, Host: "remote-server", Generation: 1}
+	log := &chatLog{}
+	client.SetEmitter(generationEmitter(log, 1, a.conn))
+	init, err := client.Initialize(t.Context(), rpc.InitializeRequest{})
+	if err != nil || !init.Capabilities.ACPChat {
+		t.Fatalf("capabilities %+v %v", init, err)
+	}
+	a.conn.client = client
+	return a, log
+}
+
+// A host's chats run on the host: the bindings reach its server and its
+// events come back through the connection, until the window moves on.
+func TestChatBindingsRemote(t *testing.T) {
+	a, log := remoteChatApp(t)
+	local, err := a.ownChats()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if agents, err := a.ChatAgents(); err != nil || len(agents) != 0 {
+		t.Fatalf("ChatAgents = %+v, %v", agents, err)
+	}
+	st, err := a.ChatStart(engine.ChatStartRequest{Agent: model.AgentClaude, Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(local.Chats()) != 0 {
+		t.Fatal("the chat ran on this computer")
+	}
+	if got := a.ChatList(); len(got) != 1 || got[0].ChatID != st.ChatID {
+		t.Fatalf("ChatList = %+v", got)
+	}
+	if err := a.ChatPrompt(st.ChatID, "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if end := log.waitTurnEnd(t, st.ChatID); end.StopReason != "end_turn" {
+		t.Fatalf("turn end %+v", end)
+	}
+	log.waitFor(t, "streamed text", func(u []engine.ChatUpdate, _ []engine.ChatExit) bool {
+		return slices.ContainsFunc(u, func(u engine.ChatUpdate) bool {
+			return u.ChatID == st.ChatID && u.Kind == engine.ChatSessionUpdate && u.Update.Kind == "agent_message_chunk"
+		})
+	})
+	if _, err := a.ChatSetOption(st.ChatID, "nope", "x"); err == nil {
+		t.Fatal("an unknown option was set")
+	}
+
+	// The window moves on (another host, or a reconnect): the old
+	// connection's events no longer reach it.
+	a.conn.mu.Lock()
+	a.conn.gen++
+	a.conn.mu.Unlock()
+	log.mu.Lock()
+	before := len(log.updates)
+	log.mu.Unlock()
+	if err := a.ChatPrompt(st.ChatID, "again"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.ChatClose(st.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	log.mu.Lock()
+	after, exits := len(log.updates), len(log.exits)
+	log.mu.Unlock()
+	if after != before || exits != 0 {
+		t.Fatalf("a stale connection's events arrived: %d updates (had %d), %d exits", after, before, exits)
+	}
+}
+
+// A host whose server predates chats, or one that is offline, says so.
 func TestChatRefusedForHosts(t *testing.T) {
-	stub := &stubRemoteBackend{}
-	for name, a := range map[string]*App{"connected": setupRemoteApp(stub), "offline": offlineRemoteApp()} {
-		if _, err := a.ChatAgents(); !errors.Is(err, ErrChatRemote) {
+	for name, a := range map[string]*App{"no capability": setupRemoteApp(&stubRemoteBackend{}), "offline": offlineRemoteApp()} {
+		want := ErrChatRemote
+		if name == "offline" {
+			want = rpc.ErrDisconnected
+		}
+		if _, err := a.ChatAgents(); !errors.Is(err, want) {
 			t.Errorf("%s ChatAgents: %v", name, err)
 		}
-		if _, err := a.ChatStart(engine.ChatStartRequest{Agent: model.AgentClaude, Dir: "/p"}); !errors.Is(err, ErrChatRemote) {
+		if _, err := a.ChatStart(engine.ChatStartRequest{Agent: model.AgentClaude, Dir: "/p"}); !errors.Is(err, want) {
 			t.Errorf("%s ChatStart: %v", name, err)
 		}
-		if err := a.ChatPrompt("chat-1", "hi"); !errors.Is(err, ErrChatRemote) {
+		if err := a.ChatPrompt("chat-1", "hi"); !errors.Is(err, want) {
 			t.Errorf("%s ChatPrompt: %v", name, err)
 		}
-		if _, err := a.ChatSetOption("chat-1", "mode", "plan"); !errors.Is(err, ErrChatRemote) {
+		if _, err := a.ChatSetOption("chat-1", "mode", "plan"); !errors.Is(err, want) {
 			t.Errorf("%s ChatSetOption: %v", name, err)
 		}
-		// Ending a chat never needs the host.
-		if err := a.ChatClose("chat-1"); !errors.Is(err, engine.ErrChatNotFound) {
+		if err := a.ChatClose("chat-1"); !errors.Is(err, want) {
 			t.Errorf("%s ChatClose: %v", name, err)
 		}
-		if err := a.ChatCancel("chat-1"); !errors.Is(err, engine.ErrChatNotFound) {
-			t.Errorf("%s ChatCancel: %v", name, err)
-		}
-		if err := a.ChatRespond("chat-1", "perm-1", ""); !errors.Is(err, engine.ErrChatNotFound) {
-			t.Errorf("%s ChatRespond: %v", name, err)
+		if got := a.ChatList(); got == nil || len(got) != 0 {
+			t.Errorf("%s ChatList = %#v", name, got)
 		}
 	}
 }
+
+// A connected server without the capability answers ErrChatRemote too.
+func TestChatRefusedWithoutCapability(t *testing.T) {
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	eng := engine.NewEngine(engine.WithService(engine.NewService(scan.NewCatalog(), nil)), engine.WithCacheEnabled(false))
+	server, client := rpc.NewServer(noChats{eng}, inR, outW), rpc.NewClient(outR, inW)
+	done := make(chan struct{})
+	go func() { defer close(done); _ = server.Serve(context.Background()) }()
+	t.Cleanup(func() { _ = client.Close(); _ = server.Close(); <-done; _ = eng.Close() })
+	if init, err := client.Initialize(t.Context(), rpc.InitializeRequest{}); err != nil || init.Capabilities.ACPChat {
+		t.Fatalf("capabilities %+v %v", init, err)
+	}
+	a := setupRemoteApp(&stubRemoteBackend{})
+	a.conn.client = client
+	if _, err := a.ChatStart(engine.ChatStartRequest{Agent: model.AgentClaude, Dir: "/p"}); !errors.Is(err, ErrChatRemote) {
+		t.Fatalf("ChatStart: %v", err)
+	}
+}
+
+// noChats is a backend without a chat manager, as an older server is.
+type noChats struct{ engine.Backend }
 
 // Closing the window, or quitting, ends its chats' agents and answers
 // their permission requests cancelled.

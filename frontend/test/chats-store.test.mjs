@@ -268,15 +268,58 @@ test('a reloaded page finds the open chats and follows them', async () => {
   );
 });
 
-test('chats refuse a connected host', async () => {
+test("chats run on a connected host whose server has them, and refuse an older one", async () => {
   await withChats(async ({ store, mock }) => {
     const chat = await store.start({ agent: 'claude-code', dir: DIR });
     await mock.connect('dev-box');
-    // Connecting ended the chat.
+    // Connecting ended this computer's chat.
     await until('exit', () => store.byChatId(chat.chatId)?.phase === 'exited');
-    await assert.rejects(store.start({ agent: 'claude-code', dir: DIR }), /this computer's sessions only/);
-    await assert.rejects(store.loadAgents(), /this computer's sessions only/);
-    assert.match(store.agentsError, /this computer's sessions only/);
+    const remote = await store.start({ agent: 'claude-code', dir: DIR });
+    await store.prompt(remote.chatId, 'hello');
+    await until('turn end', () => store.byChatId(remote.chatId).phase === 'idle');
+    assert.ok(store.byChatId(remote.chatId).tail.items.length > 0, 'the host streamed');
+
+    await mock.connect('prod-server');
+    await until('exit', () => store.byChatId(remote.chatId)?.phase === 'exited');
+    await assert.rejects(store.start({ agent: 'claude-code', dir: DIR }), /does not support chat/);
+    await assert.rejects(store.loadAgents(), /does not support chat/);
+    assert.match(store.agentsError, /does not support chat/);
+  });
+});
+
+test("the same host reconnecting leaves its chats exited; another host's are forgotten", async () => {
+  await withChats(async ({ store, mock }) => {
+    await mock.connect('dev-box');
+    const open = await store.start({ agent: 'claude-code', dir: DIR });
+    await store.prompt(open.chatId, 'permission');
+    await until('permission', () => store.byChatId(open.chatId).permissions.length === 1);
+    const ended = await store.start({ agent: 'codex', dir: DIR });
+    await store.close(ended.chatId);
+    await until('exit', () => store.byChatId(ended.chatId).phase === 'exited');
+
+    // The connection drops and comes back: the server ended its chats, and
+    // their events stop. They stay so they can restart.
+    bumpEpoch();
+    store.reset(true);
+    const c = store.byChatId(open.chatId);
+    assert.equal(c.phase, 'exited');
+    assert.equal(c.exit.reason, 'disconnected');
+    assert.deepEqual(c.permissions, []);
+    assert.equal(store.byChatId(ended.chatId).exit.reason, 'closed');
+    assert.equal(store.forSession(c.session), undefined, 'the session can open again');
+    mock.emit('chat:update', { chatId: open.chatId, seq: 99, kind: 'turn_start' });
+    assert.equal(store.byChatId(open.chatId).phase, 'exited', 'the old connection is not followed');
+    // A later event does not drop them as from before the reset.
+    const next = await store.start({ agent: 'opencode', dir: DIR });
+    await store.prompt(next.chatId, 'hello');
+    await until('turn end', () => store.byChatId(next.chatId).phase === 'idle');
+    assert.ok(store.byChatId(open.chatId));
+    store.dismiss(store.byChatId(open.chatId).key);
+    assert.equal(store.byChatId(open.chatId), undefined);
+
+    bumpEpoch();
+    store.reset(false);
+    assert.deepEqual(store.chats, []);
   });
 });
 
