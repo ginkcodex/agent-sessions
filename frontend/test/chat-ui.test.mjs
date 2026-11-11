@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applySessionUpdate, beginTurn, emptyTail, endTurn } from '../src/lib/chatTail.ts';
+import { addAnswer, applySessionUpdate, beginTurn, emptyTail, endTurn } from '../src/lib/chatTail.ts';
 import {
   addAttachments,
   canSendPrompt,
@@ -10,6 +10,7 @@ import {
   permissionView,
   planMarkdown,
   skippedToast,
+  tailBlocks,
   tailMessages,
   toolStatus,
   unifiedDiff,
@@ -45,6 +46,27 @@ test('the tail shows as a user message per prompt and one assistant message per 
   assert.deepEqual({ id: tool.id, name: tool.name, input: tool.input, status: tool.status }, { id: 't1', name: 'ls', input: { command: 'ls' }, status: 'pending' });
   assert.equal(messages[1].parts[3].text, '**Plan**\n\n- ✓ list\n- ▸ sum up\n- ○ end');
   assert.deepEqual(messages[3].parts, [{ kind: 'text', text: 'Welcome' }]);
+});
+
+test("a question's outcome is a line of its own, and what the agent says after it a new message", () => {
+  let tail = apply(beginTurn(emptyTail(), { text: 'add a setting', sentAt: SENT }), chunk('agent_message_chunk', 'One question first.', 'm1'));
+  tail = addAnswer(tail, { questionId: 'q1', toolCallId: 't-ask', outcome: 'accept', summary: 'Answered: New module' });
+  tail = addAnswer(tail, { questionId: 'q1', outcome: 'cancel', summary: 'The question was cancelled' });
+  tail = apply(tail, chunk('agent_message_chunk', 'Going with a new module.', 'm2'));
+  const blocks = tailBlocks(tail);
+  assert.deepEqual(
+    blocks.map((b) => (b.kind === 'answer' ? ['answer', b.answer.summary] : [b.message.role, b.message.parts.map((p) => p.text).join('')])),
+    [
+      ['user', 'add a setting'],
+      ['assistant', 'One question first.'],
+      ['answer', 'Answered: New module'],
+      ['assistant', 'Going with a new module.'],
+    ],
+    "a question's second outcome is ignored",
+  );
+  assert.deepEqual(tailMessages(tail).map((m) => m.role), ['user', 'assistant', 'assistant'], 'messages leave the line out');
+  const ids = blocks.filter((b) => b.kind === 'message').map((b) => b.message.id);
+  assert.equal(new Set(ids).size, ids.length, 'IDs are unique');
 });
 
 test('a tool with diffs adds a patch part, and a failed command says its exit code', () => {
@@ -122,7 +144,7 @@ let liveTailModule;
 function chat(fields = {}) {
   return {
     key: 'chat-1', chatId: 'c1', agent: 'codex', dir: '/p', session: { agent: 'codex', id: 's1' },
-    configOptions: [], phase: 'idle', tail: emptyTail(), permissions: [], epoch: 0, ...fields,
+    configOptions: [], phase: 'idle', tail: emptyTail(), permissions: [], questions: [], epoch: 0, ...fields,
   };
 }
 
@@ -160,6 +182,10 @@ async function renderLiveTail(c, props = {}) {
     [
       "import PermissionCard from './PermissionCard.svelte';",
       'const PermissionCard = ($$renderer, p) => $$renderer.push(`<div data-stub-permission="${p.permission.id}" data-agent="${p.agentName}"></div>`);',
+    ],
+    [
+      "import QuestionCard from './QuestionCard.svelte';",
+      'const QuestionCard = ($$renderer, p) => $$renderer.push(`<div data-stub-question="${p.question.id}" data-agent="${p.agentName}"></div>`);',
     ],
     ["import Icon from '../common/Icon.svelte';", 'const Icon = () => {};'],
   ]);
@@ -276,6 +302,22 @@ test('the live tail shows the streamed messages, then the chat state under them'
   }
 });
 
+test('the live tail shows question cards, waits on them, and shows how a question ended', async () => {
+  const q = { id: 'q1', message: 'Pick one', fields: [] };
+  const waiting = await renderLiveTail(chat({ phase: 'working', questions: [q] }));
+  assert.match(waiting, /data-stub-question="q1" data-agent="Codex"/);
+  assert.match(waiting, /Codex waits for your answer\./);
+
+  const tail = addAnswer(beginTurn(emptyTail(), { text: 'go', sentAt: SENT }), { questionId: 'q1', outcome: 'accept', summary: 'Answered: <Extend> · Yes' });
+  const done = await renderLiveTail(chat({ phase: 'working', tail }));
+  assert.doesNotMatch(done, /data-stub-question/);
+  assert.match(done, /Codex is working…/);
+  assert.match(done, /data-answer-line="q1"[^>]*>[\s\S]*Answered: <Extend> · Yes/);
+  const skipped = await renderLiveTail(chat({ tail: addAnswer(emptyTail(), { questionId: 'q2', outcome: 'decline', summary: 'Skipped the question' }) }));
+  assert.match(skipped, /class="answer-line[^"]*"[^>]*data-answer-line="q2"/);
+  assert.doesNotMatch(skipped, /answer-line answered/, 'only an answer is marked answered');
+});
+
 test('the session header says when a chat drives the session', async () => {
   const host = { link: { dataHost: undefined }, launcher: { canOpen: true } };
   const live = await renderSessionHeader({ ...host, chats: { forSession: () => chat() } });
@@ -365,10 +407,10 @@ test('opening starts a chat, a new one selects its session, and a failed start s
     assert.equal(opener.canChat('claude-code'), false, 'no adapter');
 
     assert.equal(await opener.openSession(META), true);
-    assert.deepEqual(calls.shift(), ['start', { agent: 'codex', dir: '/p', resume: META.ref }]);
+    assert.deepEqual(calls.shift(), ['start', { agent: 'codex', dir: '/p', resume: META.ref, questions: true }], 'the window shows questions');
 
     assert.equal(await opener.startNew('codex', '/p'), true);
-    assert.deepEqual(calls, [['start', { agent: 'codex', dir: '/p' }], ['select', { agent: 'codex', id: 'new' }, 'push']]);
+    assert.deepEqual(calls, [['start', { agent: 'codex', dir: '/p', questions: true }], ['select', { agent: 'codex', id: 'new' }, 'push']]);
     assert.equal(opener.focusRequest, 2);
     assert.equal(opener.opening, false);
 
@@ -433,11 +475,11 @@ test('restart continues a saved session, starts a new one otherwise, and leaves 
     assert.deepEqual(calls, []);
 
     assert.equal(await opener.restart(ended, true), true);
-    assert.deepEqual(calls.splice(0), [['start', { agent: 'codex', dir: '/p', resume: { agent: 'codex', id: 's1' } }]]);
+    assert.deepEqual(calls.splice(0), [['start', { agent: 'codex', dir: '/p', resume: { agent: 'codex', id: 's1' }, questions: true }]]);
     assert.deepEqual(dismissed.splice(0), ['old'], 'the ended chat goes once the new one runs');
 
     assert.equal(await opener.restart(ended, false), true, 'the agent never saved the session');
-    assert.deepEqual(calls.splice(0), [['start', { agent: 'codex', dir: '/p' }], ['select', { agent: 'codex', id: 'new' }, 'push']]);
+    assert.deepEqual(calls.splice(0), [['start', { agent: 'codex', dir: '/p', questions: true }], ['select', { agent: 'codex', id: 'new' }, 'push']]);
     assert.deepEqual(dismissed.splice(0), ['old']);
 
     globalThis.__openerFixture.chats.start = async () => {

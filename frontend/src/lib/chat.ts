@@ -1,7 +1,10 @@
 // What the chat UI shows: the live tail as transcript messages, and which
 // agents can chat. Every function here is pure.
 import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatPermission, Message, Part, ToolStatus } from './types';
-import { toolOutput, type ChatTail, type TailDiff, type TailItem, type TailTool } from './chatTail';
+import { toolOutput, type ChatTail, type TailAnswer, type TailDiff, type TailItem, type TailTool } from './chatTail';
+
+/** A piece of the live tail: a transcript message, or how a question ended. */
+export type TailBlock = { kind: 'message'; message: Message } | { kind: 'answer'; answer: TailAnswer };
 
 /**
  * The tail as transcript messages, for MessageBubble: each prompt is a user
@@ -9,13 +12,26 @@ import { toolOutput, type ChatTail, type TailDiff, type TailItem, type TailTool 
  * IDs start with "live:" so they never meet a saved message's.
  */
 export function tailMessages(tail: ChatTail): Message[] {
-  const out: Message[] = [];
+  return tailBlocks(tail).flatMap((b) => (b.kind === 'message' ? [b.message] : []));
+}
+
+/**
+ * The tail as tailMessages has it, with each question's outcome as a line of
+ * its own where it happened: what the agent says after it is a new message.
+ */
+export function tailBlocks(tail: ChatTail): TailBlock[] {
+  const out: TailBlock[] = [];
   let reply: Message | null = null;
   let replyTurn = -1;
   for (const it of tail.items) {
+    if (it.type === 'answer') {
+      reply = null;
+      out.push({ kind: 'answer', answer: it });
+      continue;
+    }
     if (it.type === 'text' && it.role === 'user') {
       reply = null;
-      out.push({
+      const message: Message = {
         id: `live:${it.key}`,
         role: 'user',
         time: it.sentAt ? new Date(it.sentAt).toISOString() : '',
@@ -23,20 +39,21 @@ export function tailMessages(tail: ChatTail): Message[] {
           ...(it.text ? [{ kind: 'text' as const, text: it.text }] : []),
           ...(it.attachments ?? []).map((a): Part => ({ kind: 'file', file: { name: a.name, mime: a.mimeType, size: a.size, ...(a.data && { data: a.data }) } })),
         ],
-      });
+      };
+      out.push({ kind: 'message', message });
       continue;
     }
     if (!reply || replyTurn !== it.turn) {
       reply = { id: `live:${it.key}`, role: 'assistant', time: '', parts: [] };
       replyTurn = it.turn;
-      out.push(reply);
+      out.push({ kind: 'message', message: reply });
     }
     reply.parts.push(...itemParts(it));
   }
   return out;
 }
 
-function itemParts(it: TailItem): Part[] {
+function itemParts(it: Exclude<TailItem, TailAnswer>): Part[] {
   switch (it.type) {
     case 'text':
       return [{ kind: 'text', text: it.text }];
@@ -49,8 +66,6 @@ function itemParts(it: TailItem): Part[] {
       if (it.diffs.length > 0) parts.push({ kind: 'patch', files: it.diffs.map((d) => d.path), text: it.diffs.map(unifiedDiff).join('\n') });
       return parts;
     }
-    case 'answer':
-      return [{ kind: 'text', text: it.summary }];
   }
 }
 

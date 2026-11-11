@@ -56,7 +56,7 @@ export class ChatOpener {
     }
     if (this.refuseChat(ref)) return false;
     return this.run(async () => {
-      await chats.start({ agent: ref.agent, dir: meta.cwd, resume: { agent: ref.agent, id: ref.id } });
+      await chats.start({ agent: ref.agent, dir: meta.cwd, resume: { agent: ref.agent, id: ref.id }, questions: true });
     });
   }
 
@@ -87,7 +87,7 @@ export class ChatOpener {
 
   private async startFresh(agent: AgentID, dir: string): Promise<void> {
     const host = link.dataHost;
-    const chat = await chats.start({ agent, dir });
+    const chat = await chats.start({ agent, dir, questions: true });
     await this.applyChoices(chat, host);
     if (chat.session) await appState.selectSession(chat.session, 'push');
   }
@@ -126,7 +126,7 @@ export class ChatOpener {
     if (saved && ref && this.refuseChat(ref)) return Promise.resolve(false);
     return this.run(async () => {
       if (saved && ref) {
-        await chats.start({ agent: chat.agent, dir: chat.dir, resume: { agent: ref.agent, id: ref.id } });
+        await chats.start({ agent: chat.agent, dir: chat.dir, resume: { agent: ref.agent, id: ref.id }, questions: true });
       } else {
         await this.startFresh(chat.agent, chat.dir);
       }

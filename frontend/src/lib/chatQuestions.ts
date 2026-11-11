@@ -51,6 +51,8 @@ export interface FormQuestion {
   integer?: boolean;
   /** The default, shown as a hint. */
   defaultValue?: unknown;
+  /** The answer is a secret (Codex's isSecret): typed hidden, never read back. */
+  secret?: boolean;
 }
 
 export interface QuestionForm {
@@ -210,6 +212,7 @@ export function questionForm(q: ChatQuestion): QuestionForm {
       question.integer = f.type === 'integer';
     }
     if (f.default !== undefined) question.defaultValue = f.default;
+    if (codexMeta(f)?.isSecret === true) question.secret = true;
     questions.push(question);
   }
   return { id: q.id, message: q.message?.trim() || q.title?.trim() || '', questions };
@@ -396,6 +399,7 @@ export function answerText(q: FormQuestion, sent: Readonly<Record<string, unknow
   const ownText = typeof own === 'string' && own.trim() ? own.trim() : undefined;
   const label = (v: unknown) => q.options.find((o) => o.value === v)?.label ?? String(v);
   const v = sent[q.key];
+  if (q.secret && (v !== undefined || ownText)) return '(hidden)';
   switch (q.kind) {
     case 'choice':
       if (ownText && (v === undefined || v === q.ownValue)) return ownText;

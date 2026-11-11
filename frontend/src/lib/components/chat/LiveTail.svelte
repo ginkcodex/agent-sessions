@@ -4,10 +4,11 @@
   import type { SessionRef } from '../../types';
   import type { Chat } from '../../stores/chats.svelte';
   import type { TranscriptMode } from '../../transcript';
-  import { tailMessages } from '../../chat';
+  import { tailBlocks } from '../../chat';
   import { ALL_AGENTS } from '../../portable';
   import MessageBubble from '../transcript/MessageBubble.svelte';
   import PermissionCard from './PermissionCard.svelte';
+  import QuestionCard from './QuestionCard.svelte';
   import Icon from '../common/Icon.svelte';
 
   interface Props {
@@ -21,7 +22,8 @@
 
   let { chat, sessionRef, mode = 'activity', onFileLink, onOpenTerminal }: Props = $props();
 
-  let messages = $derived(tailMessages(chat.tail));
+  let blocks = $derived(tailBlocks(chat.tail));
+  let waiting = $derived(chat.permissions.length + chat.questions.length > 0);
   let agentName = $derived(ALL_AGENTS.find((a) => a.id === chat.agent)?.label ?? chat.agent);
   // A turn that stopped short says why; a normal end says nothing.
   const STOPS: Record<string, string> = {
@@ -43,10 +45,17 @@
 </script>
 
 <div class="live-tail" data-live-tail aria-live="polite">
-  {#each messages as message (message.id)}
-    <div class="live-message">
-      <MessageBubble {message} {sessionRef} {mode} {onFileLink} />
-    </div>
+  {#each blocks as block (block.kind === 'message' ? block.message.id : `answer:${block.answer.key}`)}
+    {#if block.kind === 'message'}
+      <div class="live-message">
+        <MessageBubble message={block.message} {sessionRef} {mode} {onFileLink} />
+      </div>
+    {:else}
+      <div class="answer-line" class:answered={block.answer.outcome === 'accept'} data-answer-line={block.answer.questionId}>
+        <Icon name={block.answer.outcome === 'accept' ? 'check' : 'circle-help'} size={14} />
+        <span>{block.answer.summary}</span>
+      </div>
+    {/if}
   {/each}
 
   {#if chat.phase === 'starting'}
@@ -58,10 +67,13 @@
     {#each chat.permissions as permission (permission.id)}
       <PermissionCard {chat} {permission} {agentName} />
     {/each}
+    {#each chat.questions as question (question.id)}
+      <QuestionCard {chat} {question} {agentName} />
+    {/each}
     {#if chat.phase === 'working'}
       <div class="chat-status" role="status">
         <Icon name="loader-circle" size={14} class="spin" />
-        <span>{chat.permissions.length > 0 ? `${agentName} waits for your answer.` : `${agentName} is working…`}</span>
+        <span>{waiting ? `${agentName} waits for your answer.` : `${agentName} is working…`}</span>
       </div>
     {/if}
   {/if}
@@ -125,6 +137,26 @@
     line-height: 1.4;
   }
 
+  .answer-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0 0 14px 28px;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  .answer-line.answered {
+    color: var(--text-secondary);
+  }
+
+  .answer-line.answered :global(.icon) {
+    color: #16a34a;
+  }
+
+  .answer-line :global(.icon),
   .chat-status :global(.icon),
   .chat-notice :global(.icon) {
     margin-top: 2px;
