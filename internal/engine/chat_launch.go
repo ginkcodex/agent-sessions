@@ -13,6 +13,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/acp"
 	"github.com/ginkcode/agent-sessions/internal/launch"
+	mt "github.com/ginkcode/agent-sessions/internal/managedtools"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/all"
@@ -87,6 +88,12 @@ type ChatAgent struct {
 	InstallTool string `json:"installTool,omitempty"`
 	// Managed is true when the adapter that would run is the app's own copy.
 	Managed bool `json:"managed,omitempty"`
+	// Version is the version of the app's copy that would run.
+	Version string `json:"version,omitempty"`
+	// Pinned is the version the app installs, where it can install one.
+	Pinned string `json:"pinned,omitempty"`
+	// Outdated is true when the app's copy is older than Pinned.
+	Outdated bool `json:"outdated,omitempty"`
 	// Problem says why the adapter is not available.
 	Problem string `json:"problem,omitempty"`
 }
@@ -94,10 +101,13 @@ type ChatAgent struct {
 // ManagedAdapters finds the app's own adapter installs on this host, by
 // managed-tools catalog ID. Nil when this host cannot install them.
 type ManagedAdapters interface {
-	// Discover returns a valid install's main script.
-	Discover(tool string) (string, error)
+	// Adapter returns a valid install's main script and version: the pinned
+	// version, else an older one. os.ErrNotExist when there is none.
+	Adapter(tool string) (main, version string, err error)
 	// Runtime returns the Node.js that runs it.
 	Runtime(tool string) (string, error)
+	// Pinned returns the version the app installs.
+	Pinned(tool string) string
 }
 
 // ChatAgents reports, for each provider with an ACP adapter, whether the
@@ -111,13 +121,16 @@ func (s *Service) ChatAgents(overrides ChatAdapters, managed ManagedAdapters) []
 		}
 		a := l.ACPAdapter()
 		st := ChatAgent{Agent: prov.ID(), Name: prov.DisplayName(), Override: overrides[prov.ID()] != ""}
-		if managed != nil {
-			st.InstallTool = a.Managed
+		if managed != nil && a.Managed != "" {
+			st.InstallTool, st.Pinned = a.Managed, managed.Pinned(a.Managed)
 		}
 		if exe, err := findAdapter(a, overrides[prov.ID()], managed); err != nil {
 			st.Problem = err.Error()
 		} else {
 			st.Available, st.Path, st.Managed = true, exe.path, exe.managed
+			if exe.managed {
+				st.Version, st.Outdated = exe.version, mt.OlderThan(exe.version, st.Pinned)
+			}
 		}
 		out = append(out, st)
 	}
@@ -173,12 +186,14 @@ func (s *Service) ChatLaunch(agent model.AgentID, dir string, overrides ChatAdap
 }
 
 // adapterCommand is a found adapter: the command that starts it, the path
-// reported for it, and a directory that goes first on its PATH.
+// reported for it, a directory that goes first on its PATH, and for the
+// app's own copy, its version.
 type adapterCommand struct {
 	argv    []string
 	path    string
 	dir     string
 	managed bool
+	version string
 }
 
 // findAdapter returns the configured adapter when there is one. Where the
@@ -211,9 +226,10 @@ func findAdapter(a provider.ACPAdapter, override string, managed ManagedAdapters
 	return c, nil
 }
 
-// managedAdapter returns the app's own copy of the adapter.
+// managedAdapter returns the app's own copy of the adapter. An older copy
+// runs until the user updates it.
 func managedAdapter(a provider.ACPAdapter, managed ManagedAdapters) (adapterCommand, error) {
-	main, err := managed.Discover(a.Managed)
+	main, version, err := managed.Adapter(a.Managed)
 	if os.IsNotExist(err) {
 		return adapterCommand{}, fmt.Errorf("%s is not installed", a.Executable)
 	}
@@ -224,7 +240,7 @@ func managedAdapter(a provider.ACPAdapter, managed ManagedAdapters) (adapterComm
 	if err != nil {
 		return adapterCommand{}, fmt.Errorf("the app's copy of %s has no Node.js to run it; install it again", a.Executable)
 	}
-	return adapterCommand{argv: []string{node, main}, path: main, dir: filepath.Dir(node), managed: true}, nil
+	return adapterCommand{argv: []string{node, main}, path: main, dir: filepath.Dir(node), managed: true, version: version}, nil
 }
 
 // configuredAdapter checks an adapter path from the config file.

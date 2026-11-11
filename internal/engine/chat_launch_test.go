@@ -332,19 +332,25 @@ func TestEngineChatAgentsReadsConfig(t *testing.T) {
 }
 
 // fakeManaged is a managed-tools view with one adapter install, or none.
+// The install is the pinned version 1.2.0 unless version says otherwise.
 type fakeManaged struct {
-	main, node    string
-	err, nodeErr  error
-	looked, nodes []string
+	main, node, version string
+	err, nodeErr        error
+	looked, nodes       []string
 }
 
-func (f *fakeManaged) Discover(tool string) (string, error) {
+func (f *fakeManaged) Adapter(tool string) (string, string, error) {
 	f.looked = append(f.looked, tool)
 	if f.main == "" && f.err == nil {
-		return "", os.ErrNotExist
+		return "", "", os.ErrNotExist
 	}
-	return f.main, f.err
+	if f.version == "" {
+		return f.main, "1.2.0", f.err
+	}
+	return f.main, f.version, f.err
 }
+
+func (f *fakeManaged) Pinned(string) string { return "1.2.0" }
 
 func (f *fakeManaged) Runtime(tool string) (string, error) {
 	f.nodes = append(f.nodes, tool)
@@ -381,8 +387,16 @@ func TestChatAgentsManagedAdapter(t *testing.T) {
 	// Installed: available as the app's copy, without running anything.
 	installed := &fakeManaged{main: main, node: "/data/managed-tools/node/bin/node"}
 	got = svc.ChatAgents(nil, installed)[0]
-	if !got.Available || !got.Managed || got.Path != main || got.InstallTool != "fake-managed" || got.Problem != "" {
+	if !got.Available || !got.Managed || got.Path != main || got.InstallTool != "fake-managed" || got.Problem != "" || got.Version != "1.2.0" || got.Pinned != "1.2.0" || got.Outdated {
 		t.Fatalf("installed: %+v", got)
+	}
+	// An older copy runs, and says it is outdated.
+	got = svc.ChatAgents(nil, &fakeManaged{main: main, node: "/data/managed-tools/node/bin/node", version: "1.1.9"})[0]
+	if !got.Available || !got.Managed || got.Version != "1.1.9" || got.Pinned != "1.2.0" || !got.Outdated {
+		t.Fatalf("older copy: %+v", got)
+	}
+	if got := svc.ChatAgents(nil, none)[0]; got.Pinned != "1.2.0" || got.Version != "" || got.Outdated {
+		t.Fatalf("pinned when missing: %+v", got)
 	}
 	// A damaged install, or one without a Node.js, is reported as such.
 	if got := svc.ChatAgents(nil, &fakeManaged{err: errors.New("invalid receipt")})[0]; got.Available || !strings.Contains(got.Problem, "is damaged; install it again") {
@@ -402,7 +416,7 @@ func TestChatAgentsManagedAdapter(t *testing.T) {
 		t.Fatalf("PATH used: %+v, looked %q", got, *looked)
 	}
 	// Where the app cannot install, PATH is searched as before.
-	if got := svc.ChatAgents(nil, nil)[0]; !got.Available || got.Managed || got.Path != "/opt/bin/fake-acp" {
+	if got := svc.ChatAgents(nil, nil)[0]; !got.Available || got.Managed || got.Path != "/opt/bin/fake-acp" || got.Pinned != "" || got.Version != "" {
 		t.Fatalf("no managed tools: %+v", got)
 	}
 	// An override wins over the app's copy, even an unusable one.
@@ -445,6 +459,12 @@ func TestChatLaunchManagedAdapter(t *testing.T) {
 	if v, _ := envValue(cmd.Env, "FAKE_CLI"); v != "/usr/bin/fake" {
 		t.Fatalf("env = %q", cmd.Env)
 	}
+	// An older copy runs until the user updates it.
+	old := filepath.FromSlash("/data/managed-tools/fake-managed-0/node_modules/fake/dist/index.js")
+	cmd, err = svc.ChatLaunch(model.AgentClaude, dir, nil, &fakeManaged{main: old, node: filepath.Join(nodeBin, "node"), version: "1.1.9"})
+	if err != nil || !reflect.DeepEqual(cmd.Argv, []string{filepath.Join(nodeBin, "node"), old}) {
+		t.Fatalf("older copy: %+v, %v", cmd, err)
+	}
 	// Not installed: refused, pointing to the settings, even with a copy on
 	// PATH.
 	stubFind(t, map[string]launch.Executable{"fake": {Path: "/usr/bin/fake", OnPath: true}, "fake-acp": {Path: "/usr/bin/fake-acp", OnPath: true}})
@@ -473,7 +493,7 @@ func TestEngineChatAgentsOffersManagedInstall(t *testing.T) {
 	if want == "" {
 		problem = "fake-acp was not found on PATH"
 	}
-	if got[0].InstallTool != want || got[0].Available || got[0].Managed || !strings.Contains(got[0].Problem, problem) {
+	if got[0].InstallTool != want || got[0].Available || got[0].Managed || !strings.Contains(got[0].Problem, problem) || (got[0].Pinned != "") != (want != "") {
 		t.Fatalf("got %+v", got[0])
 	}
 	for _, dir := range []string{cfg, data} {

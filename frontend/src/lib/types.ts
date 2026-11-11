@@ -613,6 +613,12 @@ export interface ChatAgent {
   installTool?: string;
   /** True when the adapter that would run is the app's own copy. */
   managed?: boolean;
+  /** The version of the app's copy that would run. */
+  version?: string;
+  /** The version the app installs, where it can install one. */
+  pinned?: string;
+  /** The app's copy is older than `pinned`: an update is offered. */
+  outdated?: boolean;
   /** Why the adapter is not available. */
   problem?: string;
 }

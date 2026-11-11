@@ -5,6 +5,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"strconv"
+	"strings"
 )
 
 // Discover is read-only: no directory creation, probes, network or repair. A
@@ -37,6 +41,100 @@ func (i *Installer) Discover(tool string) (string, error) {
 		return i.discover(nodeSpec())
 	}
 	return "", errors.New("managed tools: unknown tool")
+}
+
+// Pinned returns the version of tool, a chat adapter, that this app
+// installs, or "" for another tool.
+func (i *Installer) Pinned(tool string) string {
+	if !slices.Contains(adapterTools, tool) {
+		return ""
+	}
+	return npmPackages[tool]().version
+}
+
+// Adapter returns the main script and version of the app's copy of tool, a
+// chat adapter: the pinned version, else the newest valid copy of another
+// version, which an earlier app release installed. Read-only like Discover.
+// A damaged pinned copy is reported, not passed over; damaged other copies
+// are skipped, and none at all is os.ErrNotExist.
+func (i *Installer) Adapter(tool string) (main, version string, err error) {
+	if !slices.Contains(adapterTools, tool) {
+		return "", "", errors.New("managed tools: unknown tool")
+	}
+	pkg := npmPackages[tool]()
+	main, err = i.Discover(tool)
+	if !os.IsNotExist(err) {
+		return main, pkg.version, err
+	}
+	for _, v := range i.otherVersions(pkg) {
+		if main, err := i.discover(npmSpec(otherVersion(pkg, v))); err == nil {
+			return main, v, nil
+		}
+	}
+	return "", "", os.ErrNotExist
+}
+
+// otherVersions lists the versions of pkg installed beside the pinned one
+// for this platform, newest first. Only plain x.y.z versions count.
+func (i *Installer) otherVersions(pkg npmPackage) []string {
+	if readPrivateTree(i.root) != nil {
+		return nil
+	}
+	entries, err := os.ReadDir(i.root)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	suffix := "-" + runtime.GOOS + "-" + runtime.GOARCH
+	for _, e := range entries {
+		v, ok := strings.CutPrefix(e.Name(), pkg.name+"-")
+		if !ok {
+			continue
+		}
+		if v, ok = strings.CutSuffix(v, suffix); ok && v != pkg.version && plainVersion(v) != nil {
+			out = append(out, v)
+		}
+	}
+	slices.SortFunc(out, func(a, b string) int { return slices.Compare(plainVersion(b), plainVersion(a)) })
+	return out
+}
+
+// otherVersion is pkg as an install of version: the same layout and policy,
+// with only the adapter's own package version checked, since that version's
+// lockfile is not in this app. Its packages were checked against their
+// hashes when it was installed.
+func otherVersion(pkg npmPackage, version string) npmPackage {
+	versions := map[string]string{}
+	for name, v := range pkg.versions {
+		if v == pkg.version && strings.HasPrefix(pkg.main, "node_modules/"+name+"/") {
+			versions[name] = version
+		}
+	}
+	pkg.version, pkg.versions = version, versions
+	return pkg
+}
+
+// plainVersion parses an x.y.z version, or returns nil.
+func plainVersion(v string) []int {
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return nil
+	}
+	out := make([]int, 3)
+	for k, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 || p != strconv.Itoa(n) {
+			return nil
+		}
+		out[k] = n
+	}
+	return out
+}
+
+// OlderThan reports whether version a is older than b; both are x.y.z.
+func OlderThan(a, b string) bool {
+	va, vb := plainVersion(a), plainVersion(b)
+	return va != nil && vb != nil && slices.Compare(va, vb) < 0
 }
 
 // Runtime returns the Node.js executable that runs tool, an npm entry: the
