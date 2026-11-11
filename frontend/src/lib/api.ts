@@ -86,6 +86,8 @@ import type {
   ChatConfigOption,
   ChatStartRequest,
   ChatState,
+  ChatAttachment,
+  ChatAttachResult,
   ChatUpdateEvent,
   ChatExitEvent,
 } from './types';
@@ -390,7 +392,10 @@ export interface WailsAppBinding {
   /** Chat bindings; absent on older App bindings. */
   ChatAgents?(): Promise<ChatAgent[]>;
   ChatStart?(req: ChatStartRequest): Promise<ChatState>;
-  ChatPrompt?(chatId: string, text: string): Promise<void>;
+  ChatPrompt?(chatId: string, text: string, attachments: ChatAttachment[]): Promise<void>;
+  ChatPickAttachments?(chatId: string): Promise<ChatAttachResult>;
+  ChatAttachFiles?(paths: string[]): Promise<ChatAttachResult>;
+  ChatAttachImage?(name: string, data: string): Promise<ChatAttachment>;
   ChatCancel?(chatId: string): Promise<void>;
   ChatRespond?(chatId: string, permissionId: string, optionId: string): Promise<void>;
   ChatSetOption?(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]>;
@@ -951,7 +956,7 @@ class WailsBackendAPI implements BackendAPI {
   }
 
   async chatPrompt(chatId: string, text: string): Promise<void> {
-    try { await this.chatBinding('ChatPrompt')(chatId, text); }
+    try { await this.chatBinding('ChatPrompt')(chatId, text, []); }
     catch (e) { throw normalizeError(e); }
   }
 

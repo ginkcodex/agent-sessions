@@ -165,14 +165,14 @@ func (a *App) ChatStart(req engine.ChatStartRequest) (engine.ChatState, error) {
 	return s.ChatStart(a.appCtx(), req)
 }
 
-// ChatPrompt sends text to the chat's agent. It returns once the turn has
-// started; the turn's end arrives as a turn_end update.
-func (a *App) ChatPrompt(chatID, text string) error {
+// ChatPrompt sends text and attachments to the chat's agent. It returns
+// once the turn has started; the turn's end arrives as a turn_end update.
+func (a *App) ChatPrompt(chatID, text string, attachments []chatattach.Attachment) error {
 	s, err := a.chats()
 	if err != nil {
 		return err
 	}
-	return s.ChatPrompt(a.appCtx(), chatID, text, nil)
+	return s.ChatPrompt(a.appCtx(), chatID, text, attachments)
 }
 
 // ChatCancel cancels the chat's running turn and answers its pending

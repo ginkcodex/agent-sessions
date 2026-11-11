@@ -41,6 +41,16 @@ func newDesktop(desktop *application.App, window *application.WebviewWindow) app
 				Window:               window,
 			}).PromptForSingleSelection()
 		},
+		OpenFiles: func(_ context.Context, opts app.OpenDialogOptions) ([]string, error) {
+			return desktop.Dialog.OpenFileWithOptions(&application.OpenFileDialogOptions{
+				CanChooseFiles:          true,
+				AllowsMultipleSelection: true,
+				Title:                   opts.Title,
+				Directory:               opts.DefaultDirectory,
+				Filters:                 fileFilters(opts.Filters),
+				Window:                  window,
+			}).PromptForMultipleSelection()
+		},
 		OpenDirectory: func(_ context.Context, opts app.OpenDialogOptions) (string, error) {
 			return desktop.Dialog.OpenFileWithOptions(&application.OpenFileDialogOptions{
 				CanChooseDirectories: true,

@@ -18,7 +18,7 @@ type FileFilter struct {
 	Pattern     string
 }
 
-// OpenDialogOptions describes a native picker for one file or one directory.
+// OpenDialogOptions describes a native picker for files or a directory.
 type OpenDialogOptions struct {
 	Title                string
 	DefaultDirectory     string
@@ -63,7 +63,9 @@ type Desktop struct {
 	// Emit sends a named event with a JSON-serialisable payload to the frontend.
 	Emit func(name string, payload any)
 
-	OpenFile      func(ctx context.Context, opts OpenDialogOptions) (string, error)
+	OpenFile func(ctx context.Context, opts OpenDialogOptions) (string, error)
+	// OpenFiles picks one file or more; nil when the user cancels.
+	OpenFiles     func(ctx context.Context, opts OpenDialogOptions) ([]string, error)
 	OpenDirectory func(ctx context.Context, opts OpenDialogOptions) (string, error)
 	SaveFile      func(ctx context.Context, opts SaveDialogOptions) (string, error)
 	Message       func(ctx context.Context, opts MessageDialogOptions) (string, error)
@@ -135,6 +137,13 @@ func openFileDialog(ctx context.Context, opts OpenDialogOptions) (string, error)
 		return fn(ctx, opts)
 	}
 	return "", ErrDesktopUnavailable
+}
+
+func openFilesDialog(ctx context.Context, opts OpenDialogOptions) ([]string, error) {
+	if fn := desktopFrom(ctx).OpenFiles; fn != nil {
+		return fn(ctx, opts)
+	}
+	return nil, ErrDesktopUnavailable
 }
 
 func openDirectoryDialog(ctx context.Context, opts OpenDialogOptions) (string, error) {

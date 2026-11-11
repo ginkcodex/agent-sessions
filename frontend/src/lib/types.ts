@@ -651,10 +651,33 @@ export interface ChatState {
   session: SessionRef;
   agentInfo?: { name: string; title?: string; version?: string };
   configOptions: ChatConfigOption[];
+  /** What a prompt may carry besides text; absent from a server too old for attachments. */
+  promptCapabilities?: { image?: boolean; audio?: boolean; embeddedContext?: boolean };
   /** True while a prompt turn runs. */
   working: boolean;
   /** The permission requests waiting for an answer, oldest first. */
   permissions?: ChatPermission[];
+}
+
+/** A file prepared to send with a chat message (Go chatattach.Attachment). */
+export interface ChatAttachment {
+  kind: 'image' | 'text';
+  name: string;
+  mimeType: string;
+  /** Bytes sent: the image's (after any scaling) or the text's. */
+  size: number;
+  /** An image's bytes in base64. */
+  data?: string;
+  /** A text file's content. */
+  text?: string;
+  /** The file's file:// URL; absent for a pasted image. */
+  uri?: string;
+}
+
+/** Picked or dropped files: those attached, and the others with why not. */
+export interface ChatAttachResult {
+  attachments: ChatAttachment[];
+  skipped: { name: string; reason: string }[];
 }
 
 /** An ACP content block; chats only read text. */
