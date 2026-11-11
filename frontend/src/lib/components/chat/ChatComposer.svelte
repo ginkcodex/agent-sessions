@@ -42,6 +42,9 @@
         : `Message ${agentName}…`,
   );
   let hintId = $derived(`chat-hint-${chat.key}`);
+  // WebKit (macOS and Linux) reads autocorrect on a textarea; Svelte's types
+  // list it for inputs only.
+  const SAFARI_NO_AUTOCORRECT: Record<string, string> = { autocorrect: 'off' };
 
   // The ring's share of the context in use, from the agent's usage_update.
   const RING = 2 * Math.PI * 7;
@@ -108,6 +111,10 @@
       {placeholder}
       aria-label="Message to {agentName}"
       aria-describedby={hintId}
+      spellcheck="false"
+      autocomplete="off"
+      {...SAFARI_NO_AUTOCORRECT}
+      autocapitalize="off"
       disabled={chat.phase === 'starting' || closed}
       onkeydown={onKeydown}
     ></textarea>

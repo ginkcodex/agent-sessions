@@ -198,6 +198,10 @@ test('the composer sends only when idle, stops a running turn and dismisses once
   assert.match(idle.html, /placeholder="Message Codex…"/);
   // The key hint is for screen readers, tied to the text box.
   assert.match(idle.html, /<textarea[^>]*aria-describedby="chat-hint-chat-1"/);
+  // Prompts are code and commands: no spellcheck, autofill, autocorrect or capitals.
+  for (const attr of ['spellcheck="false"', 'autocomplete="off"', 'autocorrect="off"', 'autocapitalize="off"']) {
+    assert.match(idle.html, new RegExp(`<textarea[^>]*\\s${attr}`), attr);
+  }
   assert.match(idle.html, /id="chat-hint-chat-1" class="sr-only[^"]*">Enter sends, Shift\+Enter starts a new line/);
   // Icon buttons carry a name and a tooltip.
   assert.match(idle.html, /<button[^>]*title="End the chat and stop Codex"[^>]*>.*?<svg[^]*?End chat<\/span><\/button>/);
