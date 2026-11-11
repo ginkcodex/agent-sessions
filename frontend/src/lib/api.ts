@@ -82,6 +82,10 @@ import type {
   AgentNotification,
   AgentID,
   AgentStatus,
+  ChatAgent,
+  ChatConfigOption,
+  ChatStartRequest,
+  ChatState,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
 import { createAppBinding } from './appBinding';
@@ -361,6 +365,15 @@ export interface WailsAppBinding {
   OpenResumeInTerminal(ref: SessionRef): Promise<void>;
   OpenNewSessionInTerminal(agent: AgentID, dir: string): Promise<void>;
   NewSessionAgents(): Promise<AgentStatus[]>;
+  /** Chat bindings; absent on older App bindings. */
+  ChatAgents?(): Promise<ChatAgent[]>;
+  ChatStart?(req: ChatStartRequest): Promise<ChatState>;
+  ChatPrompt?(chatId: string, text: string): Promise<void>;
+  ChatCancel?(chatId: string): Promise<void>;
+  ChatRespond?(chatId: string, permissionId: string, optionId: string): Promise<void>;
+  ChatSetOption?(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]>;
+  ChatClose?(chatId: string): Promise<void>;
+  ChatList?(): Promise<ChatState[]>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
   OpenBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
   PanelResume(ref: SessionRef, size: TerminalSize): Promise<TerminalTab>;

@@ -165,7 +165,9 @@ The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
   that ACP returns. The spike confirmed that this is the agent's own session
   ID for all three agents.
 - **Owners.** An owner registry keyed by `SessionRef` refuses a second chat for
-  a session. `internal/manage` asks it before deleting or moving a session.
+  a session. It is shared by the whole process, so a second window cannot
+  open the same session either. `internal/manage` asks it before deleting or
+  moving a session.
 - **Refresh.** When a turn ends, the manager asks for a targeted rescan of that
   agent's source, so the saved records arrive without waiting for the
   watcher's maximum delay.
@@ -177,7 +179,8 @@ The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
 - **Local bindings:** `ChatAgents`, `ChatStart`, `ChatPrompt`, `ChatCancel`,
   `ChatRespond` and `ChatClose`, routed between local and remote the way the
   terminal launches are (`internal/app/launch.go`). Quit and window close call
-  `CloseAll`.
+  `CloseAll`, and so does connecting the window to a host, whose view would
+  no longer show the local chats' events.
 - **Remote:**
   - `Capabilities.ACPChat` and the `chat*` methods on `agent-sessions-cli
     serve`.

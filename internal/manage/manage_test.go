@@ -1277,3 +1277,41 @@ func TestPreview_DaemonsExcludedFromProcScan(t *testing.T) {
 		t.Fatalf("interactive codex must block, got %+v", p2.Items)
 	}
 }
+
+// A session a chat drives, or one of its descendants, is never moved or
+// deleted, and a preview made before the chat started cannot delete it.
+func TestOwnedSessionsBlocked(t *testing.T) {
+	roots := testRoots(t)
+	id, catalog := claudeFixtures(t, roots.Claude)
+	owned := map[string]bool{}
+	m, ft := newTestManager(t, roots, WithOwned(func(ref model.SessionRef) bool { return owned[ref.Key()] }))
+	enableAll(t, m)
+	ctx := context.Background()
+	refs := []model.SessionRef{{Agent: model.AgentClaude, ID: id}}
+
+	early, err := m.Preview(ctx, refs, catalog)
+	if err != nil || early.Items[0].Blocked != "" {
+		t.Fatalf("unowned preview: %+v, %v", early, err)
+	}
+	for _, ref := range []model.SessionRef{catalog[0].Ref, catalog[1].Ref} {
+		owned = map[string]bool{ref.Key(): true}
+		p, err := m.Preview(ctx, refs, catalog)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b := p.Items[0].Blocked; !strings.Contains(b, "open in a chat") {
+			t.Errorf("%s owned: blocked = %q", ref.ID, b)
+		}
+		if _, err := m.Delete(ctx, refs, catalog, early.Token); !errors.Is(err, ErrPreviewStale) {
+			t.Errorf("%s owned: delete with an earlier preview = %v", ref.ID, err)
+		}
+	}
+	if len(ft.calls) != 0 {
+		t.Fatalf("trashed %v", ft.calls)
+	}
+
+	owned = nil
+	if rep, err := m.Delete(ctx, refs, catalog, early.Token); err != nil || rep.Deleted != 1 {
+		t.Fatalf("delete once released: %+v, %v", rep, err)
+	}
+}

@@ -64,6 +64,7 @@ type Manager struct {
 	trash          Trash
 	proc           ProcFS
 	live           LiveFunc
+	owned          OwnedFunc
 	claudeRunning  RunningFunc
 	now            NowFunc
 	exec           ExecFunc
@@ -77,6 +78,9 @@ type Option func(*Manager)
 
 func WithProcFS(p ProcFS) Option      { return func(m *Manager) { m.proc = p } }
 func WithLiveFunc(fn LiveFunc) Option { return func(m *Manager) { m.live = fn } }
+
+// WithOwned sets how to tell whether a chat in the app drives a session.
+func WithOwned(fn OwnedFunc) Option { return func(m *Manager) { m.owned = fn } }
 
 // RunningFunc reports whether any session of an agent is running.
 type RunningFunc func(ctx context.Context) (bool, error)

@@ -30,8 +30,8 @@ all. This task adds:
 - `frontend/src/lib/components/chat/ChatOptions.svelte`,
   `ChatComposer.svelte`
 - `frontend/src/lib/stores/chats.svelte.ts`, `frontend/src/lib/api.ts`
-- `internal/app` binding `ChatSetOption`, and the remote route if ACP-13 is
-  done
+- `internal/app` binding `ChatSetOption` (added locally in ACP-07), and the
+  remote route if ACP-13 is done
 
 ## Acceptance criteria
 

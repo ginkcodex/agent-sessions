@@ -593,6 +593,61 @@ export interface AgentStatus {
   hint?: string;
 }
 
+/** An agent's ACP adapter, as a chat on this computer would start it. */
+export interface ChatAgent {
+  agent: AgentID;
+  name: string;
+  available: boolean;
+  /** The adapter that would run. */
+  path?: string;
+  /** True when the path comes from config.toml's [chat.adapters]. */
+  override?: boolean;
+  /** The command that installs the adapter. */
+  install: string;
+  /** Why the adapter is not available. */
+  problem?: string;
+}
+
+export interface ChatStartRequest {
+  agent: AgentID;
+  dir: string;
+  /** The session to continue; a new session when absent. */
+  resume?: SessionRef;
+}
+
+/** A value of a select option, or a named group of values. */
+export interface ChatConfigSelectOption {
+  value?: string;
+  name: string;
+  description?: string;
+  group?: string;
+  options?: ChatConfigSelectOption[];
+}
+
+/** A session option the agent offers (mode, model, effort). */
+export interface ChatConfigOption {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  type: string;
+  currentValue?: unknown;
+  options?: ChatConfigSelectOption[];
+}
+
+/** An open chat. */
+export interface ChatState {
+  chatId: string;
+  agent: AgentID;
+  dir: string;
+  /** The session the chat drives. */
+  session: SessionRef;
+  agentInfo?: { name: string; title?: string; version?: string };
+  configOptions: ChatConfigOption[];
+  /** True while a prompt turn runs. */
+  working: boolean;
+}
+
 export interface TerminalDataEvent {
   id: string;
   /** Output, base64-encoded. */

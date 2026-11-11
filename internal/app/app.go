@@ -340,7 +340,10 @@ func (a *App) onShutdown() {
 
 // close gracefully terminates background scans, watchers, indexers, and the database.
 func (a *App) close() error {
-	// Terminals end first: an SSH tab shares the connection's ssh master.
+	// Chats end first, so no agent outlives its window and every pending
+	// permission request is answered cancelled.
+	a.closeChats()
+	// Terminals end next: an SSH tab shares the connection's ssh master.
 	if a.terminals != nil {
 		a.terminals.CloseAll()
 	}

@@ -166,6 +166,54 @@ type ChatManagerOptions struct {
 	ClientInfo acp.Implementation
 	// Grace is each shutdown step's wait (acp.ClientOptions.Grace).
 	Grace time.Duration
+
+	// owners replaces the process-wide registry in tests.
+	owners *chatOwners
+}
+
+// chatOwners maps sessions to the chats that drive them. One registry
+// serves the whole process, so two windows, or two connections to a
+// server, cannot open chats on the same session.
+type chatOwners struct {
+	mu sync.Mutex
+	m  map[string]string // SessionRef.Key() → chat ID
+}
+
+var processChatOwners = &chatOwners{m: map[string]string{}}
+
+// claim makes chatID the owner of ref unless another chat owns it.
+func (o *chatOwners) claim(ref model.SessionRef, chatID string) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if owner, ok := o.m[ref.Key()]; ok && owner != chatID {
+		return &SessionOwnedError{Ref: ref, ChatID: owner}
+	}
+	o.m[ref.Key()] = chatID
+	return nil
+}
+
+func (o *chatOwners) owner(ref model.SessionRef) (string, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	id, ok := o.m[ref.Key()]
+	return id, ok
+}
+
+// release drops every session chatID owns.
+func (o *chatOwners) release(chatID string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for key, owner := range o.m {
+		if owner == chatID {
+			delete(o.m, key)
+		}
+	}
+}
+
+func (o *chatOwners) len() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return len(o.m)
 }
 
 // ChatManager runs chats: one ACP agent process per chat, each driving one
@@ -176,14 +224,18 @@ type ChatManager struct {
 	emitterMu sync.RWMutex
 	emitter   Emitter
 
-	mu     sync.Mutex
-	chats  map[string]*chat
-	owners map[string]string // SessionRef.Key() → chat ID
+	owners *chatOwners
+
+	mu    sync.Mutex
+	chats map[string]*chat
 }
 
 // NewChatManager returns a manager without chats.
 func NewChatManager(opts ChatManagerOptions) *ChatManager {
-	m := &ChatManager{opts: opts, chats: map[string]*chat{}, owners: map[string]string{}}
+	m := &ChatManager{opts: opts, chats: map[string]*chat{}, owners: opts.owners}
+	if m.owners == nil {
+		m.owners = processChatOwners
+	}
 	m.SetEmitter(opts.Emitter)
 	return m
 }
@@ -216,15 +268,13 @@ func (m *ChatManager) Agents(ctx context.Context) ([]ChatAgent, error) {
 	return m.opts.Agents(ctx)
 }
 
-// Owned returns the chat that drives ref.
+// Owned returns the chat that drives ref, in this manager or another one
+// in the process.
 func (m *ChatManager) Owned(ref model.SessionRef) (chatID string, ok bool) {
 	if m == nil {
 		return "", false
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	chatID, ok = m.owners[ref.Key()]
-	return chatID, ok
+	return m.owners.owner(ref)
 }
 
 // Chats returns the open chats.
@@ -261,16 +311,14 @@ func (m *ChatManager) Start(ctx context.Context, req ChatStartRequest) (ChatStat
 		perms: map[string]*pendingPermission{}, done: make(chan struct{}),
 	}
 	ch.ctx, ch.cancel = context.WithCancel(context.Background())
-	m.mu.Lock()
 	if req.Resume != nil {
-		if owner, ok := m.owners[req.Resume.Key()]; ok {
-			m.mu.Unlock()
+		if err := m.owners.claim(*req.Resume, ch.id); err != nil {
 			ch.cancel()
-			return ChatState{}, &SessionOwnedError{Ref: *req.Resume, ChatID: owner}
+			return ChatState{}, err
 		}
-		m.owners[req.Resume.Key()] = ch.id
 		ch.ref = *req.Resume
 	}
+	m.mu.Lock()
 	m.chats[ch.id] = ch
 	m.mu.Unlock()
 
@@ -333,14 +381,10 @@ func (m *ChatManager) start(ctx context.Context, ch *chat, req ChatStartRequest)
 	}
 
 	ref := model.SessionRef{Agent: req.Agent, ID: setup.SessionID}
-	m.mu.Lock()
-	if owner, ok := m.owners[ref.Key()]; ok && owner != ch.id {
-		m.mu.Unlock()
+	if err := m.owners.claim(ref, ch.id); err != nil {
 		_ = client.Close()
-		return ChatState{}, &SessionOwnedError{Ref: ref, ChatID: owner}
+		return ChatState{}, err
 	}
-	m.owners[ref.Key()] = ch.id
-	m.mu.Unlock()
 
 	ch.mu.Lock()
 	ch.ref = ref
@@ -373,15 +417,11 @@ func (m *ChatManager) get(chatID string) (*chat, error) {
 // release forgets the chat and the sessions it owned.
 func (m *ChatManager) release(ch *chat) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.chats[ch.id] == ch {
 		delete(m.chats, ch.id)
 	}
-	for key, owner := range m.owners {
-		if owner == ch.id {
-			delete(m.owners, key)
-		}
-	}
+	m.mu.Unlock()
+	m.owners.release(ch.id)
 }
 
 // Prompt sends text as a new turn and returns once the turn has started.

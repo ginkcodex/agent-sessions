@@ -42,6 +42,7 @@ type Engine struct {
 	codeDiagnostics *diagnosticsOwner
 	managedTools    *managedToolsOwner
 	chats           *ChatManager
+	chatLaunch      func(context.Context, model.AgentID, string) (acp.Command, error)
 	// logs keeps failed code check logs (codeCheckLogs); logsMu may be taken
 	// under mu, never the reverse.
 	logs   *checkLogs
@@ -141,6 +142,14 @@ func WithManage(mgr *manage.Manager) Option {
 	}
 }
 
+// WithChatLaunch replaces how chats find the agent's ACP adapter (useful in
+// tests).
+func WithChatLaunch(fn func(context.Context, model.AgentID, string) (acp.Command, error)) Option {
+	return func(e *Engine) {
+		e.chatLaunch = fn
+	}
+}
+
 // NewEngine creates an Engine instance with default options.
 func NewEngine(opts ...Option) *Engine {
 	e := &Engine{
@@ -151,8 +160,12 @@ func NewEngine(opts ...Option) *Engine {
 	for _, opt := range opts {
 		opt(e)
 	}
+	launch := e.chatLaunch
+	if launch == nil {
+		launch = e.ChatLaunch
+	}
 	e.chats = NewChatManager(ChatManagerOptions{
-		Launch:     e.ChatLaunch,
+		Launch:     launch,
 		Agents:     e.ChatAgents,
 		Refresh:    e.refreshAgent,
 		Emitter:    e.emitter,
@@ -635,7 +648,11 @@ func (e *Engine) ensureManage() (*manage.Manager, error) {
 	}
 	cfgPath := filepath.Join(roots.Config, "config.toml")
 
-	opts := []manage.Option{}
+	// A chat in any window owns its session; the registry is process-wide.
+	opts := []manage.Option{manage.WithOwned(func(ref model.SessionRef) bool {
+		_, owned := e.chats.Owned(ref)
+		return owned
+	})}
 	if e.svc != nil {
 		if p, ok := e.svc.Providers().Get(model.AgentClaude); ok {
 			if ld, ok := p.(provider.LiveDetector); ok {

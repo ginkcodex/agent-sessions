@@ -129,6 +129,11 @@ func (a *App) ensureConn() {
 	if a.conn == nil {
 		a.conn = newConnection(a.desktopEvents)
 	}
+	a.conn.mu.Lock()
+	// Chats run on this computer, and the window stops showing their events
+	// once it shows a host, so connecting ends them first.
+	a.conn.leaveLocal = a.closeChats
+	a.conn.mu.Unlock()
 	if a.conn.forwards == nil {
 		path, err := a.localConfigPath()
 		p := newPortForwards(filepath.Join(filepath.Dir(path), "port-forwards.json"))

@@ -84,7 +84,11 @@ func newManageTestApp(t *testing.T, live manage.LiveFunc) manageFixture {
 	catalog.Apply(provider.ScanResult{Changed: fake.Sessions})
 
 	trash := &fakeTrash{fail: make(map[string]error)}
-	opts := []manage.Option{manage.WithTrash(trash), manage.WithProcFS(noProcs{})}
+	// As the engine's own manager does, refuse sessions a chat owns.
+	opts := []manage.Option{manage.WithTrash(trash), manage.WithProcFS(noProcs{}), manage.WithOwned(func(ref model.SessionRef) bool {
+		_, owned := a.localEngine.Chats().Owned(ref)
+		return owned
+	})}
 	if live != nil {
 		opts = append(opts, manage.WithLiveFunc(live))
 	}

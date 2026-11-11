@@ -98,6 +98,10 @@ type connSnap struct {
 // remote session is connected; events from a stale generation are dropped.
 type connection struct {
 	mu sync.Mutex
+	// leaveLocal runs when a connect is about to replace what the window
+	// shows; it ends the window's local chats, whose events would no longer
+	// reach it. Called without mu held.
+	leaveLocal func()
 	// dialMu lets a cancelled attempt finish cleanup before its replacement dials.
 	dialMu  sync.Mutex
 	state   ConnectionState
@@ -344,6 +348,12 @@ func (c *connection) Connect(ctx context.Context, alias string) error {
 			inUse.focusErr = claims.focusOwner(alias)
 			return err
 		}
+	}
+	c.mu.Lock()
+	leave := c.leaveLocal
+	c.mu.Unlock()
+	if leave != nil {
+		leave()
 	}
 	c.mu.Lock()
 	if c.stopped {

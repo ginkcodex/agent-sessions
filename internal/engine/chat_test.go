@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -12,7 +14,11 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/acp"
 	"github.com/ginkcode/agent-sessions/internal/acp/acptest"
+	"github.com/ginkcode/agent-sessions/internal/manage"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/provider/providertest"
 )
 
 // chatEvents records chat events in emission order.
@@ -129,6 +135,7 @@ func newChatFixture(t *testing.T, env ...string) *chatFixture {
 		},
 		Emitter: f.events,
 		Grace:   2 * time.Second,
+		owners:  &chatOwners{m: map[string]string{}},
 	})
 	t.Cleanup(f.m.CloseAll)
 	return f
@@ -546,7 +553,7 @@ func TestChatCloseAll(t *testing.T) {
 		}
 		f.events.checkSeq(t, id)
 	}
-	if len(f.m.Chats()) != 0 || len(f.m.owners) != 0 {
+	if len(f.m.Chats()) != 0 || f.m.owners.len() != 0 {
 		t.Fatalf("left: %+v, owners %v", f.m.Chats(), f.m.owners)
 	}
 
@@ -589,7 +596,7 @@ func TestChatCloseDuringStart(t *testing.T) {
 	if err := <-result; !errors.Is(err, ErrChatClosed) {
 		t.Fatalf("start = %v", err)
 	}
-	if len(f.m.Chats()) != 0 || len(f.m.owners) != 0 {
+	if len(f.m.Chats()) != 0 || f.m.owners.len() != 0 {
 		t.Fatal("the closed start left state behind")
 	}
 }
@@ -626,5 +633,65 @@ func TestChatManagerAgents(t *testing.T) {
 	got, err := NewEngine(WithService(svc)).Chats().Agents(chatCtx(t))
 	if err != nil || len(got) != 1 || got[0].Agent != model.AgentClaude || got[0].Available {
 		t.Fatalf("agents = %+v, %v", got, err)
+	}
+}
+
+// The engine's own manage manager refuses sessions any chat in the process
+// owns, and allows them again once the chat ends.
+func TestEngineManageRefusesOwnedSession(t *testing.T) {
+	root := t.TempDir()
+	claudeRoot := filepath.Join(root, "claude")
+	ref := model.SessionRef{Agent: model.AgentClaude, ID: "0123abcd-0000-4000-8000-0000000000c7"}
+	source := filepath.Join(claudeRoot, "projects", "p", ref.ID+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(nil, provider.Set{providertest.NewFake(model.AgentClaude, "Claude")})
+	svc.Catalog().Apply(provider.ScanResult{Changed: []model.SessionMeta{{Ref: ref, SourcePath: source, UpdatedAt: time.Now().Add(-48 * time.Hour)}}})
+	events := &chatEvents{changed: make(chan struct{}, 1)}
+	e := NewEngine(
+		WithService(svc),
+		WithCacheEnabled(false),
+		WithRoots(paths.Roots{Config: filepath.Join(root, "config"), Claude: claudeRoot}),
+		WithEmitter(events),
+		WithChatLaunch(func(_ context.Context, _ model.AgentID, dir string) (acp.Command, error) {
+			return acptest.Command(dir), nil
+		}),
+	)
+	t.Cleanup(func() { _ = e.Close() })
+	mgr, err := e.ensureManage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.SetConfig(manage.Config{Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	blocked := func() string {
+		t.Helper()
+		p, err := e.PreviewDelete(context.Background(), []model.SessionRef{ref})
+		if err != nil || len(p.Items) != 1 {
+			t.Fatalf("preview: %+v, %v", p, err)
+		}
+		return p.Items[0].Blocked
+	}
+
+	st, err := e.Chats().Start(chatCtx(t), ChatStartRequest{Agent: model.AgentClaude, Dir: t.TempDir(), Resume: &ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := blocked(); !strings.Contains(b, "open in a chat") {
+		t.Fatalf("owned session: blocked = %q", b)
+	}
+	if err := e.Chats().Close(st.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	events.waitExit(t, st.ChatID)
+	// The fake provider has no live detector, so the session may stay
+	// blocked for that; only the chat's block must be gone.
+	if b := blocked(); strings.Contains(b, "chat") {
+		t.Fatalf("released session: blocked = %q", b)
 	}
 }
