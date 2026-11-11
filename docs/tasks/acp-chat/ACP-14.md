@@ -2,7 +2,7 @@
 
 - **Status:** ⬜ Not started
 - **Estimate:** 4 h
-- **Depends on:** ACP-11, ACP-13
+- **Depends on:** ACP-11, ACP-13, ACP-15
 - **Plan:** [acp-chat.md](../../plan/acp-chat.md)
 
 ## Scope

@@ -7,18 +7,19 @@
 
 ## Scope
 
-Using what ACP-02 found for each agent:
+Using what [the spike](../../plan/acp-chat-spike.md) found for each agent:
 
-- Match saved records to live items by `messageId` or tool call ID where they
-  are saved, and otherwise by finished turn. The live tail never duplicates a
-  saved message.
+- Match message and thought items by `messageId`, removing OpenCode's
+  `:reasoning:N` suffix. Match tool items by tool call ID for Claude and
+  OpenCode. For Codex (live `exec-…` IDs, saved `call_…`), drop a finished
+  turn's tool items once its last `messageId` is saved. The live tail never
+  duplicates a saved message.
 - After a turn ends, ask for a targeted refresh and drop the covered items
   once the saved transcript arrives.
 - Continue an existing session in chat through `session/load` or
   `session/resume` where supported. A replay through `session/load` does not
-  duplicate what the transcript already shows.
-- For an agent whose ACP sessions are not saved where we read them, keep an
-  in-memory log for the chat's lifetime and say so in the UI.
+  duplicate what the transcript already shows. The spike found both work for
+  all three agents, so no in-memory log is needed.
 
 ## Likely files
 

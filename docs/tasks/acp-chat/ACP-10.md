@@ -9,13 +9,20 @@
 
 - `PermissionCard.svelte`: the tool call title and kind, a diff or command
   preview when present, and one button per option, labelled with its kind.
-  There is no default option and Enter does not approve.
+  There is no default option and Enter does not approve. `allow_always`
+  options say that the choice lasts beyond this chat (Codex's
+  `accept_execpolicy_amendment` writes an exec-policy rule).
+- After an answer, the chat follows the turn's `stopReason`: a reject ends
+  the turn `cancelled` for Codex and OpenCode, and Claude goes on.
 - Fail-closed paths: closing the chat, cancelling, the agent exiting, a host
   switch and quitting all clear pending cards. The backend answers them
   `cancelled`.
 - `AdapterMissing.svelte`: the install command to copy, and the host it
   applies to.
 - An exit or error banner with the stderr tail, and Restart.
+- An auth error shows the agent's `authMethods` description (for example
+  "Run `opencode auth login`") with an action that opens a terminal tab in
+  the chat's directory.
 
 ## Likely files
 

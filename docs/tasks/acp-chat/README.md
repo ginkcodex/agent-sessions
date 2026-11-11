@@ -1,12 +1,12 @@
 # ACP chat mode — tasks
 
 - **Plan:** [acp-chat.md](../../plan/acp-chat.md)
-- **Progress:** 1/14 done
+- **Progress:** 2/15 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
 | [ACP-01](ACP-01.md) | ✅ Done | Plan, task group, SPEC and M8 non-goal reversal | 1.5 h | — |
-| [ACP-02](ACP-02.md) | ⬜ Not started | Spike with the real adapters: capabilities, storage, IDs, load and resume | 4 h | ACP-01 |
+| [ACP-02](ACP-02.md) | ✅ Done | Spike with the real adapters: capabilities, storage, IDs, load and resume | 4 h | ACP-01 |
 | [ACP-03](ACP-03.md) | ⬜ Not started | `internal/acp` protocol types and two-way JSON-RPC connection | 4 h | ACP-02 |
 | [ACP-04](ACP-04.md) | ⬜ Not started | Agent process, tree kill, client lifecycle, fake agent | 4 h | ACP-03 |
 | [ACP-05](ACP-05.md) | ⬜ Not started | Adapter commands, detection and overrides per provider | 3 h | ACP-04 |
@@ -18,4 +18,5 @@
 | [ACP-11](ACP-11.md) | ⬜ Not started | Reconcile with saved transcripts; continue existing sessions | 4 h | ACP-10 |
 | [ACP-12](ACP-12.md) | ⬜ Not started | Remote chat over RPC with connection ownership | 4 h | ACP-06 |
 | [ACP-13](ACP-13.md) | ⬜ Not started | Remote routing in the app and frontend | 3 h | ACP-12, ACP-09 |
-| [ACP-14](ACP-14.md) | ⬜ Not started | QA with real agents on Linux, WSL, SSH and Windows | 4 h | ACP-11, ACP-13 |
+| [ACP-14](ACP-14.md) | ⬜ Not started | QA with real agents on Linux, WSL, SSH and Windows | 4 h | ACP-11, ACP-13, ACP-15 |
+| [ACP-15](ACP-15.md) | ⬜ Not started | Session option pickers: mode, model, effort | 3 h | ACP-09 |

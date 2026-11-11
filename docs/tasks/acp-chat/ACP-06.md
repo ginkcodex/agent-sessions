@@ -9,9 +9,14 @@
 
 `internal/engine/chat.go`, `ChatManager`:
 
-- `Start` (new, or continue an existing session where ACP-02 says the agent
-  supports it), `Prompt`, `Cancel`, `Respond`, `Close`, `CloseAll` and
-  `Agents`.
+- `Start` (new, or continue an existing session: `session/resume` when
+  advertised, otherwise `session/load` with the replay discarded), `Prompt`,
+  `Cancel`, `Respond`, `SetOption`, `Close`, `CloseAll` and `Agents`.
+- Keep each chat's `configOptions` current from `config_option_update` and
+  `current_mode_update`, and include them in the chat state.
+- A prompt that fails with an auth error (`-32000` "Authentication
+  required") is reported as a typed error carrying the agent's
+  `authMethods`.
 - Chat IDs, and an owner registry keyed by `SessionRef`. A second chat for a
   session is refused with a typed error. `Owned(ref)` is used by manage.
 - Emit `chat:update` (with a `seq` per chat) and `chat:exit`. Every

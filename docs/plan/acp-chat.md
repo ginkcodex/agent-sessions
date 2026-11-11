@@ -62,10 +62,21 @@ the app to be the agent's client, which is what ACP defines.
   - Codex: `codex-acp` (npm `@agentclientprotocol/codex-acp`), which drives the
     Codex app server; `CODEX_PATH` points it at the installed `codex`.
   - OpenCode: `opencode acp`, built in.
-- **Not documented** (ACP-02 checks both before anything depends on them):
-  - whether sessions started over ACP are saved where our providers read them;
-  - whether `session/load` and `session/resume` accept sessions the normal CLI
-    created.
+- **Checked by the spike** ([acp-chat-spike.md](acp-chat-spike.md), adapter
+  versions there):
+  - All three save ACP sessions in the stores our providers read, under the
+    ACP `sessionId`. The normal CLI resumes them.
+  - `session/load` accepts sessions the normal CLI created, for all three.
+    `session/resume` works for Claude and Codex.
+  - Message IDs in chunks match the saved message IDs for all three. Tool
+    call IDs match for Claude and OpenCode, not for Codex.
+  - Every agent returns `configOptions` (mode, model, effort) and accepts
+    `session/set_config_option`. The defaults decide whether permission
+    requests appear at all, and OpenCode's default model can be one that is
+    not logged in.
+  - Codex sends command output only in `_meta.terminal_output_delta` and
+    `_meta.terminal_exit` of `tool_call_update`.
+  - The agent's request IDs start at `0`.
 
 ## Design
 
@@ -113,14 +124,19 @@ override the path.
 
 - **Operations:** `Start(ctx, ChatStartRequest{Agent, Dir, Resume *SessionRef})`,
   `Prompt`, `Cancel`, `Respond(chatID, permissionID, optionID | cancelled)`,
-  `Close`, `CloseAll` and `Agents` (adapter availability per agent).
+  `SetOption(chatID, configID, value)`, `Close`, `CloseAll` and `Agents`
+  (adapter availability per agent).
+- **Session options.** The `configOptions` that `session/new` or
+  `session/load` return are part of the chat state, and
+  `config_option_update` and `current_mode_update` keep them current.
+  `Start` can apply saved choices before the first prompt.
 - **Events** go through the existing `Emitter`:
   - `chat:update {chatId, seq, kind, ...}` for session updates, permission
     requests, turn start and end, and the session the chat is linked to;
   - `chat:exit {chatId, reason, stderrTail}`.
 - **Linking.** A chat is linked to the `SessionRef` named by the `sessionId`
-  that ACP returns. ACP-02 confirms per agent that this is the agent's own
-  session ID.
+  that ACP returns. The spike confirmed that this is the agent's own session
+  ID for all three agents.
 - **Owners.** An owner registry keyed by `SessionRef` refuses a second chat for
   a session. `internal/manage` asks it before deleting or moving a session.
 - **Refresh.** When a turn ends, the manager asks for a targeted rescan of that
@@ -153,10 +169,15 @@ override the path.
   - a pure live-tail reducer that turns updates into `Message`-shaped items;
   - a permission queue.
 - **`components/chat/`:**
-  - `ChatComposer`: send, and cancel while a turn runs;
+  - `ChatComposer`: send, and cancel while a turn runs, with pickers for the
+    session options (mode, model, effort). The last choice is remembered per
+    agent and host;
   - `LiveTail`: renders through `MessageBubble` and `transcript/parts`;
-  - `PermissionCard`: no default choice;
-  - `AdapterMissing`: the install command to copy, for the host it applies to.
+  - `PermissionCard`: no default choice. `allow_always` options are marked
+    as lasting (Codex's writes an exec-policy rule);
+  - `AdapterMissing`: the install command to copy, for the host it applies to;
+  - an auth error shows the agent's `authMethods` text (for example "Run
+    `opencode auth login`") with an action to open a terminal tab.
 - **Entry points:**
   - "Open in Chat" in the `Resume ▾` menu;
   - a Chat choice in New Session;
@@ -168,12 +189,23 @@ The chat shows the normal `TranscriptView` with a provisional live tail after
 the last saved message. When a refresh brings saved records for the turn, the
 tail drops what they cover:
 
-- matched by `messageId` or tool call ID where the agent saves them;
-- otherwise everything up to the end of the finished turn.
+- message and thought items by `messageId`, after removing OpenCode's
+  `:reasoning:N` suffix from thought IDs;
+- tool items by tool call ID for Claude and OpenCode;
+- for Codex, whose live tool IDs (`exec-…`) differ from the saved ones
+  (`call_…`), the tool items of a finished turn once the turn's last
+  `messageId` is saved.
 
-Saved logs stay the source of truth. If ACP-02 finds that an agent's ACP
-sessions are not saved where we read them, that agent's chat keeps an in-memory
-log for the chat's lifetime and the limitation is documented here.
+Saved logs stay the source of truth. Every agent saves its ACP sessions where
+we read them, so no in-memory log is needed.
+
+A reject does not end the turn the same way for every agent: Codex and
+OpenCode end it `cancelled`, while Claude goes on. The UI follows `stopReason`.
+
+Continuing an existing session works for all three agents. It uses
+`session/resume` when the agent advertises it (no replay, because the
+transcript already shows the history). Otherwise it uses `session/load` and
+discards the replay.
 
 ## Decisions
 
@@ -208,8 +240,13 @@ log for the chat's lifetime and the limitation is documented here.
   - ignore unknown update kinds;
   - record the adapter versions that were tested.
 - **Session identity and storage may differ from the CLI.** The Claude adapter
-  runs the Agent SDK, and Codex's runs the app server. The spike settles this
-  before UI work starts, and later tasks change with what it finds.
+  runs the Agent SDK, and Codex's runs the app server. The spike found the
+  same store and ID for all three at the tested versions. ACP-14 checks again
+  with the versions current at release.
+- **Session options change the safety picture.** A mode such as Claude's
+  `bypassPermissions` or Codex's `agent-full-access` means no permission
+  request ever reaches the card. The picker shows the current mode, and the
+  app never changes it unless the user picks one.
 - **Two writers on one session.** The lock covers what the app starts. An
   agent the user runs elsewhere is only visible to the live detector, and the
   chat warns when that detector reports a process for the session.
@@ -227,9 +264,9 @@ log for the chat's lifetime and the limitation is documented here.
   - tool calls and permission requests show;
   - allow and deny both work, and cancel stops a turn;
   - once saved, the transcript replaces the live tail without duplicates.
-- An existing session can continue in chat where the agent supports
-  `session/load` or `session/resume`. For an agent that does not, the action is
-  hidden and the reason is documented.
+- An existing session of each agent can continue in chat. An agent that
+  advertises neither `session/load` nor `session/resume` hides the action.
+- The chat shows and changes the session's mode and model.
 - Terminal and chat refuse to drive the same session at once. Delete and move
   refuse while a chat owns the session.
 - Closing a chat, quitting the app or losing a remote connection ends the
@@ -245,5 +282,8 @@ log for the chat's lifetime and the limitation is documented here.
   pass.
 - Real-agent QA is recorded in `acp-chat-qa.md`, with every check that did not
   run marked as such.
+
+Supporting notes: [acp-chat-spike.md](acp-chat-spike.md) (adapter spike,
+ACP-02).
 
 Tasks: [acp-chat](../tasks/acp-chat/README.md).

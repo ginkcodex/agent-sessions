@@ -14,7 +14,10 @@
   exited), the permission queue, and a pure live-tail reducer:
   - chunks append to the item with the same `messageId`; a new `messageId`
     starts a new item;
-  - `tool_call` and `tool_call_update` merge by `toolCallId`;
+  - `tool_call` and `tool_call_update` merge by `toolCallId`. `terminal`
+    content takes its output from `_meta.terminal_output_delta.data` and
+    its exit code from `_meta.terminal_exit.exit_code` (Codex);
+  - `diff` content (Claude's Write) renders as a diff;
   - `plan` replaces the plan item;
   - updates that arrive out of `seq` order are reordered, and duplicates are
     dropped;

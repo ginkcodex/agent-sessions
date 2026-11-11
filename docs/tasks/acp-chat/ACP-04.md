@@ -15,8 +15,9 @@
 - `acp.Client`:
   - `Initialize`, which sends protocol v1 and no `fs` or `terminal`
     capability;
-  - `NewSession`, `LoadSession`, `ResumeSession`, `Prompt` (blocks until the
-    stop reason) and `Cancel`;
+  - `NewSession`, `LoadSession`, `ResumeSession`, `SetConfigOption`,
+    `Prompt` (blocks until the stop reason) and `Cancel`;
+  - the `configOptions` and `authMethods` the agent returned;
   - an update callback, and a permission callback that returns `selected` or
     `cancelled`;
   - `Close`.

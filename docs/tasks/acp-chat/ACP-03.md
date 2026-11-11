@@ -10,11 +10,15 @@
 New package `internal/acp`:
 
 - Protocol v1 types: initialize, session new/load/resume/prompt/cancel,
-  `session/update` with the kinds in the plan, `session/request_permission`
-  and content blocks. Unknown update kinds keep their raw JSON.
+  `session/update` with the kinds in the plan, `session/request_permission`,
+  `session/set_config_option` and `configOptions`, and content blocks.
+  Unknown update kinds keep their raw JSON, and so does `_meta` (Codex puts
+  command output there; see [the spike](../../plan/acp-chat-spike.md)).
 - A two-way newline-delimited JSON-RPC connection over an `io.Reader` and
   `io.Writer`:
   - requests with IDs, notifications, and replies matched to callers;
+  - the agent's request IDs echoed exactly as received. They start at `0`
+    (seen in the spike), so `0` is a valid ID, never "missing";
   - a handler for the agent's requests (`fs/*` and `terminal/*` answer
     method-not-found);
   - a frame cap; a frame over it ends the connection with an error;
