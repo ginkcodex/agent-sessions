@@ -204,3 +204,16 @@ export function skippedToast(skipped: ChatAttachResult['skipped']): { title: str
 export function canSendPrompt(phase: string, sending: boolean, text: string, attachments: number): boolean {
   return phase === 'idle' && !sending && (text.trim() !== '' || attachments > 0);
 }
+
+/**
+ * What End chat asks while the agent works, or null when the chat may end
+ * at once: an idle chat loses nothing, its session is saved.
+ */
+export function endChatQuestion(phase: string, agentName: string): { title: string; message: string; choices: { value: string; label: string; danger?: boolean }[] } | null {
+  if (phase !== 'working') return null;
+  return {
+    title: 'End the chat?',
+    message: `${agentName} is still working. Ending the chat stops its turn.`,
+    choices: [{ value: 'end', label: 'End chat', danger: true }],
+  };
+}

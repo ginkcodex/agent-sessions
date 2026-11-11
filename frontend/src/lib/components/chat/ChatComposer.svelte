@@ -9,10 +9,11 @@
   import type { Chat } from '../../stores/chats.svelte';
   import type { ChatAttachment, ChatAttachResult } from '../../types';
   import { api } from '../../api';
-  import { addAttachments, canSendPrompt, skippedToast } from '../../chat';
+  import { addAttachments, canSendPrompt, endChatQuestion, skippedToast } from '../../chat';
   import AttachmentChips from './AttachmentChips.svelte';
   import { chats } from '../../stores/chats.svelte';
   import { toast } from '../../stores/toast.svelte';
+  import { filePrompt } from '../../stores/filePrompt.svelte';
   import { isStaleReply } from '../../link';
   import { errorText } from '../../manage';
   import { ALL_AGENTS } from '../../portable';
@@ -171,6 +172,13 @@
     }
   }
 
+  // Ending a chat whose agent works stops its turn: ask first.
+  async function endChat(): Promise<void> {
+    const question = endChatQuestion(chat.phase, agentName);
+    if (question && (await filePrompt.ask(question.title, question.message, question.choices)) !== 'end') return;
+    await act('end the chat', () => chats.close(chat.chatId));
+  }
+
   /** A file's bytes in base64. */
   async function fileBase64(f: Blob): Promise<string> {
     const bytes = new Uint8Array(await f.arrayBuffer());
@@ -229,7 +237,7 @@
           class="icon"
           title="End the chat and stop {agentName}"
           disabled={chat.phase === 'starting'}
-          onclick={() => void act('end the chat', () => chats.close(chat.chatId))}
+          onclick={() => void endChat()}
           ><Icon name="power" size={15} /><span class="sr-only">End chat</span></button
         >
         <span class="spacer"></span>

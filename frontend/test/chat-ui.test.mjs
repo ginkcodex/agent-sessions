@@ -5,6 +5,7 @@ import {
   addAttachments,
   canSendPrompt,
   chatAgentAvailable,
+  endChatQuestion,
   MAX_CHAT_ATTACHMENTS,
   permissionView,
   planMarkdown,
@@ -140,6 +141,7 @@ async function renderComposer(c, props = {}) {
     ["import AttachmentChips from './AttachmentChips.svelte';", 'const AttachmentChips = () => {};'],
     ["import { chats } from '../../stores/chats.svelte';", fixtureStore('chats')],
     ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
+    ["import { filePrompt } from '../../stores/filePrompt.svelte';", 'const filePrompt = {};'],
     ["'../../link'", lib('../../link.ts', COMPOSER_URL)],
     ["'../../manage'", lib('../../manage.ts', COMPOSER_URL)],
     ["'../../portable'", lib('../../portable.ts', COMPOSER_URL)],
@@ -664,4 +666,14 @@ test('attached files show as chips: a thumbnail or an icon, the name, and a remo
   assert.equal([...html.matchAll(/<img /g)].length, 1, 'a text file has no thumbnail');
   assert.match(html, /title="notes\.txt \(5 B\)"/);
   assert.deepEqual(composerButtons(html), ['Remove shot.png', 'Remove notes.txt']);
+});
+
+test('End chat asks while the agent works, and ends an idle chat at once', () => {
+  assert.equal(endChatQuestion('idle', 'Codex'), null);
+  assert.equal(endChatQuestion('starting', 'Codex'), null);
+  assert.deepEqual(endChatQuestion('working', 'Codex'), {
+    title: 'End the chat?',
+    message: 'Codex is still working. Ending the chat stops its turn.',
+    choices: [{ value: 'end', label: 'End chat', danger: true }],
+  });
 });
