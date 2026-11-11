@@ -422,7 +422,8 @@ func TestChatAgentsManagedAdapter(t *testing.T) {
 	// An override wins over the app's copy, even an unusable one.
 	installed.looked = nil
 	stubFind(t, nil)
-	if got := svc.ChatAgents(ChatAdapters{model.AgentClaude: "/nope/fake-acp"}, installed)[0]; got.Available || got.Managed || !strings.Contains(got.Problem, "does not exist") || len(installed.looked) != 0 {
+	missing := filepath.Join(t.TempDir(), "nope", "fake-acp")
+	if got := svc.ChatAgents(ChatAdapters{model.AgentClaude: missing}, installed)[0]; got.Available || got.Managed || !strings.Contains(got.Problem, "does not exist") || len(installed.looked) != 0 {
 		t.Fatalf("override wins: %+v, looked %q", got, installed.looked)
 	}
 

@@ -110,6 +110,13 @@ func TestChatPickAttachments(t *testing.T) {
 	if err != nil || res.Attachments == nil || res.Skipped == nil || len(res.Attachments)+len(res.Skipped) != 0 {
 		t.Fatalf("cancelled: %+v, %v", res, err)
 	}
+
+	// The agent runs in dir; Windows cannot remove a process's working
+	// directory, so it must exit before the test's cleanup.
+	if err := a.ChatClose(st.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	log.waitExit(t, st.ChatID)
 }
 
 func TestChatAttachFilesStopsAtTheLimit(t *testing.T) {
