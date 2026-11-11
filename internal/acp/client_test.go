@@ -3,6 +3,7 @@ package acp_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -493,4 +494,200 @@ func TestAgentExitStopsDescendants(t *testing.T) {
 	}
 	waitExited(t, c)
 	assertStopped(t, pid)
+}
+
+func TestQuestionsNeedOnElicitation(t *testing.T) {
+	c, rec := start(t, acp.ClientOptions{})
+	stop, err := prompt(t, c, newSession(t, c), "question")
+	if err != nil || stop != acp.StopEndTurn {
+		t.Fatalf("prompt = %q, %v", stop, err)
+	}
+	if texts := rec.texts(t); len(texts) != 1 || texts[0] != "no elicitation" {
+		t.Fatalf("chunks = %q", texts)
+	}
+}
+
+func TestQuestionAnswers(t *testing.T) {
+	accept := func(content map[string]any) acp.CreateElicitationResponse {
+		return acp.CreateElicitationResponse{Action: acp.ElicitationAccept, Content: content}
+	}
+	for _, tc := range []struct {
+		name   string
+		form   string
+		answer acp.CreateElicitationResponse
+		stop   string
+		text   string
+		asked  bool
+	}{
+		{
+			"claude accept", "claude", accept(map[string]any{"question_0": "New module", "question_1": []string{"Unit tests"}, "question_1_custom": ""}),
+			acp.StopEndTurn, `accept {"question_0":"New module","question_1":["Unit tests"]}`, true,
+		},
+		{
+			"claude own answer", "claude", accept(map[string]any{"question_0_custom": "Rewrite it"}),
+			acp.StopEndTurn, `accept {"question_0_custom":"Rewrite it"}`, true,
+		},
+		{
+			"decline", "claude",
+			acp.CreateElicitationResponse{Action: acp.ElicitationDecline, Content: map[string]any{"question_0": "New module"}},
+			acp.StopEndTurn, "decline", true,
+		},
+		{"cancel", "claude", acp.ElicitationCancelled(), acp.StopCancelled, "cancel", true},
+		{"unknown action", "claude", acp.CreateElicitationResponse{Action: "maybe"}, acp.StopCancelled, "cancel", true},
+		// An answer that does not fit the form is never sent.
+		{"not an option", "claude", accept(map[string]any{"question_0": "Something else"}), acp.StopCancelled, "cancel", true},
+		{"unknown field", "claude", accept(map[string]any{"question_9": "x"}), acp.StopCancelled, "cancel", true},
+		{
+			"codex other with note", "codex", accept(map[string]any{"confirm": "Other", "confirm_note": "Only the tests"}),
+			acp.StopEndTurn, `accept {"confirm":"Other","confirm_note":"Only the tests"}`, true,
+		},
+		{"codex missing required", "codex", accept(map[string]any{"confirm": "Yes"}), acp.StopCancelled, "cancel", true},
+		{
+			"opencode accept", "opencode", accept(map[string]any{"tests": []string{"unit", "lint"}, "retries": 2, "verbose": true}),
+			acp.StopEndTurn, `accept {"retries":2,"tests":["unit","lint"],"verbose":true}`, true,
+		},
+		{"opencode too many", "opencode", accept(map[string]any{"tests": []string{"unit", "lint", "e2e"}, "retries": 2}), acp.StopCancelled, "cancel", true},
+		{"opencode not whole", "opencode", accept(map[string]any{"tests": []string{"unit"}, "retries": 1.5}), acp.StopCancelled, "cancel", true},
+		{"url mode refused", "url", acp.ElicitationCancelled(), acp.StopEndTurn, fmt.Sprintf("error %d", acp.CodeInvalidParams), false},
+		{"unsupported format refused", "email", acp.ElicitationCancelled(), acp.StopEndTurn, fmt.Sprintf("error %d", acp.CodeInvalidParams), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var asked []acp.CreateElicitationRequest
+			c, rec := start(t, acp.ClientOptions{OnElicitation: func(_ context.Context, req acp.CreateElicitationRequest) acp.CreateElicitationResponse {
+				asked = append(asked, req)
+				return tc.answer
+			}})
+			id := newSession(t, c)
+			stop, err := prompt(t, c, id, "question "+tc.form)
+			if err != nil || stop != tc.stop {
+				t.Fatalf("prompt = %q, %v", stop, err)
+			}
+			if texts := rec.texts(t); len(texts) != 1 || texts[0] != tc.text {
+				t.Fatalf("chunks = %q, want %q", texts, tc.text)
+			}
+			if !tc.asked {
+				if len(asked) != 0 {
+					t.Fatalf("asked = %+v", asked)
+				}
+				return
+			}
+			if len(asked) != 1 || asked[0].SessionID != id || asked[0].Mode != "form" || asked[0].RequestedSchema == nil {
+				t.Fatalf("asked = %+v", asked)
+			}
+		})
+	}
+}
+
+// The form reaches the callback with its fields in the order sent.
+func TestQuestionFieldOrder(t *testing.T) {
+	var got *acp.CreateElicitationRequest
+	c, _ := start(t, acp.ClientOptions{OnElicitation: func(_ context.Context, req acp.CreateElicitationRequest) acp.CreateElicitationResponse {
+		got = &req
+		return acp.CreateElicitationResponse{Action: acp.ElicitationDecline}
+	}})
+	if _, err := prompt(t, c, newSession(t, c), "question claude"); err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.ToolCallID != "toolu_ask" || got.Message != "Please answer the following questions." {
+		t.Fatalf("request = %+v", got)
+	}
+	var keys []string
+	for _, f := range got.RequestedSchema.Properties {
+		keys = append(keys, f.Key)
+	}
+	if want := "question_0 question_0_custom question_1 question_1_custom"; strings.Join(keys, " ") != want {
+		t.Fatalf("keys = %q, want %q", keys, want)
+	}
+	if p, _ := got.RequestedSchema.Field("question_0"); len(p.OneOf) != 2 || p.OneOf[0].Description != "Least new code" {
+		t.Fatalf("question_0 = %+v", p)
+	}
+}
+
+// Cancel answers a pending question cancel, even when the handler ignores
+// its context.
+func TestCancelAnswersPendingQuestion(t *testing.T) {
+	waiting := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	c, rec := start(t, acp.ClientOptions{OnElicitation: func(context.Context, acp.CreateElicitationRequest) acp.CreateElicitationResponse {
+		close(waiting)
+		<-release // a user who never answers
+		return acp.CreateElicitationResponse{Action: acp.ElicitationAccept, Content: map[string]any{"question_0": "New module"}}
+	}})
+	id := newSession(t, c)
+	result := make(chan string, 1)
+	go func() {
+		stop, err := prompt(t, c, id, "question")
+		if err != nil {
+			t.Error(err)
+		}
+		result <- stop
+	}()
+	<-waiting
+	if err := c.Cancel(id); err != nil {
+		t.Fatal(err)
+	}
+	if stop := <-result; stop != acp.StopCancelled {
+		t.Fatalf("stop = %q", stop)
+	}
+	if texts := rec.texts(t); len(texts) != 1 || texts[0] != "cancel" {
+		t.Fatalf("chunks = %q", texts)
+	}
+}
+
+func TestCloseAnswersPendingQuestion(t *testing.T) {
+	waiting := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	c, _ := start(t, acp.ClientOptions{OnElicitation: func(context.Context, acp.CreateElicitationRequest) acp.CreateElicitationResponse {
+		close(waiting)
+		<-release
+		return acp.ElicitationCancelled()
+	}})
+	id := newSession(t, c)
+	result := make(chan error, 1)
+	go func() {
+		_, err := prompt(t, c, id, "question")
+		result <- err
+	}()
+	<-waiting
+	closed := make(chan struct{})
+	go func() {
+		_ = c.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close blocked on a pending question")
+	}
+	if err := <-result; err == nil {
+		t.Fatal("prompt succeeded after close")
+	}
+}
+
+// An agent that withdraws its question ends the callback's context, and the
+// turn goes on.
+func TestWithdrawnQuestion(t *testing.T) {
+	ended := make(chan error, 1)
+	c, rec := start(t, acp.ClientOptions{OnElicitation: func(ctx context.Context, _ acp.CreateElicitationRequest) acp.CreateElicitationResponse {
+		<-ctx.Done()
+		ended <- ctx.Err()
+		return acp.CreateElicitationResponse{Action: acp.ElicitationAccept, Content: map[string]any{"question_0": "New module"}}
+	}})
+	stop, err := prompt(t, c, newSession(t, c), "withdraw 100")
+	if err != nil || stop != acp.StopEndTurn {
+		t.Fatalf("prompt = %q, %v", stop, err)
+	}
+	select {
+	case err := <-ended:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("ctx err = %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the withdrawn question's context did not end")
+	}
+	if texts := rec.texts(t); len(texts) != 1 || texts[0] != "withdrawn" {
+		t.Fatalf("chunks = %q", texts)
+	}
 }

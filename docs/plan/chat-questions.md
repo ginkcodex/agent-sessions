@@ -176,7 +176,7 @@ An invalid answer is refused to the frontend; nothing is sent to the agent.
   withdrawal; content built for each adapter's shape; no preselection.
 - `make lint`, `go test -race` for the changed packages, `npm test`,
   `npm run check`, `npm run build`.
-- A real question from each agent in a chat (CQ-06), with every check that did
+- A real question from each agent in a chat (CQ-07), with every check that did
   not run marked so.
 
 Tasks: [chat-questions](../tasks/chat-questions/README.md).

@@ -36,7 +36,10 @@ type ConnOptions struct {
 	// MaxFrameBytes caps an incoming message; 0 means DefaultMaxFrameBytes.
 	MaxFrameBytes int
 	// OnRequest answers the agent's requests, each in its own goroutine.
-	// When nil, every request gets method-not-found.
+	// Its context ends when the connection ends, or when the agent
+	// withdraws the request with $/cancel_request; the reply is then
+	// error CodeRequestCancelled, whatever OnRequest returns. When nil,
+	// every request gets method-not-found.
 	OnRequest RequestHandler
 	// OnNotification runs on the read loop, before any later message is
 	// read, so it sees updates in order and before the reply that follows
@@ -58,7 +61,9 @@ type Conn struct {
 	mu      sync.Mutex
 	nextID  int64
 	pending map[string]chan reply
-	err     error // set once, when the connection ends
+	// incoming are the agent's requests being answered, by ID.
+	incoming map[string]*incomingRequest
+	err      error // set once, when the connection ends
 
 	done      chan struct{}
 	closeOnce sync.Once
@@ -66,6 +71,11 @@ type Conn struct {
 	// for the user stop.
 	handlerCtx    context.Context
 	cancelHandler context.CancelFunc
+}
+
+type incomingRequest struct {
+	cancel    context.CancelFunc
+	withdrawn bool // under Conn.mu
 }
 
 type reply struct {
@@ -99,6 +109,7 @@ func NewConn(r io.Reader, w io.Writer, opts ConnOptions) *Conn {
 		w:             w,
 		opts:          opts,
 		pending:       map[string]chan reply{},
+		incoming:      map[string]*incomingRequest{},
 		done:          make(chan struct{}),
 		handlerCtx:    ctx,
 		cancelHandler: cancel,
@@ -148,6 +159,10 @@ func (c *Conn) finish(err error) {
 // Call sends a request and decodes its result into result, which may be nil.
 // It returns the agent's *Error, the connection's error, or ctx's error.
 func (c *Conn) Call(ctx context.Context, method string, params, result any) error {
+	return c.call(ctx, method, params, result, false)
+}
+
+func (c *Conn) call(ctx context.Context, method string, params, result any, withdraw bool) error {
 	raw, err := encode(params)
 	if err != nil {
 		return fmt.Errorf("acp: encode %s params: %w", method, err)
@@ -181,9 +196,22 @@ func (c *Conn) Call(ctx context.Context, method string, params, result any) erro
 		}
 		return nil
 	case <-ctx.Done():
-		c.forget(key)
+		if withdraw {
+			// The entry stays until the other side's reply, which is then
+			// expected and dropped; ch has room for it.
+			_ = c.Notify(MethodCancelRequest, CancelRequestNotification{RequestID: json.RawMessage(key)})
+		} else {
+			c.forget(key)
+		}
 		return ctx.Err()
 	}
+}
+
+// CallWithdrawing is Call, but when ctx ends first it also tells the other
+// side to drop the request with $/cancel_request, and its late reply is not
+// reported as a protocol error.
+func (c *Conn) CallWithdrawing(ctx context.Context, method string, params, result any) error {
+	return c.call(ctx, method, params, result, true)
 }
 
 func (c *Conn) forget(key string) {
@@ -265,7 +293,21 @@ func (c *Conn) dispatch(line []byte) {
 	}
 	switch {
 	case m.Method != "" && m.hasID():
-		go c.handleRequest(m)
+		// Registered before the next message is read, so a
+		// $/cancel_request that follows finds it.
+		ctx, cancel := context.WithCancel(c.handlerCtx)
+		in := &incomingRequest{cancel: cancel}
+		key := requestKey(m.ID)
+		c.mu.Lock()
+		if _, dup := c.incoming[key]; dup {
+			key = "" // a reused ID cannot be withdrawn
+		} else {
+			c.incoming[key] = in
+		}
+		c.mu.Unlock()
+		go c.handleRequest(ctx, key, in, m)
+	case m.Method == MethodCancelRequest:
+		c.withdraw(m.Params)
 	case m.Method != "":
 		if c.opts.OnNotification != nil {
 			c.opts.OnNotification(m.Method, m.Params)
@@ -296,7 +338,43 @@ func (c *Conn) handleReply(m message) {
 	ch <- reply{result: m.Result}
 }
 
-func (c *Conn) handleRequest(m message) {
+// withdraw cancels the request a $/cancel_request names.
+func (c *Conn) withdraw(params json.RawMessage) {
+	var p CancelRequestNotification
+	if err := json.Unmarshal(params, &p); err != nil || len(p.RequestID) == 0 {
+		c.protocolError(fmt.Errorf("acp: invalid %s: %.200q", MethodCancelRequest, params))
+		return
+	}
+	c.mu.Lock()
+	in := c.incoming[requestKey(p.RequestID)]
+	if in != nil {
+		in.withdrawn = true
+	}
+	c.mu.Unlock()
+	if in != nil {
+		in.cancel()
+	}
+}
+
+// requestKey is a request ID as compact JSON, so 7 and 7.0 or "a" written
+// with other spacing still match.
+func requestKey(id json.RawMessage) string {
+	var b bytes.Buffer
+	if err := json.Compact(&b, id); err != nil {
+		return string(id)
+	}
+	return b.String()
+}
+
+func (c *Conn) handleRequest(ctx context.Context, key string, in *incomingRequest, m message) {
+	defer func() {
+		in.cancel()
+		if key != "" {
+			c.mu.Lock()
+			delete(c.incoming, key)
+			c.mu.Unlock()
+		}
+	}()
 	var (
 		result any
 		err    error
@@ -304,7 +382,13 @@ func (c *Conn) handleRequest(m message) {
 	if c.opts.OnRequest == nil {
 		err = MethodNotFound(m.Method)
 	} else {
-		result, err = c.opts.OnRequest(c.handlerCtx, m.Method, m.Params)
+		result, err = c.opts.OnRequest(ctx, m.Method, m.Params)
+	}
+	c.mu.Lock()
+	withdrawn := in.withdrawn
+	c.mu.Unlock()
+	if withdrawn {
+		result, err = nil, &Error{Code: CodeRequestCancelled, Message: "request cancelled"}
 	}
 	out := message{ID: m.ID}
 	if err == nil {

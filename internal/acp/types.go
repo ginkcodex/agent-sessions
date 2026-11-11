@@ -69,9 +69,12 @@ type Implementation struct {
 	Version string `json:"version,omitempty"`
 }
 
-// ClientCapabilities is empty on purpose: without fs or terminal the agent
-// must not call the client's file or terminal methods.
-type ClientCapabilities struct{}
+// ClientCapabilities leaves out fs and terminal on purpose: without them the
+// agent must not call the client's file or terminal methods. Elicitation is
+// set only when the client shows forms.
+type ClientCapabilities struct {
+	Elicitation *ElicitationCapabilities `json:"elicitation,omitempty"`
+}
 
 type InitializeRequest struct {
 	ProtocolVersion    int                `json:"protocolVersion"`

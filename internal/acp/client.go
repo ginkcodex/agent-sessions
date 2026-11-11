@@ -43,6 +43,14 @@ type ClientOptions struct {
 	// and the request is then answered Cancelled whatever OnPermission
 	// does. When nil, every request is answered Cancelled.
 	OnPermission func(ctx context.Context, req RequestPermissionRequest) RequestPermissionResponse
+	// OnElicitation shows a form and returns the user's answer. Setting it
+	// advertises form elicitation, which is how agents ask the user
+	// questions. Only session-scoped forms whose schema is Supported
+	// reach it; others get invalid-params. ctx ends when the turn is
+	// cancelled, the client closes or the agent withdraws the form, and
+	// the form is then answered cancel. An accepted answer that does not
+	// Validate is sent as cancel.
+	OnElicitation func(ctx context.Context, req CreateElicitationRequest) CreateElicitationResponse
 	// OnProtocolError reports messages that were skipped.
 	OnProtocolError func(error)
 	// StderrBytes is how much of the agent's stderr is kept.
@@ -160,7 +168,11 @@ func Start(ctx context.Context, command Command, opts ClientOptions) (*Client, e
 		info.Name = "agent-sessions"
 	}
 	var resp InitializeResponse
-	err = c.conn.Call(ctx, MethodInitialize, InitializeRequest{ProtocolVersion: ProtocolVersion, ClientInfo: &info}, &resp)
+	init := InitializeRequest{ProtocolVersion: ProtocolVersion, ClientInfo: &info}
+	if opts.OnElicitation != nil {
+		init.ClientCapabilities.Elicitation = &ElicitationCapabilities{Form: &struct{}{}}
+	}
+	err = c.conn.Call(ctx, MethodInitialize, init, &resp)
 	if err == nil && resp.ProtocolVersion != ProtocolVersion {
 		err = fmt.Errorf("acp: the agent speaks protocol version %d, not %d", resp.ProtocolVersion, ProtocolVersion)
 	}
@@ -380,38 +392,110 @@ func (c *Client) handleNotification(method string, params json.RawMessage) {
 	c.opts.OnUpdate(n)
 }
 
-// handleRequest answers the agent. Only permission requests are handled;
-// without the fs and terminal capabilities, everything else is
-// method-not-found.
+// handleRequest answers the agent. Permission requests and, with
+// OnElicitation, forms are handled; without the fs and terminal
+// capabilities, everything else is method-not-found.
 func (c *Client) handleRequest(ctx context.Context, method string, params json.RawMessage) (any, error) {
-	if method != MethodRequestPermission {
-		return nil, MethodNotFound(method)
+	switch method {
+	case MethodRequestPermission:
+		var req RequestPermissionRequest
+		if err := json.Unmarshal(params, &req); err != nil {
+			return nil, &Error{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return c.askPermission(ctx, req), nil
+	case MethodElicitationCreate:
+		if c.opts.OnElicitation == nil {
+			return nil, MethodNotFound(method)
+		}
+		var req CreateElicitationRequest
+		if err := json.Unmarshal(params, &req); err != nil {
+			return nil, &Error{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		switch {
+		case req.Mode != "form":
+			return nil, &Error{Code: CodeInvalidParams, Message: fmt.Sprintf("elicitation mode %q is not supported", req.Mode)}
+		case req.SessionID == "":
+			return nil, &Error{Code: CodeInvalidParams, Message: "only forms of a session are shown"}
+		}
+		if err := req.RequestedSchema.Supported(); err != nil {
+			return nil, &Error{Code: CodeInvalidParams, Message: "the form cannot be shown: " + err.Error()}
+		}
+		return c.askForm(ctx, req), nil
 	}
-	var req RequestPermissionRequest
-	if err := json.Unmarshal(params, &req); err != nil {
-		return nil, &Error{Code: CodeInvalidParams, Message: err.Error()}
-	}
-	return c.askPermission(ctx, req), nil
+	return nil, MethodNotFound(method)
 }
 
-func (c *Client) askPermission(ctx context.Context, req RequestPermissionRequest) RequestPermissionResponse {
+// wait registers a wait for the user on sessionID, which Cancel and Close
+// end. ok is false when the client is closing.
+func (c *Client) wait(ctx context.Context, sessionID string) (wctx context.Context, done func(), ok bool) {
 	c.mu.Lock()
-	if c.closing || c.opts.OnPermission == nil {
-		c.mu.Unlock()
-		return Cancelled()
+	defer c.mu.Unlock()
+	if c.closing {
+		return nil, nil, false
 	}
-	pctx, cancel := context.WithCancel(ctx)
-	w := &permWait{sessionID: req.SessionID, cancel: cancel}
+	wctx, cancel := context.WithCancel(ctx)
+	w := &permWait{sessionID: sessionID, cancel: cancel}
 	c.perms[w] = struct{}{}
 	c.handlers.Add(1)
-	c.mu.Unlock()
-	defer func() {
+	return wctx, func() {
 		c.mu.Lock()
 		delete(c.perms, w)
 		c.mu.Unlock()
 		cancel()
 		c.handlers.Done()
-	}()
+	}, true
+}
+
+func (c *Client) askForm(ctx context.Context, req CreateElicitationRequest) CreateElicitationResponse {
+	fctx, done, ok := c.wait(ctx, req.SessionID)
+	if !ok {
+		return ElicitationCancelled()
+	}
+	defer done()
+	answer := make(chan CreateElicitationResponse, 1)
+	go func() { answer <- c.opts.OnElicitation(fctx, req) }()
+	select {
+	case r := <-answer:
+		if fctx.Err() != nil {
+			return ElicitationCancelled() // the turn ended while the user answered
+		}
+		switch r.Action {
+		case ElicitationDecline:
+			return CreateElicitationResponse{Action: ElicitationDecline}
+		case ElicitationAccept:
+			if r.Content, ok = validAnswer(req.RequestedSchema, r.Content); ok {
+				return r
+			}
+		}
+		return ElicitationCancelled()
+	case <-fctx.Done():
+		return ElicitationCancelled()
+	}
+}
+
+// validAnswer checks content against the form once more, as it will be sent.
+func validAnswer(s *ElicitationSchema, content map[string]any) (map[string]any, bool) {
+	raw := make(map[string]json.RawMessage, len(content))
+	for k, v := range content {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, false
+		}
+		raw[k] = b
+	}
+	out, err := s.Validate(raw)
+	return out, err == nil
+}
+
+func (c *Client) askPermission(ctx context.Context, req RequestPermissionRequest) RequestPermissionResponse {
+	if c.opts.OnPermission == nil {
+		return Cancelled()
+	}
+	pctx, done, ok := c.wait(ctx, req.SessionID)
+	if !ok {
+		return Cancelled()
+	}
+	defer done()
 
 	answer := make(chan RequestPermissionResponse, 1)
 	go func() { answer <- c.opts.OnPermission(pctx, req) }()

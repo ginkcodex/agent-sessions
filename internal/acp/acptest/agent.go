@@ -20,6 +20,14 @@
 //	immortal     from now on, ignores a closed stdin and SIGTERM
 //	blocks       one chunk listing the prompt's blocks, as describeBlocks
 //	             does; also any prompt that does not start with text
+//	question F   asks form F (QuestionForms; "claude" when left out) with
+//	             elicitation/create; the answer is reported as a chunk
+//	             "accept <content JSON>", "decline", "cancel" or "error
+//	             <code>", and a cancel ends the turn cancelled. Without the
+//	             client's form capability the chunk is "no elicitation"
+//	withdraw MS  asks the "claude" form and withdraws it with
+//	             $/cancel_request after MS milliseconds; the chunk is
+//	             "withdrawn"
 //	anything     echoed back as one chunk
 //
 // Environment, set through Command's env:
@@ -34,6 +42,7 @@ package acptest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -89,6 +98,48 @@ type agent struct {
 	opened   map[string]string // session ID -> the method that opened it
 	mode     string
 	stubborn bool
+	forms    bool // the client advertised form elicitation
+}
+
+// QuestionForms are the forms the "question" prompt asks, shaped like each
+// adapter's (docs/plan/chat-questions-adapters.md), plus two the client
+// must refuse.
+var QuestionForms = map[string]map[string]any{
+	"claude": {
+		"mode": "form", "toolCallId": "toolu_ask", "message": "Please answer the following questions.",
+		"requestedSchema": map[string]any{"type": "object", "properties": json.RawMessage(`{
+			"question_0": {"type": "string", "title": "Approach", "description": "Which approach?",
+				"oneOf": [{"const": "Extend existing module (Recommended)", "title": "Extend existing module (Recommended)", "description": "Least new code"},
+					{"const": "New module", "title": "New module"}]},
+			"question_0_custom": {"type": "string", "title": "Other", "description": "Type your own answer"},
+			"question_1": {"type": "array", "title": "Extras", "description": "Extras to include?",
+				"items": {"anyOf": [{"const": "Unit tests", "title": "Unit tests"}, {"const": "Documentation", "title": "Documentation"}]}},
+			"question_1_custom": {"type": "string", "title": "Other", "description": "Type your own answer"}
+		}`)},
+	},
+	"codex": {
+		"mode": "form", "toolCallId": "item_1", "message": "Codex needs your input to continue.",
+		"_meta": map[string]any{"codex": map[string]any{"autoResolutionMs": 60000}},
+		"requestedSchema": map[string]any{"type": "object", "required": []string{"confirm", "confirm_note"}, "properties": json.RawMessage(`{
+			"confirm": {"type": "string", "title": "This will overwrite src/config.ts. Continue?", "description": "Confirm",
+				"oneOf": [{"const": "Yes", "title": "Yes"}, {"const": "No", "title": "No"},
+					{"const": "Other", "title": "Other", "description": "Provide a different answer in the note field."}]},
+			"confirm_note": {"type": "string", "title": "Additional answer or note",
+				"_meta": {"codex": {"questionId": "confirm", "role": "user_note", "isSecret": false}}}
+		}`)},
+	},
+	"opencode": {
+		"mode": "form", "message": "Pick the tests to run",
+		"requestedSchema": map[string]any{"type": "object", "required": []string{"tests", "retries"}, "properties": json.RawMessage(`{
+			"tests": {"type": "array", "title": "Tests", "minItems": 1, "maxItems": 2,
+				"items": {"anyOf": [{"const": "unit", "title": "Unit"}, {"const": "e2e", "title": "End to end"}, {"const": "lint", "title": "Lint"}]}},
+			"tests_custom": {"type": "string", "title": "Tests (other)", "description": "Add your own answer", "maxLength": 20},
+			"retries": {"type": "integer", "title": "Retries", "minimum": 0, "maximum": 3},
+			"verbose": {"type": "boolean", "title": "Verbose", "default": false}
+		}`)},
+	},
+	"url":   {"mode": "url", "message": "Log in", "url": "https://example.invalid/login", "elicitationId": "e1"},
+	"email": {"mode": "form", "message": "Your email", "requestedSchema": map[string]any{"type": "object", "properties": map[string]any{"email": map[string]any{"type": "string", "format": "email"}}}},
 }
 
 func run() int {
@@ -133,6 +184,13 @@ func (a *agent) configOptions() []acp.ConfigOption {
 func (a *agent) request(ctx context.Context, method string, params json.RawMessage) (any, error) {
 	switch method {
 	case acp.MethodInitialize:
+		var p acp.InitializeRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &acp.Error{Code: acp.CodeInvalidParams, Message: err.Error()}
+		}
+		a.mu.Lock()
+		a.forms = p.ClientCapabilities.Elicitation != nil && p.ClientCapabilities.Elicitation.Form != nil
+		a.mu.Unlock()
 		version := acp.ProtocolVersion
 		if v, err := strconv.Atoi(os.Getenv("ACPTEST_PROTOCOL")); err == nil {
 			version = v
@@ -322,6 +380,8 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 	case "blocks":
 		a.chunk(p.SessionID, "msg_blocks", describeBlocks(p.Prompt))
 		return end(acp.StopEndTurn)
+	case "question", "withdraw":
+		return a.question(p.SessionID, word, fields[1:])
 	case "stubborn", "immortal":
 		a.mu.Lock()
 		a.stubborn = true
@@ -333,6 +393,60 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 		return end(acp.StopEndTurn)
 	}
 	a.chunk(p.SessionID, "msg_echo", text)
+	return end(acp.StopEndTurn)
+}
+
+func (a *agent) question(sessionID, word string, args []string) (any, error) {
+	end := func(reason string) (any, error) { return acp.PromptResponse{StopReason: reason}, nil }
+	a.mu.Lock()
+	forms := a.forms
+	a.mu.Unlock()
+	if !forms {
+		a.chunk(sessionID, "msg_question", "no elicitation")
+		return end(acp.StopEndTurn)
+	}
+	name := "claude"
+	if word == "question" && len(args) > 0 {
+		name = args[0]
+	}
+	form, ok := QuestionForms[name]
+	if !ok {
+		return nil, &acp.Error{Code: acp.CodeInvalidParams, Message: "unknown form " + name}
+	}
+	params := map[string]any{"sessionId": sessionID}
+	for k, v := range form {
+		params[k] = v
+	}
+	var r acp.CreateElicitationResponse
+	if word == "withdraw" {
+		ms := 0
+		if len(args) > 0 {
+			ms, _ = strconv.Atoi(args[0])
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(ms)*time.Millisecond)
+		defer cancel()
+		if err := a.c().CallWithdrawing(ctx, acp.MethodElicitationCreate, params, &r); err != nil {
+			a.chunk(sessionID, "msg_question", "withdrawn")
+			return end(acp.StopEndTurn)
+		}
+	} else if err := a.c().Call(context.Background(), acp.MethodElicitationCreate, params, &r); err != nil {
+		var e *acp.Error
+		if !errors.As(err, &e) {
+			return nil, err
+		}
+		a.chunk(sessionID, "msg_question", fmt.Sprintf("error %d", e.Code))
+		return end(acp.StopEndTurn)
+	}
+	switch r.Action {
+	case acp.ElicitationAccept:
+		b, _ := json.Marshal(r.Content)
+		a.chunk(sessionID, "msg_question", "accept "+string(b))
+	case acp.ElicitationCancel:
+		a.chunk(sessionID, "msg_question", "cancel")
+		return end(acp.StopCancelled)
+	default:
+		a.chunk(sessionID, "msg_question", r.Action)
+	}
 	return end(acp.StopEndTurn)
 }
 
