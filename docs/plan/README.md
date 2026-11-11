@@ -30,6 +30,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [chat-attachments.md](chat-attachments.md) | [chat-attachments](../tasks/chat-attachments/README.md) | Attach images and text files to a chat message from a + button, a drop or a paste |
 | [chat-end-guard.md](chat-end-guard.md) | [chat-end-guard](../tasks/chat-end-guard/README.md) | A one-line notice when the user ends a chat; ask before ending a working chat, and before closing or quitting with open chats |
 | [host-switch-chat-guard.md](host-switch-chat-guard.md) | [host-switch-chat-guard](../tasks/host-switch-chat-guard/README.md) | Ask before connecting, switching hosts or disconnecting ends the window's open chats, as it asks about terminal tabs |
+| [codex-daemon-chat.md](codex-daemon-chat.md) | [codex-daemon-chat](../tasks/codex-daemon-chat/README.md) | Open a Codex session in a chat right after the Codex CLI quits, through the Codex daemon; a clear "in use" error with Try again |
 | [chat-adapter-setup.md](chat-adapter-setup.md) | [chat-adapter-setup](../tasks/chat-adapter-setup/README.md) | A short Chat settings section: the app's own pinned adapters, one-click Install, and Update when the copy is older than the pin |
 | [chat-questions.md](chat-questions.md) | [chat-questions](../tasks/chat-questions/README.md) | Show an agent's questions in a chat with compact tabs, clear choices and a custom answer, changeable until Submit |
 | [orphan-task-notifications.md](orphan-task-notifications.md) | [orphan-task-notifications](../tasks/orphan-task-notifications/README.md) | Show the notification Claude Code writes for background tasks orphaned by a previous run as a notification, not raw XML |
@@ -123,6 +124,9 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 **[remote-reconnect.md](remote-reconnect.md):**
 - [remote-reconnect-qa.md](remote-reconnect-qa.md): Remote reconnect measurements and native checks
+
+**[codex-daemon-chat.md](codex-daemon-chat.md):**
+- [codex-daemon-chat-spike.md](codex-daemon-chat-spike.md): Why the daemon refuses the chat, and a bridge to it (2026-11-12)
 
 Reference: [../formats.md](../formats.md) holds the verified on-disk formats
 of each tool; [../perf.md](../perf.md) holds performance measurements.
