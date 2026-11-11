@@ -36,9 +36,18 @@ if [ -f "$mirrors" ] && grep -q 'azure\.archive\.ubuntu\.com' "$mirrors"; then
 fi
 
 if compgen -G "$debs/*.deb" >/dev/null; then
+	# The cached .debs install with no package sources configured, so apt
+	# cannot reach a mirror: with sources, it fetches any package whose index
+	# version matches a cached .deb from the mirror instead, and stalls with
+	# it. Dependencies come only from the .debs and what is installed.
+	# _apt cannot read the runner's home, so apt reads the .debs as root.
 	# A newer image or point release can leave the cached .debs unable to
-	# install; the download below then replaces them.
-	if sudo apt-get install -y --no-install-recommends "$debs"/*.deb && installed "$@"; then
+	# install; apt then refuses before changing anything, and the download
+	# below replaces them.
+	if sudo apt-get install -y --no-install-recommends \
+		-o Dir::Etc::SourceList=/dev/null -o Dir::Etc::SourceParts=/nonexistent \
+		-o Dir::Cache::pkgcache= -o Dir::Cache::srcpkgcache= \
+		-o APT::Sandbox::User=root "$debs"/*.deb && installed "$@"; then
 		exit 0
 	fi
 	echo "::warning::Cached .debs did not install $*; downloading them instead."
