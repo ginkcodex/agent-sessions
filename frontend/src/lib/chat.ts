@@ -49,6 +49,8 @@ function itemParts(it: TailItem): Part[] {
       if (it.diffs.length > 0) parts.push({ kind: 'patch', files: it.diffs.map((d) => d.path), text: it.diffs.map(unifiedDiff).join('\n') });
       return parts;
     }
+    case 'answer':
+      return [{ kind: 'text', text: it.summary }];
   }
 }
 

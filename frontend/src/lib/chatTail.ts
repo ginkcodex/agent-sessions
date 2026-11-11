@@ -88,7 +88,21 @@ export interface TailPlan {
   entries: TailPlanEntry[];
 }
 
-export type TailItem = TailText | TailThought | TailTool | TailPlan;
+/** How the agent's question ended, in place of its card. */
+export interface TailAnswer {
+  type: 'answer';
+  key: string;
+  turn: number;
+  questionId: string;
+  /** The tool call that asked, when the adapter names one. */
+  toolCallId?: string;
+  /** accept, decline, cancel or withdrawn. */
+  outcome: string;
+  /** The line shown: "Answered: …", "Skipped the question", … */
+  summary: string;
+}
+
+export type TailItem = TailText | TailThought | TailTool | TailPlan | TailAnswer;
 
 export interface ChatTail {
   /** The latest turn, 0 before the first prompt. */
@@ -256,6 +270,13 @@ function applyPlan(tail: ChatTail, raw: unknown): ChatTail {
   return { ...tail, items: [...items, plan], nextKey: tail.nextKey + 1 };
 }
 
+/** Adds how a question ended, in the turn it was asked in; a question's second outcome is ignored. */
+export function addAnswer(tail: ChatTail, answer: Omit<TailAnswer, 'type' | 'key' | 'turn'>): ChatTail {
+  if (tail.items.some((it) => it.type === 'answer' && it.questionId === answer.questionId)) return tail;
+  const item: TailAnswer = { type: 'answer', key: `i${tail.nextKey}`, turn: tail.turn, ...answer };
+  return { ...tail, items: [...tail.items, item], nextKey: tail.nextKey + 1 };
+}
+
 /** The tool's output: its content text, else its raw output when that is text. */
 export function toolOutput(t: TailTool): string {
   if (t.text) return t.text;
@@ -281,6 +302,7 @@ const PROMPT_CLOCK_SLACK_MS = 60_000;
  * - tool calls saved under the same ID, once they have a result or their
  *   turn ended;
  * - a prompt sent from this window, once a saved user message has its text;
+ * - a question's outcome, once the tool call that asked is saved;
  * - every item of an ended turn whose last agent message is saved. This
  *   covers tool calls the agent saves under other IDs (Codex) and plans;
  * - every item of a turn before one the saved messages reach by ID. An agent
@@ -327,6 +349,8 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
         const status = tools.get(it.toolCallId);
         return status !== undefined && (status !== 'pending' || ended(it.turn));
       }
+      case 'answer':
+        return !!it.toolCallId && tools.has(it.toolCallId);
       default:
         return false;
     }
@@ -346,8 +370,9 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
   let reached = 0;
   for (const it of tail.items) {
     if (it.turn <= reached) continue;
-    const id = it.type === 'tool' ? it.toolCallId : it.type !== 'plan' && it.messageId ? savedMessageId(it.messageId) : '';
-    if (id && (it.type === 'tool' ? tools.has(id) : byId.has(id))) reached = it.turn;
+    const tool = it.type === 'tool' || it.type === 'answer';
+    const id = tool ? (it.toolCallId ?? '') : it.type !== 'plan' && it.messageId ? savedMessageId(it.messageId) : '';
+    if (id && (tool ? tools.has(id) : byId.has(id))) reached = it.turn;
   }
 
   const items = tail.items.filter((it, i) => it.turn >= reached && !savedTurns.has(it.turn) && !covered(it, i));

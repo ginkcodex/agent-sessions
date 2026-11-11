@@ -161,8 +161,8 @@ An invalid answer is refused to the frontend; nothing is sent to the agent.
   skipped or withdrawn; the chat shows the card where the user looks, and the
   turn can still be cancelled.
 - **Codex's auto-resolution** may withdraw a question while the user is
-  answering; the card then goes away and a toast says the agent went on
-  without the answer.
+  answering; the card then goes away and a line in the live tail says the
+  agent went on without an answer.
 
 ## Release criteria
 

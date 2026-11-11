@@ -63,7 +63,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Chat attachments | [chat-attachments](docs/plan/chat-attachments.md) | [chat-attachments/](docs/tasks/chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
 | Chat end guard | [chat-end-guard](docs/plan/chat-end-guard.md) | [chat-end-guard/](docs/tasks/chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
 | Chat adapter setup | [chat-adapter-setup](docs/plan/chat-adapter-setup.md) | [chat-adapter-setup/](docs/tasks/chat-adapter-setup/README.md) | 4/5 ✅ · 1 ⬜ |
-| Chat questions | [chat-questions](docs/plan/chat-questions.md) | [chat-questions/](docs/tasks/chat-questions/README.md) | 4/7 ✅ · 3 ⬜ |
+| Chat questions | [chat-questions](docs/plan/chat-questions.md) | [chat-questions/](docs/tasks/chat-questions/README.md) | 5/7 ✅ · 2 ⬜ |
 | Orphaned task notifications | [orphan-task-notifications](docs/plan/orphan-task-notifications.md) | [orphan-task-notifications/](docs/tasks/orphan-task-notifications/README.md) | 1/1 ✅ |
 | Idle rendering | [idle-rendering](docs/plan/idle-rendering.md) | [idle-rendering/](docs/tasks/idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](docs/plan/file-translate.md) | [file-translate/](docs/tasks/file-translate/README.md) | 2/2 ✅ |

@@ -86,6 +86,7 @@ import type {
   ChatState,
   ChatAttachment,
   ChatAttachResult,
+  ChatAnswerAction,
 } from '../types.js';
 import { MOCK_MANAGED_TOOLS, MockChats, mockAttachFiles, mockAttachImage, mockManagedAdapter } from './mockChat';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
@@ -968,6 +969,10 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   async chatRespond(chatId: string, permissionId: string, optionId: string): Promise<void> {
     return this.chat.respond(chatId, permissionId, optionId);
+  }
+
+  async chatAnswer(chatId: string, questionId: string, action: ChatAnswerAction, content?: Record<string, unknown>): Promise<void> {
+    return this.chat.answer(chatId, questionId, action, content);
   }
 
   async chatSetOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]> {

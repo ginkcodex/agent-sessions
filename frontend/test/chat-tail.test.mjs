@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  addAnswer,
   applySessionUpdate,
   beginTurn,
   emptyTail,
@@ -327,4 +328,23 @@ test('a prompt with text and files keeps both on its user item and matches its s
   assert.equal(t.items[0].text, 'read this');
   assert.deepEqual(t.items[0].attachments, files);
   assert.deepEqual(reconcile(t, [msg('u1', 'user', [{ kind: 'text', text: 'read this' }, { kind: 'file', file: { name: 'notes.md' } }])]).items, []);
+});
+
+test("a question's outcome stays in its turn until the tool call that asked is saved", () => {
+  let t = apply(turn('choose'), chunk('agent_message_chunk', 'Asking.', 'm1'));
+  t = addAnswer(t, { questionId: 'question-1', toolCallId: 'toolu_ask', outcome: 'accept', summary: 'Answered: Yes' });
+  assert.equal(addAnswer(t, { questionId: 'question-1', outcome: 'cancel', summary: 'x' }), t, 'one line per question');
+  const answer = t.items.at(-1);
+  assert.deepEqual([answer.type, answer.turn, answer.summary], ['answer', 1, 'Answered: Yes']);
+
+  const user = { id: 'u1', role: 'user', time: '2026-11-11T10:00:01Z', parts: [{ kind: 'text', text: 'choose' }] };
+  assert.equal(reconcile(t, [user]).items.at(-1), answer, 'an unsaved question stays');
+  const asked = { id: 'a1', role: 'assistant', time: '', parts: [{ kind: 'tool', tool: { id: 'toolu_ask', name: 'AskUserQuestion', status: 'completed' } }] };
+  assert.deepEqual(reconcile(t, [user, asked]).items.map((i) => i.type), ['text'], 'the saved tool call shows the answer');
+
+  // Without a tool call, the line goes with its saved turn.
+  let u = addAnswer(t, { questionId: 'question-2', outcome: 'withdrawn', summary: 'The agent went on without an answer' });
+  u = endTurn(u);
+  const reply = { id: 'm1', role: 'assistant', time: '', parts: [{ kind: 'text', text: 'Asking.' }] };
+  assert.deepEqual(reconcile(u, [user, reply]).items, []);
 });

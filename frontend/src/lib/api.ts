@@ -83,6 +83,7 @@ import type {
   AgentID,
   AgentStatus,
   ChatAgent,
+  ChatAnswerAction,
   ChatConfigOption,
   ChatStartRequest,
   ChatState,
@@ -185,6 +186,11 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   chatCancel(chatId: string): Promise<void>;
   /** Answers a permission request with one of its options, or cancelled when optionId is empty. */
   chatRespond(chatId: string, permissionId: string, optionId: string): Promise<void>;
+  /**
+   * Answers one of the agent's questions: accept with the content (checked
+   * against the question's form), decline when the user skips it, or cancel.
+   */
+  chatAnswer(chatId: string, questionId: string, action: ChatAnswerAction, content?: Record<string, unknown>): Promise<void>;
   /** Sets a session option (mode, model, effort) and returns them all. */
   chatSetOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]>;
   /** Ends the chat and its agent. */
@@ -406,6 +412,7 @@ export interface WailsAppBinding {
   ChatAttachImage?(name: string, data: string): Promise<ChatAttachment>;
   ChatCancel?(chatId: string): Promise<void>;
   ChatRespond?(chatId: string, permissionId: string, optionId: string): Promise<void>;
+  ChatAnswer?(chatId: string, questionId: string, action: string, content: Record<string, unknown> | null): Promise<void>;
   ChatSetOption?(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]>;
   ChatClose?(chatId: string): Promise<void>;
   ChatList?(): Promise<ChatState[]>;
@@ -533,6 +540,7 @@ type ChatBindingName =
   | 'ChatAttachImage'
   | 'ChatCancel'
   | 'ChatRespond'
+  | 'ChatAnswer'
   | 'ChatSetOption'
   | 'ChatClose'
   | 'ChatList';
@@ -998,6 +1006,11 @@ class WailsBackendAPI implements BackendAPI {
 
   async chatRespond(chatId: string, permissionId: string, optionId: string): Promise<void> {
     try { await this.chatBinding('ChatRespond')(chatId, permissionId, optionId); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatAnswer(chatId: string, questionId: string, action: ChatAnswerAction, content?: Record<string, unknown>): Promise<void> {
+    try { await this.chatBinding('ChatAnswer')(chatId, questionId, action, content ?? null); }
     catch (e) { throw normalizeError(e); }
   }
 
@@ -1761,10 +1774,11 @@ const UNGUARDED = new Set<string>([
   'terminalFonts',
   'setTerminal',
   'setTerminalOpen',
-  // Ending a chat, its turn or a permission request must reach the backend
-  // after a host switch too: the chat belongs to this computer.
+  // Ending a chat, its turn, a permission request or a question must reach
+  // the backend after a host switch too: the chat belongs to this computer.
   'chatCancel',
   'chatRespond',
+  'chatAnswer',
   'chatClose',
   // Panel terminals outlive a host switch: their input, output and shells
   // are not tied to the loaded data. Agent launches are.

@@ -20,6 +20,7 @@ async function loadChatsStore() {
     ],
     ["'../link'", lib('../link.ts')],
     ["'../chatTail'", lib('../chatTail.ts')],
+    ["'../chatQuestions'", lib('../chatQuestions.ts')],
   ]);
   return storeModule;
 }
@@ -441,4 +442,120 @@ test('the mock prepares pasted images and refuses what is not one', async () => 
   assert.deepEqual([pasted.kind, pasted.name, pasted.mimeType], ['image', 'Pasted image', 'image/png']);
   assert.throws(() => mockAttachImage('clip', btoa('plain text')), /clip/);
   assert.deepEqual(mockAttachFiles(['/p/report.pdf']).skipped.map((s) => s.name), ['report.pdf']);
+});
+
+const pendingQuestion = async (store, chatId) => {
+  await until('question', () => store.byChatId(chatId).questions.length === 1);
+  return store.byChatId(chatId).questions[0];
+};
+
+test("a question waits as a card; the answer goes back and leaves a summary in the tail", async () => {
+  await withChats(async ({ store, mock }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR, questions: true });
+    await store.prompt(chat.chatId, 'ask me a question');
+    const q = await pendingQuestion(store, chat.chatId);
+    assert.equal(q.message, 'Please answer the following questions.');
+    assert.equal(store.byChatId(chat.chatId).phase, 'working');
+
+    // An answer the form does not have is refused, and the card stays.
+    await assert.rejects(store.answer(chat.chatId, q.id, 'accept', { question_0: 'Something else' }), /not one of the options/);
+    assert.equal(store.byChatId(chat.chatId).questions.length, 1);
+
+    await store.answer(chat.chatId, q.id, 'accept', { question_0: 'New module', question_1: ['Unit tests', 'Documentation'], question_2_custom: 'Only after a backup' });
+    assert.deepEqual(store.byChatId(chat.chatId).questions, []);
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    const done = store.byChatId(chat.chatId);
+    const line = done.tail.items.find((i) => i.type === 'answer');
+    assert.equal(line.summary, 'Answered: New module · Unit tests, Documentation · Only after a backup');
+    assert.match(done.tail.items.findLast((i) => i.type === 'text').text, /You answered \{"question_0":"New module"/);
+    await assert.rejects(store.answer(chat.chatId, q.id, 'decline'), /no longer pending/);
+
+    const page = await mock.getMessages(done.session, -1, 100);
+    store.reconcile(chat.chatId, page.messages);
+    assert.deepEqual(store.byChatId(chat.chatId).tail.items, [], 'the saved turn shows the answer');
+  });
+});
+
+test("Codex's required questions are refused unanswered; Skip declines", async () => {
+  await withChats(async ({ store }) => {
+    const chat = await store.start({ agent: 'codex', dir: DIR, questions: true });
+    await store.prompt(chat.chatId, 'question');
+    const q = await pendingQuestion(store, chat.chatId);
+    assert.deepEqual(q.required, ['approach', 'confirm']);
+    await assert.rejects(store.answer(chat.chatId, q.id, 'accept', { approach_note: 'Mine' }), /needs an answer/);
+    await store.answer(chat.chatId, q.id, 'decline');
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    const c = store.byChatId(chat.chatId);
+    assert.equal(c.tail.items.find((i) => i.type === 'answer').summary, 'Skipped the question');
+    assert.equal(c.stopReason, 'end_turn');
+  });
+});
+
+test('a withdrawn question leaves its card and says the agent went on', async () => {
+  await withChats(async ({ store, mock }) => {
+    mock.chat.withdrawMs = 20;
+    const chat = await store.start({ agent: 'codex', dir: DIR, questions: true });
+    await store.prompt(chat.chatId, 'withdraw the question');
+    const q = await pendingQuestion(store, chat.chatId);
+    assert.deepEqual(q.meta, { codex: { autoResolutionMs: 20 } });
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    const c = store.byChatId(chat.chatId);
+    assert.deepEqual(c.questions, []);
+    assert.equal(c.tail.items.find((i) => i.type === 'answer').summary, 'The agent went on without an answer');
+    await assert.rejects(store.answer(chat.chatId, q.id, 'accept', {}), /no longer pending/);
+  });
+});
+
+test('cancelling a turn takes its question with it, without a summary', async () => {
+  await withChats(async ({ store }) => {
+    const chat = await store.start({ agent: 'opencode', dir: DIR, questions: true });
+    await store.prompt(chat.chatId, 'question');
+    const q = await pendingQuestion(store, chat.chatId);
+    assert.deepEqual(q.fields.map((f) => f.key), ['approach', 'extras', 'extras_custom', 'overwrite']);
+    await store.cancel(chat.chatId);
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    const c = store.byChatId(chat.chatId);
+    assert.deepEqual(c.questions, []);
+    assert.equal(c.stopReason, 'cancelled');
+    assert.equal(c.tail.items.some((i) => i.type === 'answer'), false);
+  });
+});
+
+test('a chat that does not show questions is never asked one', async () => {
+  await withChats(async ({ store }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR });
+    await store.prompt(chat.chatId, 'question');
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    const c = store.byChatId(chat.chatId);
+    assert.deepEqual(c.questions, []);
+    assert.match(c.tail.items.findLast((i) => i.type === 'text').text, /does not show questions/);
+  });
+});
+
+test('a reloaded page shows the question still waiting, and its answer leaves the summary', async () => {
+  await withChats(
+    async ({ store, mock }) => {
+      const st = await mock.chatStart({ agent: 'opencode', dir: DIR, questions: true });
+      await mock.chatPrompt(st.chatId, 'question');
+      for (let i = 0; i < 5000 && !(await mock.chatList())[0]?.questions?.length; i++) await new Promise((resolve) => setTimeout(resolve, 1));
+      await store.init();
+      const [q] = store.byChatId(st.chatId).questions;
+      assert.equal(q.id, 'question-1');
+      await store.answer(st.chatId, q.id, 'accept', { approach: 'New module', overwrite: true });
+      await until('turn end', () => store.byChatId(st.chatId).phase === 'idle');
+      assert.equal(store.byChatId(st.chatId).tail.items.find((i) => i.type === 'answer').summary, 'Answered: New module · Yes');
+    },
+    { init: false },
+  );
+});
+
+test('closing the chat clears its question', async () => {
+  await withChats(async ({ store }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR, questions: true });
+    await store.prompt(chat.chatId, 'question');
+    await pendingQuestion(store, chat.chatId);
+    await store.close(chat.chatId);
+    await until('exit', () => store.byChatId(chat.chatId).phase === 'exited');
+    assert.deepEqual(store.byChatId(chat.chatId).questions, []);
+  });
 });

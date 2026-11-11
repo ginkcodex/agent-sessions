@@ -9,6 +9,8 @@ import type {
   ChatAttachResult,
   ChatConfigOption,
   ChatPermission,
+  ChatQuestion,
+  ChatQuestionField,
   ChatStartRequest,
   ChatState,
   ChatUpdateEvent,
@@ -92,8 +94,18 @@ interface MockChat {
   turn: { cancelled: boolean } | null;
   permission: { request: ChatPermission; answer: (optionId: string) => void } | null;
   nextPerm: number;
+  /** The window shows questions (ChatStartRequest.questions). */
+  questions: boolean;
+  question: { request: ChatQuestion; answer: (answer: MockAnswer) => void } | null;
+  nextQuestion: number;
   nextMessage: number;
   closed: boolean;
+}
+
+/** How a mock question ended. */
+interface MockAnswer {
+  outcome: 'accept' | 'decline' | 'cancel' | 'withdrawn';
+  content?: Record<string, unknown>;
 }
 
 export interface MockChatHost {
@@ -110,12 +122,17 @@ export interface MockChatHost {
  * - "run": runs a command, its output in _meta as Codex sends it;
  * - "fail": the turn fails; "login": the turn needs a login;
  * - "crash": the agent dies;
- * - "hang": the turn runs until cancelled.
+ * - "hang": the turn runs until cancelled;
+ * - "question": the agent asks the user, with a form shaped like
+ *   its adapter's; "withdraw": it asks, then goes on without the answer
+ *   after withdrawMs, as Codex's auto-resolution does.
  * The reply says how many files the prompt carried.
  */
 export class MockChats {
   /** The pause between two streamed steps; 0 in tests. */
   stepMs = 0;
+  /** How long a "withdraw" question waits before the agent withdraws it. */
+  withdrawMs = 8000;
   /** Agents whose adapter the mock reports missing. */
   missing = new Set<AgentID>();
   /** Agents whose app copy is an older version, until it is installed. */
@@ -175,6 +192,9 @@ export class MockChats {
       turn: null,
       permission: null,
       nextPerm: 0,
+      questions: !!req.questions,
+      question: null,
+      nextQuestion: 0,
       nextMessage: 0,
       closed: false,
     };
@@ -201,12 +221,21 @@ export class MockChats {
     const chat = this.get(chatId);
     if (chat.turn) chat.turn.cancelled = true;
     chat.permission?.answer('');
+    chat.question?.answer({ outcome: 'cancel' });
   }
 
   async respond(chatId: string, permissionId: string, optionId: string): Promise<void> {
     const chat = this.get(chatId);
     if (chat.permission?.request.id !== permissionId) throw new Error(`the permission request is no longer pending: ${permissionId}`);
     chat.permission.answer(optionId);
+  }
+
+  async answer(chatId: string, questionId: string, action: string, content?: Record<string, unknown>): Promise<void> {
+    const chat = this.get(chatId);
+    const q = chat.question;
+    if (q?.request.id !== questionId) throw new Error(`the question is no longer pending: ${questionId}`);
+    if (action !== 'accept' && action !== 'decline' && action !== 'cancel') throw new Error(`chat: unknown answer action ${JSON.stringify(action)}`);
+    q.answer(action === 'accept' ? { outcome: action, content: checkAnswer(q.request, content ?? {}) } : { outcome: action });
   }
 
   async setOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]> {
@@ -225,7 +254,9 @@ export class MockChats {
   }
 
   async list(): Promise<ChatState[]> {
-    return [...this.chats.values()].map((c) => structuredClone({ ...c.state, permissions: c.permission ? [c.permission.request] : [] }));
+    return [...this.chats.values()].map((c) =>
+      structuredClone({ ...c.state, permissions: c.permission ? [c.permission.request] : [], questions: c.question ? [c.question.request] : [] }),
+    );
   }
 
   /** Ends every chat, as a host switch or the window closing does. */
@@ -255,6 +286,7 @@ export class MockChats {
   private end(chat: MockChat, reason: 'closed' | 'crashed', stderrTail?: string): void {
     if (chat.closed) return;
     chat.permission?.answer('');
+    chat.question?.answer({ outcome: 'cancel' });
     if (chat.turn) chat.turn.cancelled = true;
     this.chats.delete(chat.state.chatId);
     this.host.emit('chat:exit', {
@@ -301,6 +333,27 @@ export class MockChats {
         },
       };
       this.update(chat, { kind: 'permission', permission });
+    });
+  }
+
+  /** Asks a question and waits for its answer; withdrawMs withdraws it after that long. */
+  private askQuestion(chat: MockChat, question: Omit<ChatQuestion, 'id'>, withdrawMs?: number): Promise<MockAnswer> {
+    const id = `question-${++chat.nextQuestion}`;
+    const request: ChatQuestion = { id, ...question };
+    return new Promise((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      chat.question = {
+        request,
+        answer: (a) => {
+          if (chat.question?.request.id !== id) return;
+          chat.question = null;
+          if (timer) clearTimeout(timer);
+          this.update(chat, { kind: 'question_resolved', question: { id, outcome: a.outcome, ...(a.content && { content: a.content }) } });
+          resolve(a);
+        },
+      };
+      this.update(chat, { kind: 'question', question: request });
+      if (withdrawMs !== undefined) timer = setTimeout(() => chat.question?.request.id === id && chat.question.answer({ outcome: 'withdrawn' }), withdrawMs);
     });
   }
 
@@ -391,6 +444,32 @@ export class MockChats {
         }
       }
 
+      if (/question|withdraw/i.test(text)) {
+        const ask = `${tool}_ask`;
+        let said: string;
+        if (!chat.questions) {
+          // Each adapter's fallback when the client shows no forms.
+          said = 'This window does not show questions, so I went on with the recommended approach.';
+        } else {
+          const withdraw = /withdraw/i.test(text);
+          const form = mockQuestion(chat.state.agent, ask, withdraw ? this.withdrawMs : undefined);
+          const a = await this.askQuestion(chat, form, withdraw ? this.withdrawMs : undefined);
+          if (turn.cancelled || a.outcome === 'cancel') {
+            stopReason = 'cancelled';
+            return;
+          }
+          said =
+            a.outcome === 'accept'
+              ? `You answered ${JSON.stringify(a.content ?? {})}.`
+              : a.outcome === 'decline'
+                ? 'You skipped the question, so I chose for you.'
+                : 'Nobody answered in time, so I went on with the recommended approach.';
+          reply.parts.push({ kind: 'tool', tool: { id: ask, name: 'AskUserQuestion', input: { message: form.message }, output: said, status: 'completed' } });
+        }
+        await this.stream(chat, turn, 'agent_message_chunk', msg, said + ' ');
+        reply.parts.push({ kind: 'text', text: said });
+      }
+
       if (/hang/i.test(text)) {
         while (!turn.cancelled) await new Promise((resolve) => setTimeout(resolve, Math.max(this.stepMs, 10)));
       }
@@ -418,4 +497,92 @@ export class MockChats {
       }
     }
   }
+}
+
+const APPROACHES = [
+  { const: 'Extend existing module (Recommended)', title: 'Extend existing module (Recommended)', description: 'Add the setting to src/config.ts, next to the others.' },
+  { const: 'New module', title: 'New module', description: 'Put it in its own file and import it where it is needed.' },
+  { const: 'Rewrite the loader', title: 'Rewrite the loader', description: 'Replace how settings are read; a larger change.' },
+];
+const EXTRAS = [
+  { const: 'Unit tests', title: 'Unit tests', description: 'Cover the new setting.' },
+  { const: 'Documentation', title: 'Documentation', description: 'Describe it in the README.' },
+  { const: 'Changelog entry', title: 'Changelog entry' },
+];
+const OVERWRITE = 'This will overwrite src/config.ts. Continue?';
+
+/** A made-up question in the shape the agent's adapter sends (docs/plan/chat-questions-adapters.md). */
+function mockQuestion(agent: AgentID, toolCallId: string, withdrawMs?: number): Omit<ChatQuestion, 'id'> {
+  const codex = (extra: Record<string, unknown>) => ({ codex: { isSecret: false, ...extra } });
+  switch (agent) {
+    case 'codex': {
+      const other = { const: 'Other', title: 'Other', description: 'Provide a different answer in the note field.' };
+      const note = (questionId: string): ChatQuestionField => ({ key: `${questionId}_note`, type: 'string', title: 'Additional answer or note', _meta: codex({ questionId, role: 'user_note' }) });
+      return {
+        toolCallId,
+        message: 'Codex needs your input to continue.',
+        fields: [
+          { key: 'approach', type: 'string', title: 'Which implementation approach should I take?', description: 'Approach', oneOf: [...APPROACHES, other], _meta: codex({ isOther: true }) },
+          note('approach'),
+          { key: 'confirm', type: 'string', title: OVERWRITE, description: 'Confirm', oneOf: [{ const: 'Yes', title: 'Yes' }, { const: 'No', title: 'No' }, other], _meta: codex({ isOther: true }) },
+          note('confirm'),
+        ],
+        required: ['approach', 'confirm'],
+        ...(withdrawMs !== undefined && { meta: { codex: { autoResolutionMs: withdrawMs } } }),
+      };
+    }
+    case 'opencode':
+      return {
+        toolCallId,
+        message: 'Answer the questions to continue.',
+        fields: [
+          { key: 'approach', type: 'string', title: 'Approach', description: 'Which implementation approach should I take?', oneOf: APPROACHES, default: APPROACHES[0].const },
+          { key: 'extras', type: 'array', title: 'Extras', description: 'Which extras should I include?', items: { anyOf: EXTRAS } },
+          { key: 'extras_custom', type: 'string', title: 'Extras (other)', description: 'Add your own answer' },
+          { key: 'overwrite', type: 'boolean', title: 'Overwrite', description: OVERWRITE },
+        ],
+        required: ['approach', 'overwrite'],
+      };
+    default: {
+      const custom = (n: number): ChatQuestionField => ({ key: `question_${n}_custom`, type: 'string', title: 'Other', description: 'Type your own answer' });
+      return {
+        toolCallId,
+        message: 'Please answer the following questions.',
+        fields: [
+          { key: 'question_0', type: 'string', title: 'Implementation approach', description: 'Which implementation approach should I take?', oneOf: APPROACHES },
+          custom(0),
+          { key: 'question_1', type: 'array', title: 'Extras to include', description: 'Which extras should I include?', items: { anyOf: EXTRAS } },
+          custom(1),
+          { key: 'question_2', type: 'string', title: 'Confirm destructive action', description: OVERWRITE, oneOf: [{ const: 'Yes, overwrite', title: 'Yes, overwrite' }, { const: 'No, keep it', title: 'No, keep it' }] },
+          custom(2),
+        ],
+      };
+    }
+  }
+}
+
+function optionValues(f: ChatQuestionField): string[] {
+  const opts = f.type === 'array' ? (f.items?.anyOf?.map((o) => o.const) ?? f.items?.enum) : (f.oneOf?.map((o) => o.const) ?? f.enum);
+  return opts ?? [];
+}
+
+/** The answer as the backend checks it: known fields, valid options, required answers. Empty values are no answer. */
+function checkAnswer(q: ChatQuestion, content: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, v] of Object.entries(content)) {
+    const f = q.fields?.find((x) => x.key === key);
+    if (!f) throw new Error(`the form has no field "${key}"`);
+    if (v === null || v === undefined || v === '') continue;
+    const name = JSON.stringify(f.title || key);
+    const opts = optionValues(f);
+    if (f.type === 'string' && (typeof v !== 'string' || (opts.length > 0 && !opts.includes(v)))) throw new Error(`${name}: ${JSON.stringify(v)} is not one of the options`);
+    if (f.type === 'array' && (!Array.isArray(v) || v.some((x) => !opts.includes(x)))) throw new Error(`${name}: the answer is not a list of options`);
+    if (f.type === 'boolean' && typeof v !== 'boolean') throw new Error(`${name}: the answer is not yes or no`);
+    if ((f.type === 'number' || f.type === 'integer') && typeof v !== 'number') throw new Error(`${name}: the answer is not a number`);
+    out[key] = v;
+  }
+  for (const key of q.required ?? []) {
+    if (!(key in out)) throw new Error(`${JSON.stringify(q.fields?.find((x) => x.key === key)?.title || key)} needs an answer`);
+  }
+  return out;
 }

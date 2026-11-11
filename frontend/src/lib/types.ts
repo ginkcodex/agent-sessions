@@ -628,6 +628,8 @@ export interface ChatStartRequest {
   dir: string;
   /** The session to continue; a new session when absent. */
   resume?: SessionRef;
+  /** The window shows the agent's questions, so the agent may ask them. */
+  questions?: boolean;
 }
 
 /** A value of a select option, or a named group of values. */
@@ -665,6 +667,8 @@ export interface ChatState {
   working: boolean;
   /** The permission requests waiting for an answer, oldest first. */
   permissions?: ChatPermission[];
+  /** The agent's questions waiting for an answer, oldest first. */
+  questions?: ChatQuestion[];
 }
 
 /** A file prepared to send with a chat message (Go chatattach.Attachment). */
@@ -746,6 +750,56 @@ export interface ChatPermission {
   optionId?: string;
 }
 
+/** A titled option of a question (an ACP EnumOption). */
+export interface ChatQuestionOption {
+  const: string;
+  title: string;
+  description?: string;
+  _meta?: Record<string, unknown>;
+}
+
+/** One field of a question's form: its key and its ACP property schema. */
+export interface ChatQuestionField {
+  key: string;
+  /** string, array, boolean, number or integer. */
+  type: string;
+  title?: string;
+  description?: string;
+  default?: unknown;
+  enum?: string[];
+  oneOf?: ChatQuestionOption[];
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  minimum?: number;
+  maximum?: number;
+  items?: { type?: string; enum?: string[]; anyOf?: ChatQuestionOption[] };
+  minItems?: number;
+  maxItems?: number;
+  _meta?: Record<string, unknown>;
+}
+
+/** How a question is answered: with content, skipped (decline), or cancelled. */
+export type ChatAnswerAction = 'accept' | 'decline' | 'cancel';
+
+/** The agent's question (an ACP form elicitation), or its outcome once resolved. */
+export interface ChatQuestion {
+  id: string;
+  toolCallId?: string;
+  message?: string;
+  title?: string;
+  description?: string;
+  /** The form's fields, in the order the agent sent them. */
+  fields?: ChatQuestionField[];
+  required?: string[];
+  /** The request's _meta, such as Codex's autoResolutionMs. */
+  meta?: Record<string, unknown>;
+  /** accept, decline, cancel or withdrawn once resolved. */
+  outcome?: string;
+  /** The answer sent, when accepted. */
+  content?: Record<string, unknown>;
+}
+
 /** A way to log in that the agent offers. */
 export interface ChatAuthMethod {
   id: string;
@@ -758,6 +812,8 @@ export type ChatUpdateKind =
   | 'session_update'
   | 'permission'
   | 'permission_resolved'
+  | 'question'
+  | 'question_resolved'
   | 'turn_start'
   | 'turn_end'
   | 'config_options';
@@ -770,6 +826,7 @@ export interface ChatUpdateEvent {
   state?: ChatState;
   update?: AcpSessionUpdate;
   permission?: ChatPermission;
+  question?: ChatQuestion;
   stopReason?: string;
   error?: string;
   authMethods?: ChatAuthMethod[];

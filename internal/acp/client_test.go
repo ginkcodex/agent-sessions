@@ -541,7 +541,8 @@ func TestQuestionAnswers(t *testing.T) {
 			"codex other with note", "codex", accept(map[string]any{"confirm": "Other", "confirm_note": "Only the tests"}),
 			acp.StopEndTurn, `accept {"confirm":"Other","confirm_note":"Only the tests"}`, true,
 		},
-		{"codex missing required", "codex", accept(map[string]any{"confirm": "Yes"}), acp.StopCancelled, "cancel", true},
+		{"codex choice only", "codex", accept(map[string]any{"confirm": "Yes"}), acp.StopEndTurn, `accept {"confirm":"Yes"}`, true},
+		{"codex missing required", "codex", accept(map[string]any{"confirm_note": "Only the tests"}), acp.StopCancelled, "cancel", true},
 		{
 			"opencode accept", "opencode", accept(map[string]any{"tests": []string{"unit", "lint"}, "retries": 2, "verbose": true}),
 			acp.StopEndTurn, `accept {"retries":2,"tests":["unit","lint"],"verbose":true}`, true,

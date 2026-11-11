@@ -1,11 +1,13 @@
 import { api, subscribeChatExit, subscribeChatUpdate } from '../api';
 import type {
   ChatAgent,
+  ChatAnswerAction,
   ChatAttachment,
   ChatAuthMethod,
   ChatConfigOption,
   ChatExitEvent,
   ChatPermission,
+  ChatQuestion,
   ChatStartRequest,
   ChatState,
   ChatUpdateEvent,
@@ -14,6 +16,7 @@ import type {
 } from '../types';
 import { epoch, isStaleReply } from '../link';
 import {
+  addAnswer,
   applySessionUpdate,
   beginTurn,
   emptyTail,
@@ -25,6 +28,7 @@ import {
   type ChatTail,
   type TailPrompt,
 } from '../chatTail';
+import { questionForm, summary } from '../chatQuestions';
 
 /**
  * starting: the agent is starting, or loading the session;
@@ -51,6 +55,8 @@ export interface Chat {
   tail: ChatTail;
   /** Permission requests waiting for an answer, oldest first. */
   permissions: ChatPermission[];
+  /** The agent's questions waiting for an answer, oldest first. */
+  questions: ChatQuestion[];
   /** How the last turn ended: end_turn, cancelled, max_tokens… */
   stopReason?: string;
   /** Why the start or the last turn failed. */
@@ -67,6 +73,8 @@ interface Internal {
   seq: ChatSequence<ChatEvent>;
   /** The prompt sent and waiting for its turn_start. */
   prompt?: TailPrompt;
+  /** The questions asked and not yet resolved, by ID: the resolution reads its answer through the form. */
+  asked: Map<string, ChatQuestion>;
 }
 
 /** Events kept for chats whose start has not answered yet. */
@@ -114,7 +122,9 @@ export class ChatsStore {
       if (this.byChatId(st.chatId)) continue;
       // The seq the chat is at is not known: its next event sets it. The
       // requests still waiting come back as cards.
-      this.add(st.agent, st.dir, { chatId: st.chatId, phase: st.working ? 'working' : 'idle', permissions: st.permissions ?? [] }, newSequence(), st);
+      const questions = st.questions ?? [];
+      const key = this.add(st.agent, st.dir, { chatId: st.chatId, phase: st.working ? 'working' : 'idle', permissions: st.permissions ?? [], questions }, newSequence(), st);
+      for (const q of questions) this.internal.get(key)?.asked.set(q.id, q);
     }
   }
 
@@ -133,7 +143,7 @@ export class ChatsStore {
   reset(sameHost = false): void {
     // A chat still starting is refused when its start answers.
     const ended = (c: Chat): Chat =>
-      c.phase === 'exited' ? c : { ...c, phase: 'exited', exit: { chatId: c.chatId, seq: 0, reason: 'disconnected' }, permissions: [], tail: endTurn(c.tail) };
+      c.phase === 'exited' ? c : { ...c, phase: 'exited', exit: { chatId: c.chatId, seq: 0, reason: 'disconnected' }, permissions: [], questions: [], tail: endTurn(c.tail) };
     this.chats = sameHost ? this.chats.filter((c) => c.phase !== 'starting').map((c) => ({ ...ended(c), epoch: epoch() })) : [];
     this.internal.clear();
     this.early.clear();
@@ -258,6 +268,18 @@ export class ChatsStore {
     if (chat) this.update(chat.key, (c) => ({ ...c, permissions: c.permissions.filter((p) => p.id !== permissionId) }));
   }
 
+  /**
+   * Answers the agent's question: accept with the content built from the
+   * draft, or decline (Skip) or cancel. An answer the form refuses throws,
+   * and the card stays to fix it.
+   */
+  async answer(chatId: string, questionId: string, action: ChatAnswerAction, content?: Record<string, unknown>): Promise<void> {
+    await api.chatAnswer(chatId, questionId, action, content);
+    // The resolution also arrives as an event, with the summary; drop the card now.
+    const chat = this.byChatId(chatId);
+    if (chat) this.update(chat.key, (c) => ({ ...c, questions: c.questions.filter((q) => q.id !== questionId) }));
+  }
+
   async setOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]> {
     const options = await api.chatSetOption(chatId, configId, value);
     const chat = this.byChatId(chatId);
@@ -285,9 +307,9 @@ export class ChatsStore {
 
   private add(agent: Chat['agent'], dir: string, fields: Pick<Chat, 'chatId' | 'phase'> & Partial<Chat>, seq: ChatSequence<ChatEvent>, st?: ChatState): string {
     const key = `chat-${this.nextKey++}`;
-    let chat: Chat = { key, agent, dir, configOptions: [], tail: emptyTail(), permissions: [], epoch: epoch(), ...fields };
+    let chat: Chat = { key, agent, dir, configOptions: [], tail: emptyTail(), permissions: [], questions: [], epoch: epoch(), ...fields };
     if (st) chat = this.withState(chat, st);
-    this.internal.set(key, { seq });
+    this.internal.set(key, { seq, asked: new Map() });
     this.chats = [...this.chats, chat];
     return key;
   }
@@ -349,7 +371,8 @@ export class ChatsStore {
     if (e.exit) {
       const exit = e.exit;
       state.prompt = undefined;
-      this.update(key, (c) => ({ ...c, phase: 'exited', exit, permissions: [], tail: endTurn(c.tail) }));
+      state.asked.clear();
+      this.update(key, (c) => ({ ...c, phase: 'exited', exit, permissions: [], questions: [], tail: endTurn(c.tail) }));
       return;
     }
     switch (e.kind) {
@@ -379,6 +402,28 @@ export class ChatsStore {
         this.update(key, (c) => ({ ...c, permissions: c.permissions.filter((q) => q.id !== id) }));
         return;
       }
+      case 'question': {
+        const q = e.question;
+        if (!q?.id || state.asked.has(q.id)) return;
+        state.asked.set(q.id, q);
+        this.update(key, (c) => ({ ...c, questions: [...c.questions, q] }));
+        return;
+      }
+      case 'question_resolved': {
+        const id = e.question?.id;
+        if (!id) return;
+        const asked = state.asked.get(id);
+        state.asked.delete(id);
+        const outcome = e.question?.outcome;
+        // A cancelled question goes with its turn; the others leave a line.
+        const line = asked && outcome && outcome !== 'cancel' ? summary(questionForm(asked), outcome, e.question?.content) : undefined;
+        this.update(key, (c) => ({
+          ...c,
+          questions: c.questions.filter((q) => q.id !== id),
+          tail: line ? addAnswer(c.tail, { questionId: id, ...(asked?.toolCallId && { toolCallId: asked.toolCallId }), outcome: outcome!, summary: line }) : c.tail,
+        }));
+        return;
+      }
       case 'turn_start': {
         const prompt = state.prompt;
         state.prompt = undefined;
@@ -394,11 +439,13 @@ export class ChatsStore {
       }
       case 'turn_end':
         // Requests end with their turn; the backend has answered them.
+        state.asked.clear();
         this.update(key, (c) => ({
           ...c,
           phase: c.phase === 'exited' ? c.phase : 'idle',
           tail: endTurn(c.tail),
           permissions: [],
+          questions: [],
           stopReason: e.stopReason || undefined,
           error: e.error || undefined,
           authMethods: e.authMethods?.length ? e.authMethods : undefined,

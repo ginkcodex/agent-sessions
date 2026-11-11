@@ -122,8 +122,9 @@ var QuestionForms = map[string]map[string]any{
 	"codex": {
 		"mode": "form", "toolCallId": "item_1", "message": "Codex needs your input to continue.",
 		"_meta": map[string]any{"codex": map[string]any{"autoResolutionMs": 60000}},
-		"requestedSchema": map[string]any{"type": "object", "required": []string{"confirm", "confirm_note"}, "properties": json.RawMessage(`{
+		"requestedSchema": map[string]any{"type": "object", "required": []string{"confirm"}, "properties": json.RawMessage(`{
 			"confirm": {"type": "string", "title": "This will overwrite src/config.ts. Continue?", "description": "Confirm",
+				"_meta": {"codex": {"isOther": true, "isSecret": false}},
 				"oneOf": [{"const": "Yes", "title": "Yes"}, {"const": "No", "title": "No"},
 					{"const": "Other", "title": "Other", "description": "Provide a different answer in the note field."}]},
 			"confirm_note": {"type": "string", "title": "Additional answer or note",

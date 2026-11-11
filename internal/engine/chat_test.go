@@ -913,11 +913,11 @@ func TestChatQuestionDeclined(t *testing.T) {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
-	if len(asked.Required) != 2 || !strings.Contains(string(asked.Meta), "autoResolutionMs") {
+	if len(asked.Required) != 1 || !strings.Contains(string(asked.Meta), "autoResolutionMs") {
 		t.Fatalf("asked = %+v", asked)
 	}
 	// Required fields do not stop a skip.
-	if err := f.m.Answer(st.ChatID, asked.ID, acp.ElicitationAccept, map[string]any{"confirm": "Yes"}); err == nil {
+	if err := f.m.Answer(st.ChatID, asked.ID, acp.ElicitationAccept, map[string]any{"confirm_note": "Only the tests"}); err == nil {
 		t.Fatal("a missing required answer was accepted")
 	}
 	if err := f.m.Answer(st.ChatID, asked.ID, acp.ElicitationDecline, nil); err != nil {
