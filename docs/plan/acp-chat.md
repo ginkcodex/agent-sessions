@@ -306,7 +306,9 @@ only once the adapter runs, so the action cannot be hidden ahead of that.
    it starts makes its own, as it does in the terminal.
 2. **No automatic installs.** The app never runs `npx` or downloads an
    adapter. A missing adapter shows its install command for the user to run,
-   in the spirit of [tool-installation](tool-installation.md).
+   in the spirit of [tool-installation](tool-installation.md). Amended by
+   [acp-adapter-install](acp-adapter-install.md): after the user approves a
+   review card, the app may install a pinned copy for its own use.
 3. **Least capability.** The client does not advertise `fs` or `terminal`. The
    agent uses its own tools, behind its own permission requests. Prompts are
    text only; images wait until an agent advertises `promptCapabilities.image`
