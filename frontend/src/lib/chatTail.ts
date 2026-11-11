@@ -82,6 +82,8 @@ export interface ChatTail {
   nextKey: number;
   /** The session's title, from session_info_update. */
   title?: string;
+  /** Context in use, in tokens, from the latest usage_update. */
+  usage?: { used: number; size: number };
 }
 
 export function emptyTail(): ChatTail {
@@ -102,8 +104,8 @@ export function endTurn(tail: ChatTail): ChatTail {
 }
 
 /**
- * Applies one ACP session update. Updates the tail does not show (usage,
- * commands, modes, options) and unknown kinds return the tail unchanged.
+ * Applies one ACP session update. Updates the tail does not keep (commands,
+ * modes, options) and unknown kinds return the tail unchanged.
  */
 export function applySessionUpdate(tail: ChatTail, update: AcpSessionUpdate | undefined): ChatTail {
   if (!update || typeof update !== 'object') return tail;
@@ -122,6 +124,11 @@ export function applySessionUpdate(tail: ChatTail, update: AcpSessionUpdate | un
     case 'session_info_update': {
       const title = update.title;
       return typeof title === 'string' && title !== tail.title ? { ...tail, title } : tail;
+    }
+    case 'usage_update': {
+      const { used, size } = update;
+      if (typeof used !== 'number' || typeof size !== 'number' || !Number.isFinite(used) || !Number.isFinite(size) || used < 0 || size <= 0) return tail;
+      return tail.usage?.used === used && tail.usage.size === size ? tail : { ...tail, usage: { used, size } };
     }
     default:
       return tail;

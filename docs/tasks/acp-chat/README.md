@@ -1,7 +1,7 @@
 # ACP chat mode — tasks
 
 - **Plan:** [acp-chat.md](../../plan/acp-chat.md)
-- **Progress:** 14/15 done
+- **Progress:** 15/16 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -20,3 +20,4 @@
 | [ACP-13](ACP-13.md) | ✅ Done | Remote routing in the app and frontend | 3 h | ACP-12, ACP-09 |
 | [ACP-14](ACP-14.md) | 🟡 Partial: real-agent, WSL, SSH and Windows checks not run | QA with real agents on Linux, WSL, SSH and Windows | 4 h | ACP-11, ACP-13, ACP-15 |
 | [ACP-15](ACP-15.md) | ✅ Done | Session option pickers: mode, model, effort | 3 h | ACP-09 |
+| [ACP-16](ACP-16.md) | ✅ Done | Composer as one card with a toolbar, round send/stop button and context use | 3 h | ACP-15 |

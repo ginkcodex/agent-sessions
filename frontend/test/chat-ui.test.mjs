@@ -178,10 +178,13 @@ async function renderMissing(agent, host) {
   return unescapeHTML(await renderWithFixture(missingModule, { toast: {}, connectionStore: { capabilities: {} }, installer: {} }, { agent, host }));
 }
 
-test('the composer sends only when idle, cancels while working and dismisses once ended', async () => {
+// A button's name: its text without the icon's markup.
+const composerButtons = (html) => renderedButtons(html).map((b) => `${b.text.replace(/<[^>]*>/g, '').trim()}${b.disabled ? ' (disabled)' : ''}`);
+
+test('the composer sends only when idle, stops a running turn and dismisses once ended', async () => {
   const buttons = async (fields) => {
     const html = await renderComposer(chat(fields));
-    return { html, buttons: renderedButtons(html).map((b) => `${b.text}${b.disabled ? ' (disabled)' : ''}`) };
+    return { html, buttons: composerButtons(html) };
   };
 
   const starting = await buttons({ phase: 'starting', chatId: '' });
@@ -192,16 +195,36 @@ test('the composer sends only when idle, cancels while working and dismisses onc
   const idle = await buttons({ phase: 'idle' });
   assert.deepEqual(idle.buttons, ['End chat', 'Send (disabled)'], 'nothing written yet');
   assert.doesNotMatch(idle.html, /<textarea[^>]*\sdisabled/);
-  assert.match(idle.html, /Enter sends, Shift\+Enter starts a new line/);
+  assert.match(idle.html, /placeholder="Message Codex…"/);
+  // The key hint is for screen readers, tied to the text box.
+  assert.match(idle.html, /<textarea[^>]*aria-describedby="chat-hint-chat-1"/);
+  assert.match(idle.html, /id="chat-hint-chat-1" class="sr-only[^"]*">Enter sends, Shift\+Enter starts a new line/);
+  // Icon buttons carry a name and a tooltip.
+  assert.match(idle.html, /<button[^>]*title="End the chat and stop Codex"[^>]*>.*?<svg[^]*?End chat<\/span><\/button>/);
+  assert.match(idle.html, /<button type="submit" class="round send[^"]*" title="Send \(Enter\)"/);
 
   const working = await buttons({ phase: 'working' });
-  assert.deepEqual(working.buttons, ['End chat', 'Cancel', 'Send (disabled)']);
+  assert.deepEqual(working.buttons, ['End chat', 'Cancel'], 'the send button turns into stop');
+  assert.match(working.html, /<button type="button" class="round stop[^"]*" title="Stop Codex's turn"/);
 
   const exited = await buttons({ phase: 'exited', exit: { chatId: 'c1', seq: 9, reason: 'closed' } });
   assert.deepEqual(exited.buttons, ['Dismiss']);
   const restart = await renderComposer(chat({ phase: 'exited', exit: { chatId: 'c1', seq: 9, reason: 'crashed' } }), { onRestart() {} });
-  assert.deepEqual(renderedButtons(restart).map((b) => b.text), ['Dismiss', 'Restart']);
+  assert.deepEqual(composerButtons(restart), ['Dismiss', 'Restart']);
   assert.match(exited.html, /<textarea[^>]*\sdisabled/);
+});
+
+test('the composer shows the context in use once the agent reports it', async () => {
+  const none = await renderComposer(chat());
+  assert.doesNotMatch(none, /data-chat-usage/, 'nothing before a usage_update');
+
+  const html = unescapeHTML(await renderComposer(chat({ tail: { ...emptyTail(), usage: { used: 15385, size: 475000 } } })));
+  assert.match(html, /data-chat-usage[^>]*title="Context: 15,385 of 475,000 tokens in use"/);
+  assert.match(html, />\s*3%<span class="sr-only[^"]*"> of the context in use<\/span>/);
+  const full = unescapeHTML(await renderComposer(chat({ tail: { ...emptyTail(), usage: { used: 300, size: 200 } } })));
+  assert.match(full, />\s*100%</, 'never more than full');
+  const ended = await renderComposer(chat({ phase: 'exited', exit: { chatId: 'c1', seq: 2, reason: 'closed' }, tail: { ...emptyTail(), usage: { used: 1, size: 2 } } }));
+  assert.doesNotMatch(ended, /data-chat-usage/);
 });
 
 test('the live tail shows the streamed messages, then the chat state under them', async () => {
@@ -451,6 +474,10 @@ test('the composer shows a picker per option, on the value the agent reports', a
   assert.match(html, /<optgroup label="OpenAI">/);
   assert.match(html, /Full Access \(no permission requests\)/);
   assert.doesNotMatch(html, /runs tools without asking/);
+  // A select shows only its value; the option's name is its name and tooltip.
+  assert.match(html, /<select aria-label="Mode"/);
+  assert.match(html, /<label class="picker[^"]*" title="Model">/);
+  assert.doesNotMatch(html, /picker-name/);
 
   // The agent reports another value: the picker follows it.
   const moved = chat({ configOptions: [{ ...OPTIONS[0], currentValue: 'agent-full-access' }, { ...OPTIONS[1], currentValue: 'gpt-a' }] });

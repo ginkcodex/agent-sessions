@@ -1,9 +1,11 @@
 <script lang="ts">
   // The chat's session options (mode, model, effort…) as the agent offers
   // them. Each picker shows the value the agent reports; a change goes to
-  // the agent, and the picker follows its answer.
+  // the agent, and the picker follows its answer. They sit in the composer's
+  // toolbar: a select shows only its value, its name is its tooltip.
   import type { Chat } from '../../stores/chats.svelte';
   import { pickers } from '../../chatOptions';
+  import Icon from '../common/Icon.svelte';
 
   interface Props {
     chat: Chat;
@@ -45,10 +47,13 @@
 
 {#if list.length > 0}
   <div class="chat-options" data-chat-options>
+    {#if unguarded}
+      <span class="unguarded" role="note"><Icon name="triangle-alert" size={12} /> {unguarded.name}: the agent runs tools without asking.</span>
+    {/if}
     {#each list as p (p.id)}
-      <label class="picker" title={p.description ?? p.name}>
-        <span class="picker-name">{p.name}</span>
+      <label class="picker" class:toggle={p.kind === 'boolean'} title={p.description ? `${p.name}: ${p.description}` : p.name}>
         {#if p.kind === 'boolean'}
+          <span class="picker-name">{p.name}</span>
           <input
             type="checkbox"
             checked={p.value === true}
@@ -57,6 +62,7 @@
           />
         {:else}
           <select
+            aria-label={p.name}
             value={p.value ?? ''}
             disabled={disabled || busy !== null}
             onchange={(e) => void change(p.id, e.currentTarget.value, e.currentTarget)}
@@ -78,12 +84,10 @@
               {/if}
             {/each}
           </select>
+          <Icon name="chevron-down" size={12} class="chevron" />
         {/if}
       </label>
     {/each}
-    {#if unguarded}
-      <span class="unguarded" role="note">{unguarded.name}: the agent runs tools without asking.</span>
-    {/if}
   </div>
 {/if}
 
@@ -92,36 +96,77 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 12px;
-    width: 100%;
-    max-width: max(900px, 80%);
-    margin: 0 auto;
+    justify-content: flex-end;
+    gap: 2px 4px;
+    min-width: 0;
     font-size: 0.75rem;
     color: var(--text-secondary);
   }
 
   .picker {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 5px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+  }
+
+  .picker.toggle {
+    padding: 3px 6px;
+  }
+
+  .picker:hover:not(:has(:disabled)) {
+    background: var(--hover-bg);
+    color: var(--text-primary);
   }
 
   select {
-    max-width: 16rem;
-    padding: 2px 4px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
+    appearance: none;
+    field-sizing: content;
+    min-width: 0;
+    max-width: 14rem;
+    padding: 3px 20px 3px 6px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+
+  select:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 0;
+  }
+
+  /* The select's own arrow is gone with appearance: none. */
+  .picker :global(.chevron) {
+    position: absolute;
+    right: 5px;
+    pointer-events: none;
+  }
+
+  /* The list follows the theme, not the transparent select. */
+  select :global(option),
+  select :global(optgroup) {
     background: var(--bg-secondary);
     color: var(--text-primary);
-    font: inherit;
   }
 
   select:disabled,
   input:disabled {
     opacity: 0.6;
+    cursor: default;
   }
 
   .unguarded {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 4px;
     color: var(--danger);
   }
 </style>

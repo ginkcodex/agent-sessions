@@ -220,7 +220,10 @@ The engine resolves it (`Service.ChatLaunch`, `Service.ChatAgents`):
   - `ChatComposer`: send, and cancel while a turn runs, with pickers for the
     session options (mode, model, effort). The last choice is remembered per
     agent and host and applied to the agent's next new chat, except a mode
-    that skips permission requests, which is never remembered;
+    that skips permission requests, which is never remembered. It is one
+    card: the text box, then a toolbar with End chat on the left and, on
+    the right, the context in use (from `usage_update`), the pickers and a
+    round send button that turns into a stop button while a turn runs;
   - `LiveTail`: renders through `MessageBubble` and `transcript/parts`;
   - `PermissionCard`: the tool's kind, title, command or diff, and one
     button per option with its kind. There is no default choice, nothing

@@ -137,10 +137,9 @@ test('a plan replaces the plan item; a later turn moves it to the end', () => {
   assert.equal(applySessionUpdate(t, { sessionUpdate: 'plan', entries: 'nope' }), t);
 });
 
-test('kinds the tail does not show, and unknown kinds, return the tail unchanged', () => {
+test('kinds the tail does not keep, and unknown kinds, return the tail unchanged', () => {
   const t = turn();
   for (const u of [
-    { sessionUpdate: 'usage_update', used: 10, size: 100 },
     { sessionUpdate: 'available_commands_update', availableCommands: [] },
     { sessionUpdate: 'current_mode_update', currentModeId: 'plan' },
     { sessionUpdate: 'config_option_update', configOptions: [] },
@@ -153,6 +152,18 @@ test('kinds the tail does not show, and unknown kinds, return the tail unchanged
   const titled = applySessionUpdate(t, { sessionUpdate: 'session_info_update', title: 'Fix the build' });
   assert.equal(titled.title, 'Fix the build');
   assert.equal(applySessionUpdate(titled, { sessionUpdate: 'session_info_update', title: 'Fix the build' }), titled);
+});
+
+test('usage_update keeps the latest context use; a malformed one changes nothing', () => {
+  const t = turn();
+  const used = applySessionUpdate(t, { sessionUpdate: 'usage_update', used: 15385, size: 475000 });
+  assert.deepEqual(used.usage, { used: 15385, size: 475000 });
+  assert.equal(used.items, t.items, 'no item for usage');
+  assert.equal(applySessionUpdate(used, { sessionUpdate: 'usage_update', used: 15385, size: 475000, cost: { amount: 0, currency: 'USD' } }), used);
+  assert.deepEqual(applySessionUpdate(used, { sessionUpdate: 'usage_update', used: 16000, size: 475000 }).usage, { used: 16000, size: 475000 });
+  for (const bad of [{}, { used: 1 }, { used: '1', size: 10 }, { used: 1, size: 0 }, { used: -1, size: 10 }, { used: Infinity, size: 10 }]) {
+    assert.equal(applySessionUpdate(used, { sessionUpdate: 'usage_update', ...bad }), used, JSON.stringify(bad));
+  }
 });
 
 test('turns count up; the prompt sent starts its turn', () => {

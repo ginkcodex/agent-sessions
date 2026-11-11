@@ -345,6 +345,8 @@ export class MockChats {
       }
       reply.parts.push({ kind: 'text', text: answer });
       this.session(chat, plan(3));
+      // As the adapters do after each reply: the context the session uses.
+      this.session(chat, { sessionUpdate: 'usage_update', used: 12000 + saved.length * 4200, size: 200000 });
     } finally {
       if (!chat.closed) {
         chat.turn = null;
