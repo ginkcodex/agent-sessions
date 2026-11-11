@@ -315,7 +315,9 @@ only once the adapter runs, so the action cannot be hidden ahead of that.
 3. **Least capability.** The client does not advertise `fs` or `terminal`. The
    agent uses its own tools, behind its own permission requests. Prompts are
    text only; images wait until an agent advertises `promptCapabilities.image`
-   and a later task adds them.
+   and a later task adds them. Amended by
+   [chat-attachments](chat-attachments.md): a message may carry images and
+   text files, sent only to agents that advertise the matching capability.
 4. **Permissions fail closed.** Nothing is approved automatically. Closing the
    chat, cancelling, disconnecting, the agent exiting and quitting the app all
    answer every pending request `cancelled`.

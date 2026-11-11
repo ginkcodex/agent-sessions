@@ -27,6 +27,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 |---|---|---|
 | [acp-adapter-install.md](acp-adapter-install.md) | [acp-adapter-install](../tasks/acp-adapter-install/README.md) | One-click, consented install of pinned Claude and Codex ACP adapters through the managed-tools installer, on this computer and on WSL/SSH hosts |
 | [acp-chat.md](acp-chat.md) | [acp-chat](../tasks/acp-chat/README.md) | Drive Claude Code, Codex and OpenCode over ACP to stream live messages, tool calls and permissions into the transcript, locally and on WSL/SSH hosts |
+| [chat-attachments.md](chat-attachments.md) | [chat-attachments](../tasks/chat-attachments/README.md) | Attach images and text files to a chat message from a + button, a drop or a paste |
 | [orphan-task-notifications.md](orphan-task-notifications.md) | [orphan-task-notifications](../tasks/orphan-task-notifications/README.md) | Show the notification Claude Code writes for background tasks orphaned by a previous run as a notification, not raw XML |
 | [idle-rendering.md](idle-rendering.md) | [idle-rendering](../tasks/idle-rendering/README.md) | Reduce idle animations and unnecessary compositing; native GPU validation gates |
 | [file-translate.md](file-translate.md) | [file-translate](../tasks/file-translate/README.md) | Translate complete Markdown files from the preview context menu without selecting text |
