@@ -74,7 +74,7 @@ type Conn struct {
 }
 
 type incomingRequest struct {
-	cancel    context.CancelFunc
+	cancel    context.CancelCauseFunc
 	withdrawn bool // under Conn.mu
 }
 
@@ -295,7 +295,7 @@ func (c *Conn) dispatch(line []byte) {
 	case m.Method != "" && m.hasID():
 		// Registered before the next message is read, so a
 		// $/cancel_request that follows finds it.
-		ctx, cancel := context.WithCancel(c.handlerCtx)
+		ctx, cancel := context.WithCancelCause(c.handlerCtx)
 		in := &incomingRequest{cancel: cancel}
 		key := requestKey(m.ID)
 		c.mu.Lock()
@@ -352,7 +352,7 @@ func (c *Conn) withdraw(params json.RawMessage) {
 	}
 	c.mu.Unlock()
 	if in != nil {
-		in.cancel()
+		in.cancel(ErrWithdrawn)
 	}
 }
 
@@ -368,7 +368,7 @@ func requestKey(id json.RawMessage) string {
 
 func (c *Conn) handleRequest(ctx context.Context, key string, in *incomingRequest, m message) {
 	defer func() {
-		in.cancel()
+		in.cancel(nil)
 		if key != "" {
 			c.mu.Lock()
 			delete(c.incoming, key)

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -819,4 +820,213 @@ func TestEngineManageRefusesOwnedSession(t *testing.T) {
 	if b := blocked(); strings.Contains(b, "chat") {
 		t.Fatalf("released session: blocked = %q", b)
 	}
+}
+
+func (f *chatFixture) startAsking(t *testing.T) ChatState {
+	t.Helper()
+	st, err := f.m.Start(chatCtx(t), ChatStartRequest{Agent: model.AgentClaude, Dir: f.dir, Questions: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st
+}
+
+func TestChatQuestionAnswered(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.startAsking(t)
+	if err := f.m.Prompt(st.ChatID, "question claude", nil); err != nil {
+		t.Fatal(err)
+	}
+	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
+	if asked.ID == "" || asked.ToolCallID != "toolu_ask" || asked.Message != "Please answer the following questions." || asked.Outcome != "" {
+		t.Fatalf("asked = %+v", asked)
+	}
+	// The fields go to the frontend as a list, in the order sent.
+	b, err := json.Marshal(asked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `"fields":[{"key":"question_0","type":"string","title":"Approach","description":"Which approach?","oneOf":[{"const":"Extend existing module (Recommended)"`; !strings.Contains(string(b), want) {
+		t.Fatalf("question JSON = %s", b)
+	}
+	var keys []string
+	for _, fl := range asked.Fields {
+		keys = append(keys, fl.Key)
+	}
+	if strings.Join(keys, " ") != "question_0 question_0_custom question_1 question_1_custom" {
+		t.Fatalf("keys = %q", keys)
+	}
+	// A reloaded window finds the waiting question in the chat's state.
+	if open := f.m.Chats(); len(open) != 1 || len(open[0].Questions) != 1 || open[0].Questions[0].ID != asked.ID || len(open[0].Questions[0].Fields) != 4 {
+		t.Fatalf("chats = %+v", open)
+	}
+
+	// Answers that do not fit are refused, and the question stays.
+	for _, bad := range []map[string]any{
+		{"question_0": "Something else"},
+		{"question_1": []any{"Unit tests", "Unit tests"}},
+		{"question_7": "x"},
+	} {
+		if err := f.m.Answer(st.ChatID, asked.ID, acp.ElicitationAccept, bad); err == nil {
+			t.Fatalf("answer %v was accepted", bad)
+		}
+	}
+	if err := f.m.Answer(st.ChatID, asked.ID, "maybe", nil); err == nil {
+		t.Fatal("an unknown action was accepted")
+	}
+	if err := f.m.Answer(st.ChatID, "question-x", acp.ElicitationDecline, nil); !errors.Is(err, ErrQuestionNotFound) {
+		t.Fatalf("unknown question = %v", err)
+	}
+	if open := f.m.Chats(); len(open[0].Questions) != 1 {
+		t.Fatalf("refused answers resolved the question: %+v", open[0].Questions)
+	}
+
+	// Values arrive as decoded JSON from the frontend.
+	answer := map[string]any{"question_0": "New module", "question_1": []any{"Documentation", "Unit tests"}, "question_1_custom": ""}
+	if err := f.m.Answer(st.ChatID, asked.ID, acp.ElicitationAccept, answer); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.m.Answer(st.ChatID, asked.ID, acp.ElicitationAccept, answer); !errors.Is(err, ErrQuestionNotFound) {
+		t.Fatalf("second answer = %v", err)
+	}
+	if end := f.events.wait(t, st.ChatID, kind(ChatTurnEnded)); end.StopReason != acp.StopEndTurn {
+		t.Fatalf("turn end = %+v", end)
+	}
+	resolved := f.events.wait(t, st.ChatID, kind(ChatQuestionResolved)).Question
+	if resolved.ID != asked.ID || resolved.Outcome != acp.ElicitationAccept || resolved.Content["question_0"] != "New module" || resolved.Content["question_1_custom"] != nil {
+		t.Fatalf("resolved = %+v", resolved)
+	}
+	u, _ := f.events.of(st.ChatID)
+	if got := chunks(u); len(got) != 1 || got[0] != `accept {"question_0":"New module","question_1":["Documentation","Unit tests"]}` {
+		t.Fatalf("chunks = %q", got)
+	}
+	if open := f.m.Chats(); len(open[0].Questions) != 0 {
+		t.Fatalf("answered question still listed: %+v", open[0].Questions)
+	}
+	f.events.checkSeq(t, st.ChatID)
+}
+
+func TestChatQuestionDeclined(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.startAsking(t)
+	if err := f.m.Prompt(st.ChatID, "question codex", nil); err != nil {
+		t.Fatal(err)
+	}
+	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
+	if len(asked.Required) != 2 || !strings.Contains(string(asked.Meta), "autoResolutionMs") {
+		t.Fatalf("asked = %+v", asked)
+	}
+	// Required fields do not stop a skip.
+	if err := f.m.Answer(st.ChatID, asked.ID, acp.ElicitationAccept, map[string]any{"confirm": "Yes"}); err == nil {
+		t.Fatal("a missing required answer was accepted")
+	}
+	if err := f.m.Answer(st.ChatID, asked.ID, acp.ElicitationDecline, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.events.wait(t, st.ChatID, kind(ChatTurnEnded))
+	if r := f.events.wait(t, st.ChatID, kind(ChatQuestionResolved)).Question; r.Outcome != acp.ElicitationDecline || r.Content != nil {
+		t.Fatalf("resolved = %+v", r)
+	}
+	if u, _ := f.events.of(st.ChatID); !slices.Equal(chunks(u), []string{"decline"}) {
+		t.Fatalf("chunks = %q", chunks(u))
+	}
+}
+
+// Without the start flag the agent is not offered questions and falls back.
+func TestChatQuestionsNeedTheFlag(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.start(t, nil)
+	f.turn(t, st.ChatID, "question claude")
+	u, _ := f.events.of(st.ChatID)
+	if slices.ContainsFunc(u, kind(ChatQuestionAsked)) || !slices.Equal(chunks(u), []string{"no elicitation"}) {
+		t.Fatalf("updates = %+v", u)
+	}
+}
+
+func TestChatCancelAnswersQuestion(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.startAsking(t)
+	if err := f.m.Prompt(st.ChatID, "question", nil); err != nil {
+		t.Fatal(err)
+	}
+	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
+	if err := f.m.Cancel(st.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	if end := f.events.wait(t, st.ChatID, kind(ChatTurnEnded)); end.StopReason != acp.StopCancelled {
+		t.Fatalf("turn end = %+v", end)
+	}
+	if r := f.events.wait(t, st.ChatID, kind(ChatQuestionResolved)).Question; r.ID != asked.ID || r.Outcome != acp.ElicitationCancel {
+		t.Fatalf("resolved = %+v", r)
+	}
+	if err := f.m.Answer(st.ChatID, asked.ID, acp.ElicitationDecline, nil); !errors.Is(err, ErrQuestionNotFound) {
+		t.Fatalf("answer after cancel = %v", err)
+	}
+}
+
+func TestChatCloseDuringQuestion(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.startAsking(t)
+	if err := f.m.Prompt(st.ChatID, "question", nil); err != nil {
+		t.Fatal(err)
+	}
+	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
+	closed := make(chan struct{})
+	go func() {
+		_ = f.m.Close(st.ChatID)
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(15 * time.Second):
+		t.Fatal("Close blocked on a pending question")
+	}
+	u, x := f.events.of(st.ChatID)
+	if len(x) != 1 || x[0].Reason != ChatExitClosed {
+		t.Fatalf("exits = %+v", x)
+	}
+	r := u[slices.IndexFunc(u, kind(ChatQuestionResolved))]
+	if r.Question.ID != asked.ID || r.Question.Outcome != acp.ElicitationCancel {
+		t.Fatalf("resolved = %+v", r.Question)
+	}
+	f.events.checkSeq(t, st.ChatID)
+}
+
+func TestChatQuestionWithdrawn(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.startAsking(t)
+	if err := f.m.Prompt(st.ChatID, "withdraw 200", nil); err != nil {
+		t.Fatal(err)
+	}
+	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
+	if r := f.events.wait(t, st.ChatID, kind(ChatQuestionResolved)).Question; r.ID != asked.ID || r.Outcome != ChatQuestionWithdrawn {
+		t.Fatalf("resolved = %+v", r)
+	}
+	if end := f.events.wait(t, st.ChatID, kind(ChatTurnEnded)); end.StopReason != acp.StopEndTurn {
+		t.Fatalf("turn end = %+v", end)
+	}
+	if err := f.m.Answer(st.ChatID, asked.ID, acp.ElicitationDecline, nil); !errors.Is(err, ErrQuestionNotFound) {
+		t.Fatalf("answer after withdrawal = %v", err)
+	}
+	if u, _ := f.events.of(st.ChatID); !slices.Equal(chunks(u), []string{"withdrawn"}) {
+		t.Fatalf("chunks = %q", chunks(u))
+	}
+}
+
+func TestChatAgentExitAnswersQuestion(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.startAsking(t)
+	if err := f.m.Prompt(st.ChatID, "askexit", nil); err != nil {
+		t.Fatal(err)
+	}
+	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
+	if x := f.events.waitExit(t, st.ChatID); x.Reason != ChatExitCrashed {
+		t.Fatalf("exit = %+v", x)
+	}
+	u, _ := f.events.of(st.ChatID)
+	r := u[slices.IndexFunc(u, kind(ChatQuestionResolved))]
+	if r.Question.ID != asked.ID || r.Question.Outcome != acp.ElicitationCancel {
+		t.Fatalf("resolved = %+v", r.Question)
+	}
+	f.events.checkSeq(t, st.ChatID)
 }

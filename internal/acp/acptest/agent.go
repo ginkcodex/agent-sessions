@@ -28,6 +28,8 @@
 //	withdraw MS  asks the "claude" form and withdraws it with
 //	             $/cancel_request after MS milliseconds; the chunk is
 //	             "withdrawn"
+//	askexit      asks the "claude" form, then exits with status 3 without
+//	             waiting for the answer
 //	anything     echoed back as one chunk
 //
 // Environment, set through Command's env:
@@ -300,6 +302,15 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 	}
 	if word == "crash" {
 		_, _ = os.Stderr.WriteString("fake agent crashed\n")
+		os.Exit(3)
+	}
+	if word == "askexit" {
+		params := map[string]any{"sessionId": p.SessionID}
+		for k, v := range QuestionForms["claude"] {
+			params[k] = v
+		}
+		go func() { _ = a.c().Call(context.Background(), acp.MethodElicitationCreate, params, nil) }()
+		time.Sleep(200 * time.Millisecond)
 		os.Exit(3)
 	}
 	ctx, cancel := context.WithCancel(context.Background())

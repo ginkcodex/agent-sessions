@@ -47,9 +47,9 @@ type ClientOptions struct {
 	// advertises form elicitation, which is how agents ask the user
 	// questions. Only session-scoped forms whose schema is Supported
 	// reach it; others get invalid-params. ctx ends when the turn is
-	// cancelled, the client closes or the agent withdraws the form, and
-	// the form is then answered cancel. An accepted answer that does not
-	// Validate is sent as cancel.
+	// cancelled, the client closes or the agent withdraws the form
+	// (context.Cause is then ErrWithdrawn), and the form is then answered
+	// cancel. An accepted answer that does not Validate is sent as cancel.
 	OnElicitation func(ctx context.Context, req CreateElicitationRequest) CreateElicitationResponse
 	// OnProtocolError reports messages that were skipped.
 	OnProtocolError func(error)
@@ -463,28 +463,14 @@ func (c *Client) askForm(ctx context.Context, req CreateElicitationRequest) Crea
 		case ElicitationDecline:
 			return CreateElicitationResponse{Action: ElicitationDecline}
 		case ElicitationAccept:
-			if r.Content, ok = validAnswer(req.RequestedSchema, r.Content); ok {
-				return r
+			if content, err := req.RequestedSchema.ValidateValues(r.Content); err == nil {
+				return CreateElicitationResponse{Action: ElicitationAccept, Content: content}
 			}
 		}
 		return ElicitationCancelled()
 	case <-fctx.Done():
 		return ElicitationCancelled()
 	}
-}
-
-// validAnswer checks content against the form once more, as it will be sent.
-func validAnswer(s *ElicitationSchema, content map[string]any) (map[string]any, bool) {
-	raw := make(map[string]json.RawMessage, len(content))
-	for k, v := range content {
-		b, err := json.Marshal(v)
-		if err != nil {
-			return nil, false
-		}
-		raw[k] = b
-	}
-	out, err := s.Validate(raw)
-	return out, err == nil
 }
 
 func (c *Client) askPermission(ctx context.Context, req RequestPermissionRequest) RequestPermissionResponse {

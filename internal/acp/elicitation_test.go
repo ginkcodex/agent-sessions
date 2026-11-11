@@ -155,15 +155,15 @@ func TestCancelRequestWithdrawsHandler(t *testing.T) {
 		OnRequest: func(ctx context.Context, _ string, _ json.RawMessage) (any, error) {
 			close(started)
 			<-ctx.Done()
-			ended <- ctx.Err()
+			ended <- context.Cause(ctx)
 			return ElicitationCancelled(), nil
 		},
 	})
 	agent.send(`{"jsonrpc":"2.0","id":"q-1","method":"elicitation/create","params":{}}`)
 	<-started
 	agent.send(`{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":"q-1"}}`)
-	if err := <-ended; !errors.Is(err, context.Canceled) {
-		t.Fatalf("handler ctx err = %v", err)
+	if err := <-ended; !errors.Is(err, ErrWithdrawn) {
+		t.Fatalf("handler ctx cause = %v", err)
 	}
 	if got, want := agent.recvLine(), fmt.Sprintf(`{"jsonrpc":"2.0","id":"q-1","error":{"code":%d,"message":"request cancelled"}}`, CodeRequestCancelled); got != want {
 		t.Fatalf("reply = %s, want %s", got, want)

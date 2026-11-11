@@ -672,7 +672,7 @@ func TestWithdrawnQuestion(t *testing.T) {
 	ended := make(chan error, 1)
 	c, rec := start(t, acp.ClientOptions{OnElicitation: func(ctx context.Context, _ acp.CreateElicitationRequest) acp.CreateElicitationResponse {
 		<-ctx.Done()
-		ended <- ctx.Err()
+		ended <- context.Cause(ctx)
 		return acp.CreateElicitationResponse{Action: acp.ElicitationAccept, Content: map[string]any{"question_0": "New module"}}
 	}})
 	stop, err := prompt(t, c, newSession(t, c), "withdraw 100")
@@ -681,8 +681,8 @@ func TestWithdrawnQuestion(t *testing.T) {
 	}
 	select {
 	case err := <-ended:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("ctx err = %v", err)
+		if !errors.Is(err, acp.ErrWithdrawn) {
+			t.Fatalf("ctx cause = %v", err)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the withdrawn question's context did not end")

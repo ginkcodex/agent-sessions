@@ -36,6 +36,12 @@ const (
 	ChatPermissionAsked = "permission"
 	// ChatPermissionResolved carries the Permission's ID and its outcome.
 	ChatPermissionResolved = "permission_resolved"
+	// ChatQuestionAsked carries a pending Question: a form the agent asks
+	// the user to fill in.
+	ChatQuestionAsked = "question"
+	// ChatQuestionResolved carries the Question's ID, its Outcome and, when
+	// accepted, the Content sent.
+	ChatQuestionResolved = "question_resolved"
 	// ChatTurnStarted is sent when a prompt is sent to the agent.
 	ChatTurnStarted = "turn_start"
 	// ChatTurnEnded carries the StopReason, or Error (and AuthMethods when
@@ -65,6 +71,9 @@ var (
 	// ErrPermissionNotFound means the permission request was already
 	// answered, or was cancelled.
 	ErrPermissionNotFound = errors.New("the permission request is no longer pending")
+	// ErrQuestionNotFound means the question was already answered, or was
+	// cancelled or withdrawn.
+	ErrQuestionNotFound = errors.New("the question is no longer pending")
 	// ErrSessionOwned is wrapped by SessionOwnedError.
 	ErrSessionOwned = errors.New("the session is already open in a chat")
 	// ErrEmptyPrompt means a prompt had neither text nor attachments.
@@ -110,6 +119,10 @@ type ChatStartRequest struct {
 	Agent  model.AgentID     `json:"agent"`
 	Dir    string            `json:"dir"`
 	Resume *model.SessionRef `json:"resume,omitempty"`
+	// Questions says the caller shows questions (ChatQuestionAsked). Only
+	// then is the agent offered form elicitation; otherwise each agent
+	// falls back to not asking.
+	Questions bool `json:"questions,omitempty"`
 	// Emitter, when set, takes this chat's events instead of the manager's
 	// emitter: a server sends them to the connection that started the chat.
 	Emitter Emitter `json:"-"`
@@ -133,6 +146,50 @@ type ChatState struct {
 	// Permissions are the requests waiting for an answer, oldest first, so
 	// a reloaded window can show them again.
 	Permissions []ChatPermission `json:"permissions,omitempty"`
+	// Questions are the questions waiting for an answer, oldest first.
+	Questions []ChatQuestion `json:"questions,omitempty"`
+}
+
+// Outcomes of a ChatQuestion besides the ACP actions accept, decline and
+// cancel.
+const (
+	// ChatQuestionWithdrawn means the agent no longer needs the answer.
+	ChatQuestionWithdrawn = "withdrawn"
+)
+
+// ChatQuestion is a form the agent asks the user to fill in, or its outcome
+// once resolved. Fields keep the order the agent sent them in.
+type ChatQuestion struct {
+	ID          string              `json:"id"`
+	ToolCallID  string              `json:"toolCallId,omitempty"`
+	Message     string              `json:"message,omitempty"`
+	Title       string              `json:"title,omitempty"`
+	Description string              `json:"description,omitempty"`
+	Fields      []ChatQuestionField `json:"fields,omitempty"`
+	Required    []string            `json:"required,omitempty"`
+	// Meta is the request's _meta, such as Codex's autoResolutionMs.
+	Meta json.RawMessage `json:"meta,omitempty"`
+	// Outcome is accept, decline, cancel or withdrawn once resolved.
+	Outcome string         `json:"outcome,omitempty"`
+	Content map[string]any `json:"content,omitempty"`
+}
+
+// ChatQuestionField is one field of a question's form: its key and its
+// property schema, flattened.
+type ChatQuestionField struct {
+	Key string `json:"key"`
+	acp.ElicitationProperty
+}
+
+func newChatQuestion(id string, req acp.CreateElicitationRequest) ChatQuestion {
+	q := ChatQuestion{ID: id, ToolCallID: req.ToolCallID, Message: req.Message, Meta: req.Meta}
+	if s := req.RequestedSchema; s != nil {
+		q.Title, q.Description, q.Required = s.Title, s.Description, slices.Clone(s.Required)
+		for _, f := range s.Properties {
+			q.Fields = append(q.Fields, ChatQuestionField{Key: f.Key, ElicitationProperty: f.Property})
+		}
+	}
+	return q
 }
 
 // ChatPermission is a permission request, or its outcome once resolved.
@@ -154,6 +211,7 @@ type ChatUpdate struct {
 	State         *ChatState         `json:"state,omitempty"`
 	Update        *acp.SessionUpdate `json:"update,omitempty"`
 	Permission    *ChatPermission    `json:"permission,omitempty"`
+	Question      *ChatQuestion      `json:"question,omitempty"`
 	StopReason    string             `json:"stopReason,omitempty"`
 	Error         string             `json:"error,omitempty"`
 	AuthMethods   []acp.AuthMethod   `json:"authMethods,omitempty"`
@@ -329,7 +387,7 @@ func (m *ChatManager) Start(ctx context.Context, req ChatStartRequest) (ChatStat
 	}
 	ch := &chat{
 		m: m, id: newChatID(), agent: req.Agent, dir: req.Dir, emitter: req.Emitter,
-		perms: map[string]*pendingPermission{}, done: make(chan struct{}),
+		perms: map[string]*pendingPermission{}, questions: map[string]*pendingQuestion{}, done: make(chan struct{}),
 	}
 	ch.ctx, ch.cancel = context.WithCancel(context.Background())
 	if req.Resume != nil {
@@ -364,12 +422,16 @@ func (m *ChatManager) start(ctx context.Context, ch *chat, req ChatStartRequest)
 	if err != nil {
 		return ChatState{}, err
 	}
-	client, err := acp.Start(ctx, cmd, acp.ClientOptions{
+	opts := acp.ClientOptions{
 		ClientInfo:   m.opts.ClientInfo,
 		OnUpdate:     ch.onUpdate,
 		OnPermission: ch.onPermission,
 		Grace:        m.opts.Grace,
-	})
+	}
+	if req.Questions {
+		opts.OnElicitation = ch.onQuestion
+	}
+	client, err := acp.Start(ctx, cmd, opts)
 	if err != nil {
 		return ChatState{}, ch.closedOr(err)
 	}
@@ -509,7 +571,7 @@ func (m *ChatManager) Prompt(chatID, text string, atts []chatattach.Attachment) 
 }
 
 // Cancel asks the agent to stop the running turn. Pending permission
-// requests are answered cancelled.
+// requests and questions are answered cancelled.
 func (m *ChatManager) Cancel(chatID string) error {
 	ch, err := m.get(chatID)
 	if err != nil {
@@ -549,6 +611,35 @@ func (m *ChatManager) Respond(chatID, permissionID, optionID string) error {
 	return nil
 }
 
+// Answer answers a question: accept with content checked against the
+// question's form, or decline or cancel. An answer that does not fit the form
+// is refused and the question stays pending.
+func (m *ChatManager) Answer(chatID, questionID, action string, content map[string]any) error {
+	ch, err := m.get(chatID)
+	if err != nil {
+		return err
+	}
+	ch.mu.Lock()
+	defer ch.mu.Unlock()
+	q, ok := ch.questions[questionID]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrQuestionNotFound, questionID)
+	}
+	answer := acp.CreateElicitationResponse{Action: action}
+	switch action {
+	case acp.ElicitationAccept:
+		if answer.Content, err = q.schema.ValidateValues(content); err != nil {
+			return fmt.Errorf("chat: %w", err)
+		}
+	case acp.ElicitationDecline, acp.ElicitationCancel:
+	default:
+		return fmt.Errorf("chat: unknown answer %q", action)
+	}
+	delete(ch.questions, questionID)
+	q.answer <- answer
+	return nil
+}
+
 // SetOption changes a session option and returns the options as they now
 // are.
 func (m *ChatManager) SetOption(ctx context.Context, chatID, configID string, value any) ([]acp.ConfigOption, error) {
@@ -572,7 +663,7 @@ func (m *ChatManager) SetOption(ctx context.Context, chatID, configID string, va
 }
 
 // Close stops the chat's agent and waits until the chat is gone. Pending
-// permission requests are answered cancelled.
+// permission requests and questions are answered cancelled.
 func (m *ChatManager) Close(chatID string) error {
 	ch, err := m.get(chatID)
 	if err != nil {
@@ -640,8 +731,10 @@ type chat struct {
 	replaying   bool
 	perms       map[string]*pendingPermission
 	nextPerm    int
-	// work counts turns and permission waits; Add only under mu while
-	// !exited.
+	questions   map[string]*pendingQuestion
+	nextQuest   int
+	// work counts turns, permission waits and questions; Add only under mu
+	// while !exited.
 	work sync.WaitGroup
 }
 
@@ -649,6 +742,13 @@ type pendingPermission struct {
 	n      int // the order asked
 	req    acp.RequestPermissionRequest
 	answer chan acp.RequestPermissionResponse // buffered; one send
+}
+
+type pendingQuestion struct {
+	n      int // the order asked
+	q      ChatQuestion
+	schema *acp.ElicitationSchema
+	answer chan acp.CreateElicitationResponse // buffered; one send
 }
 
 func (ch *chat) send(name string, payload any) {
@@ -687,6 +787,14 @@ func (ch *chat) state() (ChatState, bool) {
 		p := ch.perms[id]
 		tool := p.req.ToolCall
 		st.Permissions = append(st.Permissions, ChatPermission{ID: id, ToolCall: &tool, Options: slices.Clone(p.req.Options)})
+	}
+	qs := make([]*pendingQuestion, 0, len(ch.questions))
+	for _, q := range ch.questions {
+		qs = append(qs, q)
+	}
+	slices.SortFunc(qs, func(a, b *pendingQuestion) int { return a.n - b.n })
+	for _, q := range qs {
+		st.Questions = append(st.Questions, q.q)
 	}
 	info := ch.client.Info()
 	if info.AgentInfo != nil {
@@ -815,6 +923,48 @@ func (ch *chat) onPermission(ctx context.Context, req acp.RequestPermissionReque
 		r = acp.Cancelled() // what the client sends then
 	}
 	ch.emit(ChatUpdate{Kind: ChatPermissionResolved, Permission: &ChatPermission{ID: id, Outcome: r.Outcome.Outcome, OptionID: r.Outcome.OptionID}})
+	return r
+}
+
+// onQuestion emits the question and waits for Answer, the turn's end, the
+// agent withdrawing it or the agent's exit.
+func (ch *chat) onQuestion(ctx context.Context, req acp.CreateElicitationRequest) acp.CreateElicitationResponse {
+	ch.mu.Lock()
+	if ch.closing || ch.exited {
+		ch.mu.Unlock()
+		return acp.ElicitationCancelled()
+	}
+	ch.nextQuest++
+	id := "question-" + strconv.Itoa(ch.nextQuest)
+	q := &pendingQuestion{
+		n: ch.nextQuest, q: newChatQuestion(id, req), schema: req.RequestedSchema,
+		answer: make(chan acp.CreateElicitationResponse, 1),
+	}
+	ch.questions[id] = q
+	ch.work.Add(1)
+	ch.mu.Unlock()
+	defer ch.work.Done()
+
+	asked := q.q
+	ch.emit(ChatUpdate{Kind: ChatQuestionAsked, Question: &asked})
+	var r acp.CreateElicitationResponse
+	select {
+	case r = <-q.answer:
+	case <-ctx.Done():
+	case <-ch.ctx.Done():
+	}
+	ch.mu.Lock()
+	delete(ch.questions, id)
+	ch.mu.Unlock()
+	outcome := r.Action
+	switch {
+	case errors.Is(context.Cause(ctx), acp.ErrWithdrawn):
+		r, outcome = acp.ElicitationCancelled(), ChatQuestionWithdrawn
+	case r.Action == "" || ctx.Err() != nil || ch.ctx.Err() != nil:
+		r = acp.ElicitationCancelled() // what the client sends then
+		outcome = r.Action
+	}
+	ch.emit(ChatUpdate{Kind: ChatQuestionResolved, Question: &ChatQuestion{ID: id, Outcome: outcome, Content: r.Content}})
 	return r
 }
 

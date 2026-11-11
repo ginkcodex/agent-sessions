@@ -22,6 +22,10 @@ const (
 	MethodCancelRequest     = "$/cancel_request"
 )
 
+// ErrWithdrawn is the context.Cause of a request handler's context when the
+// agent withdrew the request with $/cancel_request.
+var ErrWithdrawn = errors.New("acp: the agent withdrew the request")
+
 // CodeRequestCancelled answers a request the agent withdrew with
 // $/cancel_request.
 const CodeRequestCancelled = -32800
@@ -338,6 +342,20 @@ func (s *ElicitationSchema) Validate(content map[string]json.RawMessage) (map[st
 		}
 	}
 	return out, nil
+}
+
+// ValidateValues is Validate for content already decoded from JSON, or
+// built in Go.
+func (s *ElicitationSchema) ValidateValues(content map[string]any) (map[string]any, error) {
+	raw := make(map[string]json.RawMessage, len(content))
+	for k, v := range content {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("%q: %w", k, err)
+		}
+		raw[k] = b
+	}
+	return s.Validate(raw)
 }
 
 func fieldName(key string, p ElicitationProperty) string {
