@@ -103,9 +103,8 @@ engine.ChatManager: chats, owners per SessionRef, lifecycle, cleanup
   - a frame cap like `internal/rpc`'s, with no default `bufio.Scanner` limit;
   - stderr drained into a bounded ring buffer for error reports.
 - The agent process starts in its own process group or job and is killed as a
-  tree. This reuses the code-diagnostics process helpers
-  (`internal/codediagnostics/process_*.go`), moved to a shared package if that
-  stays small.
+  tree. The code-diagnostics process helpers moved to `internal/proctree`,
+  which both packages use.
 
 ### Provider seam
 

@@ -1,7 +1,6 @@
-package codediagnostics
+package proctree
 
 import (
-	"errors"
 	"os/exec"
 	"syscall"
 	"unsafe"
@@ -9,14 +8,17 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-type hostProcess struct {
+// Tree is a started command and its descendants.
+type Tree struct {
 	cmd *exec.Cmd
 	job windows.Handle
 }
 
-// Start suspended, assign a kill-on-close job BEFORE any checker code can spawn
-// descendants, then resume. Job assignment failure fails closed (no taskkill race).
-func startProcess(in Invocation) (Process, error) {
+// Start starts cmd suspended, assigns it to a kill-on-close job before any of
+// its code can spawn descendants, then resumes it. A failed assignment kills
+// the process and fails, rather than racing a later taskkill. It replaces
+// cmd.SysProcAttr.
+func Start(cmd *exec.Cmd) (*Tree, error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return nil, err
@@ -28,10 +30,6 @@ func startProcess(in Invocation) (Process, error) {
 		_ = windows.CloseHandle(job)
 		return nil, err
 	}
-	cmd := exec.Command(in.Executable, in.Args...)
-	cmd.Dir, cmd.Env = in.Directory, in.Env
-	cmd.Stdout, cmd.Stderr = in.Stdout, in.Stderr
-	cmd.WaitDelay = in.CleanupTimeout
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_SUSPENDED | windows.CREATE_NEW_PROCESS_GROUP, HideWindow: true}
 	if err := cmd.Start(); err != nil {
 		_ = windows.CloseHandle(job)
@@ -57,19 +55,15 @@ func startProcess(in Invocation) (Process, error) {
 		_ = cmd.Wait()
 		return nil, err
 	}
-	return &hostProcess{cmd, job}, nil
+	return &Tree{cmd, job}, nil
 }
 
-func (p *hostProcess) Wait() (int, error) {
-	err := p.cmd.Wait()
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		return exit.ExitCode(), nil
-	}
-	if err != nil {
-		return -1, err
-	}
-	return 0, nil
-}
-func (p *hostProcess) Terminate() error { return windows.TerminateJobObject(p.job, 1) }
-func (p *hostProcess) Close() error     { return windows.CloseHandle(p.job) }
+// Interrupt is Kill: Windows has no signal a console-less tree can be asked
+// to stop with.
+func (t *Tree) Interrupt() error { return t.Kill() }
+
+// Kill terminates every process in the job.
+func (t *Tree) Kill() error { return windows.TerminateJobObject(t.job, 1) }
+
+// Release closes the job handle, which also kills anything left in it.
+func (t *Tree) Release() error { return windows.CloseHandle(t.job) }
