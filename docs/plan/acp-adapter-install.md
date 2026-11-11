@@ -104,8 +104,11 @@ learns about an install's result the same way it does for language servers.
 
 ### UI
 
-In Settings › Coding agents and in the "Set up chat…" dialog, a missing
-adapter with `installTool` shows **Install** next to the copy command:
+In Settings › Coding agents (which New ▾ › "Set up chat…" opens), a missing
+adapter with `installTool` shows **Install** next to the copy command, when
+the host offers managed installs (the `codeDiagnostics` capability) and no
+`[chat.adapters]` override names the adapter (an override runs first, so an
+app copy would not be used):
 
 1. **Install** proposes the tool. The review card shows the package and
    version, the npm registry, the lockfile hash and the policy (scripts off,
@@ -117,7 +120,9 @@ adapter with `installTool` shows **Install** next to the copy command:
    installer's sanitized message and keeps the copy command.
 
 The card is the existing managed-tools review card, moved into a shared
-component so code checks and chat show the same consent.
+component so code checks and chat show the same consent. One adapter
+installs at a time, and a host switch drops the flow. Code checks show an
+adapter's install job as idle and do not rediscover checkers after it.
 
 There is no automatic install for adapters: the code-diagnostics setting that
 installs language servers on its own does not apply to them.

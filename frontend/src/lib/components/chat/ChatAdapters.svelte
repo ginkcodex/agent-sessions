@@ -1,6 +1,7 @@
 <script lang="ts">
   // Settings › Coding agents: which agents can chat on the selected host,
-  // and how to install the adapters that are missing.
+  // and how to install the adapters that are missing, by hand or, where the
+  // host can, as this app's own copy.
   import { chats } from '../../stores/chats.svelte';
   import { chatOpen } from '../../stores/chatOpen.svelte';
   import { link } from '../../stores/link.svelte';
@@ -28,7 +29,7 @@
       {#each chats.agents as agent (agent.agent)}
         <li>
           {#if agent.available}
-            <span><strong>{agent.name}</strong>: ready{#if agent.path}, <code>{agent.path}</code>{/if}</span>
+            <span><strong>{agent.name}</strong>: ready{#if agent.managed}, this app's copy{/if}{#if agent.path}, <code>{agent.path}</code>{/if}</span>
           {:else}
             <AdapterMissing {agent} {host} />
           {/if}

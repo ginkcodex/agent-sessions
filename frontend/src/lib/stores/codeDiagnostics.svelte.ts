@@ -111,9 +111,11 @@ export class CodeDiagnosticsStore {
       if (!valid()) return;
       if (out.hostId !== host || (out.proposal && (out.state !== 'proposed' || out.proposal.hostId !== host || action !== 'propose' || out.proposal.tool !== tool || !out.proposal.token || !out.proposal.connectionId || !Number.isFinite(Date.parse(out.proposal.expires))))) throw new Error('Managed setup identity mismatch. Reconnect to the intended host.');
       if (out.state === 'installing' && (!out.jobId || (current?.jobId && action === 'status' && out.jobId !== current.jobId))) throw new Error('Installation job identity mismatch. Refresh status explicitly.');
-      this.managed = out;
+      // A chat adapter's install belongs to the chat setup: here the host is idle.
+      const shown: ManagedToolState = out.tool && !(MANAGED_TOOLS as readonly string[]).includes(out.tool) ? { hostId: out.hostId, state: 'idle', ...(out.tools ? { tools: out.tools } : {}) } : out;
+      this.managed = shown;
       if (out.tools) this.managedInstalls = Object.fromEntries(MANAGED_TOOLS.flatMap(t => ['available', 'missingTool', 'unavailable'].includes(out.tools![t] ?? '') ? [[t, out.tools![t]]] : []));
-      if (out.state === 'installed' && out.jobId) this.rediscoverAfterInstall(out.jobId);
+      if (shown.state === 'installed' && shown.jobId) this.rediscoverAfterInstall(shown.jobId);
       else this.scheduleManaged();
     } catch (e) {
       if (valid()) { this.managed = undefined; this.managedNotice = `Managed setup unavailable: ${codeDiagnosticsError(e).message}. Refresh status before retrying; no installation request will be replayed.`; }

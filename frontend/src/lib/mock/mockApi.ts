@@ -85,7 +85,7 @@ import type {
   ChatStartRequest,
   ChatState,
 } from '../types.js';
-import { MockChats } from './mockChat';
+import { MOCK_MANAGED_TOOLS, MockChats, mockManagedAdapter } from './mockChat';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
 import { capPage } from '../pageCap';
@@ -206,8 +206,60 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   async managedTool(request: import('../managedTools').ManagedToolRequest): Promise<import('../managedTools').ManagedToolState> {
     const connection = await this.connectionState();
     if (!connection.hostId || request.expectedHostId !== connection.hostId) throw new Error('Actual host identity required');
-    return { hostId: connection.hostId, state: 'unavailable', message: 'Mock only: no downloads, builds or installs are performed.' };
+    const hostId = connection.hostId;
+    // Chat's adapters "install" without downloading anything: a job takes
+    // two status polls. Codex fails its first install, to show a failure.
+    const adapter = request.tool ? mockManagedAdapter(request.tool) : undefined;
+    if (request.action === 'propose' && request.tool && adapter) {
+      if (this.adapterJob?.state === 'installing') throw new Error('Managed setup request refused');
+      const version = adapter.version;
+      const token = `mock-token-${++this.adapterTokens}`;
+      this.adapterProposal = { token, tool: request.tool };
+      return {
+        hostId, state: 'proposed', tool: request.tool,
+        proposal: {
+          token, hostId, connectionId: 'mock-connection', tool: request.tool as import('../managedTools').ManagedInstallName, version,
+          source: `npm registry https://registry.npmjs.org/ (${adapter.package}@${version})`,
+          integrity: 'package-lock.json sha256:0000mock; npm ci --ignore-scripts --omit=optional; every package sha512-checked; optional packages (platform binaries) left out',
+          note: 'Uses Node.js v22.12.0 from /usr/local; Node.js is not downloaded.',
+          destination: `${MOCK_MANAGED_TOOLS}/${request.tool}-${version}-linux-x64`,
+          expires: new Date(Date.now() + 120_000).toISOString(),
+        },
+      };
+    }
+    if (request.action === 'install' && this.adapterProposal && request.token === this.adapterProposal.token) {
+      const tool = this.adapterProposal.tool;
+      this.adapterProposal = undefined;
+      this.adapterJob = { hostId, state: 'installing', tool: tool as import('../managedTools').ManagedInstallName, jobId: `mock-job-${this.adapterTokens}` };
+      this.adapterPolls = 0;
+      return this.adapterJob;
+    }
+    const job = this.adapterJob;
+    if (job && request.jobId === job.jobId && (request.action === 'status' || request.action === 'cancel')) {
+      if (job.state === 'installing' && request.action === 'cancel') {
+        this.adapterJob = { ...job, state: 'canceled', message: 'Installation canceled' };
+      } else if (job.state === 'installing' && ++this.adapterPolls >= 2) {
+        const agent = mockManagedAdapter(job.tool!)!.agent;
+        if (agent === 'codex' && !this.adapterFailed.has(agent)) {
+          this.adapterFailed.add(agent);
+          this.adapterJob = { ...job, state: 'failed', message: `Installation failed while installing the ${job.tool} packages with npm; request fresh approval to retry` };
+        } else {
+          this.chat.installed.add(agent);
+          this.adapterJob = { ...job, state: 'installed' };
+        }
+      }
+      return this.adapterJob!;
+    }
+    if (request.action === 'dismiss') this.adapterProposal = undefined;
+    return { hostId, state: 'unavailable', message: 'Mock only: no downloads, builds or installs are performed.' };
   }
+  /** The adapter install the mock offered, and its "job". */
+  private adapterProposal?: { token: string; tool: string };
+  private adapterJob?: import('../managedTools').ManagedToolState;
+  private adapterTokens = 0;
+  private adapterPolls = 0;
+  /** Agents whose adapter install already failed once. */
+  private adapterFailed = new Set<string>();
   constructor() { super((name, event) => this.emit(name, event)); }
   private sessions: SessionMeta[] = [...mockSessions];
   private messages: Record<string, typeof mockMessages[string]> = { ...mockMessages };

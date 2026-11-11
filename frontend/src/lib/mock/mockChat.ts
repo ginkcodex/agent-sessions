@@ -14,11 +14,32 @@ import type {
   SessionRef,
 } from '../types.js';
 
-const AGENTS: { agent: AgentID; name: string; install: string; adapter: string }[] = [
-  { agent: 'claude-code', name: 'Claude Code', install: 'npm install -g @agentclientprotocol/claude-agent-acp', adapter: 'claude-agent-acp' },
-  { agent: 'codex', name: 'Codex', install: 'npm install -g @agentclientprotocol/codex-acp', adapter: 'codex-acp' },
+const AGENTS: { agent: AgentID; name: string; install: string; adapter: string; managed?: { version: string; main: string } }[] = [
+  {
+    agent: 'claude-code',
+    name: 'Claude Code',
+    install: 'npm install -g @agentclientprotocol/claude-agent-acp',
+    adapter: 'claude-agent-acp',
+    managed: { version: '0.106.0', main: 'node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js' },
+  },
+  {
+    agent: 'codex',
+    name: 'Codex',
+    install: 'npm install -g @agentclientprotocol/codex-acp',
+    adapter: 'codex-acp',
+    managed: { version: '2.6.0', main: 'node_modules/@agentclientprotocol/codex-acp/dist/index.js' },
+  },
   { agent: 'opencode', name: 'OpenCode', install: 'npm install -g opencode-ai', adapter: 'opencode' },
 ];
+
+/** Where the mock "installs" the app's own adapters. */
+export const MOCK_MANAGED_TOOLS = '/home/mock/.local/share/agent-sessions/managed-tools';
+
+/** The adapters the app can install, by catalog ID: their agent and version. */
+export function mockManagedAdapter(tool: string): { agent: AgentID; version: string; package: string } | undefined {
+  const a = AGENTS.find((x) => x.managed && x.adapter === tool);
+  return a?.managed && { agent: a.agent, version: a.managed.version, package: `@agentclientprotocol/${a.adapter}` };
+}
 
 export const CHAT_REMOTE_ERROR = "this host's agent-sessions does not support chat; reconnect to update it";
 
@@ -53,6 +74,8 @@ export class MockChats {
   stepMs = 0;
   /** Agents whose adapter the mock reports missing. */
   missing = new Set<AgentID>();
+  /** Missing agents whose adapter the app has installed for itself since. */
+  installed = new Set<AgentID>();
   private chats = new Map<string, MockChat>();
   private nextChat = 1;
   private host: MockChatHost;
@@ -63,18 +86,22 @@ export class MockChats {
 
   async agents(): Promise<ChatAgent[]> {
     this.requireAvailable();
-    return AGENTS.map((a) =>
-      this.missing.has(a.agent)
-        ? { agent: a.agent, name: a.name, available: false, install: a.install, problem: `${a.adapter} was not found on PATH` }
-        : { agent: a.agent, name: a.name, available: true, path: `/usr/local/bin/${a.adapter}`, install: a.install },
-    );
+    return AGENTS.map((a): ChatAgent => {
+      const installTool = a.managed ? a.adapter : undefined;
+      if (!this.missing.has(a.agent)) return { agent: a.agent, name: a.name, available: true, path: `/usr/local/bin/${a.adapter}`, install: a.install, installTool };
+      if (a.managed && this.installed.has(a.agent)) {
+        const path = `${MOCK_MANAGED_TOOLS}/${a.adapter}-${a.managed.version}-linux-x64/${a.managed.main}`;
+        return { agent: a.agent, name: a.name, available: true, path, install: a.install, installTool, managed: true };
+      }
+      return { agent: a.agent, name: a.name, available: false, install: a.install, installTool, problem: `${a.adapter} was not found on PATH` };
+    });
   }
 
   async start(req: ChatStartRequest): Promise<ChatState> {
     this.requireAvailable();
     const a = AGENTS.find((x) => x.agent === req.agent);
     if (!a) throw new Error(`chat: ${req.agent} has no ACP adapter`);
-    if (this.missing.has(req.agent)) throw new Error(`chat: ${a.adapter} was not found on PATH`);
+    if (this.missing.has(req.agent) && !this.installed.has(req.agent)) throw new Error(`chat: ${a.adapter} was not found on PATH`);
     if (!req.dir) throw new Error('chat: no directory');
     if (req.resume && [...this.chats.values()].some((c) => c.state.session.agent === req.resume!.agent && c.state.session.id === req.resume!.id)) {
       throw new Error(`the session is already open in a chat: ${req.resume.agent}:${req.resume.id}`);

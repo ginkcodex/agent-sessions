@@ -45,6 +45,7 @@
   import { translateSettings } from './lib/stores/translate.svelte';
   import { terminals } from './lib/stores/terminals.svelte';
   import { chats } from './lib/stores/chats.svelte';
+  import { adapterInstall } from './lib/stores/adapterInstall.svelte';
   import { fileActions } from './lib/stores/fileActions.svelte';
   import { filePrompt } from './lib/stores/filePrompt.svelte';
   import { confirmEndingTerminals } from './lib/closeConfirm';
@@ -185,7 +186,11 @@
     sessionLinks.init();
     void chats.init();
     // Chats run on this computer; a host switch ends them.
-    const offChatReset = connectionStore.onReset((_, __, sameHost) => chats.reset(sameHost));
+    const offChatReset = connectionStore.onReset((_, __, sameHost) => {
+      chats.reset(sameHost);
+      // An adapter install belongs to the host it was proposed on.
+      adapterInstall.reset();
+    });
     isWails = isDesktop();
     api
       .appVersion()

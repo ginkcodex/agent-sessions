@@ -7,6 +7,8 @@
   import { MANAGED_TOOL_FOR_PROVIDER, type ManagedToolName } from '../../../managedTools';
   import type { CodeDiagnosticsProvider } from '../../../codeDiagnostics';
   import { CODE_LANGUAGES, languageList, type CodeLanguageId } from '../../../codeLanguages';
+  import ManagedInstallReview from '../ManagedInstallReview.svelte';
+  import ManagedInstallProgress from '../ManagedInstallProgress.svelte';
   let { blocked = false }: { blocked?: boolean } = $props();
   let dismissed = $state(false);
   // A new attachment gets its own approval choice. Not now never calls the backend.
@@ -105,8 +107,6 @@
   }, new Map<string, { text: string; tone: string; count: number }>()).values()]);
   // The list opens by itself only when a checker offers an install, cannot get one, or has failed.
   let checkersNeedAttention = $derived(checks.providers.some(p => (checks.status === 'ready' && offerFor(p) && offerFor(p) !== reviewing) || (refused && MANAGED_TOOL_FOR_PROVIDER[p.providerId] === refused) || p.failure || p.phase === 'failed'));
-  /** Brings a card that appears after a click into view in the scrolled panel. */
-  function reveal(node: HTMLElement) { node.scrollIntoView({ block: 'nearest' }); }
   const installWork: Record<ManagedToolName, string> = {
     gopls: "Downloads gopls source and its dependencies through the Go module proxy, verified by the Go checksum database, and builds it with this host's Go. Go itself is never downloaded or upgraded.",
     ruff: 'Downloads one release archive and checks its SHA-256 before unpacking anything.',
@@ -235,26 +235,16 @@
     {#if checks.managed?.message && !refused}<p role="status" class="wrapped">{checks.managed.message}</p>{/if}
     {#if reviewing && checks.managed?.proposal}
       {@const proposal = checks.managed.proposal}
-      <div class="card" role="group" aria-label="Installation review" use:reveal>
-        <p><strong>Install {proposal.tool} {proposal.version} on {where}?</strong></p>
-        <p class="wrapped">Source: {proposal.source}</p>
-        <p class="wrapped">Integrity: {proposal.integrity}</p>
-        {#if proposal.note}<p class="wrapped">{proposal.note}</p>{/if}
-        <p>{installWork[proposal.tool]} The download needs network access. Nothing is installed globally or into the project, and no project configuration is used.</p>
-        <p class="wrapped">App-private destination: {proposal.destination}</p>
-        <p>This offer expires: {proposal.expires}. Installation does not approve running it; code checks are rediscovered afterwards and ask for approval separately.</p>
-        <p class="mono">Target host identity: {proposal.hostId}</p>
-        <div class="actions">
-          <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.managedAction('install'))}>Install</button>
-          <button type="button" disabled={checks.managedPending} onclick={() => perform(() => checks.managedAction('dismiss'))}>Not now</button>
-        </div>
-      </div>
+      <ManagedInstallReview {proposal} {where} work={installWork[proposal.tool as ManagedToolName]}
+        scope="Nothing is installed globally or into the project, and no project configuration is used."
+        after="Installation does not approve running it; code checks are rediscovered afterwards and ask for approval separately."
+        installDisabled={blocked || checks.managedPending} dismissDisabled={checks.managedPending}
+        onInstall={() => perform(() => checks.managedAction('install'))} onDismiss={() => perform(() => checks.managedAction('dismiss'))} />
     {:else if checks.managed?.state === 'installing' || checks.autoPending}
-      <div class="card" role="group" aria-label="Installation progress">
-        <p role="status">Downloading {checks.managed?.tool ?? checks.autoPending ?? 'the tool'} into this app's folder on {where}… Progress is coarse; no percentage is available. Disconnecting cancels it. Code checks are rediscovered when it finishes; running it still needs your approval.</p>
+      <ManagedInstallProgress text={`Downloading ${checks.managed?.tool ?? checks.autoPending ?? 'the tool'} into this app's folder on ${where}… Progress is coarse; no percentage is available. Disconnecting cancels it. Code checks are rediscovered when it finishes; running it still needs your approval.`}
+        cancelDisabled={blocked || checks.managedPending || checks.managed?.state !== 'installing'} onCancel={() => perform(() => checks.managedAction('cancel'))}>
         {#if checks.autoInstall}<p class="muted">Missing language servers are downloaded automatically. Turn this off under Settings › Code checks.</p>{/if}
-        <button type="button" disabled={blocked || checks.managedPending || checks.managed?.state !== 'installing'} onclick={() => perform(() => checks.managedAction('cancel'))}>Cancel download</button>
-      </div>
+      </ManagedInstallProgress>
     {:else if checks.managed?.state === 'installed' && checks.managed.tool}
       <p role="status">{checks.managed.tool} is installed for this app on {where}. Code checks were rediscovered; approve them to use it. Setup started no server.</p>
     {:else if checks.managedDismissed}

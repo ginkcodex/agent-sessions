@@ -53,6 +53,7 @@ let dropdownModule;
 let monoFontModule;
 let agentIconModule;
 const goToFileModules = {};
+const managedInstallModules = {};
 
 async function importCompiled(filename, code, replacements) {
   replacements = [
@@ -119,6 +120,14 @@ async function importCompiled(filename, code, replacements) {
     agentIconModule ??= loadServerComponent(new URL('../src/lib/components/common/AgentIcon.svelte', import.meta.url), []);
     globalThis.__agentIcon = (await agentIconModule).default;
     replacements.push([agentIconImport, 'const AgentIcon = globalThis.__agentIcon;']);
+  }
+  // Code checks and the chat setup render the real shared install cards.
+  for (const name of ['ManagedInstallReview', 'ManagedInstallProgress']) {
+    const statement = code.match(new RegExp(`import ${name} from '[./]*(?:common/)?${name}\\.svelte';`))?.[0];
+    if (!statement || replacements.some(([from]) => from === statement)) continue;
+    managedInstallModules[name] ??= loadServerComponent(new URL(`../src/lib/components/common/${name}.svelte`, import.meta.url), []);
+    globalThis[`__${name}`] = (await managedInstallModules[name]).default;
+    replacements.push([statement, `const ${name} = globalThis.__${name};`]);
   }
   // Pure display-label helpers shared by the diagnostics components resolve to the real module.
   for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../problemOverview'", 'problemOverview'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools'], ["'../codeLanguages'", 'codeLanguages'], ["'../../../codeLanguages'", 'codeLanguages'], ["'../../../date'", 'date'], ["'../appearance'", 'appearance']]) {

@@ -169,9 +169,13 @@ async function renderCard(permission) {
 async function renderMissing(agent, host) {
   missingModule ??= await loadServerComponent(MISSING_URL, [
     ["'../../portable'", lib('../../portable.ts', MISSING_URL)],
+    ["'../../managedTools'", lib('../../managedTools.ts', MISSING_URL)],
     ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
+    ["import { connectionStore } from '../../stores/connection.svelte';", fixtureStore('connectionStore')],
+    ["import { adapterInstall as installer } from '../../stores/adapterInstall.svelte';", fixtureStore('installer')],
   ]);
-  return unescapeHTML(await renderWithFixture(missingModule, { toast: {} }, { agent, host }));
+  // An older server: no managed installs. The install flow has its own tests.
+  return unescapeHTML(await renderWithFixture(missingModule, { toast: {}, connectionStore: { capabilities: {} }, installer: {} }, { agent, host }));
 }
 
 test('the composer sends only when idle, cancels while working and dismisses once ended', async () => {
