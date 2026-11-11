@@ -17,22 +17,22 @@ import type {
 } from '../types.js';
 import { sniffImageFormat } from '../images';
 
-const AGENTS: { agent: AgentID; name: string; install: string; adapter: string; managed?: { version: string; main: string } }[] = [
+// The app installs its own copy of an adapter with a managed entry, at
+// version; older is the version an earlier release would have left.
+const AGENTS: { agent: AgentID; name: string; adapter: string; managed?: { version: string; older: string; main: string } }[] = [
   {
     agent: 'claude-code',
     name: 'Claude Code',
-    install: 'npm install -g @agentclientprotocol/claude-agent-acp',
     adapter: 'claude-agent-acp',
-    managed: { version: '0.106.0', main: 'node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js' },
+    managed: { version: '0.106.0', older: '0.105.2', main: 'node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js' },
   },
   {
     agent: 'codex',
     name: 'Codex',
-    install: 'npm install -g @agentclientprotocol/codex-acp',
     adapter: 'codex-acp',
-    managed: { version: '2.6.0', main: 'node_modules/@agentclientprotocol/codex-acp/dist/index.js' },
+    managed: { version: '2.6.0', older: '2.5.1', main: 'node_modules/@agentclientprotocol/codex-acp/dist/index.js' },
   },
-  { agent: 'opencode', name: 'OpenCode', install: 'npm install -g opencode-ai', adapter: 'opencode' },
+  { agent: 'opencode', name: 'OpenCode', adapter: 'opencode' },
 ];
 
 /** Where the mock "installs" the app's own adapters. */
@@ -118,7 +118,9 @@ export class MockChats {
   stepMs = 0;
   /** Agents whose adapter the mock reports missing. */
   missing = new Set<AgentID>();
-  /** Missing agents whose adapter the app has installed for itself since. */
+  /** Agents whose app copy is an older version, until it is installed. */
+  outdated = new Set<AgentID>();
+  /** Agents whose adapter the app has installed for itself since. */
   installed = new Set<AgentID>();
   private chats = new Map<string, MockChat>();
   private nextChat = 1;
@@ -131,13 +133,16 @@ export class MockChats {
   async agents(): Promise<ChatAgent[]> {
     this.requireAvailable();
     return AGENTS.map((a): ChatAgent => {
-      const installTool = a.managed ? a.adapter : undefined;
-      if (!this.missing.has(a.agent)) return { agent: a.agent, name: a.name, available: true, path: `/usr/local/bin/${a.adapter}`, install: a.install, installTool };
-      if (a.managed && this.installed.has(a.agent)) {
-        const path = `${MOCK_MANAGED_TOOLS}/${a.adapter}-${a.managed.version}-linux-x64/${a.managed.main}`;
-        return { agent: a.agent, name: a.name, available: true, path, install: a.install, installTool, managed: true };
+      const base = { agent: a.agent, name: a.name };
+      if (!a.managed) {
+        if (this.missing.has(a.agent)) return { ...base, available: false, problem: `${a.adapter} was not found on PATH or in its usual install locations` };
+        return { ...base, available: true, path: `/usr/local/bin/${a.adapter}` };
       }
-      return { agent: a.agent, name: a.name, available: false, install: a.install, installTool, problem: `${a.adapter} was not found on PATH` };
+      const m = { installTool: a.adapter, pinned: a.managed.version };
+      if (this.missing.has(a.agent) && !this.installed.has(a.agent)) return { ...base, ...m, available: false, problem: `${a.adapter} is not installed` };
+      const version = this.outdated.has(a.agent) && !this.installed.has(a.agent) ? a.managed.older : a.managed.version;
+      const path = `${MOCK_MANAGED_TOOLS}/${a.adapter}-${version}-linux-x64/${a.managed.main}`;
+      return { ...base, ...m, available: true, path, managed: true, version, outdated: version !== a.managed.version };
     });
   }
 
@@ -145,7 +150,7 @@ export class MockChats {
     this.requireAvailable();
     const a = AGENTS.find((x) => x.agent === req.agent);
     if (!a) throw new Error(`chat: ${req.agent} has no ACP adapter`);
-    if (this.missing.has(req.agent) && !this.installed.has(req.agent)) throw new Error(`chat: ${a.adapter} was not found on PATH`);
+    if (this.missing.has(req.agent) && !this.installed.has(req.agent)) throw new Error(`chat adapter not found: ${a.adapter} is not installed. Set it up in Settings › Coding agents`);
     if (!req.dir) throw new Error('chat: no directory');
     if (req.resume && [...this.chats.values()].some((c) => c.state.session.agent === req.resume!.agent && c.state.session.id === req.resume!.id)) {
       throw new Error(`the session is already open in a chat: ${req.resume.agent}:${req.resume.id}`);

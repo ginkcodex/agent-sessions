@@ -4,7 +4,7 @@ import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 import { fixtureStore, loadServerComponent, loadServerModule, renderWithFixture, renderedButtons, unescapeHTML } from './helpers.mjs';
 
 const STORE_URL = new URL('../src/lib/stores/adapterInstall.svelte.ts', import.meta.url);
-const MISSING_URL = new URL('../src/lib/components/chat/AdapterMissing.svelte', import.meta.url);
+const ROW_URL = new URL('../src/lib/components/chat/ChatAdapterRow.svelte', import.meta.url);
 const lib = (rel, base) => JSON.stringify(new URL(rel, base).href);
 
 const { AdapterInstaller } = await loadServerModule(STORE_URL, [
@@ -13,10 +13,8 @@ const { AdapterInstaller } = await loadServerModule(STORE_URL, [
   ["'../manage'", lib('../manage.ts', STORE_URL)],
   ["import { chats } from './chats.svelte';", 'const chats = { loadAgents: async () => [] };'],
 ]);
-const missingModule = await loadServerComponent(MISSING_URL, [
-  ["'../../portable'", lib('../../portable.ts', MISSING_URL)],
-  ["'../../managedTools'", lib('../../managedTools.ts', MISSING_URL)],
-  ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
+const rowModule = await loadServerComponent(ROW_URL, [
+  ["'../../managedTools'", lib('../../managedTools.ts', ROW_URL)],
   ["import { connectionStore } from '../../stores/connection.svelte';", fixtureStore('connectionStore')],
   ["import { adapterInstall as installer } from '../../stores/adapterInstall.svelte';", fixtureStore('installer')],
 ]);
@@ -55,20 +53,16 @@ function setup(reply, { conn = connection, managed = true } = {}) {
   return { store, calls, installed, bump: () => currentEpoch++ };
 }
 
-test('nothing installs before the proposal is approved; Not now sends no token', async () => {
-  const { store, calls, installed } = setup((r) => (r.action === 'propose' ? state('proposed', { tool: r.tool, proposal }) : state('idle')));
-  await store.propose('claude-agent-acp');
-  assert.deepEqual(calls, [{ action: 'propose', expectedHostId: HOST, tool: 'claude-agent-acp' }]);
-  assert.equal(store.state.state, 'proposed');
+test('one click proposes and installs that proposal, with no second question', async () => {
+  const { store, calls } = setup((r) => (r.action === 'propose' ? state('proposed', { tool: r.tool, proposal }) : state('installing', { tool: 'claude-agent-acp', jobId: 'job0' })));
+  await store.run('claude-agent-acp');
+  assert.deepEqual(calls, [
+    { action: 'propose', expectedHostId: HOST, tool: 'claude-agent-acp' },
+    { action: 'install', expectedHostId: HOST, token: 'once' },
+  ]);
+  assert.equal(store.state.state, 'installing');
   assert.equal(store.tool, 'claude-agent-acp');
-  await store.dismiss();
-  assert.deepEqual(calls.map((c) => c.action), ['propose', 'dismiss']);
-  assert.ok(!calls.some((c) => c.token), 'no token left the app');
-  assert.equal(store.state, undefined);
-  assert.equal(store.tool, undefined);
-  await store.install();
-  assert.equal(calls.length, 2, 'nothing to install after Not now');
-  assert.deepEqual(installed, []);
+  store.reset();
 });
 
 test('Install sends the token once, polls the job and reloads the agents when it ends', async (t) => {
@@ -79,12 +73,12 @@ test('Install sends the token once, polls the job and reloads the agents when it
     if (r.action === 'install') return state('installing', { tool: 'claude-agent-acp', jobId: 'job1' });
     return ++polls < 2 ? state('installing', { tool: 'claude-agent-acp', jobId: 'job1' }) : state('installed', { tool: 'claude-agent-acp', jobId: 'job1' });
   });
-  await store.propose('claude-agent-acp');
+  await store.run('claude-agent-acp');
   await Promise.all([store.install(), store.install()]);
   assert.deepEqual(calls.filter((c) => c.action === 'install'), [{ action: 'install', expectedHostId: HOST, token: 'once' }]);
   assert.equal(store.state.state, 'installing');
   assert.ok(store.busy);
-  await store.propose('codex-acp');
+  await store.run('codex-acp');
   assert.equal(calls.filter((c) => c.action === 'propose').length, 1, 'one install at a time');
 
   t.mock.timers.tick(2000);
@@ -106,12 +100,11 @@ test('a failed or cancelled install says why and still reloads the agents', asyn
     if (r.action === 'install') return state('installing', { tool: 'codex-acp', jobId: 'job2' });
     return state('failed', { tool: 'codex-acp', jobId: 'job2', message: 'Installation failed while installing the codex-acp packages with npm; request fresh approval to retry' });
   });
-  await failing.store.propose('codex-acp');
-  await failing.store.install();
+  await failing.store.run('codex-acp');
   t.mock.timers.tick(2000);
   await flush();
   assert.equal(failing.store.state.state, 'failed');
-  assert.match(failing.store.error, /while installing the codex-acp packages/);
+  assert.equal(failing.store.error, 'Installation failed while installing the codex-acp packages with npm. Try again', 'no approval step to ask for');
   assert.deepEqual(failing.installed, ['codex-acp']);
   assert.ok(!failing.store.busy, 'Install can be tried again');
 
@@ -121,8 +114,7 @@ test('a failed or cancelled install says why and still reloads the agents', asyn
     if (r.action === 'cancel') return state('canceled', { tool: 'claude-agent-acp', jobId: 'job3', message: 'Installation canceled' });
     return state('installing', { tool: 'claude-agent-acp', jobId: 'job3' });
   });
-  await cancelled.store.propose('claude-agent-acp');
-  await cancelled.store.install();
+  await cancelled.store.run('claude-agent-acp');
   await cancelled.store.cancel();
   assert.deepEqual(cancelled.calls.at(-1), { action: 'cancel', expectedHostId: HOST, jobId: 'job3' });
   assert.equal(cancelled.store.error, 'Installation canceled');
@@ -133,46 +125,44 @@ test('a failed or cancelled install says why and still reloads the agents', asyn
 
 test('old servers, hosts without managed installs, other hosts and expired offers fail closed', async () => {
   const old = setup(() => assert.fail('no call'), { managed: false });
-  await old.store.propose('claude-agent-acp');
+  await old.store.run('claude-agent-acp');
   assert.match(old.store.error, /older/);
   assert.equal(old.store.state, undefined);
 
   const noCaps = setup(() => assert.fail('no call'), { conn: { ...connection, capabilities: { acpChat: true } } });
-  await noCaps.store.propose('claude-agent-acp');
+  await noCaps.store.run('claude-agent-acp');
   assert.match(noCaps.store.error, /no app-managed installs/);
   assert.deepEqual(noCaps.calls, []);
 
   const refused = setup(() => state('unavailable', { tool: 'claude-agent-acp', message: 'Node.js v16 on this host is too old.' }));
-  await refused.store.propose('claude-agent-acp');
+  await refused.store.run('claude-agent-acp');
   assert.equal(refused.store.error, 'Node.js v16 on this host is too old.');
   assert.equal(refused.store.state, undefined);
 
   const other = setup(() => state('proposed', { tool: 'claude-agent-acp', proposal: { ...proposal, hostId: 'ssh:other' } }));
-  await other.store.propose('claude-agent-acp');
+  await other.store.run('claude-agent-acp');
   assert.match(other.store.error, /another host/);
   assert.equal(other.store.state, undefined);
-  await other.store.install();
-  assert.equal(other.calls.length, 1, 'nothing to install');
+  assert.equal(other.calls.length, 1, 'nothing installed');
 
   const wrongTool = setup(() => state('proposed', { tool: 'gopls', proposal: { ...proposal, tool: 'gopls' } }));
-  await wrongTool.store.propose('claude-agent-acp');
+  await wrongTool.store.run('claude-agent-acp');
   assert.equal(wrongTool.store.state, undefined);
 
   const expired = setup(() => state('proposed', { tool: 'claude-agent-acp', proposal: { ...proposal, expires: '2000-01-01T00:00:00Z' } }));
-  await expired.store.propose('claude-agent-acp');
-  await expired.store.install();
+  await expired.store.run('claude-agent-acp');
   assert.deepEqual(expired.calls.map((c) => c.action), ['propose']);
   assert.match(expired.store.error, /expired/);
 
   const unknown = setup(() => assert.fail('no call'));
-  await unknown.store.propose('gopls');
+  await unknown.store.run('gopls');
   assert.deepEqual(unknown.calls, [], 'only adapters install from chat');
 });
 
 test('a host switch drops the flow and its late answers', async () => {
   let answer;
   const { store, bump } = setup(() => new Promise((resolve) => (answer = resolve)));
-  const pending = store.propose('claude-agent-acp');
+  const pending = store.run('claude-agent-acp');
   await flush();
   assert.ok(store.pending);
   bump();
@@ -184,66 +174,78 @@ test('a host switch drops the flow and its late answers', async () => {
   assert.equal(store.pending, false);
 });
 
-async function renderMissing(agent, { installer = {}, capabilities = { codeDiagnostics: true }, host = 'dev-box' } = {}) {
-  return unescapeHTML(await renderWithFixture(missingModule, { toast: {}, connectionStore: { capabilities }, installer }, { agent, host }));
+async function renderRow(agent, { installer = {}, capabilities = { codeDiagnostics: true }, host = 'dev-box' } = {}) {
+  return unescapeHTML(await renderWithFixture(rowModule, { connectionStore: { capabilities }, installer }, { agent, host }));
 }
 
 const claude = {
   agent: 'claude-code',
   name: 'Claude Code',
   available: false,
-  install: 'npm install -g @agentclientprotocol/claude-agent-acp',
   installTool: 'claude-agent-acp',
-  problem: 'claude-agent-acp was not found on PATH',
+  pinned: '0.106.0',
+  problem: 'claude-agent-acp is not installed',
 };
+const ready = { ...claude, available: true, managed: true, version: '0.106.0', path: '/data/managed-tools/claude-agent-acp-0.106.0-linux-x64/main.js', problem: undefined };
 const buttons = (html) => renderedButtons(html).map((b) => `${b.text}${b.disabled ? ' (disabled)' : ''}`);
+const status = (html) => /class="status[^"]*"[^>]*>([^<]*)</.exec(html)?.[1];
 
-test('the adapter offers Install where the host can install it, and always keeps the command', async () => {
-  const offer = await renderMissing(claude);
-  assert.deepEqual(buttons(offer), ['Install…', 'Copy']);
-  assert.match(offer, /Installs a pinned copy for this app only, after you review it/);
-  assert.match(offer, /Or install it yourself: run this on dev-box:/);
+test('each agent is one row: ready, outdated with Update, or Install', async () => {
+  const offer = await renderRow(claude);
+  assert.equal(status(offer), 'Not installed');
+  assert.deepEqual(buttons(offer), ['Install']);
+  assert.match(offer, /title="Installs claude-agent-acp 0\.106\.0 for this app on dev-box"/);
 
+  const ok = await renderRow(ready);
+  assert.equal(status(ok), 'Ready · 0.106.0');
+  assert.deepEqual(buttons(ok), []);
+  assert.match(ok, /title="\/data\/managed-tools\/claude-agent-acp-0\.106\.0-linux-x64\/main\.js"/);
+
+  const old = await renderRow({ ...ready, version: '0.105.2', outdated: true });
+  assert.equal(status(old), '0.105.2 · 0.106.0 available');
+  assert.deepEqual(buttons(old), ['Update']);
+
+  const opencode = await renderRow({ agent: 'opencode', name: 'OpenCode', available: true, path: '/usr/bin/opencode' });
+  assert.equal(status(opencode), 'Ready');
+  assert.deepEqual(buttons(opencode), []);
+
+  // Nothing about npm or copying a command, in any state.
+  for (const html of [offer, ok, old, opencode]) assert.doesNotMatch(html, /npm|Copy/);
+
+  const busy = await renderRow(claude, { installer: { busy: true, tool: 'codex-acp' } });
+  assert.deepEqual(buttons(busy), ['Install (disabled)'], 'another adapter is installing');
+});
+
+test('where the app cannot install, the row says why and offers nothing', async () => {
   for (const [why, html] of [
-    ['an older server', await renderMissing({ ...claude, installTool: undefined })],
-    ['no managed installs on the host', await renderMissing(claude, { capabilities: {} })],
-    ['an override in config.toml', await renderMissing({ ...claude, override: true })],
+    ['an older server', await renderRow({ ...claude, installTool: undefined, problem: 'claude-agent-acp was not found on PATH', install: 'npm install -g x' })],
+    ['no managed installs on the host', await renderRow({ ...claude, problem: 'claude-agent-acp was not found on PATH' }, { capabilities: {} })],
   ]) {
-    assert.deepEqual(buttons(html), ['Copy'], why);
-    assert.match(html, /To install it, run this on dev-box:/, why);
+    assert.deepEqual(buttons(html), [], why);
+    assert.equal(status(html), 'claude-agent-acp was not found on PATH', why);
+    assert.doesNotMatch(html, /npm install/, why);
   }
-
-  const busy = await renderMissing(claude, { installer: { busy: true, tool: 'codex-acp' } });
-  assert.deepEqual(buttons(busy), ['Install… (disabled)', 'Copy'], 'another adapter is installing');
+  const override = await renderRow({ ...claude, override: true, problem: 'the configured adapter /opt/x does not exist' });
+  assert.deepEqual(buttons(override), []);
+  assert.equal(status(override), 'the configured adapter /opt/x does not exist');
+  assert.match(override, /\[chat\.adapters\]<\/code> in config\.toml/);
+  assert.equal(status(await renderRow({ ...ready, override: true })), 'Ready · set in config.toml');
 });
 
-test('the review card names the host, package, source, integrity, Node.js and destination', async () => {
-  const html = await renderMissing(claude, { installer: { tool: 'claude-agent-acp', state: state('proposed', { proposal }), pending: false } });
-  for (const text of [
-    'Install claude-agent-acp 0.106.0 on dev-box?',
-    proposal.source,
-    proposal.integrity,
-    proposal.note,
-    'install scripts disabled',
-    "the host's Node.js 22 or later",
-    'network access',
-    'your own Claude Code CLI',
-    `App-private destination: ${proposal.destination}`,
-    `Target host identity: ${HOST}`,
-  ]) {
-    assert.ok(html.includes(text), text);
-  }
-  assert.deepEqual(buttons(html), ['Install', 'Not now', 'Copy']);
-});
+test('while it installs the row offers Cancel, and a failure shows its message', async () => {
+  const asking = await renderRow(claude, { installer: { tool: 'claude-agent-acp', pending: true, busy: true } });
+  assert.equal(status(asking), 'Installing…');
+  assert.deepEqual(buttons(asking), []);
 
-test('progress offers Cancel, and a failure shows its message beside the command', async () => {
-  const running = await renderMissing(claude, { installer: { tool: 'claude-agent-acp', state: state('installing', { jobId: 'j' }), pending: false, busy: true } });
-  assert.match(running, /Downloading claude-agent-acp into this app's folder on dev-box/);
-  assert.deepEqual(buttons(running), ['Cancel download', 'Copy']);
+  const running = await renderRow(claude, { installer: { tool: 'claude-agent-acp', state: state('installing', { jobId: 'j' }), pending: false, busy: true } });
+  assert.equal(status(running), 'Installing…');
+  assert.deepEqual(buttons(running), ['Cancel']);
+  const updating = await renderRow({ ...ready, outdated: true, version: '0.105.2' }, { installer: { tool: 'claude-agent-acp', state: state('installing', { jobId: 'j' }), busy: true } });
+  assert.equal(status(updating), 'Updating…');
 
-  const failed = await renderMissing(claude, { installer: { tool: 'claude-agent-acp', state: state('failed'), error: 'Installation failed while installing the claude-agent-acp packages with npm; request fresh approval to retry' } });
+  const failed = await renderRow(claude, { installer: { tool: 'claude-agent-acp', state: state('failed'), error: 'Installation failed while installing the claude-agent-acp packages with npm. Try again' } });
   assert.match(failed, /role="alert"[^>]*>Installation failed while installing/);
-  assert.deepEqual(buttons(failed), ['Install…', 'Copy']);
+  assert.deepEqual(buttons(failed), ['Install']);
 });
 
 test('the mock installs Claude Code, and fails Codex once before it installs', async (t) => {
@@ -251,19 +253,18 @@ test('the mock installs Claude Code, and fails Codex once before it installs', a
   const mock = new MockBackendAPI();
   mock.chat.missing.add('claude-code');
   mock.chat.missing.add('codex');
+  mock.chat.outdated.add('codex');
   let agents = await mock.chatAgents();
-  assert.deepEqual(agents.map((a) => [a.agent, a.available, a.installTool]), [
-    ['claude-code', false, 'claude-agent-acp'],
-    ['codex', false, 'codex-acp'],
-    ['opencode', true, undefined],
+  assert.deepEqual(agents.map((a) => [a.agent, a.available, a.installTool, a.pinned]), [
+    ['claude-code', false, 'claude-agent-acp', '0.106.0'],
+    ['codex', false, 'codex-acp', '2.6.0'],
+    ['opencode', true, undefined, undefined],
   ]);
   const store = new AdapterInstaller(mock, () => 0, async () => {
     agents = await mock.chatAgents();
   });
   const run = async (tool) => {
-    await store.propose(tool);
-    assert.equal(store.state?.state, 'proposed', tool);
-    await store.install();
+    await store.run(tool);
     for (let i = 0; i < 3 && store.state?.state === 'installing'; i++) {
       t.mock.timers.tick(2000);
       await flush();
@@ -275,6 +276,7 @@ test('the mock installs Claude Code, and fails Codex once before it installs', a
   const claudeNow = agents.find((a) => a.agent === 'claude-code');
   assert.equal(claudeNow.available, true);
   assert.equal(claudeNow.managed, true);
+  assert.equal(claudeNow.version, '0.106.0');
   assert.match(claudeNow.path, /managed-tools\/claude-agent-acp-0\.106\.0-linux-x64\//);
 
   assert.equal(await run('codex-acp'), 'failed');
@@ -282,6 +284,9 @@ test('the mock installs Claude Code, and fails Codex once before it installs', a
   assert.equal(agents.find((a) => a.agent === 'codex').available, false);
   assert.equal(await run('codex-acp'), 'installed');
   assert.equal(agents.find((a) => a.agent === 'codex').available, true);
+  const codexNow = agents.find((a) => a.agent === 'codex');
+  assert.equal(codexNow.version, '2.6.0');
+  assert.equal(codexNow.outdated, false);
   const chat = await mock.chatStart({ agent: 'codex', dir: '/home/user/projects/web-app' });
   assert.equal(chat.agent, 'codex');
   mock.chat.closeAll();

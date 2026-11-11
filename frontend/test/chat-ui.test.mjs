@@ -167,9 +167,7 @@ async function renderLiveTail(c, props = {}) {
 }
 
 const CARD_URL = new URL('../src/lib/components/chat/PermissionCard.svelte', import.meta.url);
-const MISSING_URL = new URL('../src/lib/components/chat/AdapterMissing.svelte', import.meta.url);
 let cardModule;
-let missingModule;
 
 async function renderCard(permission) {
   cardModule ??= await loadServerComponent(CARD_URL, [
@@ -181,18 +179,6 @@ async function renderCard(permission) {
     ["import Icon from '../common/Icon.svelte';", 'const Icon = () => {};'],
   ]);
   return unescapeHTML(await renderWithFixture(cardModule, { chats: {}, toast: {} }, { chat: chat(), permission, agentName: 'Codex' }));
-}
-
-async function renderMissing(agent, host) {
-  missingModule ??= await loadServerComponent(MISSING_URL, [
-    ["'../../portable'", lib('../../portable.ts', MISSING_URL)],
-    ["'../../managedTools'", lib('../../managedTools.ts', MISSING_URL)],
-    ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
-    ["import { connectionStore } from '../../stores/connection.svelte';", fixtureStore('connectionStore')],
-    ["import { adapterInstall as installer } from '../../stores/adapterInstall.svelte';", fixtureStore('installer')],
-  ]);
-  // An older server: no managed installs. The install flow has its own tests.
-  return unescapeHTML(await renderWithFixture(missingModule, { toast: {}, connectionStore: { capabilities: {} }, installer: {} }, { agent, host }));
 }
 
 // A button's name: its text without the icon's markup.
@@ -435,22 +421,6 @@ test('a permission card offers every option and chooses none', async () => {
   assert.doesNotMatch(diff, /“always” choice/);
 
   assert.match(await renderCard({ id: 'p3', toolCall: { toolCallId: 't3' }, options: [] }), /The request has no options\. Cancel the turn to answer it\./);
-});
-
-test('a missing adapter says where it is missing and how to install it', async () => {
-  const html = await renderMissing(
-    { agent: 'codex', name: 'Codex', available: false, install: 'npm install -g @agentclientprotocol/codex-acp', problem: 'codex-acp was not found on PATH' },
-    'Ubuntu (WSL)',
-  );
-  assert.match(html, /<strong>Codex<\/strong> chats need its ACP adapter on Ubuntu \(WSL\)\./);
-  assert.match(html, /codex-acp was not found on PATH/);
-  assert.match(html, /To install it, run this on Ubuntu \(WSL\):/);
-  assert.match(html, /<code[^>]*>npm install -g @agentclientprotocol\/codex-acp<\/code>/);
-  assert.deepEqual(renderedButtons(html).map((b) => b.text), ['Copy']);
-  assert.doesNotMatch(html, /config\.toml/);
-
-  const override = await renderMissing({ agent: 'codex', name: 'Codex', available: false, override: true, install: 'npm i x', problem: '/opt/x is not executable' }, 'this computer');
-  assert.match(override, /\[chat\.adapters\]<\/code> in config\.toml/);
 });
 
 test('restart continues a saved session, starts a new one otherwise, and leaves a running chat alone', async () => {

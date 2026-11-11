@@ -15,10 +15,11 @@ interface Backend {
 const MAX_POLLS = 300;
 
 /**
- * Installs a chat agent's ACP adapter as an app-managed tool, on the host
- * the window shows, one at a time. Nothing downloads until the user approves
- * the proposal the host made: propose, review, then install. A token is
- * used once and never resent; a lost answer is asked about with status.
+ * Installs or updates a chat agent's ACP adapter as an app-managed tool, on
+ * the host the window shows, one at a time. The user's click is the consent:
+ * run asks the host for a proposal and installs it at once when it is for
+ * that host and tool. A token is used once and never resent; a lost answer
+ * is asked about with status.
  */
 export class AdapterInstaller {
   /** The adapter this flow is for. */
@@ -50,7 +51,13 @@ export class AdapterInstaller {
     return this.pending || this.state?.state === 'installing';
   }
 
-  /** Asks the host what installing tool would download, for review. */
+  /** Installs tool, the pinned version, as the user asked with one click. */
+  async run(tool: AdapterToolName): Promise<void> {
+    await this.propose(tool);
+    if (this.tool === tool && this.state?.state === 'proposed') await this.install();
+  }
+
+  /** Asks the host what installing tool would download. */
   async propose(tool: AdapterToolName): Promise<void> {
     if (this.busy || !ADAPTER_TOOLS.includes(tool)) return;
     this.clear();
@@ -81,27 +88,16 @@ export class AdapterInstaller {
     }
   }
 
-  /** Installs the reviewed proposal. Its token goes out once. */
+  /** Installs the proposal. Its token goes out once. */
   async install(): Promise<void> {
     const p = this.state?.proposal;
     if (this.pending || this.state?.state !== 'proposed' || !p) return;
     this.state = undefined;
     if (Date.parse(p.expires) <= Date.now()) {
-      this.error = 'The offer expired. Choose Install again to review a fresh one';
+      this.error = 'The offer expired. Choose Install again';
       return;
     }
     await this.send({ action: 'install', token: p.token });
-  }
-
-  /** Drops the proposal; nothing was downloaded. */
-  async dismiss(): Promise<void> {
-    if (this.pending || this.state?.state !== 'proposed') return;
-    this.clear();
-    try {
-      await this.backend.managedTool?.({ action: 'dismiss', expectedHostId: this.host });
-    } catch {
-      // The proposal expires on its own.
-    }
   }
 
   /** Stops the running install. */
@@ -173,11 +169,17 @@ export class AdapterInstaller {
       return;
     }
     if (out.state === 'failed' || out.state === 'canceled' || out.state === 'unavailable') {
-      this.error = out.message || 'The install failed';
+      this.error = out.message ? oneClick(out.message) : 'The install failed';
     }
     // Whatever the end, the agents say what is there now.
     await this.installed(tool);
   }
+}
+
+// The installer's messages are shared with code checks, which ask for a fresh
+// approval; here the button itself is the approval.
+function oneClick(message: string): string {
+  return message.replace(/; request fresh approval to retry$/, '. Try again');
 }
 
 export const adapterInstall = new AdapterInstaller(api, epoch, async () => {

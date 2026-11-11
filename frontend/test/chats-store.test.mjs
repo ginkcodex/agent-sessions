@@ -199,7 +199,7 @@ test('closing and crashing end the chat with their reason', async () => {
 test('a failed start removes the chat and throws', async () => {
   await withChats(async ({ store, mock }) => {
     mock.chat.missing.add('codex');
-    await assert.rejects(store.start({ agent: 'codex', dir: DIR }), /codex-acp was not found/);
+    await assert.rejects(store.start({ agent: 'codex', dir: DIR }), /codex-acp is not installed\. Set it up in Settings › Coding agents/);
     assert.deepEqual(store.chats, []);
     const agents = await store.loadAgents();
     assert.equal(agents.find((a) => a.agent === 'codex').available, false);
