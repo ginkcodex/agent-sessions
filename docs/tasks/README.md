@@ -32,7 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| Transcript tool readability | [transcript-tool-readability](../plan/transcript-tool-readability.md) | [transcript-tool-readability/](transcript-tool-readability/README.md) | 2/3 ✅ · 1 ⬜ |
+| Transcript tool readability | [transcript-tool-readability](../plan/transcript-tool-readability.md) | [transcript-tool-readability/](transcript-tool-readability/README.md) | 3/4 ✅ · 1 ⬜ |
 | Message file single match | [message-file-single-match](../plan/message-file-single-match.md) | [message-file-single-match/](message-file-single-match/README.md) | 1/1 ✅ |
 | Transcript directory links | [transcript-directory-links](../plan/transcript-directory-links.md) | [transcript-directory-links/](transcript-directory-links/README.md) | 1/1 ✅ |
 | Terminal auto activation | [terminal-auto-activation](../plan/terminal-auto-activation.md) | [terminal-auto-activation/](terminal-auto-activation/README.md) | 1/1 ✅ |

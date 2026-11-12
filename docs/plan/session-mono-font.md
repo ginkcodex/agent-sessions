@@ -10,8 +10,9 @@ can have one mono font for files and for code blocks in sessions.
 ## Goal
 
 In Settings → Appearance → Session content, a checkbox **Use the editor font
-for code in session content**, off by default. When on, code blocks, inline
-code, tool input and output and the other monospace text in a session use the
+for monospace text in session content**, off by default. When on, every part
+of a session that uses the app's mono font (code blocks, inline code, tool
+calls and output, patches, system messages, the live chat cards) uses the
 font chosen under Appearance → Editor. It applies at once and is kept across
 restarts.
 
@@ -41,6 +42,12 @@ restarts.
   nothing: both use JetBrains Mono.
 - **Scope is the transcript pane,** so the session header and the live chat
   and composer follow too. Print and previews keep the app font.
+
+- **Covers every mono use, by construction.** All session parts take their
+  mono font from `var(--font-mono)`; none hardcodes a family. A test scans
+  `transcript/`, `transcript/parts/`, `chat/` and `style.css` and fails on any
+  `font-family` that is not `var(--font-mono)`, `var(--font-sans)` or
+  `inherit`, so a new part cannot skip the setting.
 
 ## Risks
 

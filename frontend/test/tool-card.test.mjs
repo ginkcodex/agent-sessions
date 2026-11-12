@@ -29,6 +29,37 @@ const Card = (await import(`data:text/javascript,${encodeURIComponent(code)}`)).
 
 const output = JSON.stringify([{ type: 'input_text', text: Array.from({ length: 50 }, (_, i) => `line ${i}`).join('\n') }]);
 const props = { tool: { id: 'test-call', name: 'exec', status: 'completed', input: { command: 'git status' }, output }, sessionRef: { agent: 'codex', id: 'test' } };
+
+// jsdom has no layout engine: protect the actual sizing rules here and use
+// browser geometry checks separately for overlap at narrow/large-font sizes.
+test('header reserves a status column and clips both possible command sources', () => {
+  const css = compile(readFileSync(filename, 'utf8'), { generate: 'client', filename, css: 'external' }).css.code;
+  const rule = selector => css.match(new RegExp(`${selector}[^{}]*\\{([^}]+)\\}`))[1];
+  assert.match(rule('\\.tool-header'), /display:\s*grid/);
+  assert.match(rule('\\.tool-header'), /grid-template-columns:\s*minmax\(0,\s*1fr\) auto/);
+  assert.match(rule('\\.tool-id-group'), /min-width:\s*0/);
+  assert.match(rule('\\.tool-id-group'), /overflow:\s*hidden/);
+  // The name has typography and truncation in separate rules.
+  const nameRules = [...css.matchAll(/\.tool-name[^{}]*\{([^}]+)\}/g)].map(match => match[1]).join(' ');
+  assert.match(nameRules, /min-width:\s*0/);
+  assert.match(nameRules, /text-overflow:\s*ellipsis/);
+  assert.match(nameRules, /overflow:\s*hidden/);
+  assert.match(rule('\\.tool-summary'), /text-overflow:\s*ellipsis/);
+  assert.match(rule('\\.tool-status-badge'), /white-space:\s*nowrap/);
+});
+
+for (const status of ['pending', 'completed', 'error']) {
+  test(`long live command retains its full tooltip beside ${status} status`, async () => {
+    const name = `python3 - <<'EOF' ${'import re; assert sub(path, old, new); '.repeat(20)}`;
+    const { target, close } = setup({ tool: { ...props.tool, name, status, input: undefined } });
+    const label = target.querySelector('.tool-name');
+    assert.equal(label.textContent, name);
+    assert.equal(label.title, `${name}\ntest-call`);
+    assert.equal(target.querySelector('.tool-summary'), null);
+    assert.match(target.querySelector('.tool-status-badge').textContent, new RegExp(status === 'pending' ? 'running' : status));
+    await close();
+  });
+}
 function setup(extra = {}) {
   const target = document.createElement('div');
   document.body.append(target);

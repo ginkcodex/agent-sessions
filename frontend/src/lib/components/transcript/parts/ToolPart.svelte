@@ -75,7 +75,7 @@
   <div class="tool-header">
     <div class="tool-id-group">
       <Icon name="wrench" size={14} class="tool-icon" />
-      <span class="tool-name" title={tool.id}>{tool.name}</span>
+      <span class="tool-name" title={tool.id ? `${tool.name}\n${tool.id}` : tool.name}>{tool.name}</span>
       {#if summary}<span class="tool-summary" title={summary}>{summary}</span>{/if}
     </div>
 
@@ -179,9 +179,11 @@
   }
 
   .tool-header {
-    display: flex;
+    /* ACP may put the entire command in tool.name. Reserve the badge's
+       column before sizing either the name or the optional summary. */
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
     padding: 10px 12px;
     gap: 12px;
   }
@@ -191,10 +193,12 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
+    overflow: hidden;
   }
 
   :global(.tool-icon) {
     color: var(--text-muted);
+    flex-shrink: 0;
   }
 
   .tool-name {
@@ -214,8 +218,15 @@
     color: var(--text-secondary);
   }
 
-  .tool-name, .tool-status-badge {
-    flex-shrink: 0;
+  .tool-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tool-status-badge {
+    white-space: nowrap;
   }
 
   .disclosure-label, .expand-output-btn {

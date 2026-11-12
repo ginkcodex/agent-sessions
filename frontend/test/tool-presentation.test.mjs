@@ -45,7 +45,7 @@ test('tool markup renders readable text and a useful summary', () => {
   const html = render(tool.default, { props }).body;
   assert.ok(html.includes('first\nsecond'));
   assert.ok(html.includes('git status'));
-  assert.ok(html.includes('title="opaque-call-id"'));
+  assert.ok(html.includes('title="exec\nopaque-call-id"'));
   assert.ok(!html.includes('input_text'));
   assert.ok(!html.includes('Show more output'));
 });

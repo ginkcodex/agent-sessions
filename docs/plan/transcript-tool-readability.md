@@ -9,6 +9,7 @@ Make session content at Activity and All levels scannable without losing tool de
 - Long outputs start as a short preview with Show more/Show less, instead of a tall nested scroll area on every call. Search-matched cards open fully. Parameters remain independently collapsible with an explicit disclosure indicator.
 - Use the session font scale, more comfortable line spacing and word wrapping without breaking every word. Preserve raw output copying and truncated-blob loading.
 - Both levels share this presentation; their existing filtering semantics stay unchanged.
+- Live ACP tool names may themselves be full commands. Give header text a shrinkable, clipped column and status a separate intrinsic-width column, with ellipsis and a full-name/call-ID tooltip.
 
 ## Risks
 Provider JSON shapes vary: unwrap only recognized all-text envelopes, preserving unknown or mixed payloads. Large-output rendering must stay bounded when collapsed. Expansion must not hide search matches. Native WebKit sizing and light/dark visual checks need manual validation.

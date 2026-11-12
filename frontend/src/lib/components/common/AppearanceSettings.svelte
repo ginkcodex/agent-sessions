@@ -52,11 +52,12 @@
       checked={preferences.sessionUsesEditorFont}
       onchange={(e) => preferences.setSessionUsesEditorFont((e.currentTarget as HTMLInputElement).checked)}
     />
-    Use the editor font for code in session content
+    Use the editor font for monospace text in session content
   </label>
   <p class="hint">
-    Code blocks, inline code and tool output use the editor font chosen above, so files and sessions share one
-    monospace font. Without an editor font chosen, the app default is used.
+    Every part of a session that uses a monospace font (code blocks, inline code, tool calls and output, patches and
+    system messages) uses the editor font chosen above, so files and sessions share one font. Without an editor font
+    chosen, the app default is used.
   </p>
   <TypeSample
     body={sessionFontVar(preferences.sessionFontSize) ?? '14.5px'}

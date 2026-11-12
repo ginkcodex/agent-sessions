@@ -58,7 +58,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| Transcript tool readability | [transcript-tool-readability](docs/plan/transcript-tool-readability.md) | [transcript-tool-readability/](docs/tasks/transcript-tool-readability/README.md) | 2/3 ✅ · 1 ⬜ |
+| Transcript tool readability | [transcript-tool-readability](docs/plan/transcript-tool-readability.md) | [transcript-tool-readability/](docs/tasks/transcript-tool-readability/README.md) | 3/4 ✅ · 1 ⬜ |
 | Message file single match | [message-file-single-match](docs/plan/message-file-single-match.md) | [message-file-single-match/](docs/tasks/message-file-single-match/README.md) | 1/1 ✅ |
 | Transcript directory links | [transcript-directory-links](docs/plan/transcript-directory-links.md) | [transcript-directory-links/](docs/tasks/transcript-directory-links/README.md) | 1/1 ✅ |
 | Terminal auto activation | [terminal-auto-activation](docs/plan/terminal-auto-activation.md) | [terminal-auto-activation/](docs/tasks/terminal-auto-activation/README.md) | 1/1 ✅ |

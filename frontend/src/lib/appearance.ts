@@ -80,7 +80,7 @@ export function sessionFontVar(size: number | null): string | undefined {
 }
 
 /**
- * The `--font-mono` value for the transcript when session content uses the
+ * The `--font-mono` value for the session pane when its monospace text uses the
  * editor font, or undefined (the app's mono font) when the option is off or
  * no editor font is chosen.
  */

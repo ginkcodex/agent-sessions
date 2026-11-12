@@ -17,6 +17,8 @@
 
 ## Acceptance criteria
 
+- Every monospace use in session content (code blocks, inline code, tool
+  calls and output, patches, notices, live chat cards) follows the setting.
 - Off by default; nothing is stored until it is turned on.
 - On with an editor font chosen: session code uses that font; the file viewer
   is unchanged. On with no editor font: no change.
@@ -28,9 +30,12 @@
   name, valid); the preference persists, restores, resets, and garbage is off.
 - `test/appearance-settings.test.mjs`: the checkbox is unchecked by default
   and checked when on; the sample gets `--font-mono` only when on.
+- `test/appearance-settings.test.mjs`: a scan of the transcript, parts, chat
+  and `style.css` finds no `font-family` other than `var(--font-mono)`,
+  `var(--font-sans)` or `inherit`, so every mono use follows the setting.
 - `test/transcript-font-size.test.mjs`: updated for the font in the anchor
   effect.
-- `npm test`: 1395 tests, 1394 pass, 0 fail, 1 skipped. `npm run check`:
+- `npm test`: 1400 tests, 1399 pass, 0 fail, 1 skipped. `npm run check`:
   0 errors, 0 warnings. `npm run build`: passes.
 - Not checked: the running app (visual result in a session), and the
   WebKitGTK and WebView2 desktop apps.
