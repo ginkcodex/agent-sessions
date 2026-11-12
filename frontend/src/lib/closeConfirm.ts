@@ -30,12 +30,7 @@ export function closeWindowWarning(tabs: readonly RunningTab[], chats: readonly 
   const open = openChats(chats);
   if (!running.length && !open.length) return null;
   const said: string[] = [];
-  if (running.length) {
-    const agents = running.filter(tab => tab.kind === 'agent').length;
-    const count = running.length > 1 ? `${running.length} terminals are` : agents ? 'A coding agent is' : 'A terminal is';
-    const including = agents && running.length > 1 ? `, including ${agents === 1 ? 'a coding agent' : `${agents} coding agents`}` : '';
-    said.push(`${count} still running${including}`);
-  }
+  if (running.length) said.push(stillRunning(running));
   if (open.length) said.push(chatsOpen(open));
   const total = running.length + open.length;
   return {
@@ -58,6 +53,47 @@ export function endingChatsWarning(chats: readonly WindowChat[], action: string)
     message: `${chatsOpen(open)}. ${action} ends ${open.length === 1 ? 'it' : 'them'}:`,
     groups: [named('Chats', 'chat', open.map(chatItem))],
   };
+}
+
+/**
+ * The warning for a host switch that leaves the previous host's terminal
+ * tabs behind, and ends the window's open chats with it. tabs are that
+ * host's tabs, at least one; host is it, "" for this computer. action says
+ * the switch: "Disconnecting from box". The question offers to keep the
+ * tabs or end them, so the message ends on that choice.
+ */
+export function hostTabsWarning(tabs: readonly RunningTab[], host: string, chats: readonly WindowChat[], action: string): CloseWarning {
+  const running = tabs.filter(tab => tab.status === 'running');
+  const ended = tabs.length - running.length;
+  const open = openChats(chats);
+  const where = host ? `on ${hostLabel(host)}` : 'on this computer';
+  const said: string[] = [];
+  if (running.length) {
+    said.push(stillRunning(running, where));
+    if (ended) said.push(ended === 1 ? '1 more tab has ended' : `${ended} more tabs have ended`);
+  } else {
+    said.push(ended === 1 ? `A terminal tab ${where} has ended` : `${ended} terminal tabs ${where} have ended`);
+  }
+  if (open.length) said.push(chatsOpen(open));
+  const end = running.length ? 'end' : 'close';
+  const choice = open.length
+    ? `${action} ends the ${open.length === 1 ? 'chat' : 'chats'}, and can keep the terminal tabs open or ${end} them too:`
+    : `${action} can keep their tabs open or ${end} them:`;
+  return {
+    message: `${said.join('. ')}. ${choice}`,
+    groups: groups([
+      named('Terminals', 'terminal', [...running, ...tabs.filter(tab => tab.status !== 'running')].map(terminalItem)),
+      open.length ? named('Chats', 'chat', open.map(chatItem)) : null,
+    ]),
+  };
+}
+
+/** "3 terminals are still running on box, including 2 coding agents". */
+function stillRunning(running: readonly RunningTab[], where?: string): string {
+  const agents = running.filter(tab => tab.kind === 'agent').length;
+  const count = running.length > 1 ? `${running.length} terminals are` : agents ? 'A coding agent is' : 'A terminal is';
+  const including = agents && running.length > 1 ? `, including ${agents === 1 ? 'a coding agent' : `${agents} coding agents`}` : '';
+  return `${count} still running${where ? ` ${where}` : ''}${including}`;
 }
 
 function openChats(chats: readonly WindowChat[]): WindowChat[] {
@@ -88,6 +124,7 @@ function terminalItem(tab: RunningTab): FilePromptItem {
     detail: tab.host ? `on ${hostLabel(tab.host)}` : undefined,
     icon: tab.kind === 'agent' ? 'agent' : 'terminal',
     agent: tab.agent,
+    ...(tab.status === 'exited' ? { badge: 'ended' } : {}),
   };
 }
 
