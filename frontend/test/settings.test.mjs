@@ -18,7 +18,7 @@ const TRANSLATE_DEFAULTS = {
 async function renderSettingsDialog(
   launcher,
   preferences = { transcriptMode: 'activity', timeZone: 'utc' },
-  { section = 'general', translateSettings = {}, alerts = {}, manage: manageState = {}, codeDiagnostics = {} } = {},
+  { section = 'general', translateSettings = {}, alerts = {}, manage: manageState = {}, codeDiagnostics = {}, terminals: terminalsState = {} } = {},
 ) {
   if (!settingsDialogModule) {
     globalThis.__dropdown = (await loadServerComponent(DROPDOWN_URL, [])).default;
@@ -54,7 +54,7 @@ async function renderSettingsDialog(
   return renderWithFixture(settingsDialogModule, {
     manage,
     launcher: { terminalError: null, terminal: null, ...launcher },
-    terminals: { position: 'bottom' },
+    terminals: { position: 'bottom', autoActivate: true, ...terminalsState },
     alerts: { notifyNeeds: true, notifyDone: true, status: null, refreshStatus: async () => {}, ...alerts },
     translateSettings: { ...TRANSLATE_DEFAULTS, ...translateSettings },
     preferences: { disabledLanguages: [], autoInstallLanguageServers: true, ...preferences },
@@ -111,6 +111,23 @@ test('Settings shows the terminal choice only where it can be chosen', async () 
   const failed = await renderSettingsDialog({ info, terminalError: 'read settings: permission denied' }, undefined, { section: 'terminal' });
   assert.match(failed, /read settings: permission denied/);
   assert.doesNotMatch(failed, /Looking for terminal apps/);
+});
+
+test('Settings lets users turn off automatic terminal tab switching', async () => {
+  const info = { terminal: true, chooseTerminal: false, shell: 'powershell', panel: true };
+  const launcher = { info, openMode: 'panel', savingOpenMode: false };
+  const checkbox = (html) => /<input[^>]*type="checkbox"([^>]*)\/?>\s*Switch terminal tab when I select a session/.exec(html);
+
+  const on = await renderSettingsDialog(launcher, undefined, { section: 'terminal' });
+  assert.ok(checkbox(on), 'the checkbox is shown');
+  assert.match(checkbox(on)[1], /checked/, 'enabled by default');
+  assert.match(on, /selecting a tab yourself still works/);
+
+  const off = await renderSettingsDialog(launcher, undefined, { section: 'terminal', terminals: { autoActivate: false } });
+  assert.doesNotMatch(checkbox(off)[1], /checked/, 'shows the saved disabled value');
+
+  const source = readFileSync(SETTINGS_DIALOG_URL, 'utf8');
+  assert.match(source, /checked=\{terminals\.autoActivate\}\s*onchange=\{\(e\) => terminals\.setAutoActivate\(\(e\.currentTarget as HTMLInputElement\)\.checked\)\}/);
 });
 
 test('Settings chooses where agents open when the built-in panel runs', async () => {

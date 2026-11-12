@@ -58,6 +58,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Terminal auto activation | [terminal-auto-activation](docs/plan/terminal-auto-activation.md) | [terminal-auto-activation/](docs/tasks/terminal-auto-activation/README.md) | 1/1 ✅ |
 | ACP adapter install | [acp-adapter-install](docs/plan/acp-adapter-install.md) | [acp-adapter-install/](docs/tasks/acp-adapter-install/README.md) | 4/5 ✅ · 1 ⬜ |
 | ACP chat mode | [acp-chat](docs/plan/acp-chat.md) | [acp-chat/](docs/tasks/acp-chat/README.md) | 17/18 ✅ · 1 🟡 |
 | Chat attachments | [chat-attachments](docs/plan/chat-attachments.md) | [chat-attachments/](docs/tasks/chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |

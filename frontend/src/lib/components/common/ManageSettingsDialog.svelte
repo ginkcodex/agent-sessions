@@ -278,6 +278,18 @@
                     Left, below the session list
                   </label>
                 </fieldset>
+                <label class="setting">
+                  <input
+                    type="checkbox"
+                    checked={terminals.autoActivate}
+                    onchange={(e) => terminals.setAutoActivate((e.currentTarget as HTMLInputElement).checked)}
+                  />
+                  Switch terminal tab when I select a session
+                </label>
+                <p class="hint">
+                  Clicking or focusing a session shows its terminal tab, or a tab running in the same directory. Turn
+                  this off to keep the tab you chose; selecting a tab yourself still works.
+                </p>
                 <TerminalFontSetting />
                 <h4>Agent alerts</h4>
                 <label class="setting">
