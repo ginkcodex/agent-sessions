@@ -408,6 +408,7 @@ func (m *ChatManager) Start(ctx context.Context, req ChatStartRequest) (ChatStat
 		perms: map[string]*pendingPermission{}, questions: map[string]*pendingQuestion{}, done: make(chan struct{}),
 	}
 	ch.ctx, ch.cancel = context.WithCancel(context.Background())
+	ch.cond = sync.NewCond(&ch.mu)
 	if req.Resume != nil {
 		if err := m.owners.claim(*req.Resume, ch.id); err != nil {
 			ch.cancel()
@@ -583,6 +584,9 @@ func (m *ChatManager) Prompt(chatID, text string, atts []chatattach.Attachment) 
 				ev.AuthMethods = auth.Methods
 			}
 		}
+		// The turn's end follows every update the turn produced, including
+		// the last of a permission or question wait woken by the close.
+		ch.awaitAnswers()
 		// The next turn's start must follow this end.
 		ch.emitMu.Lock()
 		ch.mu.Lock()
@@ -763,6 +767,10 @@ type chat struct {
 	// work counts turns, permission waits and questions; Add only under mu
 	// while !exited.
 	work sync.WaitGroup
+	// asking counts the permission and question waits in flight; their last
+	// update comes before the turn's end. Guarded by mu; cond signals it.
+	asking int
+	cond   *sync.Cond
 }
 
 type pendingPermission struct {
@@ -870,6 +878,26 @@ func (ch *chat) setReplaying(v bool) {
 	ch.mu.Unlock()
 }
 
+// awaitAnswers blocks until every permission and question wait in flight
+// has emitted its last update, so the turn's end comes after them however
+// the wait ended.
+func (ch *chat) awaitAnswers() {
+	ch.mu.Lock()
+	defer ch.mu.Unlock()
+	for ch.asking > 0 {
+		ch.cond.Wait()
+	}
+}
+
+// answerDone records a finished permission or question wait. Call it after
+// the wait's last update is emitted.
+func (ch *chat) answerDone() {
+	ch.mu.Lock()
+	ch.asking--
+	ch.cond.Broadcast()
+	ch.mu.Unlock()
+}
+
 func (ch *chat) setOptions(opts []acp.ConfigOption) {
 	ch.mu.Lock()
 	ch.options = slices.Clone(opts)
@@ -932,6 +960,7 @@ func (ch *chat) onPermission(ctx context.Context, req acp.RequestPermissionReque
 	p := &pendingPermission{n: ch.nextPerm, req: req, answer: make(chan acp.RequestPermissionResponse, 1)}
 	ch.perms[id] = p
 	ch.work.Add(1)
+	ch.asking++
 	ch.mu.Unlock()
 	defer ch.work.Done()
 
@@ -950,6 +979,7 @@ func (ch *chat) onPermission(ctx context.Context, req acp.RequestPermissionReque
 		r = acp.Cancelled() // what the client sends then
 	}
 	ch.emit(ChatUpdate{Kind: ChatPermissionResolved, Permission: &ChatPermission{ID: id, Outcome: r.Outcome.Outcome, OptionID: r.Outcome.OptionID}})
+	ch.answerDone()
 	return r
 }
 
@@ -969,6 +999,7 @@ func (ch *chat) onQuestion(ctx context.Context, req acp.CreateElicitationRequest
 	}
 	ch.questions[id] = q
 	ch.work.Add(1)
+	ch.asking++
 	ch.mu.Unlock()
 	defer ch.work.Done()
 
@@ -992,6 +1023,7 @@ func (ch *chat) onQuestion(ctx context.Context, req acp.CreateElicitationRequest
 		outcome = r.Action
 	}
 	ch.emit(ChatUpdate{Kind: ChatQuestionResolved, Question: &ChatQuestion{ID: id, Outcome: outcome, Content: r.Content}})
+	ch.answerDone()
 	return r
 }
 

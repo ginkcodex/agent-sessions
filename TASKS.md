@@ -63,7 +63,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Transcript directory links | [transcript-directory-links](docs/plan/transcript-directory-links.md) | [transcript-directory-links/](docs/tasks/transcript-directory-links/README.md) | 1/1 ✅ |
 | Terminal auto activation | [terminal-auto-activation](docs/plan/terminal-auto-activation.md) | [terminal-auto-activation/](docs/tasks/terminal-auto-activation/README.md) | 1/1 ✅ |
 | ACP adapter install | [acp-adapter-install](docs/plan/acp-adapter-install.md) | [acp-adapter-install/](docs/tasks/acp-adapter-install/README.md) | 4/5 ✅ · 1 ⬜ |
-| ACP chat mode | [acp-chat](docs/plan/acp-chat.md) | [acp-chat/](docs/tasks/acp-chat/README.md) | 17/18 ✅ · 1 🟡 |
+| ACP chat mode | [acp-chat](docs/plan/acp-chat.md) | [acp-chat/](docs/tasks/acp-chat/README.md) | 18/19 ✅ · 1 🟡 |
 | Chat attachments | [chat-attachments](docs/plan/chat-attachments.md) | [chat-attachments/](docs/tasks/chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
 | Chat end guard | [chat-end-guard](docs/plan/chat-end-guard.md) | [chat-end-guard/](docs/tasks/chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
 | End chat menu | [end-chat-menu](docs/plan/end-chat-menu.md) | [end-chat-menu/](docs/tasks/end-chat-menu/README.md) | 3/4 ✅ · 1 ⬜ |
