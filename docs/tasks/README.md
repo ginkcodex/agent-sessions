@@ -40,9 +40,9 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | ACP chat mode | [acp-chat](../plan/acp-chat.md) | [acp-chat/](acp-chat/README.md) | 18/19 ✅ · 1 🟡 |
 | Chat attachments | [chat-attachments](../plan/chat-attachments.md) | [chat-attachments/](chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
 | Chat end guard | [chat-end-guard](../plan/chat-end-guard.md) | [chat-end-guard/](chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
-| End chat menu | [end-chat-menu](../plan/end-chat-menu.md) | [end-chat-menu/](end-chat-menu/README.md) | 3/4 ✅ · 1 ⬜ |
+| End chat menu | [end-chat-menu](../plan/end-chat-menu.md) | [end-chat-menu/](end-chat-menu/README.md) | 4/5 ✅ · 1 ⬜ |
 | Switch to chat | [switch-to-chat](../plan/switch-to-chat.md) | [switch-to-chat/](switch-to-chat/README.md) | 3/4 ✅ · 1 ⬜ |
-| Close dialog groups | [close-dialog-groups](../plan/close-dialog-groups.md) | [close-dialog-groups/](close-dialog-groups/README.md) | 4/5 ✅ · 1 ⬜ |
+| Close dialog groups | [close-dialog-groups](../plan/close-dialog-groups.md) | [close-dialog-groups/](close-dialog-groups/README.md) | 6/7 ✅ · 1 ⬜ |
 | Host switch chat guard | [host-switch-chat-guard](../plan/host-switch-chat-guard.md) | [host-switch-chat-guard/](host-switch-chat-guard/README.md) | 2/3 ✅ · 1 ⬜ |
 | Codex daemon chat | [codex-daemon-chat](../plan/codex-daemon-chat.md) | [codex-daemon-chat/](codex-daemon-chat/README.md) | 4/5 ✅ · 1 ⬜ |
 | Chat adapter setup | [chat-adapter-setup](../plan/chat-adapter-setup.md) | [chat-adapter-setup/](chat-adapter-setup/README.md) | 4/5 ✅ · 1 ⬜ |
@@ -95,3 +95,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Live filter for chat sessions | [chat-live-filter](../plan/chat-live-filter.md) | [chat-live-filter/](chat-live-filter/README.md) | 2/2 ✅ |
 | Codex restore filenames | [codex-restore-filenames](../plan/codex-restore-filenames.md) | [codex-restore-filenames/](codex-restore-filenames/README.md) | 6/6 ✅ |
 | Chat option dropdowns | [chat-options-dropdown](../plan/chat-options-dropdown.md) | [chat-options-dropdown/](chat-options-dropdown/README.md) | 2/4 ✅ · 2 ⬜ |
+| Workspace filter release | [workspace-filter-release](../plan/workspace-filter-release.md) | [workspace-filter-release/](workspace-filter-release/README.md) | 2/3 ✅ · 1 ⬜ |

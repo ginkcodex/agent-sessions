@@ -391,10 +391,16 @@ test('host changes offer keep/close for previous-host terminals and cancel safel
       globalThis.__storeFixture = {
         link: { dataHost: previous || undefined },
         api: { connect: async host => calls.push(['connect', host]), disconnect: async () => calls.push(['disconnect']) },
-        terminals: { tabs: [{ id: 'old', host: previous }, { id: 'unrelated', host: 'elsewhere' }], close: (id, confirmed) => calls.push(['close', id, confirmed]) },
-        filePrompt: { ask: async (title, message, choices) => {
-          assert.match(message, /1 terminal tab/);
-          assert.match(message, /Closing ends any running processes/);
+        terminals: {
+          tabs: [{ id: 'old', host: previous, label: 'zsh', kind: 'shell', status: 'running' }, { id: 'unrelated', host: 'elsewhere', label: 'sh', kind: 'shell', status: 'running' }],
+          close: (id, confirmed) => calls.push(['close', id, confirmed]),
+        },
+        filePrompt: { ask: async (title, message, choices, groups) => {
+          assert.equal(title, target ? `Connect to ${target === 'wsl:Ubuntu' ? 'Ubuntu (WSL)' : target}?` : `Disconnect from ${previous}?`);
+          assert.match(message, new RegExp(`^A terminal is still running on ${previous || 'this computer'}\\. `));
+          assert.match(message, /can keep their tabs open or end them:$/);
+          assert.deepEqual(groups.map(g => [g.title, g.items.map(i => i.name)]), [['Terminals', ['zsh']]], 'only the previous host\'s tabs');
+          assert.deepEqual(choices.map(c => c.label), ['Keep terminal tabs', 'End and close terminal tabs']);
           assert.equal(choices.find(c => c.value === 'close').danger, true);
           calls.push(['prompt']);
           return choice;
@@ -476,13 +482,15 @@ test('one question covers the previous host\'s terminals and the open chats', as
     globalThis.__storeFixture = {
       link: { dataHost: 'box' },
       api: { connect: async host => calls.push(['connect', host]) },
-      terminals: { tabs: [{ id: 'old', host: 'box' }], close: (id) => calls.push(['close', id]) },
+      terminals: { tabs: [{ id: 'old', host: 'box', label: 'Codex', kind: 'agent', agent: 'codex', status: 'running' }], close: (id) => calls.push(['close', id]) },
       chats: { chats: [{ agent: 'claude-code', dir: '/w/api', phase: 'idle' }] },
       filePrompt: { ask: async (title, message, choices, groups) => {
-        assert.equal(title, 'Terminal tabs from previous host');
-        assert.match(message, /1 terminal tab\(s\) belong to box/);
-        assert.match(message, /\n\nA chat is open\. Connecting to other ends it:$/);
-        assert.deepEqual(groups, [{ title: 'Chats', icon: 'chat', items: [{ name: 'Claude Code', detail: 'in api', icon: 'chat', agent: 'claude-code', badge: undefined }] }]);
+        assert.equal(title, 'Connect to other?');
+        assert.equal(message, 'A coding agent is still running on box. A chat is open. Connecting to other ends the chat, and can keep the terminal tabs open or end them too:');
+        assert.deepEqual(groups, [
+          { title: 'Terminals', icon: 'terminal', items: [{ name: 'Codex', detail: 'on box', icon: 'agent', agent: 'codex' }] },
+          { title: 'Chats', icon: 'chat', items: [{ name: 'Claude Code', detail: 'in api', icon: 'chat', agent: 'claude-code', badge: undefined }] },
+        ]);
         assert.deepEqual(choices.map(c => c.label), ['End chats, keep terminal tabs', 'End chats and terminal tabs']);
         calls.push(['prompt']);
         return choice;

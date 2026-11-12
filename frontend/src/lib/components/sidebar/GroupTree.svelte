@@ -6,7 +6,7 @@
   import { catalogNotice, emptyCatalogState, discoveryProblem } from '../../discovery';
   import { manage } from '../../stores/manage.svelte';
   import { filterSessionsByAge, refsEqual } from '../../manage';
-  import { nodeDirectory, nodeToHighlight, sessionToSelect, workspaceTerminalTarget } from '../../tree';
+  import { isEmptyTreeClick, nodeDirectory, nodeToHighlight, sessionToSelect, workspaceTerminalTarget } from '../../tree';
   import { terminals } from '../../stores/terminals.svelte';
   import { link } from '../../stores/link.svelte';
   import GroupNodeItem from './GroupNodeItem.svelte';
@@ -49,7 +49,30 @@
       appState.defaultCollapsed
     )
   );
+  // The row whose group filters the list shows as selected; the row that
+  // only holds the open session shows quieter, so a released filter reads
+  // as released.
+  let filterKey = $derived(clicked ?? appState.selectedGroupKey);
   let container = $state<HTMLDivElement>();
+
+  // A click on the tree's empty space, or Escape in the tree, releases the
+  // group filter: the list shows every session again, and the open session
+  // stays open. A row click still loading its sessions loses to it.
+  function releaseFilter(): void {
+    clicked = null;
+    void appState.selectGroup(null, 'push');
+  }
+
+  function handleTreeClick(e: MouseEvent): void {
+    if (appState.selectedGroupKey && isEmptyTreeClick(e.target)) releaseFilter();
+  }
+
+  function handleTreeKeydown(e: KeyboardEvent): void {
+    if (e.key !== 'Escape' || !appState.selectedGroupKey || e.defaultPrevented) return;
+    if ((e.target as Element | null)?.closest?.('[role="menu"]')) return;
+    e.preventDefault();
+    releaseFilter();
+  }
 
   // Another session opened: its row comes into view. Only once per session,
   // so tree reloads leave the scrolling alone.
@@ -61,7 +84,7 @@
     const tree = container;
     // After the rows render, and with them any group that opened.
     requestAnimationFrame(() => {
-      tree.querySelector('.node-row.selected')?.scrollIntoView({ block: 'nearest' });
+      tree.querySelector('.node-row.selected, .node-row.current')?.scrollIntoView({ block: 'nearest' });
     });
   });
 
@@ -97,7 +120,15 @@
   }
 </script>
 
-<div class="tree-container" role="tree" aria-label="Session groups" bind:this={container}>
+<div
+  class="tree-container"
+  role="tree"
+  tabindex="-1"
+  aria-label="Session groups"
+  bind:this={container}
+  onclick={handleTreeClick}
+  onkeydown={handleTreeKeydown}
+>
   {#if notice && appState.groups.length > 0}
     <div class="discovery-notice" class:warning={notice.tone === 'warning'} role="status" title={notice.title}>
       {notice.text}
@@ -159,6 +190,7 @@
           {node}
           level={0}
           selectedKey={highlightedKey}
+          {filterKey}
           collapsedKeys={appState.collapsedKeys}
           defaultCollapsed={appState.defaultCollapsed}
           onSelect={handleSelect}
@@ -175,6 +207,11 @@
     height: 100%;
     overflow-y: auto;
     padding: 6px 4px;
+  }
+
+  /* Focusable so Escape reaches it after a click on empty space. */
+  .tree-container:focus {
+    outline: none;
   }
 
   .root-list {

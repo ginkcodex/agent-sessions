@@ -144,11 +144,13 @@ export class ChatOpener {
    * Stops a live chat and continues its session in a panel terminal tab.
    * The ended chat goes at once: the terminal tab is the continuation, so
    * Dismiss and Restart are not offered. False when the chat has no saved
-   * session to resume, or when something failed.
+   * session to resume, or when something failed. A session without meta is
+   * not saved yet (a new chat before its first turn): its ID resumes
+   * nothing, so the chat stays.
    */
   async switchToTerminal(chat: Chat, meta?: SessionMeta | null): Promise<boolean> {
     const ref = chat.session;
-    if (!ref) return false;
+    if (!ref || !meta) return false;
     try {
       await chats.close(chat.chatId);
     } catch (err) {

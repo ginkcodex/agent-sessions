@@ -92,7 +92,8 @@
 
 <style>
   .file-prompt-backdrop { position: fixed; inset: 0; z-index: 1400; display: grid; place-items: center; background: var(--scrim); padding: 24px; animation: -global-scrim-in var(--dur-med) var(--ease-out); }
-  .file-prompt { width: min(480px, 100%); box-sizing: border-box; background: var(--bg-primary); color: var(--text-primary); padding: 22px 24px 18px; border: 1px solid var(--dialog-border); border-radius: var(--radius-dialog); box-shadow: var(--shadow-dialog); animation: -global-dialog-in var(--dur-med) var(--ease-out); outline: none; }
+  /* 480px wide, wider when the buttons need it: each label stays on one line. */
+  .file-prompt { width: min(480px, 100%); min-width: min-content; box-sizing: border-box; background: var(--bg-primary); color: var(--text-primary); padding: 22px 24px 18px; border: 1px solid var(--dialog-border); border-radius: var(--radius-dialog); box-shadow: var(--shadow-dialog); animation: -global-dialog-in var(--dur-med) var(--ease-out); outline: none; }
   h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
   .body { max-height: 50vh; overflow: auto; }
   p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.55; color: var(--text-secondary); }
@@ -113,7 +114,7 @@
   .more { padding: 6px 2px 4px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; font-style: italic; }
 
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-  button { height: 32px; padding: 0 14px; border: 0; border-radius: var(--radius-md); background: var(--btn-bg); color: var(--text-primary); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color var(--dur-fast) var(--ease-out); }
+  button { flex: none; white-space: nowrap; height: 32px; padding: 0 14px; border: 0; border-radius: var(--radius-md); background: var(--btn-bg); color: var(--text-primary); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color var(--dur-fast) var(--ease-out); }
   button:hover:not(:disabled) { background: var(--btn-bg-hover); }
   button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
   button:disabled { opacity: .5; cursor: default; }
@@ -121,4 +122,12 @@
   button.cancel:hover:not(:disabled) { background: var(--btn-bg); color: var(--text-primary); }
   button.danger { background: var(--danger); color: white; }
   button.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 85%, black); }
+
+  /* A window too narrow for the buttons in a row (the browser build; the
+     desktop window is at least 960px) wraps them instead of overflowing. */
+  @media (max-width: 640px) {
+    .file-prompt { min-width: 0; }
+    .actions { flex-wrap: wrap; }
+    button { flex: 1 1 auto; white-space: normal; height: auto; min-height: 32px; padding: 6px 14px; }
+  }
 </style>

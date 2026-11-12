@@ -28,7 +28,14 @@ import { link } from './link.svelte';
 import { terminals } from './terminals.svelte';
 import { filePrompt } from './filePrompt.svelte';
 import { chats } from './chats.svelte';
-import { endingChatsWarning, type CloseWarning } from '../closeConfirm';
+import { endingChatsWarning, hostTabsWarning, type CloseWarning } from '../closeConfirm';
+
+/** A host switch as the closing questions say it: "Disconnecting from box". */
+function switchAction(previous: string, target: string): string {
+  return previous === target ? `Reconnecting to ${hostLabel(target)}`
+    : target ? `Connecting to ${hostLabel(target)}`
+    : `Disconnecting from ${hostLabel(previous)}`;
+}
 
 // Local always has every capability; the backend reports none for it.
 const LOCAL_CAPABILITIES: HostCapabilities = {
@@ -197,26 +204,26 @@ export class ConnectionStore {
    */
   private endingChats(previous: string, target: string): CloseWarning | null {
     if (link.locked) return null;
-    const action = previous === target ? `Reconnecting to ${hostLabel(target)}`
-      : target ? `Connecting to ${hostLabel(target)}`
-      : `Disconnecting from ${hostLabel(previous)}`;
-    return endingChatsWarning(chats.chats, action);
+    return endingChatsWarning(chats.chats, switchAction(previous, target));
   }
 
   /** Ask only for explicit host changes, after resolving unsaved file edits. */
   private async changeHost(target: string, action: () => Promise<void>): Promise<void> {
     await fileActions.changeHost(async () => {
       const previous = link.dataHost ?? '';
-      const ids = previous === target ? [] : terminals.tabs.filter(tab => tab.host === previous).map(tab => tab.id);
+      const tabs = previous === target ? [] : terminals.tabs.filter(tab => tab.host === previous);
+      const ids = tabs.map(tab => tab.id);
       const ending = this.endingChats(previous, target);
       let close = false;
       if (ids.length > 0) {
-        const name = previous ? hostLabel(previous) : 'Local';
-        const tabs = `${ids.length} terminal tab(s) belong to ${name}. Keep them open, or close them when switching hosts? Closing ends any running processes, including agents. Split panes count separately.`;
-        const choice = await filePrompt.ask('Terminal tabs from previous host', ending ? `${tabs}\n\n${ending.message}` : tabs, [
+        // Told as "Close window?" tells it: the counts, then the tabs (and
+        // chats) as cards, each split pane a row of its own.
+        const warning = hostTabsWarning(tabs, previous, ending ? chats.chats : [], switchAction(previous, target));
+        const title = target ? `Connect to ${hostLabel(target)}?` : `Disconnect from ${hostLabel(previous)}?`;
+        const choice = await filePrompt.ask(title, warning.message, [
           { value: 'keep', label: ending ? 'End chats, keep terminal tabs' : 'Keep terminal tabs' },
           { value: 'close', label: ending ? 'End chats and terminal tabs' : 'End and close terminal tabs', danger: true },
-        ], ending?.groups ?? []);
+        ], warning.groups);
         if (choice !== 'keep' && choice !== 'close') return;
         close = choice === 'close';
       } else if (ending && !await this.confirmEndingChats(ending, target)) {

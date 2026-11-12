@@ -74,10 +74,29 @@ cards, and the dialog chrome gets a polish pass (spacing, typography,
 a quieter Cancel beside the danger action, scrollable body) while every
 shared confirmation keeps working exactly as before.
 
+The dialog is 480px wide, and wider when its buttons need it: a label
+never wraps (`white-space: nowrap`, the panel's `min-width: min-content`),
+so the host-switch question's "End and close terminal tabs" stays on one
+line. Below a 640px window (only the browser build: the desktop window is
+at least 960px) the buttons wrap onto rows instead of overflowing.
+
 `confirmClosingWindow` passes `warning.groups` through; the host-switch
 prompts in `connection.svelte.ts` compose their messages from
-`CloseWarning` — the combined terminal-tabs question keeps its tabs
-paragraph in the message and puts the chats warning's cards under it.
+`CloseWarning`.
+
+### The host-switch terminal tabs question
+
+Connecting elsewhere or disconnecting while the previous host has terminal
+tabs asks whether to keep them or end them. It reads like "Close window?":
+`hostTabsWarning(tabs, host, chats, action)` in `closeConfirm.ts` returns
+the same `CloseWarning`, with the counts sentence ("4 terminals are still
+running on cos, including 2 coding agents. Disconnecting from cos can keep
+their tabs open or end them:") and a Terminals card naming each tab and
+split pane (then a Chats card when chats are open). Tabs that already
+ended are listed last with an "ended" badge, and the sentence says so.
+The title names the switch: "Disconnect from cos?" or "Connect to box?",
+replacing "Terminal tabs from previous host". The choices (Keep / End and
+close, with "End chats" in front while chats are open) do not change.
 
 ### The unsaved-files question
 
@@ -131,6 +150,8 @@ per file. `resolve` passes the card to `ask` like the other callers.
   each chat row shows its agent's icon.
 - The host-switch prompts ("End open chats?", and the combined terminal
   tabs question) show the same Chats card.
+- The terminal tabs question on a host switch reads like "Close window?":
+  a counts sentence and a Terminals card of the previous host's tabs.
 - The unsaved-changes question ("Close window?", "Switch host?",
   "Close files?") lists its files in an Unsaved files card, every file
   named with its workspace directory.

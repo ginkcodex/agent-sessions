@@ -947,6 +947,7 @@
         onSwitchToTerminal={async () => {
           await chatOpen.switchToTerminal(chat, appState.selectedSessionMeta);
         }}
+        sessionSaved={!!appState.selectedSessionMeta}
         onOption={(configId, value) => chatOpen.choose(chat, configId, value)}
       />
     {/if}

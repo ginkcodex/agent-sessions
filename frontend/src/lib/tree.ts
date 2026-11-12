@@ -161,6 +161,19 @@ export function nodeToHighlight(
   return innermost;
 }
 
+/** What a click in the group tree may land on and still be empty space. */
+const TREE_CONTROLS = '.node-row, button, a, input, select, textarea, [role="menu"]';
+
+/**
+ * Whether a click in the group tree landed on its empty space — below the
+ * rows, between them, or on a message — rather than on a row, a control or
+ * an open menu. Such a click releases the group filter.
+ */
+export function isEmptyTreeClick(target: EventTarget | null): boolean {
+  const el = target as { closest?: (selector: string) => unknown } | null;
+  return typeof el?.closest === 'function' && !el.closest(TREE_CONTROLS);
+}
+
 /**
  * Lists the distinct directories in the tree that still exist on disk,
  * sorted, as candidates to import a bundle into.

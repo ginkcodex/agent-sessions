@@ -88,6 +88,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [chat-live-filter.md](chat-live-filter.md) | [chat-live-filter](../tasks/chat-live-filter/README.md) | Include sessions running in chat in the Live filter |
 | [codex-restore-filenames.md](codex-restore-filenames.md) | [codex-restore-filenames](../tasks/codex-restore-filenames/README.md) | Restore resumable Codex rollout filenames and repair previous imports |
 | [chat-options-dropdown.md](chat-options-dropdown.md) | [chat-options-dropdown](../tasks/chat-options-dropdown/README.md) | The chat's mode, model and effort pickers as the shared themed Dropdown, opening upward at the composer |
+| [workspace-filter-release.md](workspace-filter-release.md) | [workspace-filter-release](../tasks/workspace-filter-release/README.md) | A click on the group tree's empty space releases the workspace filter; the open session's group gets a quieter highlight |
 
 ## Supporting documents
 

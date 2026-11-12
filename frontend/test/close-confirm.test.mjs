@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { confirmClosingWindow, closeWindowWarning, endingChatsWarning, unsavedDrafts } from '../src/lib/closeConfirm.ts';
+import { confirmClosingWindow, closeWindowWarning, endingChatsWarning, hostTabsWarning, unsavedDrafts } from '../src/lib/closeConfirm.ts';
 
 const shell = (label, host = '') => ({ label, host, kind: 'shell', status: 'running' });
 const agent = (label, host = '', id) => ({ label, host, kind: 'agent', agent: id, status: 'running' });
@@ -117,4 +117,44 @@ test('the unsaved-changes question names every dirty file in its own card', () =
   const many = unsavedDrafts(Array.from({ length: 8 }, (_, i) => ({ dir: '/p', tab: { path: `f${i}` } })));
   assert.equal(many.groups[0].items.length, 8, 'every file is named; the save or discard decision is taken file by file');
   assert.equal(many.groups[0].more, undefined);
+});
+
+test('a host switch tells the previous host\'s tabs as Close window does', () => {
+  const tabs = [shell('Shell', 'cos'), shell('Shell', 'cos'), agent('Ok, just make sure', 'cos', 'claude-code'), agent('Looks like a bug', 'cos', 'claude-code')];
+  assert.deepEqual(hostTabsWarning(tabs, 'cos', [], 'Disconnecting from cos'), {
+    message: '4 terminals are still running on cos, including 2 coding agents. Disconnecting from cos can keep their tabs open or end them:',
+    groups: [{
+      title: 'Terminals',
+      icon: 'terminal',
+      items: [
+        row('Shell', { detail: 'on cos' }),
+        row('Shell', { detail: 'on cos' }),
+        row('Ok, just make sure', { detail: 'on cos', icon: 'agent', agent: 'claude-code' }),
+        row('Looks like a bug', { detail: 'on cos', icon: 'agent', agent: 'claude-code' }),
+      ],
+    }],
+  });
+  assert.equal(hostTabsWarning([shell('zsh')], '', [], 'Connecting to box').message,
+    'A terminal is still running on this computer. Connecting to box can keep their tabs open or end them:');
+  assert.equal(hostTabsWarning([shell('zsh', 'wsl:Ubuntu')], 'wsl:Ubuntu', [], 'Disconnecting from Ubuntu (WSL)').message,
+    'A terminal is still running on Ubuntu (WSL). Disconnecting from Ubuntu (WSL) can keep their tabs open or end them:');
+});
+
+test('a host switch lists ended tabs last, badged, and its open chats in their own card', () => {
+  const ended = { ...shell('old', 'box'), status: 'exited' };
+  const mixed = hostTabsWarning([ended, agent('Codex', 'box', 'codex')], 'box', [], 'Disconnecting from box');
+  assert.equal(mixed.message, 'A coding agent is still running on box. 1 more tab has ended. Disconnecting from box can keep their tabs open or end them:');
+  assert.deepEqual(mixed.groups[0].items.map(i => [i.name, i.badge]), [['Codex', undefined], ['old', 'ended']], 'running first');
+  assert.equal(hostTabsWarning([ended, ended], 'box', [], 'Connecting to other').message,
+    '2 terminal tabs on box have ended. Connecting to other can keep their tabs open or close them:');
+  assert.equal(hostTabsWarning([ended], 'box', [], 'Connecting to other').message,
+    'A terminal tab on box has ended. Connecting to other can keep their tabs open or close them:');
+
+  const withChats = hostTabsWarning([shell('zsh', 'box')], 'box', [chat('codex', '/w/api', 'working'), chat('codex', '/w/old', 'exited')], 'Connecting to other');
+  assert.equal(withChats.message, 'A terminal is still running on box. A chat is open and its agent is working. Connecting to other ends the chat, and can keep the terminal tabs open or end them too:');
+  assert.deepEqual(withChats.groups.map(g => [g.title, g.items.length]), [['Terminals', 1], ['Chats', 1]]);
+
+  const many = hostTabsWarning(Array.from({ length: 8 }, (_, i) => shell(`sh${i}`, 'box')), 'box', [], 'Disconnecting from box');
+  assert.equal(many.groups[0].items.length, 6);
+  assert.equal(many.groups[0].more, 2);
 });
