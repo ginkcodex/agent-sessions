@@ -32,6 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Message file single match | [message-file-single-match](../plan/message-file-single-match.md) | [message-file-single-match/](message-file-single-match/README.md) | 1/1 ✅ |
 | Transcript directory links | [transcript-directory-links](../plan/transcript-directory-links.md) | [transcript-directory-links/](transcript-directory-links/README.md) | 1/1 ✅ |
 | Terminal auto activation | [terminal-auto-activation](../plan/terminal-auto-activation.md) | [terminal-auto-activation/](terminal-auto-activation/README.md) | 1/1 ✅ |
 | ACP adapter install | [acp-adapter-install](../plan/acp-adapter-install.md) | [acp-adapter-install/](acp-adapter-install/README.md) | 4/5 ✅ · 1 ⬜ |

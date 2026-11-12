@@ -62,17 +62,33 @@ test('direct success bypasses recovery; unknown and present probes preserve orig
   }
 });
 
-test('single matches still require selection and no matches disclose listing limits', async () => {
+test('a single match opens at once; a truncated single match and no match still use the toast', async () => {
   const s = setup();
-  s.deps.listFiles = async () => ({ files: ['only/file.txt'] });
+  s.deps.listFiles = async () => ({ files: ['only/file.txt', 'only/other.txt'] });
+  await s.open();
+  assert.equal(s.toast.current, null);
+  assert.deepEqual(s.calls.slice(-4), [['resolve', '/repo', 'only/file.txt'], ['show', '/repo'], ['open', 'only/file.txt', { keep: true }], ['reveal', 'only/file.txt', 42]]);
+  assert.deepEqual(s.errors, []);
+  s.deps.listFiles = async () => ({ files: ['only/file.txt'], truncated: true });
   const pending = s.open(); await flush();
-  assert.equal(s.toast.current.actions.length, 1);
-  assert.equal(s.calls.some(c => c[0] === 'open'), false);
+  assert.deepEqual(s.toast.current.actions.map(a => a.label), ['only/file.txt']);
+  assert.match(s.toast.current.body, /truncated/);
+  assert.equal(s.calls.filter(c => c[0] === 'open').length, 1);
   s.toast.dismiss(); await pending;
   s.deps.listFiles = async () => ({ files: [], truncated: true });
   await s.open();
   assert.match(s.toast.current.body, /No matching.*available listing.*truncated/);
   s.toast.dismiss();
+});
+
+test('a single match is authorized again and its failure is reported', async () => {
+  const s = setup();
+  s.deps.listFiles = async () => ({ files: ['only/file.txt'] });
+  s.openerDeps.resolve = async (dir, path) => { s.calls.push(['resolve', dir, path]); throw new Error(path === 'file.txt' ? 'missing' : 'denied'); };
+  await s.open();
+  assert.deepEqual(s.calls.filter(c => c[0] === 'resolve').map(c => c[2]), ['file.txt', 'only/file.txt']);
+  assert.deepEqual(s.errors, ['denied']);
+  assert.equal(s.calls.some(c => c[0] === 'open'), false);
 });
 
 test('dismissal, replacement, invalid ownership, epoch changes and disposal never open choices', async () => {
@@ -154,10 +170,10 @@ test('missing parent or leaf offers full suffix choices and preserves source rev
       assert.deepEqual([cwd, paths, host], ['/repo', ['src', 'src/main.ts'], '']);
       return { observations: paths.map(path => ({ path, state: path === absent ? 'absent' : 'unknown' })) };
     };
-    s.deps.listFiles = async () => ({ files: ['frontend/src/main.ts', 'other/main.ts'] });
+    s.deps.listFiles = async () => ({ files: ['frontend/src/main.ts', 'packages/src/main.ts', 'other/main.ts'] });
     const pending = s.open(); await flush();
     assert.match(s.toast.current.title, /src\/main.ts/);
-    assert.deepEqual(s.toast.current.actions.map(a => a.label), ['frontend/src/main.ts']);
+    assert.deepEqual(s.toast.current.actions.map(a => a.label), ['frontend/src/main.ts', 'packages/src/main.ts']);
     s.toast.invoke(s.toast.current.id, 0); await pending;
     assert.deepEqual(s.calls.slice(-4), [['resolve', '/repo', 'frontend/src/main.ts'], ['show', '/repo'], ['open', 'frontend/src/main.ts', { keep: true }], ['reveal', 'frontend/src/main.ts', 42]]);
   }
@@ -174,7 +190,7 @@ test('missing intermediate prefix is explicit evidence but unrelated or unknown 
   const s = setup('packages/src/main.ts');
   s.deps.probeFiles = async () => ({ observations: [{ path: 'packages/src', state: 'absent' }] });
   s.deps.listFiles = async () => ({ files: ['web/packages/src/main.ts'] });
-  const pending = s.open(); await flush();
-  assert.equal(s.toast.current.actions[0].label, 'web/packages/src/main.ts');
-  s.toast.dismiss(); await pending;
+  await s.open();
+  assert.equal(s.toast.current, null);
+  assert.deepEqual(s.calls.slice(-3, -1), [['show', '/repo'], ['open', 'web/packages/src/main.ts', { keep: true }]]);
 });

@@ -30,7 +30,11 @@ export function matchingMessageFiles(listing: FileListing, requested: string): s
   }).sort();
 }
 
-/** Discovery only offers choices; the opener must authorize the selected path again. */
+/**
+ * Finds a missing path deeper in the project: a single match is returned at
+ * once, several are offered in a toast. Either way the opener must authorize
+ * the returned path again.
+ */
 export function messageFileRecovery(deps: MessageFileRecoveryDependencies, host: string, cwd: string, requested: string) {
   return async (_error: unknown, current: () => boolean, own: (dispose: () => void) => void): Promise<string | null | undefined> => {
     const prefixes = messageFileProbePaths(requested);
@@ -53,6 +57,9 @@ export function messageFileRecovery(deps: MessageFileRecoveryDependencies, host:
       });
       return null;
     }
+    // One match opens directly. A truncated listing may hide others, so it
+    // still asks rather than open a file the user may not have meant.
+    if (candidates.length === 1 && !listing.truncated) return candidates[0];
     return new Promise(resolve => {
       let settled = false;
       const finish = (path: string | null) => {
