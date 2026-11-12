@@ -87,7 +87,7 @@
       fontFamily: font,
       fontSize: size,
       cursorBlink: true,
-      cursorStyle: 'bar',
+      cursorStyle: 'block',
       scrollback: 5000,
       // Find marks its matches with decorations, which are proposed API.
       allowProposedApi: true,
