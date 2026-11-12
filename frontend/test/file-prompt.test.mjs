@@ -8,11 +8,14 @@ test('file prompts serialize decisions and cancel overlapping actions', async ()
   const p = new FilePromptStore();
   const first = p.ask('Discard?', 'draft', [{ value: 'discard', label: 'Discard' }]);
   assert.equal(p.request.title, 'Discard?');
+  assert.deepEqual(p.request.groups, [], 'a prompt may name no items');
   assert.equal(await p.ask('Close?', 'other', []), null);
   p.answer('discard');
   assert.equal(await first, 'discard');
   assert.equal(p.request, null);
-  const cancelled = p.ask('Close?', 'draft', []);
+  const groups = [{ title: 'Chats', icon: 'chat', items: [{ name: 'Codex', detail: 'in api', icon: 'chat', agent: 'codex', badge: 'working' }] }];
+  const cancelled = p.ask('Close?', 'draft', [], groups);
+  assert.deepEqual(p.request.groups, groups, 'the cards ride along with the question');
   p.answer(null);
   assert.equal(await cancelled, null);
   p.answer('duplicate');
@@ -27,4 +30,17 @@ test('the prompt keeps focus and owns find/save/close shortcuts while it decides
   assert.match(prompt, /\['f', 's', 'w'\]\.includes\(e\.key\.toLowerCase\(\)\)\) e\.preventDefault\(\)/);
   const editor = readFileSync(new URL('../src/lib/components/common/go-to-file/FileEditor.svelte', import.meta.url), 'utf8');
   assert.match(editor, /if \(!filePrompt\.request\) editor\.focus\(\)/, 'a lazily loaded editor must not take focus from an open prompt');
+});
+
+test('the prompt shows item groups as counted cards, and none without items', async () => {
+  const { readFileSync } = await import('node:fs');
+  const prompt = readFileSync(new URL('../src/lib/components/common/go-to-file/FilePrompt.svelte', import.meta.url), 'utf8');
+  assert.match(prompt, /\{#if filePrompt\.request\.groups\.length\}/, 'a prompt without items renders as before');
+  assert.match(prompt, /\{#each filePrompt\.request\.groups as group\}/);
+  assert.match(prompt, /group\.items\.length \+ \(group\.more \?\? 0\)/, 'the count sums up the overflow too');
+  assert.match(prompt, /<AgentIcon agent=\{item\.agent\}/, 'a row shows its agent\'s own glyph where known');
+  assert.match(prompt, /item\.icon === 'terminal' \? 'square-terminal' : item\.icon === 'chat' \? 'message-square' : 'bot'/,
+    'shell and chat rows are told apart by icon');
+  assert.match(prompt, /\{#if item\.badge\}<span class="badge">\{item\.badge\}<\/span>\{\/if\}/);
+  assert.match(prompt, /and \{group\.more\} more/);
 });

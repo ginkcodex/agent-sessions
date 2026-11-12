@@ -40,6 +40,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Chat end guard | [chat-end-guard](../plan/chat-end-guard.md) | [chat-end-guard/](chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
 | End chat menu | [end-chat-menu](../plan/end-chat-menu.md) | [end-chat-menu/](end-chat-menu/README.md) | 3/4 ✅ · 1 ⬜ |
 | Switch to chat | [switch-to-chat](../plan/switch-to-chat.md) | [switch-to-chat/](switch-to-chat/README.md) | 3/4 ✅ · 1 ⬜ |
+| Close dialog groups | [close-dialog-groups](../plan/close-dialog-groups.md) | [close-dialog-groups/](close-dialog-groups/README.md) | 3/4 ✅ · 1 ⬜ |
 | Host switch chat guard | [host-switch-chat-guard](../plan/host-switch-chat-guard.md) | [host-switch-chat-guard/](host-switch-chat-guard/README.md) | 2/3 ✅ · 1 ⬜ |
 | Codex daemon chat | [codex-daemon-chat](../plan/codex-daemon-chat.md) | [codex-daemon-chat/](codex-daemon-chat/README.md) | 4/5 ✅ · 1 ⬜ |
 | Chat adapter setup | [chat-adapter-setup](../plan/chat-adapter-setup.md) | [chat-adapter-setup/](chat-adapter-setup/README.md) | 4/5 ✅ · 1 ⬜ |

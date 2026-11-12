@@ -28,7 +28,7 @@ import { link } from './link.svelte';
 import { terminals } from './terminals.svelte';
 import { filePrompt } from './filePrompt.svelte';
 import { chats } from './chats.svelte';
-import { endingChatsWarning } from '../closeConfirm';
+import { endingChatsWarning, type CloseWarning } from '../closeConfirm';
 
 // Local always has every capability; the backend reports none for it.
 const LOCAL_CAPABILITIES: HostCapabilities = {
@@ -195,7 +195,7 @@ export class ConnectionStore {
    * host's chats end with its connection. A host that is not serving (a
    * dropped one, or Local while a connect is pending) has no live chats.
    */
-  private endingChats(previous: string, target: string): string | null {
+  private endingChats(previous: string, target: string): CloseWarning | null {
     if (link.locked) return null;
     const action = previous === target ? `Reconnecting to ${hostLabel(target)}`
       : target ? `Connecting to ${hostLabel(target)}`
@@ -213,10 +213,10 @@ export class ConnectionStore {
       if (ids.length > 0) {
         const name = previous ? hostLabel(previous) : 'Local';
         const tabs = `${ids.length} terminal tab(s) belong to ${name}. Keep them open, or close them when switching hosts? Closing ends any running processes, including agents. Split panes count separately.`;
-        const choice = await filePrompt.ask('Terminal tabs from previous host', ending ? `${tabs}\n\n${ending}` : tabs, [
+        const choice = await filePrompt.ask('Terminal tabs from previous host', ending ? `${tabs}\n\n${ending.message}` : tabs, [
           { value: 'keep', label: ending ? 'End chats, keep terminal tabs' : 'Keep terminal tabs' },
           { value: 'close', label: ending ? 'End chats and terminal tabs' : 'End and close terminal tabs', danger: true },
-        ]);
+        ], ending?.groups ?? []);
         if (choice !== 'keep' && choice !== 'close') return;
         close = choice === 'close';
       } else if (ending && !await this.confirmEndingChats(ending, target)) {
@@ -228,9 +228,9 @@ export class ConnectionStore {
     });
   }
 
-  private async confirmEndingChats(warning: string, target: string): Promise<boolean> {
+  private async confirmEndingChats(warning: CloseWarning, target: string): Promise<boolean> {
     const label = target === (link.dataHost ?? '') ? 'End chats and reconnect' : target ? 'End chats and connect' : 'End chats and disconnect';
-    return await filePrompt.ask('End open chats?', warning, [{ value: 'end', label, danger: true }]) === 'end';
+    return await filePrompt.ask('End open chats?', warning.message, [{ value: 'end', label, danger: true }], warning.groups) === 'end';
   }
 
   async connect(alias: string, envOverrides?: Record<string, string>): Promise<void> {

@@ -447,11 +447,11 @@ test('host changes ask before ending the window\'s open chats, and cancel safely
         link: { dataHost: previous || undefined },
         api: { connect: async host => calls.push(['connect', host]), disconnect: async () => calls.push(['disconnect']) },
         chats: open,
-        filePrompt: { ask: async (title, message, choices) => {
+        filePrompt: { ask: async (title, message, choices, groups) => {
           assert.equal(title, 'End open chats?');
           assert.match(message, /^A chat is open and its agent is working\./);
           assert.match(message, action);
-          assert.match(message, /Chat with Codex in api \(working\)$/);
+          assert.deepEqual(groups, [{ title: 'Chats', icon: 'chat', items: [{ name: 'Codex', detail: 'in api', icon: 'chat', agent: 'codex', badge: 'working' }] }]);
           assert.deepEqual(choices, [{ value: 'end', label, danger: true }]);
           calls.push(['prompt']);
           return choice;
@@ -478,10 +478,11 @@ test('one question covers the previous host\'s terminals and the open chats', as
       api: { connect: async host => calls.push(['connect', host]) },
       terminals: { tabs: [{ id: 'old', host: 'box' }], close: (id) => calls.push(['close', id]) },
       chats: { chats: [{ agent: 'claude-code', dir: '/w/api', phase: 'idle' }] },
-      filePrompt: { ask: async (title, message, choices) => {
+      filePrompt: { ask: async (title, message, choices, groups) => {
         assert.equal(title, 'Terminal tabs from previous host');
         assert.match(message, /1 terminal tab\(s\) belong to box/);
-        assert.match(message, /\n\nA chat is open\. Connecting to other ends it:\nChat with Claude Code in api$/);
+        assert.match(message, /\n\nA chat is open\. Connecting to other ends it:$/);
+        assert.deepEqual(groups, [{ title: 'Chats', icon: 'chat', items: [{ name: 'Claude Code', detail: 'in api', icon: 'chat', agent: 'claude-code', badge: undefined }] }]);
         assert.deepEqual(choices.map(c => c.label), ['End chats, keep terminal tabs', 'End chats and terminal tabs']);
         calls.push(['prompt']);
         return choice;
