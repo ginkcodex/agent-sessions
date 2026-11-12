@@ -21,6 +21,7 @@ const { FileActions } = await loadServerModule(new URL('../src/lib/stores/fileAc
   ["import { files, tabId, tabOwner, tabHasUnsaved } from './files.svelte';",
     `${fixtureStore('files', '__actionsFixture')} const tabId = t => t.id ?? t.path; const tabOwner = t => t.owner ?? 'working'; const tabHasUnsaved = globalThis.__coordinatorTabHasUnsaved;`],
   ["import { filePrompt } from './filePrompt.svelte';", fixtureStore('filePrompt', '__actionsFixture')],
+  ["'../closeConfirm'", JSON.stringify(new URL('../src/lib/closeConfirm.ts', import.meta.url).href)],
 ]);
 
 test('rename holds the shared coordinator lock against closes, saves and host changes', async () => {
@@ -77,9 +78,9 @@ function setup(tabs) {
       stopEditing(t, reread = false) { calls.stopEditing.push([t.path, reread]); t.edit = undefined; return true; },
     },
     filePrompt: {
-      ask(title, message, choices) {
+      ask(title, message, choices, groups) {
         const d = deferred();
-        prompts.push({ title, message, choices, answer: d.resolve });
+        prompts.push({ title, message, choices, groups, answer: d.resolve });
         return d.promise;
       },
     },
@@ -99,7 +100,11 @@ test('bulk close cancelled leaves every tab and draft in place', async () => {
   const closing = actions.closeTabs(['a.txt', 'b.txt']);
   const p = await prompt(prompts, 1);
   assert.equal(actions.busy, true);
-  assert.match(p.message, /\/p\/a\.txt\n\/p\/b\.txt/);
+  assert.equal(p.message, 'Unsaved changes in:');
+  assert.deepEqual(p.groups, [{ title: 'Unsaved files', icon: 'file', items: [
+    { name: 'a.txt', detail: 'in /p', icon: 'file' },
+    { name: 'b.txt', detail: 'in /p', icon: 'file' },
+  ] }], 'the dirty files are named in their card');
   p.answer(null);
   assert.equal(await closing, false);
   assert.deepEqual(calls.closeTab, []);

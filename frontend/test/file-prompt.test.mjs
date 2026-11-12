@@ -39,8 +39,10 @@ test('the prompt shows item groups as counted cards, and none without items', as
   assert.match(prompt, /\{#each filePrompt\.request\.groups as group\}/);
   assert.match(prompt, /group\.items\.length \+ \(group\.more \?\? 0\)/, 'the count sums up the overflow too');
   assert.match(prompt, /<AgentIcon agent=\{item\.agent\}/, 'a row shows its agent\'s own glyph where known');
-  assert.match(prompt, /item\.icon === 'terminal' \? 'square-terminal' : item\.icon === 'chat' \? 'message-square' : 'bot'/,
-    'shell and chat rows are told apart by icon');
+  assert.match(prompt, /const GROUP_ICONS = \{ terminal: 'square-terminal', chat: 'message-square', file: 'file' \}/,
+    'each heading shows its kind');
+  assert.match(prompt, /const ROW_ICONS = \{ terminal: 'square-terminal', agent: 'bot', chat: 'message-square', file: 'file' \}/,
+    'shell, chat and file rows are told apart by icon');
   assert.match(prompt, /\{#if item\.badge\}<span class="badge">\{item\.badge\}<\/span>\{\/if\}/);
   assert.match(prompt, /and \{group\.more\} more/);
 });

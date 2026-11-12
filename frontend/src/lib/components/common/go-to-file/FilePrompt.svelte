@@ -3,6 +3,10 @@
   import { filePrompt } from '../../../stores/filePrompt.svelte';
   import Icon from '../Icon.svelte';
   import AgentIcon from '../AgentIcon.svelte';
+  // What each heading and row shows: terminals, chats and dirty files read
+  // apart by glyph, an agent's rows by its own mark instead.
+  const GROUP_ICONS = { terminal: 'square-terminal', chat: 'message-square', file: 'file' } as const;
+  const ROW_ICONS = { terminal: 'square-terminal', agent: 'bot', chat: 'message-square', file: 'file' } as const;
   let panel: HTMLDivElement | undefined = $state();
   $effect(() => {
     if (!filePrompt.request) return;
@@ -48,7 +52,7 @@
             {#each filePrompt.request.groups as group}
               <section class="group">
                 <h3 class="group-head">
-                  <Icon name={group.icon === 'chat' ? 'message-square' : 'square-terminal'} size={13} />
+                  <Icon name={GROUP_ICONS[group.icon]} size={13} />
                   <span class="group-title">{group.title}</span>
                   <span class="group-count">{group.items.length + (group.more ?? 0)}</span>
                 </h3>
@@ -59,7 +63,7 @@
                         {#if item.agent}
                           <AgentIcon agent={item.agent} size={14} />
                         {:else}
-                          <Icon name={item.icon === 'terminal' ? 'square-terminal' : item.icon === 'chat' ? 'message-square' : 'bot'} size={14} />
+                          <Icon name={ROW_ICONS[item.icon]} size={14} />
                         {/if}
                       </span>
                       <span class="item-name">{item.name}</span>

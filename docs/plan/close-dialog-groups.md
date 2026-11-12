@@ -13,9 +13,11 @@ sections and make the dialog itself more beautiful.
   carry a small "working" badge.
 - Under a heading the labels simplify: "Codex in api (working)" becomes
   a Chats row named `Codex`, detail `in api`, badge `working`.
-- The same treatment covers every closing dialog: "Close window?" and
-  the host-switch prompts ("End open chats?" and the combined terminal
-  tabs question) share the list-building code and share the look.
+- The same treatment covers every closing dialog: "Close window?", the
+  host-switch prompts ("End open chats?" and the combined terminal tabs
+  question) and the unsaved-changes question ("Close window?",
+  "Switch host?", "Close files?") share the list-building code and share
+  the look.
 
 ## Design
 
@@ -41,13 +43,13 @@ export interface CloseWarning { message: string; groups: FilePromptGroup[] }
 export interface FilePromptItem {
   name: string;
   detail?: string;            // "on Ubuntu (WSL)", "in api"
-  icon: 'terminal' | 'agent' | 'chat';
+  icon: 'terminal' | 'agent' | 'chat' | 'file';
   agent?: string;             // an agent id renders its icon instead
   badge?: string;             // "working"
 }
 export interface FilePromptGroup {
-  title: string;              // "Terminals", "Chats"
-  icon: 'terminal' | 'chat';  // the heading's icon
+  title: string;              // "Terminals", "Chats", "Unsaved files"
+  icon: 'terminal' | 'chat' | 'file';  // the heading's icon
   items: FilePromptItem[];
   more?: number;              // items past the cap, as "and N more"
 }
@@ -77,6 +79,19 @@ prompts in `connection.svelte.ts` compose their messages from
 `CloseWarning` — the combined terminal-tabs question keeps its tabs
 paragraph in the message and puts the chats warning's cards under it.
 
+### The unsaved-files question
+
+`fileActions.resolve` asks before closing or switching away with unsaved
+edits ("Close window?", "Switch host?", "Close files?") and lists the
+dirty files as plain `dir/path` lines. A pure `unsavedDrafts(dirty)` in
+`closeConfirm.ts` beside the other builders returns the same
+`CloseWarning` shape: the message ("Unsaved changes in:") and one
+**Unsaved files** card whose rows name the file's path in its workspace
+(`name` = the tab's path, `detail` = `in <workspace dir>`, `icon:
+'file'`). Every file is named — no cap and no "and N more" — since the
+old dialog listed them all and the decision (discard or save) is taken
+per file. `resolve` passes the card to `ask` like the other callers.
+
 ## Decisions
 
 1. **Sectioned cards with icons**, chosen by the user over plain
@@ -96,15 +111,16 @@ paragraph in the message and puts the chats warning's cards under it.
    own.
 6. **Rows show agent icons** where an agent is known (chats always,
    agent terminals when the tab carries its session); a shell row shows
-   the terminal icon.
+   the terminal icon, a dirty file row the file icon.
+7. **The unsaved-files card names every file**, uncapped: the old dialog
+   listed them all and discarding edits is a per-file decision. The
+   six-item cap stays where it was, on the Terminals and Chats cards.
 
 ## Risks
 
 - `FilePrompt` is shared by every destructive confirmation; the markup
   change is additive (groups render only when present) but the chrome
   pass touches all of them — kept modest so nothing else regresses.
-- The drafts question (also titled "Close window?") lists unsaved files
-  as plain text; it is out of scope here and unchanged.
 
 ## Release criteria
 
@@ -115,6 +131,9 @@ paragraph in the message and puts the chats warning's cards under it.
   each chat row shows its agent's icon.
 - The host-switch prompts ("End open chats?", and the combined terminal
   tabs question) show the same Chats card.
+- The unsaved-changes question ("Close window?", "Switch host?",
+  "Close files?") lists its files in an Unsaved files card, every file
+  named with its workspace directory.
 - Every other prompt using `FilePrompt` renders as before.
 - Tests cover the structured warnings (message, rows, badges, cap) and
   the store's groups pass-through; `npm test`, `npm run check`,

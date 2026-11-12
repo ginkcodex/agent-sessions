@@ -10,8 +10,8 @@ export interface FilePromptItem {
   name: string;
   /** Small detail line: the host a terminal runs on, a chat's directory. */
   detail?: string;
-  /** Row icon: a shell terminal, an agent terminal or a chat. */
-  icon: 'terminal' | 'agent' | 'chat';
+  /** Row icon: a shell terminal, an agent terminal, a chat or a file. */
+  icon: 'terminal' | 'agent' | 'chat' | 'file';
   /** The agent id whose own glyph the row shows, where known. */
   agent?: string;
   /** A small badge, like "working". */
@@ -21,8 +21,8 @@ export interface FilePromptItem {
 /** A prompt's items under one heading, as "Terminals" or "Chats". */
 export interface FilePromptGroup {
   title: string;
-  /** The heading's icon: terminals or chats. */
-  icon: 'terminal' | 'chat';
+  /** The heading's icon: terminals, chats or files. */
+  icon: 'terminal' | 'chat' | 'file';
   items: FilePromptItem[];
   /** Items past the named cap, summed up as "and N more". */
   more?: number;

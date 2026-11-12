@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { confirmClosingWindow, closeWindowWarning, endingChatsWarning } from '../src/lib/closeConfirm.ts';
+import { confirmClosingWindow, closeWindowWarning, endingChatsWarning, unsavedDrafts } from '../src/lib/closeConfirm.ts';
 
 const shell = (label, host = '') => ({ label, host, kind: 'shell', status: 'running' });
 const agent = (label, host = '', id) => ({ label, host, kind: 'agent', agent: id, status: 'running' });
@@ -99,4 +99,22 @@ test('a host switch names the open chats it ends; ended ones are not', () => {
   const many = endingChatsWarning(Array.from({ length: 8 }, (_, i) => chat('codex', `/d${i}`)), 'Connecting to box');
   assert.match(many.message, /^8 chats are open\. /);
   assert.equal(many.groups[0].more, 2);
+});
+
+test('the unsaved-changes question names every dirty file in its own card', () => {
+  const dirty = [{ dir: '/p', tab: { path: 'src/a.ts' } }, { dir: 'C:\\work\\api', tab: { path: 'b.md' } }];
+  assert.deepEqual(unsavedDrafts(dirty), {
+    message: 'Unsaved changes in:',
+    groups: [{
+      title: 'Unsaved files',
+      icon: 'file',
+      items: [
+        { name: 'src/a.ts', detail: 'in /p', icon: 'file' },
+        { name: 'b.md', detail: 'in C:\\work\\api', icon: 'file' },
+      ],
+    }],
+  });
+  const many = unsavedDrafts(Array.from({ length: 8 }, (_, i) => ({ dir: '/p', tab: { path: `f${i}` } })));
+  assert.equal(many.groups[0].items.length, 8, 'every file is named; the save or discard decision is taken file by file');
+  assert.equal(many.groups[0].more, undefined);
 });

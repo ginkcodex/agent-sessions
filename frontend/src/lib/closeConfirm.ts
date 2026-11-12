@@ -7,6 +7,8 @@ type Ask = (title: string, message: string, choices: FilePromptChoice[], groups?
 type RunningTab = Pick<TerminalTab, 'label' | 'host' | 'kind' | 'agent'> & { status: 'running' | 'exited' };
 /** A chat as the warning needs it; exited chats are left out. */
 export type WindowChat = { agent: AgentID | string; dir: string; phase: string };
+/** A dirty editor tab as the unsaved-changes question needs it. */
+export type DirtyDraft = { dir: string; tab: { path: string } };
 
 /** What a closing dialog warns about: the sentence and the items it ends. */
 export interface CloseWarning {
@@ -99,6 +101,22 @@ function chatItem(chat: WindowChat): FilePromptItem {
     agent: String(chat.agent),
     badge: chat.phase === 'working' ? 'working' : undefined,
   };
+}
+
+/**
+ * The warning for closing or switching away while files hold unsaved edits,
+ * listing them all. Unlike the terminal and chat cards nothing is summed up:
+ * the decision (save or discard) is taken file by file.
+ */
+export function unsavedDrafts(dirty: readonly DirtyDraft[]): CloseWarning {
+  return {
+    message: 'Unsaved changes in:',
+    groups: [{ title: 'Unsaved files', icon: 'file', items: dirty.map(fileItem) }],
+  };
+}
+
+function fileItem({ dir, tab }: DirtyDraft): FilePromptItem {
+  return { name: tab.path, detail: `in ${dir}`, icon: 'file' };
 }
 
 /** Asks before a close ends running terminal tabs or open chats; true lets it go ahead. */

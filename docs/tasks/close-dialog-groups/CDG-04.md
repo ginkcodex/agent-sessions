@@ -9,8 +9,10 @@
 Manual pass in the desktop app: "Close window?" with terminals, chats
 and both (cards, counts, badges, overflow past six rows), the
 host-switch prompts ("End open chats?" and the combined terminal-tabs
-question), and a sample of the other prompts (delete file, discard
-changes) to confirm they look right with the polished chrome.
+question), the unsaved-changes question ("Close window?", "Switch
+host?", "Close files?") with its Unsaved files card, and a sample of the
+other prompts (delete file, discard changes) to confirm they look right
+with the polished chrome.
 
 ## Acceptance criteria and tests
 
