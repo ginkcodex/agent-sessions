@@ -32,10 +32,17 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Transcript tool readability | [transcript-tool-readability](../plan/transcript-tool-readability.md) | [transcript-tool-readability/](transcript-tool-readability/README.md) | 3/4 ✅ · 1 ⬜ |
+| Message file single match | [message-file-single-match](../plan/message-file-single-match.md) | [message-file-single-match/](message-file-single-match/README.md) | 1/1 ✅ |
+| Transcript directory links | [transcript-directory-links](../plan/transcript-directory-links.md) | [transcript-directory-links/](transcript-directory-links/README.md) | 1/1 ✅ |
+| Terminal auto activation | [terminal-auto-activation](../plan/terminal-auto-activation.md) | [terminal-auto-activation/](terminal-auto-activation/README.md) | 1/1 ✅ |
 | ACP adapter install | [acp-adapter-install](../plan/acp-adapter-install.md) | [acp-adapter-install/](acp-adapter-install/README.md) | 4/5 ✅ · 1 ⬜ |
-| ACP chat mode | [acp-chat](../plan/acp-chat.md) | [acp-chat/](acp-chat/README.md) | 17/18 ✅ · 1 🟡 |
+| ACP chat mode | [acp-chat](../plan/acp-chat.md) | [acp-chat/](acp-chat/README.md) | 18/19 ✅ · 1 🟡 |
 | Chat attachments | [chat-attachments](../plan/chat-attachments.md) | [chat-attachments/](chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
 | Chat end guard | [chat-end-guard](../plan/chat-end-guard.md) | [chat-end-guard/](chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
+| End chat menu | [end-chat-menu](../plan/end-chat-menu.md) | [end-chat-menu/](end-chat-menu/README.md) | 3/4 ✅ · 1 ⬜ |
+| Switch to chat | [switch-to-chat](../plan/switch-to-chat.md) | [switch-to-chat/](switch-to-chat/README.md) | 3/4 ✅ · 1 ⬜ |
+| Close dialog groups | [close-dialog-groups](../plan/close-dialog-groups.md) | [close-dialog-groups/](close-dialog-groups/README.md) | 4/5 ✅ · 1 ⬜ |
 | Host switch chat guard | [host-switch-chat-guard](../plan/host-switch-chat-guard.md) | [host-switch-chat-guard/](host-switch-chat-guard/README.md) | 2/3 ✅ · 1 ⬜ |
 | Codex daemon chat | [codex-daemon-chat](../plan/codex-daemon-chat.md) | [codex-daemon-chat/](codex-daemon-chat/README.md) | 4/5 ✅ · 1 ⬜ |
 | Chat adapter setup | [chat-adapter-setup](../plan/chat-adapter-setup.md) | [chat-adapter-setup/](chat-adapter-setup/README.md) | 4/5 ✅ · 1 ⬜ |
@@ -75,6 +82,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Internal terminal maximization | [terminal-maximize](../plan/terminal-maximize.md) | [terminal-maximize/](terminal-maximize/README.md) | 2/2 ✅ |
 | Split terminals | [terminal-split](../plan/terminal-split.md) | [terminal-split/](terminal-split/README.md) | 4/4 ✅ |
 | Font settings: editor, docs and session content | [font-settings](../plan/font-settings.md) | [font-settings/](font-settings/README.md) | 10/11 ✅ · 1 🟡 |
+| Session content uses the editor font | [session-mono-font](../plan/session-mono-font.md) | [session-mono-font/](session-mono-font/README.md) | 2/2 ✅ |
 | Editor back and forward | [editor-history](../plan/editor-history.md) | [editor-history/](editor-history/README.md) | 3/4 ✅ · 1 🟡 |
 | Two-finger swipe back and forward | [swipe-navigation](../plan/swipe-navigation.md) | [swipe-navigation/](swipe-navigation/README.md) | 1/3 ✅ · 1 🟡 · 1 ⬜ |
 | Two-finger swipe on Windows and Linux | [swipe-navigation-windows-linux](../plan/swipe-navigation-windows-linux.md) | [swipe-navigation-windows-linux/](swipe-navigation-windows-linux/README.md) | 7/10 ✅ · 2 🟡 · 1 ➖ |
@@ -86,3 +94,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Codex Guardian ancestry | [codex-guardian-ancestry](../plan/codex-guardian-ancestry.md) | [codex-guardian-ancestry/](codex-guardian-ancestry/README.md) | 1/1 ✅ |
 | Live filter for chat sessions | [chat-live-filter](../plan/chat-live-filter.md) | [chat-live-filter/](chat-live-filter/README.md) | 2/2 ✅ |
 | Codex restore filenames | [codex-restore-filenames](../plan/codex-restore-filenames.md) | [codex-restore-filenames/](codex-restore-filenames/README.md) | 6/6 ✅ |
+| Chat option dropdowns | [chat-options-dropdown](../plan/chat-options-dropdown.md) | [chat-options-dropdown/](chat-options-dropdown/README.md) | 2/4 ✅ · 2 ⬜ |

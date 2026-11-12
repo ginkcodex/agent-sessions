@@ -8,7 +8,7 @@ import { appState } from './appState.svelte';
 import { chats, type Chat } from './chats.svelte';
 import { connectionStore } from './connection.svelte';
 import { link } from './link.svelte';
-import { terminals } from './terminals.svelte';
+import { terminals, type PanelTab } from './terminals.svelte';
 import { toast } from './toast.svelte';
 
 /**
@@ -138,6 +138,56 @@ export class ChatOpener {
       },
       () => this.restart(chat, saved),
     );
+  }
+
+  /**
+   * Stops a live chat and continues its session in a panel terminal tab.
+   * The ended chat goes at once: the terminal tab is the continuation, so
+   * Dismiss and Restart are not offered. False when the chat has no saved
+   * session to resume, or when something failed.
+   */
+  async switchToTerminal(chat: Chat, meta?: SessionMeta | null): Promise<boolean> {
+    const ref = chat.session;
+    if (!ref) return false;
+    try {
+      await chats.close(chat.chatId);
+    } catch (err) {
+      if (!isStaleReply(err)) toast.show({ title: 'Could not end the chat', body: errorText(err, 'Please try again.'), tone: 'error' });
+      return false;
+    }
+    // The engine ends the chat before close answers, so the chat is known
+    // to be over and can go; a late exit event for it is ignored.
+    chats.dismiss(chat.key);
+    try {
+      await terminals.runResume(ref, meta?.cwd || chat.dir, meta?.title || meta?.firstPrompt || '');
+      return true;
+    } catch (err) {
+      if (!isStaleReply(err)) toast.show({ title: 'Could not open the terminal', body: `${errorText(err, 'The terminal did not start.')} The session is saved; resume it from the session header.`, tone: 'error' });
+      return false;
+    }
+  }
+
+  /**
+   * Stops a terminal tab's agent and continues its session in a chat. Only
+   * the pane that runs the session goes: a split tab's siblings stay. The
+   * pane goes at once, so refuseChat lets the chat start. False when the
+   * tab has no saved session to continue.
+   */
+  async switchToChat(tab: PanelTab): Promise<boolean> {
+    const ref = tab.session;
+    if (!ref) return false;
+    // The question that asked before this was the caller's; no second
+    // confirm bar. A pane whose agent already exited just goes.
+    terminals.close(tab.id, true);
+    return this.openSession({
+      ref,
+      cwd: tab.cwd || tab.dir || '',
+      title: tab.label,
+      createdAt: '',
+      updatedAt: '',
+      counts: { user: 0, assistant: 0, toolCalls: 0 },
+      tokens: { input: 0, output: 0 },
+    });
   }
 
   /**

@@ -132,6 +132,8 @@ export class TerminalsStore {
   active = $state<string | null>(null);
   /** Workspace navigation changes the visible tab without taking typing focus. */
   focusOnActivation = $state(true);
+  /** Whether selecting or focusing a session shows the terminal tab that fits it. */
+  autoActivate = $state(true);
   open = $state(false);
   maximized = $state(false);
   height = $state(PANEL_HEIGHT.default);
@@ -213,6 +215,7 @@ export class TerminalsStore {
       }
       if (isPanelPosition(saved.position)) this.position = saved.position;
       if (typeof saved.maximizedStacked === 'boolean') this.maximizedStacked = saved.maximizedStacked;
+      if (typeof saved.autoActivate === 'boolean') this.autoActivate = saved.autoActivate;
     } catch {
       // Keep the defaults.
     }
@@ -584,10 +587,11 @@ export class TerminalsStore {
    * running that session, then an agent tab of the workspace, then any tab
    * of it. Shell workspaces follow reported cwd; agent workspaces use launch
    * directory. The active pane stays when it fits as well as the best one.
-   * A subagent runs in its parent's tab.
+   * A subagent runs in its parent's tab. Does nothing while automatic
+   * activation is turned off.
    */
   selectDirectory(dir: string, host: string, meta?: Pick<SessionMeta, 'ref' | 'parentId'>): boolean {
-    if (!dir) return false;
+    if (!this.autoActivate || !dir) return false;
     const session = meta?.parentId ? { agent: meta.ref.agent, id: meta.parentId } : meta?.ref;
     const directoryKey = (path: string) => {
       const windows = /^[a-z]:[\\/]|^\\\\/i.test(path);
@@ -761,6 +765,11 @@ export class TerminalsStore {
     this.save();
   }
 
+  setAutoActivate(enabled: boolean): void {
+    this.autoActivate = enabled;
+    this.save();
+  }
+
   /** Whether split panes stack: docked left, or maximized with stacking chosen. */
   get stacked(): boolean {
     return this.maximized ? this.maximizedStacked : this.position === 'left';
@@ -831,7 +840,13 @@ export class TerminalsStore {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ open: this.open, height: this.height, position: this.position, maximizedStacked: this.maximizedStacked }),
+        JSON.stringify({
+          open: this.open,
+          height: this.height,
+          position: this.position,
+          maximizedStacked: this.maximizedStacked,
+          autoActivate: this.autoActivate,
+        }),
       );
     } catch {
       // Storage disabled.

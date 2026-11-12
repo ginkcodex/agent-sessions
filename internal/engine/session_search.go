@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/ginkcode/agent-sessions/internal/index"
@@ -200,7 +201,10 @@ func foldSearchMessage(msg *model.Message) searchMessageText {
 		case model.PartTool:
 			if tool := part.Tool; tool != nil {
 				// Plain values are never longer than the JSON holding them.
-				text = strings.Join([]string{tool.Name, model.JSONPlainValues(tool.Input, len(tool.Input)), tool.Output}, " ")
+				// Keep raw output searchable, but also index decoded JSON values:
+				// the viewer unwraps text envelopes containing escaped paths/newlines.
+				text = strings.Join([]string{tool.Name, model.JSONPlainValues(tool.Input, len(tool.Input)), tool.Output,
+					model.JSONPlainValues(json.RawMessage(tool.Output), len(tool.Output))}, " ")
 			}
 		case model.PartFile:
 			if part.File != nil {

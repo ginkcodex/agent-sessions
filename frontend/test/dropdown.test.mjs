@@ -111,6 +111,19 @@ test('typing jumps to the option it starts, spaces included', () => {
   d.close();
 });
 
+test('the menu opens above the trigger when the picker sits on the window bottom', () => {
+  const up = open({ options: refs, value: 'HEAD', placement: 'top' });
+  up.trigger.click();
+  flushSync();
+  assert.ok(up.list().classList.contains('up'));
+  up.close();
+  const down = open({ options: refs, value: 'HEAD' });
+  down.trigger.click();
+  flushSync();
+  assert.ok(!down.list().classList.contains('up'), 'below by default');
+  down.close();
+});
+
 test('the trigger runs its own key and context-menu handlers first, and a disabled one stays shut', () => {
   const seen = [];
   const d = open({
@@ -139,4 +152,9 @@ test('the narrow Branch, Diff basis and font pickers use the shared dropdown', (
     assert.doesNotMatch(source, /<select\b/, file);
   }
   assert.match(read('TerminalFontSetting.svelte'), /ariaLabel="Built-in terminal font"/);
+  // The chat's session-option pickers too, opening upward at the composer.
+  const chatOptions = read('../chat/ChatOptions.svelte');
+  assert.match(chatOptions, /<Dropdown\b/);
+  assert.match(chatOptions, /placement="top"/);
+  assert.doesNotMatch(chatOptions, /<select\b/);
 });

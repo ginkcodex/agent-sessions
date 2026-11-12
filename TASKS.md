@@ -58,10 +58,17 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Transcript tool readability | [transcript-tool-readability](docs/plan/transcript-tool-readability.md) | [transcript-tool-readability/](docs/tasks/transcript-tool-readability/README.md) | 3/4 ✅ · 1 ⬜ |
+| Message file single match | [message-file-single-match](docs/plan/message-file-single-match.md) | [message-file-single-match/](docs/tasks/message-file-single-match/README.md) | 1/1 ✅ |
+| Transcript directory links | [transcript-directory-links](docs/plan/transcript-directory-links.md) | [transcript-directory-links/](docs/tasks/transcript-directory-links/README.md) | 1/1 ✅ |
+| Terminal auto activation | [terminal-auto-activation](docs/plan/terminal-auto-activation.md) | [terminal-auto-activation/](docs/tasks/terminal-auto-activation/README.md) | 1/1 ✅ |
 | ACP adapter install | [acp-adapter-install](docs/plan/acp-adapter-install.md) | [acp-adapter-install/](docs/tasks/acp-adapter-install/README.md) | 4/5 ✅ · 1 ⬜ |
-| ACP chat mode | [acp-chat](docs/plan/acp-chat.md) | [acp-chat/](docs/tasks/acp-chat/README.md) | 17/18 ✅ · 1 🟡 |
+| ACP chat mode | [acp-chat](docs/plan/acp-chat.md) | [acp-chat/](docs/tasks/acp-chat/README.md) | 18/19 ✅ · 1 🟡 |
 | Chat attachments | [chat-attachments](docs/plan/chat-attachments.md) | [chat-attachments/](docs/tasks/chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
 | Chat end guard | [chat-end-guard](docs/plan/chat-end-guard.md) | [chat-end-guard/](docs/tasks/chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
+| End chat menu | [end-chat-menu](docs/plan/end-chat-menu.md) | [end-chat-menu/](docs/tasks/end-chat-menu/README.md) | 3/4 ✅ · 1 ⬜ |
+| Switch to chat | [switch-to-chat](docs/plan/switch-to-chat.md) | [switch-to-chat/](docs/tasks/switch-to-chat/README.md) | 3/4 ✅ · 1 ⬜ |
+| Close dialog groups | [close-dialog-groups](docs/plan/close-dialog-groups.md) | [close-dialog-groups/](docs/tasks/close-dialog-groups/README.md) | 4/5 ✅ · 1 ⬜ |
 | Host switch chat guard | [host-switch-chat-guard](docs/plan/host-switch-chat-guard.md) | [host-switch-chat-guard/](docs/tasks/host-switch-chat-guard/README.md) | 2/3 ✅ · 1 ⬜ |
 | Codex daemon chat | [codex-daemon-chat](docs/plan/codex-daemon-chat.md) | [codex-daemon-chat/](docs/tasks/codex-daemon-chat/README.md) | 4/5 ✅ · 1 ⬜ |
 | Chat adapter setup | [chat-adapter-setup](docs/plan/chat-adapter-setup.md) | [chat-adapter-setup/](docs/tasks/chat-adapter-setup/README.md) | 4/5 ✅ · 1 ⬜ |
@@ -101,6 +108,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Internal terminal maximization | [terminal-maximize](docs/plan/terminal-maximize.md) | [terminal-maximize/](docs/tasks/terminal-maximize/README.md) | 2/2 ✅ |
 | Split terminals | [terminal-split](docs/plan/terminal-split.md) | [terminal-split/](docs/tasks/terminal-split/README.md) | 4/4 ✅ |
 | Font settings: editor, docs and session content | [font-settings](docs/plan/font-settings.md) | [font-settings/](docs/tasks/font-settings/README.md) | 10/11 ✅ · 1 🟡 |
+| Session content uses the editor font | [session-mono-font](docs/plan/session-mono-font.md) | [session-mono-font/](docs/tasks/session-mono-font/README.md) | 2/2 ✅ |
 | Editor back and forward | [editor-history](docs/plan/editor-history.md) | [editor-history/](docs/tasks/editor-history/README.md) | 3/4 ✅ · 1 🟡 |
 | Two-finger swipe back and forward | [swipe-navigation](docs/plan/swipe-navigation.md) | [swipe-navigation/](docs/tasks/swipe-navigation/README.md) | 1/3 ✅ · 1 🟡 · 1 ⬜ |
 | Two-finger swipe on Windows and Linux | [swipe-navigation-windows-linux](docs/plan/swipe-navigation-windows-linux.md) | [swipe-navigation-windows-linux/](docs/tasks/swipe-navigation-windows-linux/README.md) | 7/10 ✅ · 2 🟡 · 1 ➖ |
@@ -112,3 +120,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Codex Guardian ancestry | [codex-guardian-ancestry](docs/plan/codex-guardian-ancestry.md) | [codex-guardian-ancestry/](docs/tasks/codex-guardian-ancestry/README.md) | 1/1 ✅ |
 | Live filter for chat sessions | [chat-live-filter](docs/plan/chat-live-filter.md) | [chat-live-filter/](docs/tasks/chat-live-filter/README.md) | 2/2 ✅ |
 | Codex restore filenames | [codex-restore-filenames](docs/plan/codex-restore-filenames.md) | [codex-restore-filenames/](docs/tasks/codex-restore-filenames/README.md) | 6/6 ✅ |
+| Chat option dropdowns | [chat-options-dropdown](docs/plan/chat-options-dropdown.md) | [chat-options-dropdown/](docs/tasks/chat-options-dropdown/README.md) | 2/4 ✅ · 2 ⬜ |

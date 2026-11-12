@@ -17,6 +17,7 @@ const { FileActions } = await loadServerModule(new URL('../src/lib/stores/fileAc
   ["import { api } from '../api';", fixtureStore('api', '__deleteFixture')],
   ["import { files, tabId, tabOwner, tabHasUnsaved } from './files.svelte';", `${fixtureStore('files', '__deleteFixture')} const tabId = t => t.id ?? t.path; const tabOwner = t => t.owner ?? 'working'; const tabHasUnsaved = globalThis.__deleteDirty;`],
   ["import { filePrompt } from './filePrompt.svelte';", fixtureStore('filePrompt', '__deleteFixture')],
+  ["'../closeConfirm'", JSON.stringify(new URL('../src/lib/closeConfirm.ts', import.meta.url).href)],
 ]);
 const tick = () => new Promise(r => setImmediate(r));
 function deferred() { let resolve, reject; const promise = new Promise((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; }

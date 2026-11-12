@@ -6,12 +6,14 @@
     /** The body size, a CSS length. */
     body: string;
     label: string;
+    /** A CSS font-family list for code, or undefined for the app's mono font. */
+    monoFont?: string;
   }
 
-  let { body, label }: Props = $props();
+  let { body, label, monoFont }: Props = $props();
 </script>
 
-<div class="type-sample" style:--sample-body={body} role="img" aria-label={label}>
+<div class="type-sample" style:--sample-body={body} style:--font-mono={monoFont} role="img" aria-label={label}>
   <div class="heading">Release notes</div>
   <p>Body text with <code>inline code</code> and a second sentence.</p>
   <pre><code>const size = body * ratio;

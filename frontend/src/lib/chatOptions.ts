@@ -32,6 +32,16 @@ export interface Picker {
   choices: PickerChoice[];
 }
 
+/** A picker's choice as the shared Dropdown shows it. */
+export interface PickerOption {
+  value: string;
+  label: string;
+  /** The choice's description, shown on hover in the menu. */
+  title?: string;
+  /** The group the agent puts the value in; its heading covers the run. */
+  group?: string;
+}
+
 function isMode(opt: ChatConfigOption): boolean {
   return opt.category === 'mode' || opt.id === 'mode';
 }
@@ -49,6 +59,21 @@ export function selectValues(options: ChatConfigSelectOption[] | undefined, grou
     else if (typeof o.value === 'string') out.push({ value: o.value, name: o.name || o.value, ...(o.description && { description: o.description }), ...(group && { group }) });
   }
   return out;
+}
+
+/**
+ * A picker's choices as the shared Dropdown's options: the choice's name,
+ * bare — the unguarded warning names what a mode that skips permission
+ * requests means — its description as the hover title, and the agent's
+ * groups as headings.
+ */
+export function pickerOptions(picker: Picker): PickerOption[] {
+  return picker.choices.map((c) => ({
+    value: c.value,
+    label: c.name,
+    ...(c.description && { title: c.description }),
+    ...(c.group && { group: c.group }),
+  }));
 }
 
 /** The options a picker can show: selects with values, and booleans. */

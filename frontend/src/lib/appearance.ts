@@ -79,6 +79,16 @@ export function sessionFontVar(size: number | null): string | undefined {
   return valid === null ? undefined : `${valid}px`;
 }
 
+/**
+ * The `--font-mono` value for the session pane when its monospace text uses the
+ * editor font, or undefined (the app's mono font) when the option is off or
+ * no editor font is chosen.
+ */
+export function sessionMonoFontVar(useEditorFont: boolean, editorFont: string): string | undefined {
+  if (!useEditorFont || !editorFont || !isTerminalFont(editorFont)) return undefined;
+  return monoFontFamily(editorFont, 'var(--font-mono)');
+}
+
 /** Sets the root properties and removes those at their default. */
 export function applyRootVars(style: Pick<CSSStyleDeclaration, 'setProperty' | 'removeProperty'>, vars: ReturnType<typeof appearanceVars>): void {
   for (const name of ROOT_VARS) {

@@ -81,12 +81,14 @@ const SESSION_PX = {
   },
   'parts/ToolPart.svelte': {
     '.tool-name': 12.8,
-    '.tool-call-id': 11.2,
+    // TTR-01: useful target summary replaces the ID; tool text uses the code token.
+    '.tool-summary': 12.8,
+    '.expand-output-btn': 12,
     '.tool-status-badge': 10.88,
     '.section-summary': 11.52,
-    '.code-wrapper pre': 12,
+    '.code-wrapper pre': 12.8,
     '.output-label': 11.52,
-    '.output-content': 12,
+    '.output-content': 12.8,
     '.truncated-banner': 11.52,
     '.load-blob-btn': 11.2,
     '.mini-copy-btn': 10.88,

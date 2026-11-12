@@ -222,6 +222,16 @@ test('the mock searches a whole session in order, like the host', async () => {
   assert.deepEqual(await mock.searchSession({ ref: meta.ref, query: word }), { supported: false });
 });
 
+test('tool output search accepts displayed decoded paths and raw JSON paths', async () => {
+  const mock = new MockBackendAPI();
+  const output = JSON.stringify([{ type: 'input_text', text: 'C:\\Users\\Gink\nsaid "hello"' }]);
+  mock.pageOf = () => ({ page: { messages: [{ role: 'assistant', parts: [{ kind: 'tool', tool: { name: 'exec', output } }] }] } });
+  for (const query of ['C:\\Users\\Gink', 'C:\\\\Users\\\\Gink', '"said \\"hello\\""']) {
+    const reply = await mock.searchSession({ ref, query });
+    assert.deepEqual(reply.result.hits, [{ messageIndex: 0, parts: [0] }]);
+  }
+});
+
 test('marks find a phrase across a line break', (t) => {
   const originals = { document: globalThis.document, NodeFilter: globalThis.NodeFilter };
   t.after(() => Object.assign(globalThis, originals));

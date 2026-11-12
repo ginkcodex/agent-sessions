@@ -52,10 +52,70 @@ test('Appearance shows chosen values and disables steps at the limits', async ()
   assert.equal(stepper(top, 'Project docs text size').decrease, true);
 });
 
+test('Appearance offers the editor font for session content, off by default', async () => {
+  const off = await render({ editorFont: 'Fira Code' });
+  const box = (html) => html.match(/<input[^>]*type="checkbox"[^>]*>/)?.[0] ?? '';
+  assert.doesNotMatch(box(off), /checked/);
+  assert.match(off, /Use the editor font for monospace text in session content/);
+  assert.doesNotMatch(tag(off, 'Session text preview'), /--font-mono/);
+  const on = await render({ editorFont: 'Fira Code', sessionUsesEditorFont: true });
+  assert.match(box(on), /checked/);
+  assert.match(tag(on, 'Session text preview'), /--font-mono: &quot;Fira Code&quot;|--font-mono: "Fira Code"/);
+});
+
 test('the type sample sizes every text from its body with the type scale', async () => {
   const { readFileSync } = await import('node:fs');
   const style = readFileSync(new URL('../src/lib/components/common/TypeSample.svelte', import.meta.url), 'utf8').match(/<style>([\s\S]*)<\/style>/)[1];
   const sizes = [...style.matchAll(/font-size:\s*([^;]+);/g)].map((m) => m[1]);
   assert.ok(sizes.length >= 4);
   for (const size of sizes) assert.match(size, /^calc\(var\(--sample-body\) \* var\(--type-[\w-]+\)\)$|^calc\(var\(--type-inline-code\) \* 1em\)$/);
+});
+
+test('session content takes every monospace font from --font-mono, so the editor font reaches all of it', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const root = new URL('../src/lib/components/', import.meta.url);
+  const files = ['transcript', 'transcript/parts', 'chat'].flatMap((dir) =>
+    readdirSync(new URL(`${dir}/`, root)).filter((f) => f.endsWith('.svelte')).map((f) => `${dir}/${f}`));
+  files.push('../../style.css');
+  const uses = (source) => source.replace(/@font-face\s*\{[^}]*\}/g, '');
+  assert.ok(files.length > 20);
+  for (const file of files) {
+    const source = readFileSync(new URL(file, root), 'utf8');
+    for (const [, value] of uses(source).matchAll(/font-family:\s*([^;}]+)/g)) {
+      assert.match(value.trim(), /^(var\(--font-(mono|sans)\)|inherit)$/, `${file}: font-family: ${value.trim()}`);
+    }
+  }
+});
+
+test('every code, pre, kbd and samp in session content has a font rule, so none falls back to the browser monospace', async () => {
+  // Browsers give these elements `font-family: monospace` of their own, so
+  // without an author rule they ignore --font-mono and the editor font.
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const root = new URL('../src/lib/components/', import.meta.url);
+  const files = ['transcript', 'transcript/parts', 'chat'].flatMap((dir) =>
+    readdirSync(new URL(`${dir}/`, root)).filter((f) => f.endsWith('.svelte')).map((f) => `${dir}/${f}`));
+  const MONO_TAGS = /<(code|pre|kbd|samp)\b([^>]*)>/g;
+  let checked = 0;
+  for (const file of files) {
+    const source = readFileSync(new URL(file, root), 'utf8');
+    const style = source.match(/<style[^>]*>([\s\S]*)<\/style>/)?.[1] ?? '';
+    const markup = source.replace(/<style[^>]*>[\s\S]*<\/style>/, '').replace(/<script[^>]*>[\s\S]*?<\/script>/g, '');
+    // The last compound selector of each rule that sets the font family.
+    const fontRules = [...style.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter(([, , body]) => /(^|[;\s])font(-family)?\s*:/.test(body))
+      .flatMap(([, selectors]) => selectors.split(','))
+      .map((selector) => selector.trim().replace(/:global\(([^)]*)\)/g, '$1').split(/[\s>+~]+/).pop());
+    for (const [, tag, attrs] of markup.matchAll(MONO_TAGS)) {
+      const classes = attrs.match(/\bclass="([^"]*)"/)?.[1].split(/\s+/).filter(Boolean) ?? [];
+      const matched = fontRules.some((compound) => {
+        const [, ruleTag, ruleClasses = ''] = compound.match(/^([a-z]*)((?:\.[\w-]+)*)/) ?? [];
+        if (!ruleTag && !ruleClasses) return false;
+        if (ruleTag && ruleTag !== tag) return false;
+        return ruleClasses.split('.').filter(Boolean).every((c) => classes.includes(c));
+      });
+      assert.ok(matched, `${file}: <${tag}${attrs}> has no font rule`);
+      checked++;
+    }
+  }
+  assert.ok(checked >= 8, `checked ${checked} elements`);
 });

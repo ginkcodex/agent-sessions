@@ -178,10 +178,19 @@
     color: var(--text-muted);
   }
 
+  /* The browser gives <code> its own generic monospace; take the pre's font. */
+  pre code {
+    font: inherit;
+  }
+
   .paths {
     margin: 0;
     padding-left: 18px;
     font-size: calc(var(--fs) * var(--type-small));
+  }
+
+  .paths code {
+    font-family: var(--font-mono);
   }
 
   .choices {

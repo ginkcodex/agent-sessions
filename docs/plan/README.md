@@ -25,10 +25,17 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [transcript-tool-readability.md](transcript-tool-readability.md) | [transcript-tool-readability](../tasks/transcript-tool-readability/README.md) | Readable tool summaries, decoded text envelopes and expandable output previews at Activity and All levels |
+| [message-file-single-match.md](message-file-single-match.md) | [message-file-single-match](../tasks/message-file-single-match/README.md) | A file name or partial path in a message or terminal that matches one project file opens it directly; several matches still offer a toast |
+| [transcript-directory-links.md](transcript-directory-links.md) | [transcript-directory-links](../tasks/transcript-directory-links/README.md) | Exclude trailing-separator directory paths from session-content file-opening links |
+| [terminal-auto-activation.md](terminal-auto-activation.md) | [terminal-auto-activation](../tasks/terminal-auto-activation/README.md) | Default-enabled preference to stop session selection/focus from switching internal terminal tabs |
 | [acp-adapter-install.md](acp-adapter-install.md) | [acp-adapter-install](../tasks/acp-adapter-install/README.md) | One-click, consented install of pinned Claude and Codex ACP adapters through the managed-tools installer, on this computer and on WSL/SSH hosts |
 | [acp-chat.md](acp-chat.md) | [acp-chat](../tasks/acp-chat/README.md) | Drive Claude Code, Codex and OpenCode over ACP to stream live messages, tool calls and permissions into the transcript, locally and on WSL/SSH hosts |
 | [chat-attachments.md](chat-attachments.md) | [chat-attachments](../tasks/chat-attachments/README.md) | Attach images and text files to a chat message from a + button, a drop or a paste |
 | [chat-end-guard.md](chat-end-guard.md) | [chat-end-guard](../tasks/chat-end-guard/README.md) | A one-line notice when the user ends a chat; ask before ending a working chat, and before closing or quitting with open chats |
+| [end-chat-menu.md](end-chat-menu.md) | [end-chat-menu](../tasks/end-chat-menu/README.md) | The composer's End chat button as a menu: End the chat as today, or Switch to terminal to stop the chat and resume the session in a terminal tab |
+| [switch-to-chat.md](switch-to-chat.md) | [switch-to-chat](../tasks/switch-to-chat/README.md) | Switch to chat on a terminal tab's context menu: end the tab's agent and continue the session in a live chat |
+| [close-dialog-groups.md](close-dialog-groups.md) | [close-dialog-groups](../tasks/close-dialog-groups/README.md) | Closing dialogs list what they end as Terminals and Chats cards with icons and the unsaved-changes question as an Unsaved files card, in a polished prompt |
 | [host-switch-chat-guard.md](host-switch-chat-guard.md) | [host-switch-chat-guard](../tasks/host-switch-chat-guard/README.md) | Ask before connecting, switching hosts or disconnecting ends the window's open chats, as it asks about terminal tabs |
 | [codex-daemon-chat.md](codex-daemon-chat.md) | [codex-daemon-chat](../tasks/codex-daemon-chat/README.md) | Open a Codex session in a chat right after the Codex CLI quits, through the Codex daemon; a clear "in use" error with Try again |
 | [chat-adapter-setup.md](chat-adapter-setup.md) | [chat-adapter-setup](../tasks/chat-adapter-setup/README.md) | A short Chat settings section: the app's own pinned adapters, one-click Install, and Update when the copy is older than the pin |
@@ -69,6 +76,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [terminal-maximize.md](terminal-maximize.md) | [terminal-maximize](../tasks/terminal-maximize/README.md) | Maximize and restore the internal terminal without restarting sessions |
 | [terminal-split.md](terminal-split.md) | [terminal-split](../tasks/terminal-split/README.md) | Several shells side by side in one terminal tab |
 | [font-settings.md](font-settings.md) | [font-settings](../tasks/font-settings/README.md) | Settings → Appearance: editor font family and size; one type scale (ratios of body text) for project docs and session content, scaled by a body size |
+| [session-mono-font.md](session-mono-font.md) | [session-mono-font](../tasks/session-mono-font/README.md) | Settings → Appearance checkbox: code in session content uses the editor font |
 | [editor-history.md](editor-history.md) | [editor-history](../tasks/editor-history/README.md) | Back and forward through files and places in Go to File, per workspace, with the mouse's side buttons |
 | [swipe-navigation.md](swipe-navigation.md) | [swipe-navigation](../tasks/swipe-navigation/README.md) | Two-finger trackpad swipe back and forward on macOS, in the session list and Go to File |
 | [swipe-navigation-windows-linux.md](swipe-navigation-windows-linux.md) | [swipe-navigation-windows-linux](../tasks/swipe-navigation-windows-linux/README.md) | The same two-finger touchpad swipe on Windows (from wheel events) and Linux (GTK, native) |
@@ -79,6 +87,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [codex-guardian-ancestry.md](codex-guardian-ancestry.md) | [codex-guardian-ancestry](../tasks/codex-guardian-ancestry/README.md) | Link Guardian reviews to their main session for browsing, counts and cleanup |
 | [chat-live-filter.md](chat-live-filter.md) | [chat-live-filter](../tasks/chat-live-filter/README.md) | Include sessions running in chat in the Live filter |
 | [codex-restore-filenames.md](codex-restore-filenames.md) | [codex-restore-filenames](../tasks/codex-restore-filenames/README.md) | Restore resumable Codex rollout filenames and repair previous imports |
+| [chat-options-dropdown.md](chat-options-dropdown.md) | [chat-options-dropdown](../tasks/chat-options-dropdown/README.md) | The chat's mode, model and effort pickers as the shared themed Dropdown, opening upward at the composer |
 
 ## Supporting documents
 

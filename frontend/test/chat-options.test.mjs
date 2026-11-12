@@ -1,7 +1,7 @@
 // Session option pickers and the choices remembered per agent and host.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { choicesToApply, loadChoices, pickers, saveChoice, selectValues, skipsPermissions } from '../src/lib/chatOptions.ts';
+import { choicesToApply, loadChoices, pickers, pickerOptions, saveChoice, selectValues, skipsPermissions } from '../src/lib/chatOptions.ts';
 
 // The options the ACP-02 spike saw, trimmed.
 const CLAUDE = [
@@ -34,6 +34,23 @@ test('pickers show every select and boolean option with the value the agent repo
   const [model] = pickers('opencode', [OPENCODE_MODEL]);
   assert.deepEqual(model.choices.map((c) => [c.value, c.group]), [['anthropic/claude-fable-5-2', 'Anthropic'], ['openai/gpt-x', 'OpenAI']]);
   assert.equal(model.choices[1].description, 'logged in');
+});
+
+test("the dropdown options name the choices plainly and keep the agent's groups", () => {
+  const [mode] = pickers('claude-code', CLAUDE);
+  assert.deepEqual(pickerOptions(mode).map((o) => [o.value, o.label]), [
+    ['default', 'Default'],
+    ['acceptEdits', 'Accept Edits'],
+    ['plan', 'Plan'],
+    ['bypassPermissions', 'Bypass Permissions'],
+  ]);
+  const [model] = pickers('opencode', [OPENCODE_MODEL]);
+  assert.deepEqual(pickerOptions(model), [
+    { value: 'anthropic/claude-fable-5-2', label: 'Fable 5.2', group: 'Anthropic' },
+    { value: 'openai/gpt-x', label: 'GPT X', title: 'logged in', group: 'OpenAI' },
+  ]);
+  const [codexMode] = pickers('codex', [CODEX_MODE]);
+  assert.equal(pickerOptions(codexMode)[2].label, 'Agent (full access)');
 });
 
 test('a value the agent reports but does not list still shows; options without values do not', () => {

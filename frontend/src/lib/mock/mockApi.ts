@@ -5,6 +5,7 @@ import type { GitHistoryTarget, GitHistoryRepositoryList, GitHistoryRefList, Git
 import { searchLimit, searchRegExp, searchText, searchesPath } from '../contentSearch';
 import { replaceInText } from '../searchReplace';
 import { searchTerms } from '../search';
+import { readableToolOutput } from '../toolPresentation';
 import { validatePortForward, type PortForwardRequest, type PortForwardState, type PortForwardRule } from '../portForward';
 import type {
   AgentSettings,
@@ -689,7 +690,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       if (!req.includeHidden && (message.isMeta || message.role === 'system')) continue;
       const texts = (message.parts ?? []).map((part) => fold([
         part.text ?? '',
-        part.tool ? `${part.tool.name} ${JSON.stringify(part.tool.input ?? '')} ${part.tool.output ?? ''}` : '',
+        part.tool ? `${part.tool.name} ${JSON.stringify(part.tool.input ?? '')} ${part.tool.output ?? ''} ${readableToolOutput(part.tool.output ?? '')}` : '',
         part.file?.name ?? '',
       ].join(' ')));
       if (!terms.every((term) => texts.some((text) => text.includes(term)))) continue;

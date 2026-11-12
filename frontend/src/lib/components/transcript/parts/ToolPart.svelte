@@ -2,15 +2,9 @@
   import Icon from '../../common/Icon.svelte';
   import type { ToolCall, SessionRef } from '../../../types';
   import { highlightCode } from '../../../highlight';
-  import { reachesLineCount } from '../../../layout';
+  import { readableToolOutput, toolOutputPreview, toolInputSummary } from '../../../toolPresentation';
   import { api } from '../../../api';
   import SubagentLink from './SubagentLink.svelte';
-
-  // An output this long always fills .output-content's max-height (350px at
-  // 12px/1.4 lines), so its height is known without laying the text out. 160
-  // columns is more than the 900px transcript fits in any monospace font.
-  const FULL_BOX_LINES = 24;
-  const MAX_COLUMNS = 160;
 
   interface Props {
     tool: ToolCall;
@@ -43,7 +37,11 @@
   let highlightedInput = $derived(showInput ? highlightCode(formattedInput, 'json') : '');
 
   let displayOutput = $derived(fullOutput !== null ? fullOutput : (tool.output || ''));
-  let fillsOutputBox = $derived(reachesLineCount(displayOutput, FULL_BOX_LINES, MAX_COLUMNS));
+  let readableOutput = $derived(readableToolOutput(displayOutput));
+  let preview = $derived(toolOutputPreview(readableOutput));
+  let outputExpanded = $state(false);
+  let showFullOutput = $derived(defaultExpanded || outputExpanded);
+  let summary = $derived(toolInputSummary(tool.input));
 
   async function handleLoadFullOutput() {
     if (!tool.outputRef || isFetchingBlob) return;
@@ -77,8 +75,8 @@
   <div class="tool-header">
     <div class="tool-id-group">
       <Icon name="wrench" size={14} class="tool-icon" />
-      <span class="tool-name">{tool.name}</span>
-      <span class="tool-call-id">{tool.id}</span>
+      <span class="tool-name" title={tool.id ? `${tool.name}\n${tool.id}` : tool.name}>{tool.name}</span>
+      {#if summary}<span class="tool-summary" title={summary}>{summary}</span>{/if}
     </div>
 
     <div class="tool-status-badge status-{tool.status}">
@@ -97,11 +95,12 @@
   {#if formattedInput}
     <details class="tool-section input-section" open={defaultExpanded} ontoggle={(event) => inputExpanded = event.currentTarget.open}>
       <summary class="section-summary">
-        <span>Parameters</span>
+        <span class="disclosure-label"><Icon name={showInput ? 'chevron-down' : 'chevron-right'} size={14} /> Parameters</span>
         <button
           type="button"
           class="mini-copy-btn"
           onclick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
             copyText(formattedInput, 'input');
           }}
@@ -118,7 +117,7 @@
   {#if displayOutput || tool.outputTruncated}
     <div class="tool-section output-section">
       <div class="output-header">
-        <span class="output-label">Result:</span>
+        <span class="output-label">Output</span>
         {#if displayOutput}
           <button
             type="button"
@@ -131,7 +130,13 @@
       </div>
 
       {#if displayOutput}
-        <pre class="output-content" class:fills-box={fillsOutputBox}><code>{displayOutput}</code></pre>
+        <pre class="output-content"><code>{showFullOutput ? readableOutput : preview.text}</code></pre>
+        {#if preview.shortened && !defaultExpanded}
+          <button type="button" class="expand-output-btn" aria-expanded={showFullOutput} onclick={() => outputExpanded = !outputExpanded}>
+            <Icon name={showFullOutput ? 'chevron-down' : 'chevron-right'} size={14} />
+            {showFullOutput ? 'Show less' : 'Show more output'}
+          </button>
+        {/if}
       {/if}
 
       {#if tool.outputTruncated && fullOutput === null}
@@ -166,27 +171,34 @@
      parameters and result are lighter wells inside it, lined up with the
      header's text. */
   .tool-card {
-    margin: 8px 0;
+    margin: 10px 0;
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     background-color: var(--bg-secondary);
     overflow: hidden;
   }
 
   .tool-header {
-    display: flex;
+    /* ACP may put the entire command in tool.name. Reserve the badge's
+       column before sizing either the name or the optional summary. */
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
-    padding: 7px 10px;
+    padding: 10px 12px;
+    gap: 12px;
   }
 
   .tool-id-group {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
   }
 
   :global(.tool-icon) {
     color: var(--text-muted);
+    flex-shrink: 0;
   }
 
   .tool-name {
@@ -196,10 +208,49 @@
     color: var(--text-primary);
   }
 
-  .tool-call-id {
-    font-size: calc(var(--session-font-size, 14.5px) * var(--type-label));
+  .tool-summary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-code));
     font-family: var(--font-mono);
-    color: var(--text-muted);
+    color: var(--text-secondary);
+  }
+
+  .tool-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tool-status-badge {
+    white-space: nowrap;
+  }
+
+  .disclosure-label, .expand-output-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .expand-output-btn {
+    margin-top: 8px;
+    padding: 4px 0;
+    background: transparent;
+    color: var(--accent-color);
+    cursor: pointer;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
+  }
+
+  button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+  }
+
+  .section-summary::-webkit-details-marker {
+    display: none;
   }
 
   .tool-status-badge {
@@ -257,12 +308,18 @@
 
   .code-wrapper pre {
     margin: 0;
-    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-code));
     font-family: var(--font-mono);
+    line-height: 1.6;
+  }
+
+  /* The browser gives <code> its own generic monospace; take the pre's font. */
+  pre code {
+    font: inherit;
   }
 
   .output-section {
-    padding: 6px 10px 10px;
+    padding: 8px 12px 12px;
   }
 
   .output-header {
@@ -284,22 +341,14 @@
     border-radius: var(--radius-sm);
     background: var(--bg-primary);
     font-family: var(--font-mono);
-    font-size: calc(var(--session-font-size, 14.5px) * var(--type-small));
-    line-height: 1.4;
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-code));
+    line-height: 1.6;
     white-space: pre-wrap;
-    word-break: break-all;
-    max-height: 350px;
-    overflow-y: auto;
+    overflow-wrap: anywhere;
+    word-break: normal;
     /* Monospace output needs no kerning or ligatures; skipping them lets
        WebKit lay out large outputs about three times faster. */
     text-rendering: optimizeSpeed;
-  }
-
-  /* Off-screen outputs skip layout. The placeholder height is clamped by
-     max-height, so it matches the real height and nothing shifts. */
-  .output-content.fills-box {
-    content-visibility: auto;
-    contain-intrinsic-block-size: 350px;
   }
 
   .truncated-banner {

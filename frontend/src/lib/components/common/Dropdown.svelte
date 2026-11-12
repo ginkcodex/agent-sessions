@@ -20,6 +20,8 @@
     ariaLabel: string;
     title?: string;
     align?: 'left' | 'right';
+    /** Which side of the trigger the menu opens on; 'top' at the window's bottom edge. */
+    placement?: 'bottom' | 'top';
     disabled?: boolean;
     /** Shown while no option is chosen. */
     placeholder?: string;
@@ -28,7 +30,7 @@
     oncontextmenu?: (e: MouseEvent) => void;
   }
 
-  let { options, value, onChange, ariaLabel, title, align = 'left', disabled = false, placeholder = '', onkeydown, oncontextmenu }: Props = $props();
+  let { options, value, onChange, ariaLabel, title, align = 'left', placement = 'bottom', disabled = false, placeholder = '', onkeydown, oncontextmenu }: Props = $props();
 
   let open = $state(false);
   let activeIndex = $state(0);
@@ -173,6 +175,7 @@
       bind:this={list}
       class="menu"
       class:right={align === 'right'}
+      class:up={placement === 'top'}
       role="listbox"
       tabindex="-1"
       aria-label={ariaLabel}
@@ -291,6 +294,12 @@
   .menu.right {
     left: auto;
     right: 0;
+  }
+
+  /* Above the trigger, for a control sitting on the window's bottom edge. */
+  .menu.up {
+    top: auto;
+    bottom: calc(100% + 4px);
   }
 
   .menu li {

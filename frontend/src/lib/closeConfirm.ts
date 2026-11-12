@@ -1,14 +1,23 @@
 import type { AgentID, TerminalTab } from './types';
-import type { FilePromptChoice } from './stores/filePrompt.svelte';
+import type { FilePromptChoice, FilePromptGroup, FilePromptItem } from './stores/filePrompt.svelte';
 import { hostLabel } from './hosts';
 import { ALL_AGENTS } from './portable';
 
-type Ask = (title: string, message: string, choices: FilePromptChoice[]) => Promise<string | null>;
-type RunningTab = Pick<TerminalTab, 'label' | 'host' | 'kind'> & { status: 'running' | 'exited' };
+type Ask = (title: string, message: string, choices: FilePromptChoice[], groups?: FilePromptGroup[]) => Promise<string | null>;
+type RunningTab = Pick<TerminalTab, 'label' | 'host' | 'kind' | 'agent'> & { status: 'running' | 'exited' };
 /** A chat as the warning needs it; exited chats are left out. */
 export type WindowChat = { agent: AgentID | string; dir: string; phase: string };
+/** A dirty editor tab as the unsaved-changes question needs it. */
+export type DirtyDraft = { dir: string; tab: { path: string } };
 
-/** How many running tabs and chats the warning names before it sums up the rest. */
+/** What a closing dialog warns about: the sentence and the items it ends. */
+export interface CloseWarning {
+  message: string;
+  /** The items as Terminals and Chats cards. */
+  groups: FilePromptGroup[];
+}
+
+/** How many items a group names before it sums up the rest. */
 const NAMED = 6;
 
 /**
@@ -16,7 +25,7 @@ const NAMED = 6;
  * chats are open, or null when there are none. Closing the window ends them,
  * coding agents included.
  */
-export function closeWindowWarning(tabs: readonly RunningTab[], chats: readonly WindowChat[] = []): string | null {
+export function closeWindowWarning(tabs: readonly RunningTab[], chats: readonly WindowChat[] = []): CloseWarning | null {
   const running = tabs.filter(tab => tab.status === 'running');
   const open = openChats(chats);
   if (!running.length && !open.length) return null;
@@ -28,21 +37,27 @@ export function closeWindowWarning(tabs: readonly RunningTab[], chats: readonly 
     said.push(`${count} still running${including}`);
   }
   if (open.length) said.push(chatsOpen(open));
-  const names = [
-    ...running.map(tab => tab.host ? `${tab.label} on ${hostLabel(tab.host)}` : tab.label),
-    ...open.map(chatName),
-  ];
-  return `${said.join('. ')}. Closing the window ends ${names.length === 1 ? 'it' : 'them'}:\n${listed(names)}`;
+  const total = running.length + open.length;
+  return {
+    message: `${said.join('. ')}. Closing the window ends ${total === 1 ? 'it' : 'them'}:`,
+    groups: groups([
+      running.length ? named('Terminals', 'terminal', running.map(terminalItem)) : null,
+      open.length ? named('Chats', 'chat', open.map(chatItem)) : null,
+    ]),
+  };
 }
 
 /**
  * The warning for a host switch that ends the window's open chats, or null
  * when none is open. action says the switch: "Connecting to box".
  */
-export function endingChatsWarning(chats: readonly WindowChat[], action: string): string | null {
+export function endingChatsWarning(chats: readonly WindowChat[], action: string): CloseWarning | null {
   const open = openChats(chats);
   if (!open.length) return null;
-  return `${chatsOpen(open)}. ${action} ends ${open.length === 1 ? 'it' : 'them'}:\n${listed(open.map(chatName))}`;
+  return {
+    message: `${chatsOpen(open)}. ${action} ends ${open.length === 1 ? 'it' : 'them'}:`,
+    groups: [named('Chats', 'chat', open.map(chatItem))],
+  };
 }
 
 function openChats(chats: readonly WindowChat[]): WindowChat[] {
@@ -56,21 +71,57 @@ function chatsOpen(open: readonly WindowChat[]): string {
     : `${open.length} chats are open${working ? `, ${working} of them working` : ''}`;
 }
 
-/** One name a line, the rest summed up past NAMED. */
-function listed(names: string[]): string {
-  const total = names.length;
-  return (total > NAMED ? [...names.slice(0, NAMED), `and ${total - NAMED} more`] : names).join('\n');
+function groups(built: (FilePromptGroup | null)[]): FilePromptGroup[] {
+  return built.filter((group): group is FilePromptGroup => group !== null);
 }
 
-function chatName(chat: WindowChat): string {
-  const agent = ALL_AGENTS.find(a => a.id === chat.agent)?.label ?? chat.agent;
+/** A group naming its first NAMED items and summing up the rest. */
+function named(title: string, icon: 'terminal' | 'chat', items: FilePromptItem[]): FilePromptGroup {
+  return items.length > NAMED
+    ? { title, icon, items: items.slice(0, NAMED), more: items.length - NAMED }
+    : { title, icon, items };
+}
+
+function terminalItem(tab: RunningTab): FilePromptItem {
+  return {
+    name: tab.label,
+    detail: tab.host ? `on ${hostLabel(tab.host)}` : undefined,
+    icon: tab.kind === 'agent' ? 'agent' : 'terminal',
+    agent: tab.agent,
+  };
+}
+
+function chatItem(chat: WindowChat): FilePromptItem {
+  const agent = ALL_AGENTS.find(a => a.id === chat.agent)?.label ?? String(chat.agent);
   const folder = chat.dir.split(/[\\/]/).filter(Boolean).pop();
-  return `Chat with ${agent}${folder ? ` in ${folder}` : ''}${chat.phase === 'working' ? ' (working)' : ''}`;
+  return {
+    name: agent,
+    detail: folder ? `in ${folder}` : undefined,
+    icon: 'chat',
+    agent: String(chat.agent),
+    badge: chat.phase === 'working' ? 'working' : undefined,
+  };
+}
+
+/**
+ * The warning for closing or switching away while files hold unsaved edits,
+ * listing them all. Unlike the terminal and chat cards nothing is summed up:
+ * the decision (save or discard) is taken file by file.
+ */
+export function unsavedDrafts(dirty: readonly DirtyDraft[]): CloseWarning {
+  return {
+    message: 'Unsaved changes in:',
+    groups: [{ title: 'Unsaved files', icon: 'file', items: dirty.map(fileItem) }],
+  };
+}
+
+function fileItem({ dir, tab }: DirtyDraft): FilePromptItem {
+  return { name: tab.path, detail: `in ${dir}`, icon: 'file' };
 }
 
 /** Asks before a close ends running terminal tabs or open chats; true lets it go ahead. */
 export async function confirmClosingWindow(tabs: readonly RunningTab[], chats: readonly WindowChat[], ask: Ask): Promise<boolean> {
   const warning = closeWindowWarning(tabs, chats);
   if (!warning) return true;
-  return await ask('Close window?', warning, [{ value: 'close', label: 'Close window', danger: true }]) === 'close';
+  return await ask('Close window?', warning.message, [{ value: 'close', label: 'Close window', danger: true }], warning.groups) === 'close';
 }

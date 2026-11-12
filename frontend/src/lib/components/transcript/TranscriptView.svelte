@@ -22,7 +22,7 @@
   import { messageFileRecovery } from '../../messageFileOpen';
   import { browserLinkDestination } from '../../linkPreview';
   import { preferences } from '../../stores/preferences.svelte';
-  import { sessionFontVar } from '../../appearance';
+  import { sessionFontVar, sessionMonoFontVar } from '../../appearance';
   import { firstVisibleMessage, restoreMessage, type MessageAnchor } from '../../transcriptAnchor';
   import { epoch, isStaleReply } from '../../link';
   import { mixesRevisions, refreshLimit, TranscriptRefresher, windowOf, type TranscriptWindow } from '../../transcriptRefresh';
@@ -654,18 +654,21 @@
 
   // The session text size (Settings → Appearance); undefined at the default.
   let sessionFontSize = $derived(sessionFontVar(preferences.sessionFontSize));
-  // A size change keeps the reader's place. Following or anchored, the
+  // The editor font for code in session content, when Settings → Appearance
+  // asks for it; undefined keeps the app's mono font.
+  let sessionMonoFont = $derived(sessionMonoFontVar(preferences.sessionUsesEditorFont, preferences.editorFont));
+  // A size or font change keeps the reader's place. Following or anchored, the
   // ResizeObserver above keeps the end in view; otherwise the first visible
   // message is taken before the new size renders and put back after.
   let fontAnchor: MessageAnchor | null = null;
   $effect.pre(() => {
-    void sessionFontSize;
+    void sessionFontSize; void sessionMonoFont;
     untrack(() => {
       fontAnchor = containerEl && !following && !anchoredToBottom ? firstVisibleMessage(containerEl) : null;
     });
   });
   $effect(() => {
-    void sessionFontSize;
+    void sessionFontSize; void sessionMonoFont;
     untrack(() => {
       const anchor = fontAnchor;
       fontAnchor = null;
@@ -764,9 +767,10 @@
 
 <svelte:window onkeydown={handleWindowKey} />
 
-<!-- The session text size reaches the messages, the live chat and the composer. -->
+<!-- The session text size and mono font reach the messages, the live chat and the composer. -->
 <div class="transcript-pane" role="region" aria-label="Session content"
   style:--session-font-size={sessionFontSize}
+  style:--font-mono={sessionMonoFont}
   onmouseover={(event) => hoveredLink = browserLinkDestination(event.target, event.currentTarget)}
   onmouseout={(event) => hoveredLink = browserLinkDestination(event.relatedTarget, event.currentTarget)}
   onmouseleave={() => hoveredLink = ''}
@@ -940,6 +944,9 @@
         {chat}
         focus={chatOpen}
         onRestart={() => void chatOpen.restart(chat, !!appState.selectedSessionMeta)}
+        onSwitchToTerminal={async () => {
+          await chatOpen.switchToTerminal(chat, appState.selectedSessionMeta);
+        }}
         onOption={(configId, value) => chatOpen.choose(chat, configId, value)}
       />
     {/if}

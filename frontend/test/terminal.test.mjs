@@ -699,6 +699,57 @@ test('workspace activation picks the first running matching tab in display order
   });
 });
 
+test('automatic activation is on by default and can be turned off and on live', async () => {
+  await withTerminals(async ({ store }) => {
+    assert.equal(store.autoActivate, true);
+    const first = await store.newShell('/a');
+    const other = await store.newShell('/b');
+    store.setOpen(false);
+    store.select(other.id);
+    store.setOpen(false);
+    store.focusOnActivation = true;
+
+    store.setAutoActivate(false);
+    assert.equal(store.selectDirectory('/a', ''), false, 'a matching tab is not activated');
+    assert.equal(store.active, other.id, 'the active tab stays');
+    assert.equal(store.open, false, 'the panel stays closed');
+    assert.equal(store.focusOnActivation, true, 'typing focus is not touched');
+
+    store.select(first.id);
+    assert.equal(store.active, first.id, 'explicit selection still works while disabled');
+    store.selectNth(2);
+    store.show(other.id);
+    assert.deepEqual([store.active, store.open], [other.id, true], 'explicit show still works while disabled');
+
+    store.setAutoActivate(true);
+    assert.equal(store.selectDirectory('/a', ''), true);
+    assert.equal(store.active, first.id, 're-enabling resumes matching immediately');
+  });
+});
+
+test('the automatic activation setting is saved and restored; absent means enabled', async () => {
+  await withTerminals(async ({ store, storage, TerminalsStore }) => {
+    store.setAutoActivate(false);
+    assert.equal(JSON.parse(storage.get('agent-sessions:terminal-panel')).autoActivate, false);
+    const restored = new TerminalsStore();
+    restored.init();
+    assert.equal(restored.autoActivate, false);
+    restored.destroy();
+
+    storage.set('agent-sessions:terminal-panel', JSON.stringify({ open: true, height: 400 }));
+    const legacy = new TerminalsStore();
+    legacy.init();
+    assert.equal(legacy.autoActivate, true, 'older saved layouts keep the existing behavior');
+    legacy.destroy();
+
+    storage.set('agent-sessions:terminal-panel', JSON.stringify({ autoActivate: 'no' }));
+    const invalid = new TerminalsStore();
+    invalid.init();
+    assert.equal(invalid.autoActivate, true, 'a non-boolean value is ignored');
+    invalid.destroy();
+  });
+});
+
 test('shell workspace activation follows detected cwd and preserves the active equal match', async () => {
   await withTerminals(async ({ store, mock }) => {
     const [session] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
@@ -1141,6 +1192,7 @@ test('TerminalsStore keeps its height within the window and remembers the layout
       height: 400,
       position: 'bottom',
       maximizedStacked: true,
+      autoActivate: true,
     });
     const restored = new TerminalsStore();
     restored.init();
@@ -1239,10 +1291,12 @@ async function loadPanel() {
     ["import { api } from '../../api';", 'const api = {};'],
     ["import { MAX_GROUP_PANES, terminals } from '../../stores/terminals.svelte';", 'const MAX_GROUP_PANES = 4;' + fixtureStore('terminals')],
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
+    ["import { chatOpen } from '../../stores/chatOpen.svelte';", 'const chatOpen = { canChat: () => false, opening: false };'],
+    ["import { filePrompt } from '../../stores/filePrompt.svelte';", 'const filePrompt = {};'],
     ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
     ["import { isMac } from '../../../main';", 'const isMac = false;'],
     ["import { TabDrag, keepingFocus, revealTab, scrollSideways } from '../../tabDrag.svelte';", 'class TabDrag { id = null; press() {} offset() { return 0; } } const keepingFocus = () => {}; const revealTab = () => {}; const scrollSideways = () => {};'],
-    ...['hosts', 'terminal', 'alerts', 'tabActions'].map(name => [`'../../${name}'`, lib(name)]),
+    ...['hosts', 'terminal', 'alerts', 'tabActions', 'chat', 'portable'].map(name => [`'../../${name}'`, lib(name)]),
     ...['ContextMenu', 'AgentIcon', 'AttentionDot'].map(name => [`import ${name} from '../common/${name}.svelte';`, `const ${name} = () => {};`]),
     ["import Splitter from '../common/Splitter.svelte';", 'const Splitter = ($$renderer, props) => $$renderer.push(`<div role="separator" aria-label="${props.ariaLabel}"></div>`);'],
   ]);

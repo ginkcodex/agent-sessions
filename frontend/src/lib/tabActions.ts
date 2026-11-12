@@ -1,4 +1,32 @@
+import { hostLabel } from './hosts';
+
 export type TabCloseAction = 'close' | 'others' | 'right' | 'left';
+
+/**
+ * What Switch to chat shows in an agent tab's context menu, or null when
+ * its agent cannot chat here at all. The reasons it is disabled read as
+ * Show Transcript's do: a session not saved yet, or another host's.
+ */
+export function switchToChatItem(
+  tab: { session?: unknown; host: string },
+  shownHost: string,
+  canChat: boolean,
+  opening: boolean,
+): { label: string; disabled: boolean; title: string } | null {
+  if (!canChat) return null;
+  const elsewhere = tab.host !== shownHost;
+  return {
+    label: 'Switch to chat',
+    disabled: !tab.session || elsewhere || opening,
+    title: !tab.session
+      ? 'The session appears once the agent saves it, usually after the first prompt'
+      : elsewhere
+        ? `Switch to ${hostLabel(tab.host) || 'Local'} to see this session`
+        : opening
+          ? 'A chat is starting…'
+          : 'End this terminal and continue the session in a chat',
+  };
+}
 
 export const TAB_CLOSE_ACTIONS: { action: TabCloseAction; label: string }[] = [
   { action: 'close', label: 'Close' },

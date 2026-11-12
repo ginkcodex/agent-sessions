@@ -1,4 +1,5 @@
 import { api } from '../api';
+import { unsavedDrafts } from '../closeConfirm';
 import { files, tabId, tabOwner, tabHasUnsaved, type DraftTarget, type FileTab } from './files.svelte';
 import { filePrompt } from './filePrompt.svelte';
 
@@ -22,9 +23,10 @@ export class FileActions {
     const dirty = targets.filter(({ tab }) => tabHasUnsaved(tab));
     if (!dirty.length) return true;
     if (dirty.some(({ tab }) => tab.edit?.saving)) return false;
-    const decision = await filePrompt.ask(title,
-      `Unsaved changes in:\n${dirty.map(({ dir, tab }) => `${dir}/${tab.path}`).join('\n')}`,
-      [{ value: 'discard', label: 'Discard changes', danger: true }, { value: 'save', label: 'Save changes' }]);
+    const warning = unsavedDrafts(dirty);
+    const decision = await filePrompt.ask(title, warning.message,
+      [{ value: 'discard', label: 'Discard changes', danger: true }, { value: 'save', label: 'Save changes' }],
+      warning.groups);
     if (decision === 'discard') {
       // This decision authorizes disposal, not a disk reload (which may fail
       // while offline). Only callers removing these targets may use it.

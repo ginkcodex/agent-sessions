@@ -339,6 +339,13 @@ test('transcript inline file code is whole-span, escaped, and never nested in an
   assert.doesNotMatch(renderMarkdown('```text\nsrc/main.ts\n```', 'transcript'), /data-file-link/);
 });
 
+test('transcript directory paths are not file links', () => {
+  const html = renderMarkdown('`docs/tasks/terminal-auto-activation/` [dir](docs/tasks/) `docs/plan/a.md`', 'transcript');
+  assert.equal((html.match(/data-file-link=/g) ?? []).length, 1);
+  assert.match(html, /data-file-link="docs\/plan\/a.md"/);
+  assert.match(html, /<code class="inline-code">docs\/tasks\/terminal-auto-activation\/<\/code>/);
+});
+
 test('transcript links reject encoded unsafe destinations and retain ordinary web links', () => {
   for (const value of ['file:///tmp/a.ts', '//server/a.ts', String.raw`\\server\a.ts`, 'javascript&#58;alert', 'src/%GG.ts', 'src/%00.ts', 'src/a.ts#heading', 'src/a.ts:0']) {
     assert.doesNotMatch(renderMarkdown(`[x](${value})`, 'transcript'), /data-file-link/, value);

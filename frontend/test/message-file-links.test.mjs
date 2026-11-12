@@ -28,6 +28,7 @@ test('message file parser rejects schemes, authorities, controls, and malformed 
     '%2f%2fserver/a.ts', '%5c%5cserver/a.ts', 'javascript%3Aalert',
     'src/%GG.ts', 'src/%.ts', '%C0%AFetc/passwd', 'src/a\u0000.ts', 'src/a\n.ts',
     'src/%00.ts', 'src/%0a.ts', 'src/%7F.ts', 'src/%C2%85.ts',
+    'docs/tasks/', 'docs\\tasks\\', '/tmp/dir/', 'dir%2F', 'dir%5C', 'dir/:10', 'C:/dir/',
     'a.ts:0', 'a.ts:1:0', 'a.ts:9007199254740992', 'a.ts#L20-L10',
     'a.ts#L0', 'a.ts#L1-L0', 'a.ts:abc', 'a.ts:1:2:3',
   ]) assert.equal(parseMessageFileLink(value), null, JSON.stringify(value));
@@ -37,7 +38,7 @@ test('inline code recognition requires a whole conservative path', () => {
   for (const value of ['src/main.ts:10:2', '/tmp/a.go', String.raw`C:\src\a.ts`, './README', '../src', '.gitignore', 'README.md']) {
     assert.equal(isMessageFileLink(value), true, value);
   }
-  for (const value of ['hello', 'npm run build', 'cat src/main.ts', 'src/a.ts && echo x', 'foo(bar).ts', 'src/a*.ts', 'src/read me.md', 'https://example.com/a.ts']) {
+  for (const value of ['hello', 'npm run build', 'cat src/main.ts', 'src/a.ts && echo x', 'foo(bar).ts', 'src/a*.ts', 'src/read me.md', 'https://example.com/a.ts', 'docs/tasks/', 'C:\\src\\dir\\']) {
     assert.equal(isMessageFileLink(value), false, value);
   }
 });

@@ -1,7 +1,7 @@
 <script lang="ts">
   // Settings → Appearance: the editor font and the body text sizes of the
   // editor, the project docs preview and session content.
-  import { sessionFontVar } from '../../appearance';
+  import { sessionFontVar, sessionMonoFontVar } from '../../appearance';
   import { preferences } from '../../stores/preferences.svelte';
   import MonoFontSetting from './MonoFontSetting.svelte';
   import SizeStepper from './SizeStepper.svelte';
@@ -46,13 +46,32 @@
   <p class="hint">Messages, tool calls and the other parts of a session.</p>
   <h4>Text size</h4>
   <SizeStepper kind="session" label="Session text size" value={preferences.sessionFontSize} onChange={(size) => preferences.setFontSize('session', size)} />
-  <TypeSample body={sessionFontVar(preferences.sessionFontSize) ?? '14.5px'} label="Session text preview" />
+  <label class="setting">
+    <input
+      type="checkbox"
+      checked={preferences.sessionUsesEditorFont}
+      onchange={(e) => preferences.setSessionUsesEditorFont((e.currentTarget as HTMLInputElement).checked)}
+    />
+    Use the editor font for monospace text in session content
+  </label>
+  <p class="hint">
+    Every part of a session that uses a monospace font (code blocks, inline code, tool calls and output, patches and
+    system messages) uses the editor font chosen above, so files and sessions share one font. Without an editor font
+    chosen, the app default is used.
+  </p>
+  <TypeSample
+    body={sessionFontVar(preferences.sessionFontSize) ?? '14.5px'}
+    monoFont={sessionMonoFontVar(preferences.sessionUsesEditorFont, preferences.editorFont)}
+    label="Session text preview"
+  />
 </section>
 
 <style>
   .section + .section { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border-color); }
   h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
   h4 { margin: 14px 0 8px; font-size: 0.85rem; }
+  .setting { display: flex; align-items: center; gap: 8px; margin: 14px 0 6px; font-size: 0.85rem; font-weight: 600; }
+  .setting input { accent-color: var(--accent-color); }
   .hint { margin: 0 0 10px; font-size: 0.75rem; line-height: 1.5; color: var(--text-muted); }
   .section > :global(.type-sample) { margin-top: 12px; }
 </style>

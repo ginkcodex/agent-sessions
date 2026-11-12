@@ -80,6 +80,20 @@ func TestSessionSearchMatches(t *testing.T) {
 	}
 }
 
+func TestSessionSearchDecodedToolOutput(t *testing.T) {
+	output := `[{"type":"input_text","text":"C:\\Users\\Gink\nsaid \"hello\""}]`
+	tr := &model.Transcript{Messages: []model.Message{{Role: model.RoleAssistant,
+		Parts: []model.Part{{Kind: model.PartTool, Tool: &model.ToolCall{Name: "exec", Output: output}}},
+	}}}
+	svc, ref := sessionSearchService(t, tr)
+	for _, query := range []string{`C:\Users\Gink`, `C:\\Users\\Gink`, `"said \"hello\""`} {
+		got, err := svc.SearchSession(t.Context(), SessionSearchRequest{Ref: ref, Query: query})
+		if err != nil || len(got.Hits) != 1 || !reflect.DeepEqual(got.Hits[0].Parts, []int{0}) {
+			t.Errorf("%q: hits=%+v err=%v", query, got.Hits, err)
+		}
+	}
+}
+
 func TestSessionSearchLimitAndCancel(t *testing.T) {
 	tr := &model.Transcript{}
 	for i := range 2*sessionSearchCheckEvery + 3 {
