@@ -11,11 +11,17 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/filelock"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func repairFixture(t *testing.T) (*Manager, model.SessionMeta, []byte, string) {
 	t.Helper()
-	roots := testRoots(t)
+	return repairFixtureIn(t, testRoots(t))
+}
+
+func repairFixtureIn(t *testing.T, roots paths.Roots) (*Manager, model.SessionMeta, []byte, string) {
+	t.Helper()
 	dir := filepath.Join(roots.Codex, "sessions", "2026", "11", "06")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
@@ -227,5 +233,54 @@ func TestRepairCodexSessionBackupIncludesWAL(t *testing.T) {
 	}
 	if title != "committed in WAL" {
 		t.Fatalf("backup lost WAL metadata: %q", title)
+	}
+}
+
+// TestRepairCodexSessionBridgesRootSpellings covers provider roots behind a
+// symlink or Windows 8.3 short name, like macOS temp dirs under the /var
+// alias: the scan reports session paths under the symlink-resolved root while
+// Codex's indexes store the root as configured. Repair must accept both
+// spellings and report results the way the caller spells them.
+func TestRepairCodexSessionBridgesRootSpellings(t *testing.T) {
+	base := t.TempDir()
+	real := filepath.Join(base, "real")
+	if err := os.Mkdir(real, 0700); err != nil {
+		t.Fatal(err)
+	}
+	platform.Symlink(t, real, filepath.Join(base, "alias"))
+	roots := testRoots(t)
+	roots.Codex = filepath.Join(base, "alias", "codex")
+	m, meta, raw, target := repairFixtureIn(t, roots)
+
+	scanned, err := filepath.EvalSymlinks(meta.SourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scanned == meta.SourcePath {
+		t.Fatal("fixture root is not aliased")
+	}
+	result, err := m.RepairCodexSession(t.Context(), meta.Ref, []model.SessionMeta{{Ref: meta.Ref, SourcePath: scanned}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Path != want {
+		t.Fatalf("result path=%q want the caller spelling %q", result.Path, want)
+	}
+	// Codex's indexes keep the configured spelling it writes and reads.
+	for _, name := range []string{"state_4.sqlite", "state_5.sqlite"} {
+		if got := repairDBPath(t, filepath.Join(m.codex.root, name)); got != target {
+			t.Fatalf("index=%q want %q", got, target)
+		}
+	}
+	saved, err := os.ReadFile(target)
+	if err != nil || !bytes.Equal(saved, raw) {
+		t.Fatal("conversation bytes changed")
+	}
+	if _, err := os.Stat(meta.SourcePath); !os.IsNotExist(err) {
+		t.Fatalf("old path still exists: %v", err)
 	}
 }

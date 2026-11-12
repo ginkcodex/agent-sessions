@@ -66,10 +66,14 @@ func (m *Manager) RepairCodexSession(ctx context.Context, ref model.SessionRef, 
 		return result, fmt.Errorf("Close Codex terminals before repairing: %w", err)
 	}
 	cm := m.codex
-	if _, err := cm.ps.resolvedRoot(); err != nil {
+	// The scan reports session paths under the symlink-resolved provider root
+	// while Codex's own indexes use the root as configured, so the same file
+	// arrives in either spelling. Work in the configured form below, matching
+	// what the indexes store, and report results in the caller's spelling.
+	old, callerRoot, err := cm.repairLocalPath(filepath.Clean(meta.SourcePath))
+	if err != nil {
 		return result, err
 	}
-	old := filepath.Clean(meta.SourcePath)
 	if err := cm.ps.ensureWithinRoot(old); err != nil {
 		return result, err
 	}
@@ -110,6 +114,10 @@ func (m *Manager) RepairCodexSession(ctx context.Context, ref model.SessionRef, 
 	if err := cm.ps.ensureWithinRoot(target); err != nil {
 		return result, err
 	}
+	relTarget, err := filepath.Rel(cm.root, target)
+	if err != nil {
+		return result, err
+	}
 	if existing, statErr := os.Lstat(target); statErr == nil {
 		if !os.SameFile(info, existing) {
 			return result, errors.New("A different session file already occupies the repair destination.")
@@ -147,7 +155,12 @@ func (m *Manager) RepairCodexSession(ctx context.Context, ref model.SessionRef, 
 	if err != nil {
 		return result, err
 	}
-	result = CodexRepairResult{Path: target, BackupPath: backup}
+	// Report both paths in the spelling the caller used, so they line up with
+	// the catalog entries the caller supplied.
+	result = CodexRepairResult{
+		Path:       filepath.Join(callerRoot, relTarget),
+		BackupPath: filepath.Join(callerRoot, filepath.Base(backup)),
+	}
 	// After backups start, always identify recovery files in any error.
 	defer func() {
 		if err != nil {
@@ -266,6 +279,27 @@ func (m *Manager) RepairCodexSession(ctx context.Context, ref model.SessionRef, 
 		return result, err
 	}
 	return result, nil
+}
+
+// repairLocalPath re-roots a catalog path onto cm.root. The same session file
+// is known in two spellings: under the root as configured (what Codex's
+// thread and session indexes store, and what cm.root uses) and under the
+// symlink-resolved root (what the scan reports). It returns the file as the
+// manager names it plus the root spelling the caller used, so results can be
+// reported back in the caller's form.
+func (cm *codexManager) repairLocalPath(path string) (local, callerRoot string, err error) {
+	resolved, err := cm.ps.resolvedRoot()
+	if err != nil {
+		return "", "", err
+	}
+	for _, base := range []string{cm.root, resolved} {
+		rel, relErr := filepath.Rel(base, path)
+		if relErr != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		return filepath.Join(cm.root, rel), base, nil
+	}
+	return "", "", ErrPathOutsideRoot
 }
 
 func codexRepairHeader(path, id string) ([]byte, error) {
