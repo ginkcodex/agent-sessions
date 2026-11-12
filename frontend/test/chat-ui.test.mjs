@@ -504,7 +504,7 @@ test('a permission card offers every option and chooses none', async () => {
   assert.match(html, /Codex asks for permission/);
   assert.match(html, /Run the tests/);
   assert.match(html, /<span class="kind[^"]*">execute<\/span>/);
-  assert.match(html, /<pre class="command[^"]*"><code>make <test><\/code><\/pre>/);
+  assert.match(html, /<pre class="command[^"]*"><code[^>]*>make <test><\/code><\/pre>/);
   const buttons = [...html.matchAll(/<button[^>]*>/g)].map((m) => m[0]);
   assert.equal(buttons.length, 3);
   for (const b of buttons) {

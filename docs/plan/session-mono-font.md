@@ -43,11 +43,19 @@ restarts.
 - **Scope is the transcript pane,** so the session header and the live chat
   and composer follow too. Print and previews keep the app font.
 
-- **Covers every mono use, by construction.** All session parts take their
-  mono font from `var(--font-mono)`; none hardcodes a family. A test scans
-  `transcript/`, `transcript/parts/`, `chat/` and `style.css` and fails on any
+- **Covers every mono use.** All session parts take their mono font from
+  `var(--font-mono)`; none hardcodes a family. A test scans `transcript/`,
+  `transcript/parts/`, `chat/` and `style.css` and fails on any
   `font-family` that is not `var(--font-mono)`, `var(--font-sans)` or
-  `inherit`, so a new part cannot skip the setting.
+  `inherit`.
+- **No element falls back to the browser's monospace** (SMF-02). Browsers
+  give `<code>`, `<pre>`, `<kbd>` and `<samp>` their own
+  `font-family: monospace`, so a `<code>` inside a styled `<pre>` does not
+  inherit its font. Tool parameters and output, patch diffs and the
+  permission card's command did exactly that, so they ignored the setting
+  (and never used JetBrains Mono either). Each such `<code>` now has
+  `font: inherit` or `var(--font-mono)`, and a second test fails on any of
+  these elements in session content without a font rule of its own.
 
 ## Risks
 

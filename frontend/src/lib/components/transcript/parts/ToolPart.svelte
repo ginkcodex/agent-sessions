@@ -313,6 +313,11 @@
     line-height: 1.6;
   }
 
+  /* The browser gives <code> its own generic monospace; take the pre's font. */
+  pre code {
+    font: inherit;
+  }
+
   .output-section {
     padding: 8px 12px 12px;
   }

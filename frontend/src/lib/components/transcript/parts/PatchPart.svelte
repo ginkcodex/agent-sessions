@@ -136,6 +136,11 @@
     padding: 8px 10px;
   }
 
+  /* The browser gives <code> its own generic monospace; take the pre's font. */
+  .diff-code code {
+    font: inherit;
+  }
+
   .diff-code {
     margin: 0;
     font-family: var(--font-mono);
