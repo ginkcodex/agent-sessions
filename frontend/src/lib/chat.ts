@@ -266,3 +266,24 @@ export function switchToTerminalQuestion(phase: string, agentName: string): { ti
     choices: [{ value: 'switch', label: 'Switch', danger: true }],
   };
 }
+
+/**
+ * What Switch to chat asks before it ends a terminal tab's agent, or null
+ * when the tab may switch at once. A terminal tab knows its agent only by
+ * attention: working draws output (or its session's files say a turn
+ * runs), needs waits for the user, and idle, done and exited have no turn
+ * to stop.
+ */
+export function switchToChatQuestion(attention: string, agentName: string): { title: string; message: string; choices: { value: string; label: string; danger?: boolean }[] } | null {
+  if (attention === 'working') return {
+    title: 'Switch to chat?',
+    message: `${agentName} is still working. Switching stops its turn.`,
+    choices: [{ value: 'switch', label: 'Switch', danger: true }],
+  };
+  if (attention === 'needs') return {
+    title: 'Switch to chat?',
+    message: `${agentName} is waiting for your answer. Switching discards it.`,
+    choices: [{ value: 'switch', label: 'Switch', danger: true }],
+  };
+  return null;
+}

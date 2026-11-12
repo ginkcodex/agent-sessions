@@ -1291,10 +1291,12 @@ async function loadPanel() {
     ["import { api } from '../../api';", 'const api = {};'],
     ["import { MAX_GROUP_PANES, terminals } from '../../stores/terminals.svelte';", 'const MAX_GROUP_PANES = 4;' + fixtureStore('terminals')],
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
+    ["import { chatOpen } from '../../stores/chatOpen.svelte';", 'const chatOpen = { canChat: () => false, opening: false };'],
+    ["import { filePrompt } from '../../stores/filePrompt.svelte';", 'const filePrompt = {};'],
     ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
     ["import { isMac } from '../../../main';", 'const isMac = false;'],
     ["import { TabDrag, keepingFocus, revealTab, scrollSideways } from '../../tabDrag.svelte';", 'class TabDrag { id = null; press() {} offset() { return 0; } } const keepingFocus = () => {}; const revealTab = () => {}; const scrollSideways = () => {};'],
-    ...['hosts', 'terminal', 'alerts', 'tabActions'].map(name => [`'../../${name}'`, lib(name)]),
+    ...['hosts', 'terminal', 'alerts', 'tabActions', 'chat', 'portable'].map(name => [`'../../${name}'`, lib(name)]),
     ...['ContextMenu', 'AgentIcon', 'AttentionDot'].map(name => [`import ${name} from '../common/${name}.svelte';`, `const ${name} = () => {};`]),
     ["import Splitter from '../common/Splitter.svelte';", 'const Splitter = ($$renderer, props) => $$renderer.push(`<div role="separator" aria-label="${props.ariaLabel}"></div>`);'],
   ]);

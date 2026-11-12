@@ -11,6 +11,7 @@ import {
   permissionView,
   planMarkdown,
   skippedToast,
+  switchToChatQuestion,
   switchToTerminalQuestion,
   tailBlocks,
   tailMessages,
@@ -760,4 +761,21 @@ test('Switch to terminal asks while the agent works, worded for switching', () =
     message: 'Codex is still working. Switching stops its turn.',
     choices: [{ value: 'switch', label: 'Switch', danger: true }],
   });
+});
+
+test('Switch to chat asks while a tab works or waits for an answer', () => {
+  assert.deepEqual(switchToChatQuestion('working', 'Codex'), {
+    title: 'Switch to chat?',
+    message: 'Codex is still working. Switching stops its turn.',
+    choices: [{ value: 'switch', label: 'Switch', danger: true }],
+  });
+  assert.deepEqual(switchToChatQuestion('needs', 'Codex'), {
+    title: 'Switch to chat?',
+    message: 'Codex is waiting for your answer. Switching discards it.',
+    choices: [{ value: 'switch', label: 'Switch', danger: true }],
+  });
+  assert.equal(switchToChatQuestion('idle', 'Codex'), null, 'nothing runs');
+  assert.equal(switchToChatQuestion('done', 'Codex'), null, 'its turn already finished');
+  assert.equal(switchToChatQuestion('exited', 'Codex'), null, 'the agent is gone');
+  assert.equal(switchToChatQuestion('', 'Codex'), null, 'nothing known says nothing runs');
 });

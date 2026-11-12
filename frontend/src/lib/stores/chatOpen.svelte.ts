@@ -8,7 +8,7 @@ import { appState } from './appState.svelte';
 import { chats, type Chat } from './chats.svelte';
 import { connectionStore } from './connection.svelte';
 import { link } from './link.svelte';
-import { terminals } from './terminals.svelte';
+import { terminals, type PanelTab } from './terminals.svelte';
 import { toast } from './toast.svelte';
 
 /**
@@ -165,6 +165,29 @@ export class ChatOpener {
       if (!isStaleReply(err)) toast.show({ title: 'Could not open the terminal', body: `${errorText(err, 'The terminal did not start.')} The session is saved; resume it from the session header.`, tone: 'error' });
       return false;
     }
+  }
+
+  /**
+   * Stops a terminal tab's agent and continues its session in a chat. Only
+   * the pane that runs the session goes: a split tab's siblings stay. The
+   * pane goes at once, so refuseChat lets the chat start. False when the
+   * tab has no saved session to continue.
+   */
+  async switchToChat(tab: PanelTab): Promise<boolean> {
+    const ref = tab.session;
+    if (!ref) return false;
+    // The question that asked before this was the caller's; no second
+    // confirm bar. A pane whose agent already exited just goes.
+    terminals.close(tab.id, true);
+    return this.openSession({
+      ref,
+      cwd: tab.cwd || tab.dir || '',
+      title: tab.label,
+      createdAt: '',
+      updatedAt: '',
+      counts: { user: 0, assistant: 0, toolCalls: 0 },
+      tokens: { input: 0, output: 0 },
+    });
   }
 
   /**

@@ -2,18 +2,22 @@
   import { onMount, tick } from 'svelte';
   import TerminalView from './TerminalView.svelte';
   import { api } from '../../api';
-  import { MAX_GROUP_PANES, terminals } from '../../stores/terminals.svelte';
+  import { MAX_GROUP_PANES, terminals, type PanelTab } from '../../stores/terminals.svelte';
   import { hostLabel } from '../../hosts';
   import { isMac } from '../../../main';
   import { newShellShortcutLabel, splitShortcutLabel } from '../../terminal';
+  import { switchToChatQuestion } from '../../chat';
+  import { ALL_AGENTS } from '../../portable';
   import ContextMenu from '../common/ContextMenu.svelte';
   import Splitter from '../common/Splitter.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
   import AttentionDot from '../common/AttentionDot.svelte';
   import { attentionLabel } from '../../alerts';
-  import { TAB_CLOSE_ACTIONS, tabMoveShortcut, tabsToClose } from '../../tabActions';
+  import { TAB_CLOSE_ACTIONS, switchToChatItem, tabMoveShortcut, tabsToClose } from '../../tabActions';
   import { TabDrag, keepingFocus, revealTab, scrollSideways } from '../../tabDrag.svelte';
   import { appState } from '../../stores/appState.svelte';
+  import { chatOpen } from '../../stores/chatOpen.svelte';
+  import { filePrompt } from '../../stores/filePrompt.svelte';
   import { link } from '../../stores/link.svelte';
   import type { ContextMenuItem } from '../common/ContextMenu.svelte';
 
@@ -88,7 +92,11 @@
         if (session) void appState.selectSession(session, 'push');
       },
     };
-    return [splitItem, show, ...close];
+    // Switching goes to this pane's session, so it takes the same
+    // session's view of what is known and where the tab runs.
+    const agent = session?.agent ?? tab.agent;
+    const chatItem = agent ? switchToChatItem(tab, link.dataHost ?? '', chatOpen.canChat(agent), chatOpen.opening) : null;
+    return [splitItem, show, ...(chatItem ? [{ ...chatItem, onSelect: () => void switchToChat(tab) }] : []), ...close];
   });
 
   interface Props {
@@ -106,6 +114,15 @@
 
   function splitTitle(id: string | null): string {
     return id && !terminals.canSplit(id) ? `A tab holds up to ${MAX_GROUP_PANES} terminals` : `Split terminal (${splitShortcutLabel(isMac)})`;
+  }
+
+  // Switching to a chat ends the tab's agent — a working turn with it, or
+  // an answer it waits for: ask first while it works or waits.
+  async function switchToChat(tab: PanelTab): Promise<void> {
+    const agentName = ALL_AGENTS.find((a) => a.id === (tab.session?.agent ?? tab.agent))?.label ?? 'The agent';
+    const question = switchToChatQuestion(terminals.attention[tab.id] ?? 'idle', agentName);
+    if (question && (await filePrompt.ask(question.title, question.message, question.choices)) !== 'switch') return;
+    await chatOpen.switchToChat(tab);
   }
 
   // Files dropped on the panel go to the pane under the drop point. Those

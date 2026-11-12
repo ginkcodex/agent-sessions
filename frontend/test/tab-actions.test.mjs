@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dropIndex, gapAt, tabMoveShortcut, tabShortcut, tabsToClose } from '../src/lib/tabActions.ts';
+import { dropIndex, gapAt, switchToChatItem, tabMoveShortcut, tabShortcut, tabsToClose } from '../src/lib/tabActions.ts';
 
 test('tab close actions use the clicked tab and preserve tab order', () => {
   const ids = ['a', 'b', 'c', 'd'];
@@ -13,6 +13,29 @@ test('tab close actions use the clicked tab and preserve tab order', () => {
   assert.deepEqual(tabsToClose(['a'], 'a', 'others'), []);
   assert.deepEqual(tabsToClose(ids, 'missing', 'others'), []);
   assert.deepEqual(ids, ['a', 'b', 'c', 'd']);
+});
+
+test('Switch to chat hides when its agent cannot chat, and reads as Show Transcript when disabled', () => {
+  const tab = { session: { agent: 'codex', id: 's1' }, host: '' };
+  assert.equal(switchToChatItem(tab, '', false, false), null, 'no chat here at all');
+
+  assert.deepEqual(switchToChatItem(tab, '', true, false), {
+    label: 'Switch to chat',
+    disabled: false,
+    title: 'End this terminal and continue the session in a chat',
+  });
+
+  const unsaved = switchToChatItem({ host: '' }, '', true, false);
+  assert.equal(unsaved.disabled, true);
+  assert.equal(unsaved.title, 'The session appears once the agent saves it, usually after the first prompt');
+
+  const elsewhere = switchToChatItem({ session: { agent: 'codex', id: 's1' }, host: 'wsl:Ubuntu' }, '', true, false);
+  assert.equal(elsewhere.disabled, true, "another host's session");
+  assert.match(elsewhere.title, /^Switch to .+ to see this session$/);
+
+  const opening = switchToChatItem(tab, '', true, true);
+  assert.equal(opening.disabled, true);
+  assert.equal(opening.title, 'A chat is starting…');
 });
 
 test('tab shortcut reads Cmd+1–9 on macOS and Ctrl+1–9 elsewhere', () => {

@@ -1,6 +1,7 @@
 // The composer's End chat menu in a DOM: the two items, End the chat as
 // always, and Switch to terminal, which stops the chat and continues the
-// session in a terminal tab. Plus the switch sequence in the opener.
+// session in a terminal tab. Plus the opener's switch sequences, either
+// direction: to a terminal, and from a terminal pane to a chat.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -267,5 +268,76 @@ test('a failed close keeps the chat; a failed resume says so and leaves the sess
     assert.equal(toasts[0].title, 'Could not open the terminal');
     assert.match(toasts[0].body, /no pty/);
     assert.match(toasts[0].body, /The session is saved/);
+  });
+});
+
+// --- The switch to a chat in the opener -------------------------------------
+
+const TAB = {
+  id: 'tab-7', label: 'Fix CI', host: '', kind: 'agent', dir: '/p', cwd: '/wip',
+  session: { agent: 'codex', id: 's1' }, status: 'running', exitCode: null,
+};
+const paneTab = (fields = {}) => ({ ...TAB, ...fields });
+
+function chatSwitchFixture(extra = {}) {
+  return {
+    chats: {
+      forSession: () => undefined,
+      start: async (req) => calls.push(['start', req]),
+    },
+    terminals: {
+      close: (id, confirmed) => calls.push(['pane', id, confirmed]),
+      tabFor: () => undefined,
+    },
+    ...extra,
+  };
+}
+
+test('switching to a chat ends the pane and continues the session in a chat', async () => {
+  await withOpener(chatSwitchFixture(), async ({ opener }) => {
+    assert.equal(await opener.switchToChat(paneTab()), true);
+    assert.deepEqual(calls, [
+      ['pane', 'tab-7', true],
+      ['start', { agent: 'codex', dir: '/wip', resume: { agent: 'codex', id: 's1' }, questions: true }],
+    ], "only the session's pane goes, then the chat continues the session");
+  });
+  await withOpener(chatSwitchFixture(), async ({ opener }) => {
+    assert.equal(await opener.switchToChat(paneTab({ session: undefined })), false, 'nothing to continue');
+    assert.deepEqual(calls, [], 'the pane stays');
+  });
+});
+
+test('a failed chat start leaves the pane gone and the session saved', async () => {
+  const failing = chatSwitchFixture({ chats: { forSession: () => undefined, start: async () => { throw new Error('codex-acp was not found'); } } });
+  await withOpener(failing, async ({ opener, toasts }) => {
+    assert.equal(await opener.switchToChat(paneTab()), false);
+    assert.deepEqual(calls, [['pane', 'tab-7', true]], 'the pane still went');
+    assert.equal(toasts[0].title, 'Could not start the chat');
+    assert.match(toasts[0].body, /codex-acp was not found/);
+  });
+});
+
+test('a session Codex still holds offers Try again, which starts the chat', async () => {
+  let refusals = 1;
+  const held = chatSwitchFixture({
+    chats: {
+      forSession: () => undefined,
+      start: async (req) => {
+        if (refusals-- > 0) throw new Error('the session is open in another Codex client: its CLI, app or IDE extension, or one that closed it in the last minute. Close it there, or try again in a minute');
+        calls.push(['start', req]);
+      },
+    },
+  });
+  await withOpener(held, async ({ opener, toasts }) => {
+    assert.equal(await opener.switchToChat(paneTab()), false);
+    const shown = toasts.at(-1);
+    assert.equal(shown.title, 'Codex is still using this session');
+    assert.equal(shown.actions[0].label, 'Try again');
+    shown.actions[0].onSelect();
+    await settle();
+    assert.deepEqual(calls, [
+      ['pane', 'tab-7', true],
+      ['start', { agent: 'codex', dir: '/wip', resume: { agent: 'codex', id: 's1' }, questions: true }],
+    ], 'the retry continues the session in the chat');
   });
 });
