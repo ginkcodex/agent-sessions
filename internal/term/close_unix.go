@@ -5,7 +5,6 @@ package term
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"syscall"
 	"time"
 
@@ -70,11 +69,4 @@ func stateCode(state *os.ProcessState) int {
 		return 128 + int(ws.Signal())
 	}
 	return state.ExitCode()
-}
-
-// detachShell runs cmd in its own session, without a controlling terminal,
-// so an interactive shell cannot take over the one the app was started
-// from.
-func detachShell(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }

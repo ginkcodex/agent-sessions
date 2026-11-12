@@ -12,6 +12,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/configfile"
 	"github.com/ginkcode/agent-sessions/internal/launch"
+	"github.com/ginkcode/agent-sessions/internal/loginenv"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/remote"
@@ -60,7 +61,7 @@ func defaultPanelSystem() panelSystem {
 		agentArgv: launch.PanelArgv,
 		shellArgv: launch.PanelShellArgv,
 		wslBinary: launch.WSLBinary,
-		env:       term.LoginEnv,
+		env:       loginenv.Env,
 		home:      os.UserHomeDir,
 		dropFiles: remote.DropFiles,
 	}

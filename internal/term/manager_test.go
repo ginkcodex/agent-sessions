@@ -362,24 +362,3 @@ func TestCloseAll(t *testing.T) {
 		t.Fatalf("Start after CloseAll = %v, want ErrClosed", err)
 	}
 }
-
-func TestParseEnv(t *testing.T) {
-	out := []byte("motd from .bashrc\n" + envMarker + "\nA=1\x00B=two\nlines\x00junk\x00=x\x00")
-	got := parseEnv(out)
-	want := []string{"A=1", "B=two\nlines"}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("parseEnv = %q, want %q", got, want)
-	}
-	if parseEnv([]byte("A=1\x00")) != nil {
-		t.Fatal("output without the marker should be ignored")
-	}
-}
-
-func TestReadLoginEnv(t *testing.T) {
-	if env := readLoginEnv("/bin/sh", 5*time.Second); len(env) == 0 {
-		t.Fatal("no environment from /bin/sh")
-	}
-	if env := readLoginEnv("/no/such/shell", time.Second); env != nil {
-		t.Fatalf("env from a missing shell: %q", env)
-	}
-}

@@ -3,19 +3,17 @@
 package engine
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/loginenv"
 )
 
 const loginPathMarker = "__AGENT_SESSIONS_LOGIN_PATH__"
@@ -37,7 +35,7 @@ var loginShellPath = func(home string) []string {
 }
 
 func readLoginShellPath(home string) []string {
-	shell := userShell()
+	shell := loginenv.Shell()
 	if shell == "" || !filepath.IsAbs(home) {
 		return nil
 	}
@@ -77,29 +75,6 @@ func readLoginShellPath(home string) []string {
 		}
 	}
 	return dirs
-}
-
-// userShell is $SHELL, else the account's shell from /etc/passwd, else the
-// platform default.
-func userShell() string {
-	if s := os.Getenv("SHELL"); filepath.IsAbs(s) {
-		return s
-	}
-	if f, err := os.Open("/etc/passwd"); err == nil {
-		defer func() { _ = f.Close() }()
-		uid := strconv.Itoa(os.Getuid())
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			fields := strings.Split(sc.Text(), ":")
-			if len(fields) == 7 && fields[2] == uid && filepath.IsAbs(fields[6]) {
-				return fields[6]
-			}
-		}
-	}
-	if runtime.GOOS == "darwin" {
-		return "/bin/zsh"
-	}
-	return "/bin/sh"
 }
 
 type limitedBuffer struct{ buf bytes.Buffer }
