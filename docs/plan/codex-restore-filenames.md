@@ -39,3 +39,20 @@ Go restore tests for canonical names, stable previews and copies; Python tests
 for preview/no mutation, contents/index updates/backups, idempotence and unsafe
 inputs/failure handling. Document exact repair commands for the reported Mac
 root. Actual Mac resume remains a manual check after the repair is applied.
+
+## In-app recovery (CRF-03 through CRF-05)
+
+End users should see a repair notice only on a Codex session with the exact
+legacy rollout-restored-<its-id>.jsonl basename. The notice explains the old
+import issue and that a backup will be made, then offers Repair session.
+Run a native Go repair on the active data host with no Python dependency;
+never route an unsupported remote repair to the local filesystem. Existing
+sessions in chats/terminals and native writer locks must prevent a repair.
+
+The backend derives the path from the host catalog, validates the session ID,
+backs up history/indexes, creates a canonical same-file link, updates native
+SQLite/JSON index references, then drops the old name. Partial failures keep
+both paths valid for a retry. Refuse symlinks, aliases, conflicting targets
+and unsafe index references. Refresh through normal scan/index notifications.
+The UI holds session/host identity across awaits and shows actionable failures.
+Real user repair is not run during implementation.

@@ -79,6 +79,7 @@ func (a *App) ConnectionState() ConnectionState {
 		local := a.localBackend()
 		_, state.Capabilities.AgentSettings = local.(engine.AgentSettingsBackend)
 		_, state.Capabilities.RenameSession = local.(engine.RenameSessionBackend)
+		_, state.Capabilities.RepairCodexSession = local.(engine.CodexRepairBackend)
 		_, state.Capabilities.GitHistory = local.(engine.GitHistoryBackend)
 		_, state.Capabilities.GitHistoryActions = local.(engine.GitHistoryActionsBackend)
 		_, state.Capabilities.GitHistoryCompare = local.(engine.GitHistoryCompareBackend)

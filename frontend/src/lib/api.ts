@@ -1,3 +1,4 @@
+import type { CodexRepairResult } from './codexRepair';
 import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsRun, CodeDiagnosticsAttachment, CodeDiagnosticsSnapshot, CodeDiagnosticsAck, CodeDiagnosticsRuns, CodeDiagnosticsDocumentReceipt, CodeDiagnosticPosition, CodeNavigationOp, CodeNavigationResult } from './codeDiagnostics';
 import { CodeDiagnosticsError, codeDiagnosticsError } from './codeDiagnostics';
 import { GitSyncError, gitSyncError } from './gitSync';
@@ -308,6 +309,7 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   setAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
   setPrunePromptHistory(prune: boolean): Promise<ManageSettings>;
   renameSession(ref: SessionRef, title: string): Promise<void>;
+ repairCodexSession(ref: SessionRef): Promise<CodexRepairResult>;
   previewDelete(refs: SessionRef[]): Promise<DeletePreview>;
   deleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult>;
   buildHandoff(req: HandoffRequest): Promise<HandoffPreview>;
@@ -484,6 +486,7 @@ export interface WailsAppBinding {
   SetAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
   SetPrunePromptHistory(prune: boolean): Promise<ManageSettings>;
   RenameSession?(ref: SessionRef, title: string): Promise<void>;
+ RepairCodexSession?(ref: SessionRef): Promise<CodexRepairResult>;
   PreviewDelete(refs: SessionRef[]): Promise<DeletePreview>;
   DeleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult>;
   BuildHandoff(req: HandoffRequest): Promise<HandoffPreview>;
@@ -1449,6 +1452,13 @@ class WailsBackendAPI implements BackendAPI {
     } catch (e) {
       throw normalizeError(e);
     }
+  }
+
+  async repairCodexSession(ref: SessionRef): Promise<CodexRepairResult> {
+    try {
+      if (!this.binding.RepairCodexSession) throw new Error('Update the app or connected host to repair this session.');
+      return await this.binding.RepairCodexSession(ref);
+    } catch (e) { throw normalizeError(e); }
   }
 
   async renameSession(ref: SessionRef, title: string): Promise<void> {

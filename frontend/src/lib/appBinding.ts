@@ -132,6 +132,7 @@ export const APP_METHODS = [
   'RemoveWorkspace',
   'RenameFile',
   'RenameSession',
+  'RepairCodexSession',
   'ReplaceInFiles',
   'ResolveTerminalFile',
   'RestartApp',

@@ -5,10 +5,35 @@ it with `does not have a canonical rollout filename`. Earlier app versions
 restored it as `rollout-restored-<uuid>.jsonl`. Codex's paginated history reader
 requires `rollout-YYYY-MM-DDTHH-MM-SS-<uuid>.jsonl`.
 
-The restore fix prevents new occurrences. Existing files need the repair below;
-a client rebuild alone does not rename them.
+The restore fix prevents new occurrences. Only sessions imported or restored
+under the old filename scheme are affected by this issue; sessions created
+normally by Codex retain canonical filenames. Existing files are not silently
+changed by an upgrade: use the in-app action below.
 
-## Preview on the affected Mac or Linux machine
+## Repair in the app (recommended)
+
+1. Open the affected session in Agent Sessions.
+2. Its header shows **This imported session needs a repair**. Select
+   **Repair session**.
+3. After **Session repaired**, resume the session in chat or a terminal.
+
+The action keeps the conversation unchanged and makes a private backup of
+the session and native indexes. The success notification shows the backup
+folder. The notice disappears after the saved path refreshes. No script,
+Python installation, or command-line steps are needed.
+
+If the session is open in a chat or terminal, close that session before
+repairing. If Codex still holds it open, wait briefly and retry. The app stays
+open during the repair. Other errors remain in the notice so users can retry
+without repeating an import.
+
+For SSH/WSL sessions, repair runs on the selected host. An older host displays
+an update message instead of repairing local files. This requires a build
+containing the native repair feature on the desktop and selected host.
+
+The optional standalone tool below remains available for support/offline recovery.
+
+## Optional offline preview on Mac or Linux
 
 Use Python 3.9+ and the script from this updated checkout. Run from the
 Agent Sessions repository directory. Preview does not apply a repair or make
@@ -83,3 +108,12 @@ use the real user's session history or credentials.
 
 See the [plan](plan/codex-restore-filenames.md) and
 [tasks](tasks/codex-restore-filenames/README.md) for test evidence and limits.
+
+The native in-app repair also has an opt-in no-inference integration test:
+
+```sh
+CODEX_ROLLOUT_TEST_BIN=/absolute/path/to/codex \
+  go test ./internal/manage -run TestRepairCodexSessionNativeResume -v
+```
+
+This uses the Go repair that ships in the app, not the Python utility.

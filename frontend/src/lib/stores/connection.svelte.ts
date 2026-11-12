@@ -32,6 +32,7 @@ import { endingChatsWarning } from '../closeConfirm';
 
 // Local always has every capability; the backend reports none for it.
 const LOCAL_CAPABILITIES: HostCapabilities = {
+  repairCodexSession: true,
   saveFile: true,
   blame: true,
   gitChanges: true,

@@ -261,6 +261,7 @@ export async function renderSessionHeader(fixture, props = {}) {
     ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
     ["import AgentIcon from '../common/AgentIcon.svelte';", 'const AgentIcon = () => {};'],
     ["import NavButtons from './NavButtons.svelte';", 'const NavButtons = () => {};'],
+    ["import CodexRepairNotice from './CodexRepairNotice.svelte';", 'const CodexRepairNotice = () => {};'],
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
     ["import { handoff } from '../../stores/handoff.svelte';", fixtureStore('handoff')],
     ["import { exporter } from '../../stores/export.svelte';", fixtureStore('exporter')],

@@ -1,3 +1,4 @@
+import type { CodexRepairResult } from '../codexRepair';
 import { MockCodeDiagnostics } from './codeDiagnostics';
 import { printPageSetup, type PrintPageSetup } from '../printPageSetup';
 import type { GitHistoryTarget, GitHistoryRepositoryList, GitHistoryRefList, GitHistoryListRequest, GitHistoryPage, GitHistoryCommitRequest, GitHistoryCommitDetail, GitHistoryDiffRequest, GitHistoryDiff, GitHistoryRefActionRequest, GitHistoryRefActionResult, GitHistoryCompareRequest, GitHistoryComparison, GitHistoryCompareDiffRequest, GitHistoryCompareDiff } from '../gitHistory';
@@ -739,6 +740,10 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       mime: 'text/plain',
       isBinary: false,
     };
+  }
+
+  async repairCodexSession(_ref: SessionRef): Promise<CodexRepairResult> {
+    throw new Error('Session repair is unavailable in the browser mock. Use the desktop app.');
   }
 
   async renameSession(_ref: SessionRef, _title: string): Promise<void> {

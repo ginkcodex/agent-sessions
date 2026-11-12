@@ -12,6 +12,7 @@
   import AgentIcon from '../common/AgentIcon.svelte';
   import Icon from '../common/Icon.svelte';
   import NavButtons from './NavButtons.svelte';
+  import CodexRepairNotice from './CodexRepairNotice.svelte';
   import { link } from '../../stores/link.svelte';
   import { launcher } from '../../stores/launcher.svelte';
   import { preferences } from '../../stores/preferences.svelte';
@@ -182,6 +183,8 @@
       </button>
     </div>
   {/if}
+
+  <CodexRepairNotice {meta} disabledReason={liveChat ? 'Close this session’s chat before repairing it.' : runningTab ? 'Stop this session’s terminal before repairing it.' : ''} />
 
   <div class="header-top-row">
     <div class="header-badges">

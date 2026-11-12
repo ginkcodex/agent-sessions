@@ -85,4 +85,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Remote reconnect | [remote-reconnect](../plan/remote-reconnect.md) | [remote-reconnect/](remote-reconnect/README.md) | 8/8 ✅ |
 | Codex Guardian ancestry | [codex-guardian-ancestry](../plan/codex-guardian-ancestry.md) | [codex-guardian-ancestry/](codex-guardian-ancestry/README.md) | 1/1 ✅ |
 | Live filter for chat sessions | [chat-live-filter](../plan/chat-live-filter.md) | [chat-live-filter/](chat-live-filter/README.md) | 2/2 ✅ |
-| Codex restore filenames | [codex-restore-filenames](../plan/codex-restore-filenames.md) | [codex-restore-filenames/](codex-restore-filenames/README.md) | 2/2 ✅ |
+| Codex restore filenames | [codex-restore-filenames](../plan/codex-restore-filenames.md) | [codex-restore-filenames/](codex-restore-filenames/README.md) | 5/5 ✅ |
