@@ -12,7 +12,7 @@ const reasoning = await loadServerComponent(new URL('ReasoningPart.svelte', base
 ]);
 const tool = await loadServerComponent(new URL('ToolPart.svelte', base), [
   ["import { highlightCode } from '../../../highlight';", 'const highlightCode = text => { globalThis.__renderCalls++; return text; };'],
-  ["'../../../layout'", JSON.stringify(new URL('../src/lib/layout.ts', import.meta.url).href)],
+  ["'../../../toolPresentation'", JSON.stringify(new URL('../src/lib/toolPresentation.ts', import.meta.url).href)],
   ["import { api } from '../../../api';", 'const api = {};'],
   ["import SubagentLink from './SubagentLink.svelte';", 'const SubagentLink = () => {};'],
 ]);
