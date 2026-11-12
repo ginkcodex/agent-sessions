@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FONT_SIZES, ROOT_VARS, appearanceVars, applyRootVars, fontSize, sessionFontVar, stepSize } from '../src/lib/appearance.ts';
+import { FONT_SIZES, ROOT_VARS, appearanceVars, applyRootVars, fontSize, sessionFontVar, sessionMonoFontVar, stepSize } from '../src/lib/appearance.ts';
 import { SYSTEM_MONO_FONTS } from '../src/lib/terminalFont.ts';
 import { loadServerModule } from './helpers.mjs';
 
@@ -22,6 +22,13 @@ test('chosen fonts and sizes become root custom properties', () => {
   // Invalid values from anywhere still fall back to the default.
   assert.deepEqual(appearanceVars({ editorFont: 'bad\nfont', editorFontSize: 99, docsFontSize: Number.NaN }), {});
   assert.equal(sessionFontVar(30), undefined);
+});
+
+test('session content gets the editor font as its mono font only when asked', () => {
+  assert.equal(sessionMonoFontVar(false, 'Fira Code'), undefined);
+  assert.equal(sessionMonoFontVar(true, ''), undefined, 'no editor font chosen: the app default');
+  assert.equal(sessionMonoFontVar(true, 'bad\nfont'), undefined);
+  assert.equal(sessionMonoFontVar(true, 'Fira Code'), `"Fira Code", ${SYSTEM_MONO_FONTS}`);
 });
 
 test('sizes are kept to 0.5px within their range; anything else is the default', () => {
@@ -107,6 +114,26 @@ test('font preferences persist, validate and reset', async () => {
     assert.equal(restored.sessionFontSize, null);
     assert.equal(values.has('agent-sessions:session-font-size'), false);
     assert.equal(values.has('agent-sessions:editor-font'), false);
+  } finally { globalThis.localStorage = previous; }
+});
+
+test('the editor font for session content persists and resets', async () => {
+  const previous = globalThis.localStorage;
+  const values = new Map();
+  try {
+    const PreferencesStore = await storeWith(values);
+    const prefs = new PreferencesStore();
+    assert.equal(prefs.sessionUsesEditorFont, false);
+    prefs.setSessionUsesEditorFont(true);
+    assert.equal(values.get('agent-sessions:session-uses-editor-font'), 'on');
+    const restored = new PreferencesStore();
+    restored.init();
+    assert.equal(restored.sessionUsesEditorFont, true);
+    restored.setSessionUsesEditorFont(false);
+    assert.equal(values.has('agent-sessions:session-uses-editor-font'), false);
+    values.set('agent-sessions:session-uses-editor-font', 'garbage');
+    restored.init();
+    assert.equal(restored.sessionUsesEditorFont, false, 'anything but on is off');
   } finally { globalThis.localStorage = previous; }
 });
 

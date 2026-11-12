@@ -147,7 +147,7 @@ test('the live chat and the composer take the session text size', () => {
 test('a size change keeps a scrolled-up reader on the first visible message', () => {
   const source = readFileSync(VIEW_URL, 'utf8');
   // Taken before the new size renders, put back after; not while following.
-  assert.match(source, /\$effect\.pre\(\(\) => \{\s*void sessionFontSize;\s*untrack\(\(\) => \{\s*fontAnchor = containerEl && !following && !anchoredToBottom \? firstVisibleMessage\(containerEl\) : null;/);
+  assert.match(source, /\$effect\.pre\(\(\) => \{\s*void sessionFontSize; void sessionMonoFont;\s*untrack\(\(\) => \{\s*fontAnchor = containerEl && !following && !anchoredToBottom \? firstVisibleMessage\(containerEl\) : null;/);
   assert.match(source, /restoreMessage\(containerEl, anchor\);\s*lastScrollTop = containerEl\.scrollTop;/);
   // Following: the ResizeObserver keeps the end in view as the text grows.
   assert.match(source, /if \(anchoredToBottom \|\| following\) el\.scrollTop = el\.scrollHeight;/);

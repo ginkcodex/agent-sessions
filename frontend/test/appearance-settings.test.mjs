@@ -52,6 +52,17 @@ test('Appearance shows chosen values and disables steps at the limits', async ()
   assert.equal(stepper(top, 'Project docs text size').decrease, true);
 });
 
+test('Appearance offers the editor font for session content, off by default', async () => {
+  const off = await render({ editorFont: 'Fira Code' });
+  const box = (html) => html.match(/<input[^>]*type="checkbox"[^>]*>/)?.[0] ?? '';
+  assert.doesNotMatch(box(off), /checked/);
+  assert.match(off, /Use the editor font for code in session content/);
+  assert.doesNotMatch(tag(off, 'Session text preview'), /--font-mono/);
+  const on = await render({ editorFont: 'Fira Code', sessionUsesEditorFont: true });
+  assert.match(box(on), /checked/);
+  assert.match(tag(on, 'Session text preview'), /--font-mono: &quot;Fira Code&quot;|--font-mono: "Fira Code"/);
+});
+
 test('the type sample sizes every text from its body with the type scale', async () => {
   const { readFileSync } = await import('node:fs');
   const style = readFileSync(new URL('../src/lib/components/common/TypeSample.svelte', import.meta.url), 'utf8').match(/<style>([\s\S]*)<\/style>/)[1];

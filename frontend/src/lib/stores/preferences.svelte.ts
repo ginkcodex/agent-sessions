@@ -6,6 +6,7 @@ import { fontSize, type FontSizeKind } from '../appearance';
 
 const TERMINAL_FONT_KEY = 'agent-sessions:terminal-font';
 const EDITOR_FONT_KEY = 'agent-sessions:editor-font';
+const SESSION_EDITOR_FONT_KEY = 'agent-sessions:session-uses-editor-font';
 const FONT_SIZE_KEYS: Record<FontSizeKind, string> = {
   editor: 'agent-sessions:editor-font-size',
   docs: 'agent-sessions:docs-font-size',
@@ -47,6 +48,8 @@ export class PreferencesStore {
   // Font settings (Settings → Appearance); '' and null keep the app defaults.
   editorFont = $state('');
   editorFontSize = $state<number | null>(null);
+  // Session content's monospace text uses the editor font; off keeps the app's mono font.
+  sessionUsesEditorFont = $state(false);
   docsFontSize = $state<number | null>(null);
   sessionFontSize = $state<number | null>(null);
   // Like Zed, download a missing language server a project needs without a click.
@@ -98,6 +101,12 @@ export class PreferencesStore {
       if (isTerminalFont(font)) this.editorFont = font;
     } catch {
       // Storage disabled; keep the app default.
+    }
+
+    try {
+      this.sessionUsesEditorFont = localStorage.getItem(SESSION_EDITOR_FONT_KEY) === 'on';
+    } catch {
+      // Storage disabled; keep the app's mono font.
     }
 
     for (const kind of Object.keys(FONT_SIZE_KEYS) as FontSizeKind[]) {
@@ -193,6 +202,16 @@ export class PreferencesStore {
       else localStorage.removeItem(EDITOR_FONT_KEY);
     } catch {
       // Storage disabled; selection still applies for this run.
+    }
+  }
+
+  setSessionUsesEditorFont(on: boolean): void {
+    this.sessionUsesEditorFont = on;
+    try {
+      if (on) localStorage.setItem(SESSION_EDITOR_FONT_KEY, 'on');
+      else localStorage.removeItem(SESSION_EDITOR_FONT_KEY);
+    } catch {
+      // Storage disabled; the choice still applies for this run.
     }
   }
 
