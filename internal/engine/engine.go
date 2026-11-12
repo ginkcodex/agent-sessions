@@ -165,11 +165,12 @@ func NewEngine(opts ...Option) *Engine {
 		launch = e.ChatLaunch
 	}
 	e.chats = NewChatManager(ChatManagerOptions{
-		Launch:     launch,
-		Agents:     e.ChatAgents,
-		Refresh:    e.refreshAgent,
-		Emitter:    e.emitter,
-		ClientInfo: acp.Implementation{Name: "agent-sessions", Version: version.Version},
+		Launch:           launch,
+		Agents:           e.ChatAgents,
+		Refresh:          e.refreshAgent,
+		OwnershipChanged: func() { e.Events().NotifyFullRefresh() },
+		Emitter:          e.emitter,
+		ClientInfo:       acp.Implementation{Name: "agent-sessions", Version: version.Version},
 	})
 
 	if e.svc == nil {
@@ -197,6 +198,7 @@ func NewEngine(opts ...Option) *Engine {
 		}
 	}
 
+	e.svc.chatOwners = e.chats.owners
 	if e.roots.Data != "" && e.svc.dataDir == "" {
 		e.svc.SetDataDir(e.roots.Data)
 	}

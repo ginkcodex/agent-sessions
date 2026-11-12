@@ -255,9 +255,12 @@ type ChatManagerOptions struct {
 	// Agents reports adapter availability.
 	Agents func(ctx context.Context) ([]ChatAgent, error)
 	// Refresh asks for a rescan of the agent's sessions. It must not block.
-	Refresh    func(agent model.AgentID)
-	Emitter    Emitter
-	ClientInfo acp.Implementation
+	Refresh func(agent model.AgentID)
+	// OwnershipChanged refreshes catalog views after a chat opens or releases
+	// its sessions. Called without chat or ownership locks held.
+	OwnershipChanged func()
+	Emitter          Emitter
+	ClientInfo       acp.Implementation
 	// Grace is each shutdown step's wait (acp.ClientOptions.Grace).
 	Grace time.Duration
 
@@ -493,6 +496,9 @@ func (m *ChatManager) start(ctx context.Context, ch *chat, req ChatStartRequest)
 	ch.mu.Unlock()
 
 	st, _ := ch.state()
+	if m.opts.OwnershipChanged != nil {
+		m.opts.OwnershipChanged()
+	}
 	ch.emit(ChatUpdate{Kind: ChatStarted, State: &st})
 	go ch.watch(client)
 	return st, nil
@@ -525,6 +531,9 @@ func (m *ChatManager) release(ch *chat) {
 	}
 	m.mu.Unlock()
 	m.owners.release(ch.id)
+	if m.opts.OwnershipChanged != nil {
+		m.opts.OwnershipChanged()
+	}
 }
 
 // Prompt sends text and attachments as a new turn and returns once the

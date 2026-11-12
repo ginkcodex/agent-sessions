@@ -84,3 +84,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Arch Linux AUR package | [aur-package](../plan/aur-package.md) | [aur-package/](aur-package/README.md) | 4/7 ✅ · 3 🟡 |
 | Remote reconnect | [remote-reconnect](../plan/remote-reconnect.md) | [remote-reconnect/](remote-reconnect/README.md) | 8/8 ✅ |
 | Codex Guardian ancestry | [codex-guardian-ancestry](../plan/codex-guardian-ancestry.md) | [codex-guardian-ancestry/](codex-guardian-ancestry/README.md) | 1/1 ✅ |
+| Live filter for chat sessions | [chat-live-filter](../plan/chat-live-filter.md) | [chat-live-filter/](chat-live-filter/README.md) | 2/2 ✅ |

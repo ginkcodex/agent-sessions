@@ -110,3 +110,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Arch Linux AUR package | [aur-package](docs/plan/aur-package.md) | [aur-package/](docs/tasks/aur-package/README.md) | 4/7 ✅ · 3 🟡 |
 | Remote reconnect | [remote-reconnect](docs/plan/remote-reconnect.md) | [remote-reconnect/](docs/tasks/remote-reconnect/README.md) | 8/8 ✅ |
 | Codex Guardian ancestry | [codex-guardian-ancestry](docs/plan/codex-guardian-ancestry.md) | [codex-guardian-ancestry/](docs/tasks/codex-guardian-ancestry/README.md) | 1/1 ✅ |
+| Live filter for chat sessions | [chat-live-filter](docs/plan/chat-live-filter.md) | [chat-live-filter/](docs/tasks/chat-live-filter/README.md) | 2/2 ✅ |

@@ -77,6 +77,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [remote-reconnect.md](remote-reconnect.md) | [remote-reconnect](../tasks/remote-reconnect/README.md) | Faster recovery from interrupted SSH and WSL connections: liveness watchdog, fresh redial, bounded retries, same-host reload |
 | [terminal-cwd-matching.md](terminal-cwd-matching.md) | [terminal-cwd-matching](../tasks/terminal-cwd-matching/README.md) | Match shell workspaces by detected cwd while preserving agent identity and active equal matches |
 | [codex-guardian-ancestry.md](codex-guardian-ancestry.md) | [codex-guardian-ancestry](../tasks/codex-guardian-ancestry/README.md) | Link Guardian reviews to their main session for browsing, counts and cleanup |
+| [chat-live-filter.md](chat-live-filter.md) | [chat-live-filter](../tasks/chat-live-filter/README.md) | Include sessions running in chat in the Live filter |
 
 ## Supporting documents
 
