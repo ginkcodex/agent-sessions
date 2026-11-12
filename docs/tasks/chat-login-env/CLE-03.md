@@ -1,6 +1,6 @@
 # CLE-03 — Chats start in the login environment
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 1.5 h
 - **Depends on:** CLE-02
 - **Plan:** [chat-login-env.md](../../plan/chat-login-env.md)
@@ -35,3 +35,28 @@
 ## Tests
 
 - `go test ./internal/engine ./internal/acp`
+
+## Evidence
+
+- `Service.ChatLaunch` puts `envOverlay(os.Environ(), chatLoginEnv())` in
+  `acp.Command.Env`, reads the adapter CLI setting from the combined
+  environment, and builds PATH as adapter directories, login PATH, then
+  process-only directories, set once (`envSet`). `chatLoginEnv` is
+  `loginenv.Env`; engine `TestMain` sets it to `os.Environ`. The code
+  checks' duplicate `userShell` now calls `loginenv.Shell`.
+- `go test ./internal/engine ./internal/acp ./internal/app ./internal/loginenv ./internal/term`:
+  pass. New: `TestChatLaunchLoginEnv` (login PATH and a login-only
+  variable reach the adapter; adapter directory first, process-only
+  directory last, one PATH entry; unchanged and malformed entries not
+  added; a CLI path exported in the login environment is used without a
+  lookup; with no adapter directory the login PATH still applies) and
+  `TestEnvHelpers` (including Windows' case-insensitive `Path`). The
+  existing `TestChatLaunch*` tests pass unchanged, so with the login
+  environment equal to the process's the command is as before.
+- `go build ./...` for Linux, macOS and Windows; `go vet` for Linux and
+  Windows; `golangci-lint` reports nothing in the touched files.
+- On the reporting machine, a throwaway program calling `loginenv.Env()`,
+  started as the WSL server is (clean environment, `bash -lc`, no
+  `$SHELL`): the process PATH had 0 mise install directories, the login
+  environment 9, with the shell taken from `/etc/passwd`.
+- Not checked: a chat in the desktop app (CLE-04).

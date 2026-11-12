@@ -291,6 +291,94 @@ func TestChatLaunchPrependsInstallDirs(t *testing.T) {
 	}
 }
 
+// The adapter starts in the login shell's environment, as a terminal tab's
+// agent would: a version manager's PATH from ~/.bashrc reaches it.
+func TestChatLaunchLoginEnv(t *testing.T) {
+	svc, dir := chatService(t)
+	sep := string(os.PathListSeparator)
+	join := func(dirs ...string) string {
+		for i, d := range dirs {
+			dirs[i] = filepath.FromSlash(d)
+		}
+		return strings.Join(dirs, sep)
+	}
+	mise := "/home/me/.local/share/mise/installs/node/22/bin"
+	t.Setenv("PATH", join("/usr/bin", "/proc/only"))
+	t.Setenv("KEEP", "1")
+	t.Setenv("FAKE_CLI", "")
+	login := []string{"PATH=" + join(mise, "/usr/bin"), "AS_TEST_LOGIN_ONLY=bash", "KEEP=1", "junk", "=x"}
+	chatLoginEnv = func() []string { return slices.Clone(login) }
+	t.Cleanup(func() { chatLoginEnv = os.Environ })
+	nvm := filepath.FromSlash("/home/me/.nvm/versions/node/v22/bin")
+	stubFind(t, map[string]launch.Executable{
+		"fake-acp": {Path: filepath.Join(nvm, "fake-acp")},
+		"fake":     {Path: filepath.FromSlash("/usr/bin/fake"), OnPath: true},
+	})
+	launchEnv := func() []string {
+		t.Helper()
+		cmd, err := svc.ChatLaunch(model.AgentClaude, dir, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := len(slices.DeleteFunc(slices.Clone(cmd.Env), func(kv string) bool { return !strings.HasPrefix(kv, "PATH=") })); n != 1 {
+			t.Fatalf("%d PATH entries: %q", n, cmd.Env)
+		}
+		return cmd.Env
+	}
+
+	// The adapter's directory, then the login PATH, then what only this
+	// process has.
+	env := launchEnv()
+	if v, _ := envValue(env, "PATH"); v != join(nvm, mise, "/usr/bin", "/proc/only") {
+		t.Fatalf("PATH = %q", v)
+	}
+	if v, _ := envValue(env, "AS_TEST_LOGIN_ONLY"); v != "bash" {
+		t.Fatalf("env = %q", env)
+	}
+	// Unchanged variables are not repeated; malformed entries are dropped.
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "KEEP=") || kv == "junk" || kv == "=x" {
+			t.Fatalf("env = %q", env)
+		}
+	}
+	if v, _ := envValue(env, "FAKE_CLI"); v != filepath.FromSlash("/usr/bin/fake") {
+		t.Fatalf("env = %q", env)
+	}
+
+	// A CLI path exported in the startup files is the user's own setting.
+	login = append(login, "FAKE_CLI=/login/fake")
+	looked := stubFind(t, map[string]launch.Executable{"fake-acp": {Path: filepath.FromSlash("/usr/bin/fake-acp"), OnPath: true}})
+	env = launchEnv()
+	if v, _ := envValue(env, "FAKE_CLI"); v != "/login/fake" || slices.Contains(*looked, "fake") {
+		t.Fatalf("env = %q, looked up %q", env, *looked)
+	}
+	// No adapter directory: the login PATH still replaces this process's.
+	if v, _ := envValue(env, "PATH"); v != join(mise, "/usr/bin", "/proc/only") {
+		t.Fatalf("PATH = %q", v)
+	}
+}
+
+func TestEnvHelpers(t *testing.T) {
+	over := envOverlay([]string{"A=1", "B=2", "B=3"}, []string{"A=1", "B=2", "C=", "D"})
+	if !slices.Equal(over, []string{"B=2", "C="}) {
+		t.Fatalf("overlay = %q", over)
+	}
+	if v := envLookup([]string{"A=1", "A=2"}, "A"); v != "2" {
+		t.Fatal(v)
+	}
+	if got := envSet([]string{"PATH=a", "X=1", "PATH=b"}, "PATH", "c"); !slices.Equal(got, []string{"X=1", "PATH=c"}) {
+		t.Fatal(got)
+	}
+	if runtime.GOOS == "windows" {
+		if v := envLookup([]string{"Path=w"}, "PATH"); v != "w" {
+			t.Fatal(v)
+		}
+		if got := envSet([]string{"Path=w"}, "PATH", "c"); !slices.Equal(got, []string{"PATH=c"}) {
+			t.Fatal(got)
+		}
+	}
+}
+
 func TestChatLaunchRefusals(t *testing.T) {
 	svc, dir := chatService(t)
 	stubFind(t, nil)

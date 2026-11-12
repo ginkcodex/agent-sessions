@@ -9,7 +9,8 @@ import (
 )
 
 // Tests never run the developer's login shell; the ones that need a login
-// PATH set loginShellPath themselves.
+// PATH set loginShellPath themselves, and chats start in the test's own
+// environment unless a test sets chatLoginEnv.
 //
 // Engines without a configured data directory log failed code checks to a
 // temporary one, never the developer's.
@@ -18,6 +19,7 @@ import (
 func TestMain(m *testing.M) {
 	acptest.Main()
 	loginShellPath = func(string) []string { return nil }
+	chatLoginEnv = os.Environ
 	logs, err := os.MkdirTemp("", "engine-check-logs-")
 	if err != nil {
 		panic(err)

@@ -56,7 +56,10 @@ The panel's local tabs use `loginenv.Env`, as they used `term.LoginEnv`.
 each login entry that is missing or different goes into `acp.Command.Env`,
 which `acp.Start` appends to the process environment (the last value of a
 key wins). The adapter's own directories still go first on PATH, now ahead
-of the login PATH. The user's own `CLAUDE_CODE_EXECUTABLE` or
+of the login PATH; directories only the process's PATH has follow at the
+end, so an adapter found there (and so not prepended) keeps its
+interpreter. Variable names compare as the platform does (without case on
+Windows, where the login environment is the process's own anyway). The user's own `CLAUDE_CODE_EXECUTABLE` or
 `CODEX_PATH` setting is looked up in the combined environment, so a
 value exported from `~/.bashrc` counts too. The Codex daemon bridge
 settings are applied last, as today.

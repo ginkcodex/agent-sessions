@@ -96,4 +96,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Codex restore filenames | [codex-restore-filenames](../plan/codex-restore-filenames.md) | [codex-restore-filenames/](codex-restore-filenames/README.md) | 6/6 ✅ |
 | Chat option dropdowns | [chat-options-dropdown](../plan/chat-options-dropdown.md) | [chat-options-dropdown/](chat-options-dropdown/README.md) | 2/4 ✅ · 2 ⬜ |
 | Workspace filter release | [workspace-filter-release](../plan/workspace-filter-release.md) | [workspace-filter-release/](workspace-filter-release/README.md) | 2/3 ✅ · 1 ⬜ |
-| Chat login environment | [chat-login-env](../plan/chat-login-env.md) | [chat-login-env/](chat-login-env/README.md) | 2/4 ✅ · 2 ⬜ |
+| Chat login environment | [chat-login-env](../plan/chat-login-env.md) | [chat-login-env/](chat-login-env/README.md) | 3/4 ✅ · 1 ⬜ |

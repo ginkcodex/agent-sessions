@@ -14,6 +14,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/acp"
 	"github.com/ginkcode/agent-sessions/internal/codexbridge"
 	"github.com/ginkcode/agent-sessions/internal/launch"
+	"github.com/ginkcode/agent-sessions/internal/loginenv"
 	mt "github.com/ginkcode/agent-sessions/internal/managedtools"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
@@ -159,6 +160,17 @@ func (s *Service) ChatLaunch(agent model.AgentID, dir string, overrides ChatAdap
 	}
 	cmd := acp.Command{Argv: append(slices.Clone(exe.argv), a.Args...), Dir: dir}
 
+	// An agent in a terminal tab runs in the user's interactive login shell.
+	// This process may not: an app started from a desktop menu read no shell
+	// startup files, and a WSL or SSH host's server runs under a
+	// non-interactive shell, which skips the ~/.bashrc that activates version
+	// managers such as mise or nvm. The adapter, and every command the agent
+	// runs, gets the login shell's environment over this one's.
+	procEnv := os.Environ()
+	loginEnv := chatLoginEnv()
+	cmd.Env = envOverlay(procEnv, loginEnv)
+	getenv := func(key string) string { return envLookup(append(procEnv, cmd.Env...), key) }
+
 	// An app started from a desktop menu may lack the PATH entries that hold
 	// the adapter and its interpreter (an npm package run by node, which nvm
 	// keeps beside it), so their directories go first. A managed adapter runs
@@ -168,7 +180,7 @@ func (s *Service) ChatLaunch(agent model.AgentID, dir string, overrides ChatAdap
 		dirs = append(dirs, exe.dir)
 	}
 	if a.CLIEnv != "" {
-		cli := os.Getenv(a.CLIEnv) // the user's own setting wins
+		cli := getenv(a.CLIEnv) // the user's own setting wins
 		set := false
 		if cli == "" {
 			if argv := prov.NewSessionCommand(dir).Argv; len(argv) > 0 {
@@ -186,13 +198,77 @@ func (s *Service) ChatLaunch(agent model.AgentID, dir string, overrides ChatAdap
 			cmd.Env = append(cmd.Env, a.CLIEnv+"="+cli)
 		}
 	}
-	if len(dirs) > 0 {
-		if p := os.Getenv("PATH"); p != "" {
-			dirs = append(dirs, p)
+	// The login PATH follows; directories only this process has stay
+	// reachable at the end (an adapter found there is not prepended).
+	procPath, loginPath := envLookup(procEnv, "PATH"), envLookup(loginEnv, "PATH")
+	if len(dirs) > 0 || (loginPath != "" && loginPath != procPath) {
+		if loginPath != "" {
+			dirs = append(dirs, loginPath)
 		}
-		cmd.Env = append(cmd.Env, "PATH="+strings.Join(dirs, string(os.PathListSeparator)))
+		login := filepath.SplitList(loginPath)
+		for _, d := range filepath.SplitList(procPath) {
+			if d != "" && !slices.Contains(login, d) && !slices.Contains(dirs, d) {
+				dirs = append(dirs, d)
+			}
+		}
+		cmd.Env = envSet(cmd.Env, "PATH", strings.Join(dirs, string(os.PathListSeparator)))
 	}
 	return cmd, nil
+}
+
+// chatLoginEnv is the environment of the user's interactive login shell on
+// this host; tests replace it.
+var chatLoginEnv = loginenv.Env
+
+// envOverlay returns the entries of over that base lacks or has with
+// another value, in order: appended to base, they give over's values.
+func envOverlay(base, over []string) []string {
+	have := map[string]string{}
+	for _, kv := range base {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			have[envKey(k)] = v
+		}
+	}
+	var out []string
+	for _, kv := range over {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || k == "" {
+			continue
+		}
+		if old, found := have[envKey(k)]; !found || old != v {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+// envLookup returns key's value in env, the last one when it repeats, as
+// exec uses it.
+func envLookup(env []string, key string) string {
+	for _, kv := range slices.Backward(env) {
+		if k, v, ok := strings.Cut(kv, "="); ok && envKey(k) == envKey(key) {
+			return v
+		}
+	}
+	return ""
+}
+
+// envSet returns env with key set to value, replacing any entries for it.
+func envSet(env []string, key, value string) []string {
+	env = slices.DeleteFunc(env, func(kv string) bool {
+		k, _, ok := strings.Cut(kv, "=")
+		return ok && envKey(k) == envKey(key)
+	})
+	return append(env, key+"="+value)
+}
+
+// envKey is how the platform compares variable names: Windows ignores case
+// ("Path" is PATH).
+func envKey(k string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToUpper(k)
+	}
+	return k
 }
 
 // selfExecutable is this program, which runs the Codex daemon bridge.
