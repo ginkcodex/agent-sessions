@@ -1,8 +1,9 @@
 <script lang="ts">
-  // Where an agent tab stands: working pulses in the accent colour, needing
+  // Where an agent tab stands: working blinks in the accent colour, needing
   // the user is amber, finished is green. Other states show nothing.
   import type { AgentAttention } from '../../attention';
   import { attentionLabel } from '../../alerts';
+  import { blinkWhenVisible } from '../../animationVisibility';
 
   interface Props {
     state: AgentAttention | null | undefined;
@@ -19,6 +20,7 @@
 {#if label}
   <span
     class="attention-dot {state}"
+    use:blinkWhenVisible={state === 'working'}
     style="--dot-size: {size}px"
     title={label}
     role={announce ? 'img' : undefined}
@@ -35,9 +37,15 @@
     border-radius: 50%;
   }
 
+  /* Working blinks in discrete steps (blinkWhenVisible), not with a CSS
+     pulse: an endless opacity animation keeps macOS recompositing the whole
+     window at the display rate. No transition, for the same reason. */
   .working {
     background: var(--accent-color);
-    animation: attention-pulse 1.6s infinite ease-in-out;
+  }
+
+  .working:global([data-dim]) {
+    opacity: 0.45;
   }
 
   .needs {
@@ -47,21 +55,5 @@
 
   .done {
     background: var(--status-live);
-  }
-
-  @keyframes attention-pulse {
-    0%,
-    100% {
-      opacity: 0.45;
-    }
-    50% {
-      opacity: 1;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .working {
-      animation: none;
-    }
   }
 </style>

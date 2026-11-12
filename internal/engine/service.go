@@ -59,6 +59,7 @@ type Service struct {
 	searchTexts *LRU[string, *sessionSearchText]
 	bundles     *LRU[string, *bundle.Bundle]
 	dataDir     string
+	chatOwners  *chatOwners
 }
 
 // NewService wires a Service onto an existing catalog and provider set.
@@ -76,6 +77,7 @@ func NewService(catalog *scan.Catalog, providers provider.Set) *Service {
 		transcripts: newTranscriptCache(transcriptLRUCapacity, transcriptByteBudget, transcriptBackgroundBudget),
 		searchTexts: NewLRU[string, *sessionSearchText](sessionSearchCacheSize),
 		bundles:     NewLRU[string, *bundle.Bundle](8),
+		chatOwners:  processChatOwners,
 	}
 }
 
@@ -125,7 +127,7 @@ func (s *Service) ApplyReport(report scan.Report) {
 
 // ListGroups returns the grouped navigation tree for the filtered snapshot.
 func (s *Service) ListGroups(mode GroupMode, filter FilterOpts) ([]GroupNode, error) {
-	sessions := filterSessions(s.catalog.All(), filter)
+	sessions := filterSessions(s.sessionSnapshot(), filter)
 	nodes := buildGroupNodes(sessions, mode)
 	if mode != GroupModeAgentDir && mode != GroupModeFlat {
 		nodes = s.workspaceGroupNodes(nodes, filter)
@@ -139,7 +141,7 @@ func (s *Service) ListGroups(mode GroupMode, filter FilterOpts) ([]GroupNode, er
 func (s *Service) AgentCounts(filter FilterOpts) (map[string]int, error) {
 	filter.Agent = ""
 	counts := make(map[string]int)
-	for _, m := range filterSessions(s.catalog.All(), filter) {
+	for _, m := range filterSessions(s.sessionSnapshot(), filter) {
 		counts[string(m.Ref.Agent)]++
 	}
 	return counts, nil
@@ -148,7 +150,7 @@ func (s *Service) AgentCounts(filter FilterOpts) (map[string]int, error) {
 // ListSessions returns session metadata for one group (or every session when
 // groupKey is empty), filtered and sorted for the session list pane.
 func (s *Service) ListSessions(groupKey string, filter FilterOpts, sortOpts SortOpts) ([]model.SessionMeta, error) {
-	sessions := filterSessions(s.catalog.All(), filter)
+	sessions := filterSessions(s.sessionSnapshot(), filter)
 	if groupKey == "" {
 		sortSessions(sessions, sortOpts)
 		return sessions, nil
@@ -180,7 +182,25 @@ func (s *Service) GetSessionMeta(ref model.SessionRef) (model.SessionMeta, error
 	if !ok {
 		return model.SessionMeta{}, fmt.Errorf("%w: %s", ErrUnknownSession, ref.Key())
 	}
-	return m, nil
+	return s.withChatLive(m), nil
+}
+
+// Chat liveness is a read overlay, never persisted or overwritten by scans.
+func (s *Service) withChatLive(m model.SessionMeta) model.SessionMeta {
+	if s.chatOwners != nil {
+		if _, owned := s.chatOwners.owner(m.Ref); owned {
+			m.Live = true
+		}
+	}
+	return m
+}
+
+func (s *Service) sessionSnapshot() []model.SessionMeta {
+	sessions := s.catalog.All()
+	for i := range sessions {
+		sessions[i] = s.withChatLive(sessions[i])
+	}
+	return sessions
 }
 
 // GetMessages returns one page of a session transcript.
@@ -336,15 +356,25 @@ func (s *Service) NewSessionLaunch(agent model.AgentID, dir string) (provider.Co
 	if !ok {
 		return provider.Command{}, fmt.Errorf("%w: %s", ErrUnknownProvider, agent)
 	}
-	if !s.knownDirectory(dir) {
-		return provider.Command{}, fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
-	}
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		return provider.Command{}, fmt.Errorf("the project directory %s no longer exists", dir)
+	if err := s.checkLaunchDir(dir); err != nil {
+		return provider.Command{}, err
 	}
 	cmd := prov.NewSessionCommand(dir)
 	cmd.Dir = dir
 	return cmd, nil
+}
+
+// checkLaunchDir allows starting an agent only in a directory the catalog
+// knows that still exists, so a typo or a stale project never starts one
+// elsewhere.
+func (s *Service) checkLaunchDir(dir string) error {
+	if !s.knownDirectory(dir) {
+		return fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return fmt.Errorf("the project directory %s no longer exists", dir)
+	}
+	return nil
 }
 
 // AgentStatus is whether an agent's CLI is installed where its new sessions

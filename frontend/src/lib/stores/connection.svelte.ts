@@ -27,9 +27,12 @@ import { fileActions } from './fileActions.svelte';
 import { link } from './link.svelte';
 import { terminals } from './terminals.svelte';
 import { filePrompt } from './filePrompt.svelte';
+import { chats } from './chats.svelte';
+import { endingChatsWarning } from '../closeConfirm';
 
 // Local always has every capability; the backend reports none for it.
 const LOCAL_CAPABILITIES: HostCapabilities = {
+  repairCodexSession: true,
   saveFile: true,
   blame: true,
   gitChanges: true,
@@ -49,6 +52,7 @@ const LOCAL_CAPABILITIES: HostCapabilities = {
   gitHistory: true,
   gitHistoryActions: true,
   gitHistoryCompare: true,
+  acpChat: true,
 };
 
 export class ConnectionStore {
@@ -72,7 +76,7 @@ export class ConnectionStore {
   private lifecycle = 0;
   private connectionEvents = 0;
   private title = '';
-  private resetCallbacks = new Set<(generation: number, host?: string) => void>();
+  private resetCallbacks = new Set<(generation: number, host?: string, sameHost?: boolean) => void>();
 
   get isRemote(): boolean {
     return this.phase === 'connected' && Boolean(this.host);
@@ -100,6 +104,11 @@ export class ConnectionStore {
 
   get canSearch(): boolean {
     return this.capabilities.search;
+  }
+
+  /** Whether chats can start: here, or on a connected host whose server runs them. */
+  get canChat(): boolean {
+    return (this.phase === 'local' || this.phase === 'connected') && this.capabilities.acpChat === true;
   }
 
   async init(): Promise<void> {
@@ -143,7 +152,12 @@ export class ConnectionStore {
     this.resetCallbacks.clear();
   }
 
-  onReset(callback: (generation: number, host?: string) => void): () => void {
+  /**
+   * Calls back each time the stores reload for a backend: a host connects,
+   * the window returns to this computer, or sameHost, the shown host
+   * reconnects.
+   */
+  onReset(callback: (generation: number, host?: string, sameHost?: boolean) => void): () => void {
     this.resetCallbacks.add(callback);
     return () => {
       this.resetCallbacks.delete(callback);
@@ -174,26 +188,49 @@ export class ConnectionStore {
     }
   }
 
+  /**
+   * The warning for the window's open chats that connecting to target ends,
+   * or null when none would. Any connect or disconnect ends them: the
+   * backend ends this computer's chats when the window leaves it, and a
+   * host's chats end with its connection. A host that is not serving (a
+   * dropped one, or Local while a connect is pending) has no live chats.
+   */
+  private endingChats(previous: string, target: string): string | null {
+    if (link.locked) return null;
+    const action = previous === target ? `Reconnecting to ${hostLabel(target)}`
+      : target ? `Connecting to ${hostLabel(target)}`
+      : `Disconnecting from ${hostLabel(previous)}`;
+    return endingChatsWarning(chats.chats, action);
+  }
+
   /** Ask only for explicit host changes, after resolving unsaved file edits. */
   private async changeHost(target: string, action: () => Promise<void>): Promise<void> {
     await fileActions.changeHost(async () => {
       const previous = link.dataHost ?? '';
       const ids = previous === target ? [] : terminals.tabs.filter(tab => tab.host === previous).map(tab => tab.id);
+      const ending = this.endingChats(previous, target);
       let close = false;
       if (ids.length > 0) {
         const name = previous ? hostLabel(previous) : 'Local';
-        const choice = await filePrompt.ask('Terminal tabs from previous host',
-          `${ids.length} terminal tab(s) belong to ${name}. Keep them open, or close them when switching hosts? Closing ends any running processes, including agents. Split panes count separately.`, [
-            { value: 'keep', label: 'Keep terminal tabs' },
-            { value: 'close', label: 'End and close terminal tabs', danger: true },
-          ]);
+        const tabs = `${ids.length} terminal tab(s) belong to ${name}. Keep them open, or close them when switching hosts? Closing ends any running processes, including agents. Split panes count separately.`;
+        const choice = await filePrompt.ask('Terminal tabs from previous host', ending ? `${tabs}\n\n${ending}` : tabs, [
+          { value: 'keep', label: ending ? 'End chats, keep terminal tabs' : 'Keep terminal tabs' },
+          { value: 'close', label: ending ? 'End chats and terminal tabs' : 'End and close terminal tabs', danger: true },
+        ]);
         if (choice !== 'keep' && choice !== 'close') return;
         close = choice === 'close';
+      } else if (ending && !await this.confirmEndingChats(ending, target)) {
+        return;
       }
       // A failed connection must not destroy terminals from the previous host.
       await action();
       if (close) for (const id of ids) terminals.close(id, true);
     });
+  }
+
+  private async confirmEndingChats(warning: string, target: string): Promise<boolean> {
+    const label = target === (link.dataHost ?? '') ? 'End chats and reconnect' : target ? 'End chats and connect' : 'End chats and disconnect';
+    return await filePrompt.ask('End open chats?', warning, [{ value: 'end', label, danger: true }]) === 'end';
   }
 
   async connect(alias: string, envOverrides?: Record<string, string>): Promise<void> {
@@ -204,8 +241,13 @@ export class ConnectionStore {
         if (Object.keys(env).length > 0) await api.setHostEnv(env);
         await api.connect(alias);
       };
-      if (alias === link.dataHost) await connect();
-      else await this.changeHost(alias, connect);
+      if (alias !== link.dataHost) await this.changeHost(alias, connect);
+      else {
+        // Retrying a dropped host ends nothing; connecting again to the
+        // one that serves ends its chats.
+        const ending = this.endingChats(alias, alias);
+        if (!ending || await this.confirmEndingChats(ending, alias)) await connect();
+      }
     } catch (err: any) {
       // The host is open in another window, which was brought to the
       // front; this window stays where it was.
@@ -302,7 +344,7 @@ export class ConnectionStore {
     void files.connectionChanged(host);
     for (const cb of this.resetCallbacks) {
       try {
-        cb(this.generation, host);
+        cb(this.generation, host, sameHost);
       } catch {
         // Ignore subscriber errors
       }

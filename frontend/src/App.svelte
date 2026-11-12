@@ -44,9 +44,11 @@
   import { launcher } from './lib/stores/launcher.svelte';
   import { translateSettings } from './lib/stores/translate.svelte';
   import { terminals } from './lib/stores/terminals.svelte';
+  import { chats } from './lib/stores/chats.svelte';
+  import { adapterInstall } from './lib/stores/adapterInstall.svelte';
   import { fileActions } from './lib/stores/fileActions.svelte';
   import { filePrompt } from './lib/stores/filePrompt.svelte';
-  import { confirmEndingTerminals } from './lib/closeConfirm';
+  import { confirmClosingWindow } from './lib/closeConfirm';
   import { alerts } from './lib/stores/alerts.svelte';
   import { attentionSummary, mostUrgent } from './lib/alerts';
   import AttentionDot from './lib/components/common/AttentionDot.svelte';
@@ -161,6 +163,13 @@
     return () => clearInterval(timer);
   });
 
+  // Closing the window or quitting ends the window's chats: the close guard
+  // asks first while one is open, on this computer or on a host.
+  let chatsOpen = $derived(chats.chats.some((c) => c.phase !== 'exited'));
+  $effect(() => {
+    void api.setChatsOpen(chatsOpen).catch(() => {});
+  });
+
   // Editor font and the editor and docs text sizes, as custom properties on
   // the root; the session text size is set by TranscriptView.
   $effect(() => {
@@ -178,10 +187,17 @@
     void launcher.init();
     void translateSettings.init();
     terminals.init();
-    fileActions.confirmClose = () => confirmEndingTerminals(terminals.tabs, filePrompt.ask.bind(filePrompt));
+    fileActions.confirmClose = () => confirmClosingWindow(terminals.tabs, chats.chats, filePrompt.ask.bind(filePrompt));
     alerts.init();
     newSession.init();
     sessionLinks.init();
+    void chats.init();
+    // Chats run on this computer; a host switch ends them.
+    const offChatReset = connectionStore.onReset((_, __, sameHost) => {
+      chats.reset(sameHost);
+      // An adapter install belongs to the host it was proposed on.
+      adapterInstall.reset();
+    });
     isWails = isDesktop();
     api
       .appVersion()
@@ -312,6 +328,8 @@
       search.destroy();
       alerts.destroy();
       terminals.destroy();
+      offChatReset();
+      chats.destroy();
       sessionLinks.destroy();
       appState.destroy();
       discovery.destroy();

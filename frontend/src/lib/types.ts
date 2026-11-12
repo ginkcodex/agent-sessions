@@ -249,6 +249,8 @@ export interface FileRef {
   mime?: string;
   size?: number;
   ref?: string;
+  /** An image's bytes in base64 that the window holds (a chat prompt's attachment): shown without fetching. */
+  data?: string;
 }
 
 export interface ToolCall {
@@ -593,6 +595,254 @@ export interface AgentStatus {
   hint?: string;
 }
 
+/** An agent's ACP adapter, as a chat on this computer would start it. */
+export interface ChatAgent {
+  agent: AgentID;
+  name: string;
+  available: boolean;
+  /** The adapter that would run. */
+  path?: string;
+  /** True when the path comes from config.toml's [chat.adapters]. */
+  override?: boolean;
+  /** The command that installs the adapter; sent only by older servers. */
+  install?: string;
+  /**
+   * The managed-tools catalog ID the app can install the adapter as on this
+   * host; absent when it cannot (Windows, OpenCode, an older server).
+   */
+  installTool?: string;
+  /** True when the adapter that would run is the app's own copy. */
+  managed?: boolean;
+  /** The version of the app's copy that would run. */
+  version?: string;
+  /** The version the app installs, where it can install one. */
+  pinned?: string;
+  /** The app's copy is older than `pinned`: an update is offered. */
+  outdated?: boolean;
+  /** Why the adapter is not available. */
+  problem?: string;
+}
+
+export interface ChatStartRequest {
+  agent: AgentID;
+  dir: string;
+  /** The session to continue; a new session when absent. */
+  resume?: SessionRef;
+  /** The window shows the agent's questions, so the agent may ask them. */
+  questions?: boolean;
+}
+
+/** A value of a select option, or a named group of values. */
+export interface ChatConfigSelectOption {
+  value?: string;
+  name: string;
+  description?: string;
+  group?: string;
+  options?: ChatConfigSelectOption[];
+}
+
+/** A session option the agent offers (mode, model, effort). */
+export interface ChatConfigOption {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  type: string;
+  currentValue?: unknown;
+  options?: ChatConfigSelectOption[];
+}
+
+/** An open chat. */
+export interface ChatState {
+  chatId: string;
+  agent: AgentID;
+  dir: string;
+  /** The session the chat drives. */
+  session: SessionRef;
+  agentInfo?: { name: string; title?: string; version?: string };
+  configOptions: ChatConfigOption[];
+  /** What a prompt may carry besides text; absent from a server too old for attachments. */
+  promptCapabilities?: { image?: boolean; audio?: boolean; embeddedContext?: boolean };
+  /** True while a prompt turn runs. */
+  working: boolean;
+  /** The permission requests waiting for an answer, oldest first. */
+  permissions?: ChatPermission[];
+  /** The agent's questions waiting for an answer, oldest first. */
+  questions?: ChatQuestion[];
+}
+
+/** A file prepared to send with a chat message (Go chatattach.Attachment). */
+export interface ChatAttachment {
+  kind: 'image' | 'text';
+  name: string;
+  mimeType: string;
+  /** Bytes sent: the image's (after any scaling) or the text's. */
+  size: number;
+  /** An image's bytes in base64. */
+  data?: string;
+  /** A text file's content. */
+  text?: string;
+  /** The file's file:// URL; absent for a pasted image. */
+  uri?: string;
+}
+
+/** Picked or dropped files: those attached, and the others with why not. */
+export interface ChatAttachResult {
+  attachments: ChatAttachment[];
+  skipped: { name: string; reason: string }[];
+}
+
+/** An ACP content block; chats only read text. */
+export interface AcpContentBlock {
+  type: string;
+  text?: string;
+  [key: string]: unknown;
+}
+
+/** Content of an ACP tool call: a block, a diff, or a terminal. */
+export interface AcpToolCallContent {
+  type: string;
+  content?: AcpContentBlock;
+  path?: string;
+  oldText?: string | null;
+  newText?: string;
+  terminalId?: string;
+}
+
+/**
+ * An ACP tool call, from tool_call or tool_call_update. An update sets only
+ * the fields it carries.
+ */
+export interface AcpToolCall {
+  toolCallId: string;
+  title?: string;
+  kind?: string;
+  status?: string;
+  content?: AcpToolCallContent[];
+  locations?: { path: string; line?: number }[];
+  rawInput?: unknown;
+  rawOutput?: unknown;
+  _meta?: Record<string, unknown>;
+  /** The agent's own tool name; not in the protocol, but sent by the adapters. */
+  name?: string;
+}
+
+/** An ACP session/update. Kinds the app does not know are kept as they came. */
+export interface AcpSessionUpdate {
+  sessionUpdate: string;
+  [key: string]: unknown;
+}
+
+export interface ChatPermissionOption {
+  optionId: string;
+  name: string;
+  /** allow_once, allow_always, reject_once or reject_always. */
+  kind: string;
+}
+
+/** A permission request, or its outcome once resolved. */
+export interface ChatPermission {
+  id: string;
+  toolCall?: AcpToolCall;
+  options?: ChatPermissionOption[];
+  /** "selected" or "cancelled" once resolved. */
+  outcome?: string;
+  optionId?: string;
+}
+
+/** A titled option of a question (an ACP EnumOption). */
+export interface ChatQuestionOption {
+  const: string;
+  title: string;
+  description?: string;
+  _meta?: Record<string, unknown>;
+}
+
+/** One field of a question's form: its key and its ACP property schema. */
+export interface ChatQuestionField {
+  key: string;
+  /** string, array, boolean, number or integer. */
+  type: string;
+  title?: string;
+  description?: string;
+  default?: unknown;
+  enum?: string[];
+  oneOf?: ChatQuestionOption[];
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  minimum?: number;
+  maximum?: number;
+  items?: { type?: string; enum?: string[]; anyOf?: ChatQuestionOption[] };
+  minItems?: number;
+  maxItems?: number;
+  _meta?: Record<string, unknown>;
+}
+
+/** How a question is answered: with content, skipped (decline), or cancelled. */
+export type ChatAnswerAction = 'accept' | 'decline' | 'cancel';
+
+/** The agent's question (an ACP form elicitation), or its outcome once resolved. */
+export interface ChatQuestion {
+  id: string;
+  toolCallId?: string;
+  message?: string;
+  title?: string;
+  description?: string;
+  /** The form's fields, in the order the agent sent them. */
+  fields?: ChatQuestionField[];
+  required?: string[];
+  /** The request's _meta, such as Codex's autoResolutionMs. */
+  meta?: Record<string, unknown>;
+  /** accept, decline, cancel or withdrawn once resolved. */
+  outcome?: string;
+  /** The answer sent, when accepted. */
+  content?: Record<string, unknown>;
+}
+
+/** A way to log in that the agent offers. */
+export interface ChatAuthMethod {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export type ChatUpdateKind =
+  | 'started'
+  | 'session_update'
+  | 'permission'
+  | 'permission_resolved'
+  | 'question'
+  | 'question_resolved'
+  | 'turn_start'
+  | 'turn_end'
+  | 'config_options';
+
+/** The payload of chat:update. seq counts a chat's events from 1, chat:exit included. */
+export interface ChatUpdateEvent {
+  chatId: string;
+  seq: number;
+  kind: ChatUpdateKind | string;
+  state?: ChatState;
+  update?: AcpSessionUpdate;
+  permission?: ChatPermission;
+  question?: ChatQuestion;
+  stopReason?: string;
+  error?: string;
+  authMethods?: ChatAuthMethod[];
+  configOptions?: ChatConfigOption[];
+}
+
+/** The payload of chat:exit, a chat's last event. */
+export interface ChatExitEvent {
+  chatId: string;
+  seq: number;
+  /** closed: the chat was closed; exited: the agent quit; crashed: it failed. */
+  reason: 'closed' | 'exited' | 'crashed' | string;
+  error?: string;
+  stderrTail?: string;
+}
+
 export interface TerminalDataEvent {
   id: string;
   /** Output, base64-encoded. */
@@ -932,6 +1182,7 @@ export interface ReplaceResult {
 export interface HostCapabilities {
   /** Native persisted session rename; absent on older hosts. */
   renameSession?: boolean;
+  repairCodexSession?: boolean;
   /** Optional retained, unverified project paths hint. */
   projectSnapshot?: boolean;
   /** Absent on older servers; discovery readiness is then unknown. */
@@ -972,6 +1223,8 @@ export interface HostCapabilities {
   search: boolean;
   /** Absent on older servers, which only filter search by an absolute directory. */
   searchPath?: boolean;
+  /** Chats with agents over ACP; absent on servers without them. */
+  acpChat?: boolean;
 }
 
 export interface ConnectionState {

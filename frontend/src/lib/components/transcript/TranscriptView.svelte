@@ -40,6 +40,12 @@
   import EmptyState from '../common/EmptyState.svelte';
   import ErrorState from '../common/ErrorState.svelte';
   import DeleteConfirmDialog from '../common/DeleteConfirmDialog.svelte';
+  import { chats } from '../../stores/chats.svelte';
+  import { chatOpen } from '../../stores/chatOpen.svelte';
+  import { ALL_AGENTS } from '../../portable';
+  import { pendingChatMeta } from '../../chat';
+  import LiveTail from '../chat/LiveTail.svelte';
+  import ChatComposer from '../chat/ChatComposer.svelte';
 
   function activateWorkspaceTerminal() {
     const session = appState.selectedSessionMeta;
@@ -104,6 +110,9 @@
     hoveredLink = ''; focusedLink = '';
   });
   let messages = $state<Message[]>([]);
+  // The chat this session runs in, or ran in until dismissed.
+  let chat = $derived(appState.selectedSessionRef ? chats.viewFor(appState.selectedSessionRef) : undefined);
+  let chatAgentName = $derived(chat ? (ALL_AGENTS.find((a) => a.id === chat.agent)?.label ?? chat.agent) : '');
   let isLoading = $state(false);
   let isLoadingMore = $state(false);
   let hasMore = $state(false);
@@ -290,12 +299,28 @@
       }
     } catch (err: any) {
       if (generation === loadGeneration && refsMatch(appState.selectedSessionRef, ref)) {
-        loadError = err?.message || 'Failed to load session transcript';
+        if (chats.viewFor(ref)) {
+          // A new chat's agent has not saved the session yet: the live tail
+          // shows it, and the catalog change that comes with the first save
+          // reloads this.
+          following = true;
+        } else {
+          loadError = err?.message || 'Failed to load session transcript';
+        }
       }
     } finally {
       if (generation === loadGeneration) isLoading = false;
     }
   }
+
+  // Saved messages replace the live items they now show.
+  $effect(() => {
+    const id = chat?.chatId;
+    const saved = messages;
+    void chat?.tail.turn;
+    void chat?.tail.turnOpen;
+    if (id && !hasMore) untrack(() => chats.reconcile(id, saved));
+  });
 
   async function reloadMessages(ref: SessionRef): Promise<void> {
     // A first load in flight reads the current content anyway.
@@ -654,6 +679,12 @@
   async function scrollToBottom() {
     const ref = appState.selectedSessionRef;
     if (jumpingToBottom || !ref) return;
+    // A chat whose session is not saved yet has only its live tail.
+    if (chat && messages.length === 0) {
+      following = true;
+      if (containerEl) containerEl.scrollTop = containerEl.scrollHeight;
+      return;
+    }
     jumpingToBottom = true;
     const generation = ++loadGeneration;
     // This supersedes a jump still landing, whose cleanup is then skipped.
@@ -712,6 +743,7 @@
 
   async function handleOpenResume(where: TerminalOpenMode = launcher.openMode) {
     if (!appState.selectedSessionRef || resumeOpening) return;
+    if (chatOpen.refuseTerminal(appState.selectedSessionRef)) return;
     resumeOpening = true;
     try {
       if (where === 'panel') {
@@ -732,7 +764,9 @@
 
 <svelte:window onkeydown={handleWindowKey} />
 
+<!-- The session text size reaches the messages, the live chat and the composer. -->
 <div class="transcript-pane" role="region" aria-label="Session content"
+  style:--session-font-size={sessionFontSize}
   onmouseover={(event) => hoveredLink = browserLinkDestination(event.target, event.currentTarget)}
   onmouseout={(event) => hoveredLink = browserLinkDestination(event.relatedTarget, event.currentTarget)}
   onmouseleave={() => hoveredLink = ''}
@@ -777,6 +811,18 @@
         onPrint={() => void printConversation()}
         {printPreparing}
       />
+    {:else if chat}
+      <!-- A new chat's session, before its agent saves it: the same header,
+           so the layout does not change when the session's data arrives. -->
+      <SessionHeader
+        meta={pendingChatMeta(appState.selectedSessionRef, chat, chatAgentName)}
+        pending
+        {mode}
+        onModeChange={(next) => (mode = next)}
+        onResume={() => {}}
+        onFind={toggleFind}
+        findOpen={find.open}
+      />
     {/if}
 
     {#if jumpNotice}
@@ -795,17 +841,18 @@
     <div
       bind:this={containerEl}
       class="messages-scroll-area"
-      style:--session-font-size={sessionFontSize}
       role="region"
       aria-label="Messages list"
       onscroll={handleScroll}
     >
       <div class="messages-inner-list" bind:this={listEl}>
         {#if messages.length === 0}
+          {#if !chat}
           <div class="empty-messages-notice">
             <Icon name="inbox" size={16} />
             <span>No messages found in this session transcript.</span>
           </div>
+          {/if}
         {:else}
           {#if pageOffset > 0}
             <div class="load-earlier-bar">
@@ -845,17 +892,24 @@
           </div>
         {/if}
 
-        {#if !hasMore && messages.length > 0}
+        {#if chat && !hasMore}
+          <LiveTail
+            {chat}
+            sessionRef={appState.selectedSessionRef}
+            {mode}
+            onFileLink={(value) => { if (appState.selectedSessionRef) openMessageFile(value, appState.selectedSessionRef); }}
+            onOpenTerminal={launcher.info.panel ? () => void terminals.newShell(chat.dir) : undefined}
+          />
+        {:else if !hasMore && messages.length > 0}
           <div class="end-of-transcript-marker">
             <span>── End of transcript ──</span>
           </div>
         {/if}
       </div>
     </div>
-    </div>
 
-    <!-- Outside the scroll area so it stays pinned to the pane corner. -->
-    {#if messages.length > 0 && (nearBottom || anchoredToBottom)}
+    <!-- Outside the scroll area so it stays pinned to the corner, above the composer. -->
+    {#if (messages.length > 0 || chat) && (nearBottom || anchoredToBottom)}
       <button
         type="button"
         class="scroll-bottom-pill bottom-anchor"
@@ -878,6 +932,16 @@
       >
         <Icon name={jumpingToBottom ? 'loader-circle' : 'arrow-down'} size={18} class={jumpingToBottom ? 'spin' : ''} />
       </button>
+    {/if}
+    </div>
+
+    {#if chat}
+      <ChatComposer
+        {chat}
+        focus={chatOpen}
+        onRestart={() => void chatOpen.restart(chat, !!appState.selectedSessionMeta)}
+        onOption={(configId, value) => chatOpen.choose(chat, configId, value)}
+      />
     {/if}
   {/if}
 

@@ -87,6 +87,16 @@ func (p *Provider) NewSessionCommand(dir string) provider.Command {
 	return provider.Command{Argv: []string{"claude"}, Dir: dir}
 }
 
+// ACPAdapter runs Claude Code through the Agent SDK's ACP adapter, pointed at
+// the installed claude.
+func (p *Provider) ACPAdapter() provider.ACPAdapter {
+	return provider.ACPAdapter{
+		Executable: "claude-agent-acp",
+		CLIEnv:     "CLAUDE_CODE_EXECUTABLE",
+		Managed:    "claude-agent-acp",
+	}
+}
+
 func (p *Provider) ResumeCommand(m model.SessionMeta) provider.Command {
 	targetID := m.Ref.ID
 	if m.ParentID != "" {

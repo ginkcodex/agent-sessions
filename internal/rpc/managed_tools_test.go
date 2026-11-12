@@ -49,7 +49,7 @@ type managedBackend struct {
 
 func (b *managedBackend) ManagedTool(_ context.Context, p engine.ManagedToolRequest) (engine.ManagedToolState, error) {
 	b.requests = append(b.requests, p)
-	return engine.ManagedToolState{HostID: b.host, State: "idle", Tools: map[string]string{"ruff": "missingTool"}}, nil
+	return engine.ManagedToolState{HostID: b.host, State: "idle", Tools: map[string]string{"ruff": "missingTool", "claude-agent-acp": "available", "codex-acp": "missingTool"}}, nil
 }
 
 // A remote server with its own verified identity forwards to its engine, which
@@ -70,7 +70,8 @@ func TestManagedToolsForwardedToVerifiedRemoteHost(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := c.ManagedTool(ctx, engine.ManagedToolRequest{Action: "status", ExpectedHostID: d.host})
-	if err != nil || out.State != "idle" || out.Tools["ruff"] != "missingTool" || len(b.requests) != 1 {
+	// Chat's adapters cross the wire with the language servers.
+	if err != nil || out.State != "idle" || out.Tools["ruff"] != "missingTool" || out.Tools["claude-agent-acp"] != "available" || out.Tools["codex-acp"] != "missingTool" || len(b.requests) != 1 {
 		t.Fatal(out, err)
 	}
 	if _, err = c.ManagedTool(ctx, engine.ManagedToolRequest{Action: "status", ExpectedHostID: "ssh:other"}); err == nil {

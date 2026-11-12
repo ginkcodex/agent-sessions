@@ -83,6 +83,14 @@ func (p *Provider) NewSessionCommand(dir string) provider.Command {
 	return provider.Command{Argv: []string{"opencode"}, Dir: dir}
 }
 
+// ACPAdapter runs OpenCode's built-in ACP server.
+func (p *Provider) ACPAdapter() provider.ACPAdapter {
+	return provider.ACPAdapter{
+		Executable: "opencode",
+		Args:       []string{"acp"},
+	}
+}
+
 func (p *Provider) ResumeCommand(m model.SessionMeta) provider.Command {
 	return provider.Command{
 		Argv: []string{"opencode", "--session", m.Ref.ID},

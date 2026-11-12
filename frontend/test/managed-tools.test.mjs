@@ -218,6 +218,24 @@ test('completed installation rediscovers code checks once, without approving or 
   assert.equal(attaches, 2);
   await store.hide();
 });
+test("a chat adapter's install shows as idle in code checks and rediscovers nothing", async () => {
+  let attaches = 0, adapter = 'installing';
+  const { store } = await setup(async p => p.action === 'status' ? state(adapter, { tool: 'claude-agent-acp', jobId: 'chat-job', tools: { ruff: 'missingTool', 'claude-agent-acp': 'missingTool' } }) : state('idle'));
+  const attach = store.backend.attachCodeDiagnostics.bind(store.backend);
+  store.backend.attachCodeDiagnostics = async (...a) => { attaches++; return attach(...a); };
+  await store.refreshManaged(); await flush();
+  assert.equal(store.managed.state, 'idle');
+  assert.deepEqual(store.managedInstalls, { ruff: 'missingTool' }, 'adapters are not language servers');
+  let html = await renderWithFixture(controls, { checks: store });
+  assert.doesNotMatch(html, /claude-agent-acp/);
+  assert.doesNotMatch(html, /Installation progress/);
+  adapter = 'installed';
+  await store.refreshManaged(); await flush();
+  assert.equal(attaches, 0, 'no rediscovery for an adapter');
+  html = await renderWithFixture(controls, { checks: store });
+  assert.doesNotMatch(html, /is installed for this app/);
+  await store.hide();
+});
 test('Wails optional ManagedTool maps exact closed request, old App refuses', async () => {
   const binding = {}; useDesktopApp(binding);
   const api = desktopAPI();

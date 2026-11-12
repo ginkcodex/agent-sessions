@@ -5,10 +5,13 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ginkcode/agent-sessions/internal/acp/acptest"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 )
 
 func TestMain(m *testing.M) {
+	// The chat tests start this binary as a fake ACP agent.
+	acptest.Main()
 	// Connections built in unit tests must never run "ssh -O exit". The
 	// sshd tests install the real stopper on their own connection.
 	newMasterStopper = func(context.Context, string, remote.SSHOptions) error { return nil }

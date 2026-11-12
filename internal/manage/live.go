@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/model"
 )
 
 // ProcFS abstracts /proc for the process scan, overridable in tests.
@@ -32,6 +34,10 @@ var errRuntimeHost = errors.New("a Node.js, Bun or Deno process may host an agen
 // LiveFunc reports whether a session (by agent and id) is currently live,
 // or an error when liveness is unknown. Unknown must fail closed.
 type LiveFunc func(ctx context.Context, agent string, id string) (bool, error)
+
+// OwnedFunc reports whether the app drives a session right now, in a chat.
+// An owned session is never deleted or moved: the agent is writing it.
+type OwnedFunc func(ref model.SessionRef) bool
 
 // NowFunc returns the current time, overridable in tests.
 type NowFunc func() time.Time

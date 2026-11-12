@@ -34,8 +34,9 @@ type ManagedToolState struct {
 	JobID    string       `json:"jobId,omitempty"`
 	Tool     string       `json:"tool,omitempty"`
 	Proposal *mt.Proposal `json:"proposal,omitempty"`
-	// Tools maps each installable tool to "available", "missingTool" or
-	// "unavailable" (an install exists but is invalid). status only.
+	// Tools maps each installable tool, language servers and chat adapters,
+	// to "available", "missingTool" or "unavailable" (an install exists but
+	// is invalid). status only.
 	Tools map[string]string `json:"tools,omitempty"`
 }
 
@@ -70,9 +71,10 @@ func (e *Engine) ManagedTool(ctx context.Context, p ManagedToolRequest) (Managed
 	}
 	var tools map[string]string
 	if p.Action == "status" {
-		// Reads and hashes installs, so outside Engine.mu.
+		// Reads and hashes installs, so outside Engine.mu. The language
+		// servers, then chat's adapters.
 		tools = map[string]string{}
-		for _, tool := range cd.ManagedToolNames() {
+		for _, tool := range append(cd.ManagedToolNames(), mt.AdapterTools()...) {
 			_, discoverErr := o.installer.Discover(tool)
 			switch {
 			case discoverErr == nil:

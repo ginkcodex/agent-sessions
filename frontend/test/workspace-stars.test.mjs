@@ -158,6 +158,7 @@ const WorkspaceStart = await component('sessionlist/WorkspaceStart', [
   ["import { newSession } from '../../stores/newSession.svelte';", 'const newSession = { defaultAgent: "claude-code", choices: [], available: false, refresh: async () => {} };'],
   ["import { terminals } from '../../stores/terminals.svelte';", 'const terminals = {};'],
   ["import { files } from '../../stores/files.svelte';", 'const files = {};'],
+  ["import { chatOpen } from '../../stores/chatOpen.svelte';", 'const chatOpen = { opening: false, refresh() {}, canChat: () => false };'],
 ]);
 
 function open(Component, props = {}, setup = () => {}) {

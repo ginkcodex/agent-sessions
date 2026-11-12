@@ -18,6 +18,8 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/provider/codex"
 	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
@@ -608,18 +610,40 @@ func TestDelete_UnknownRefFailsClosed(t *testing.T) {
 func TestDelete_CodexChildFirstOrder(t *testing.T) {
 	roots := testRoots(t)
 	child := codexMeta(roots.Codex, uuidB)
-	child.ParentID = uuidA
+	// Ancestry must come from the provider, not a hand-built catalog.
 	parent := codexMeta(roots.Codex, uuidA)
 	catalog := []model.SessionMeta{parent, child}
 	for _, m := range catalog {
 		if err := os.MkdirAll(filepath.Dir(m.SourcePath), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(m.SourcePath, []byte(`{}`), 0o600); err != nil {
+		payload := `{"id":"` + m.Ref.ID + `"}`
+		if m.Ref.ID == uuidB {
+			payload = `{"id":"` + uuidB + `","parent_thread_id":"` + uuidA + `","source":{"subagent":{"other":"guardian"}},"thread_source":"guardian_review"}`
+		}
+		if err := os.WriteFile(m.SourcePath, []byte(`{"type":"session_meta","payload":`+payload+"}\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
+	db, err := sql.Open("sqlite", filepath.Join(roots.Codex, "state_5.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE threads (id TEXT PRIMARY KEY); CREATE TABLE thread_spawn_edges (parent_thread_id TEXT, child_thread_id TEXT);`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 	backdate(t, roots.Codex)
+	scanned, err := codex.New(roots.Codex, nil).Scan(context.Background(), provider.ScanState{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog = scanned.Changed
+	if len(catalog) != 2 {
+		t.Fatalf("scanned catalog = %+v", catalog)
+	}
 	exec := &recordingExec{}
 	m, _ := newTestManager(t, roots, WithExec(exec.exec))
 	enableAll(t, m)
@@ -1275,5 +1299,43 @@ func TestPreview_DaemonsExcludedFromProcScan(t *testing.T) {
 	}
 	if len(p2.Items) != 1 || !strings.Contains(p2.Items[0].Blocked, ErrLive.Error()) {
 		t.Fatalf("interactive codex must block, got %+v", p2.Items)
+	}
+}
+
+// A session a chat drives, or one of its descendants, is never moved or
+// deleted, and a preview made before the chat started cannot delete it.
+func TestOwnedSessionsBlocked(t *testing.T) {
+	roots := testRoots(t)
+	id, catalog := claudeFixtures(t, roots.Claude)
+	owned := map[string]bool{}
+	m, ft := newTestManager(t, roots, WithOwned(func(ref model.SessionRef) bool { return owned[ref.Key()] }))
+	enableAll(t, m)
+	ctx := context.Background()
+	refs := []model.SessionRef{{Agent: model.AgentClaude, ID: id}}
+
+	early, err := m.Preview(ctx, refs, catalog)
+	if err != nil || early.Items[0].Blocked != "" {
+		t.Fatalf("unowned preview: %+v, %v", early, err)
+	}
+	for _, ref := range []model.SessionRef{catalog[0].Ref, catalog[1].Ref} {
+		owned = map[string]bool{ref.Key(): true}
+		p, err := m.Preview(ctx, refs, catalog)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b := p.Items[0].Blocked; !strings.Contains(b, "open in a chat") {
+			t.Errorf("%s owned: blocked = %q", ref.ID, b)
+		}
+		if _, err := m.Delete(ctx, refs, catalog, early.Token); !errors.Is(err, ErrPreviewStale) {
+			t.Errorf("%s owned: delete with an earlier preview = %v", ref.ID, err)
+		}
+	}
+	if len(ft.calls) != 0 {
+		t.Fatalf("trashed %v", ft.calls)
+	}
+
+	owned = nil
+	if rep, err := m.Delete(ctx, refs, catalog, early.Token); err != nil || rep.Deleted != 1 {
+		t.Fatalf("delete once released: %+v, %v", rep, err)
 	}
 }

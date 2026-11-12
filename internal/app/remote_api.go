@@ -79,6 +79,7 @@ func (a *App) ConnectionState() ConnectionState {
 		local := a.localBackend()
 		_, state.Capabilities.AgentSettings = local.(engine.AgentSettingsBackend)
 		_, state.Capabilities.RenameSession = local.(engine.RenameSessionBackend)
+		_, state.Capabilities.RepairCodexSession = local.(engine.CodexRepairBackend)
 		_, state.Capabilities.GitHistory = local.(engine.GitHistoryBackend)
 		_, state.Capabilities.GitHistoryActions = local.(engine.GitHistoryActionsBackend)
 		_, state.Capabilities.GitHistoryCompare = local.(engine.GitHistoryCompareBackend)
@@ -129,6 +130,11 @@ func (a *App) ensureConn() {
 	if a.conn == nil {
 		a.conn = newConnection(a.desktopEvents)
 	}
+	a.conn.mu.Lock()
+	// Chats run on this computer, and the window stops showing their events
+	// once it shows a host, so connecting ends them first.
+	a.conn.leaveLocal = a.closeChats
+	a.conn.mu.Unlock()
 	if a.conn.forwards == nil {
 		path, err := a.localConfigPath()
 		p := newPortForwards(filepath.Join(filepath.Dir(path), "port-forwards.json"))

@@ -11,6 +11,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/files"
+	"github.com/ginkcode/agent-sessions/internal/model"
 )
 
 func TestFrameReader_Limit(t *testing.T) {
@@ -147,6 +148,15 @@ func TestErrors_RoundTripSentinels(t *testing.T) {
 		ErrPayloadTooLarge,
 		ErrTimeout,
 		files.ErrSaveIncomplete,
+		engine.ErrChatNotFound,
+		engine.ErrChatBusy,
+		engine.ErrChatClosed,
+		engine.ErrChatCannotContinue,
+		engine.ErrChatUnsupported,
+		engine.ErrPermissionNotFound,
+		engine.ErrQuestionNotFound,
+		engine.ErrSessionOwned,
+		engine.ErrSessionInUse,
 	}
 
 	for _, tc := range testCases {
@@ -159,6 +169,23 @@ func TestErrors_RoundTripSentinels(t *testing.T) {
 		if !errors.Is(reconstructed, tc) {
 			t.Errorf("FromRPCError: expected errors.Is(..., %v) to be true, got %v", tc, reconstructed)
 		}
+	}
+}
+
+// A sentinel's text is not repeated when the server's message starts with it.
+func TestErrors_SentinelMessageOnce(t *testing.T) {
+	sent := &engine.SessionOwnedError{Ref: model.SessionRef{Agent: model.AgentCodex, ID: "s1"}, ChatID: "c1"}
+	got := FromRPCError(ToRPCError(sent))
+	if !errors.Is(got, engine.ErrSessionOwned) || got.Error() != sent.Error() {
+		t.Fatalf("got %q, want %q", got, sent)
+	}
+	inUse := &engine.SessionInUseError{Agent: model.AgentCodex, Err: errors.New("acp: in use (code -32600)")}
+	if got := FromRPCError(ToRPCError(inUse)); !errors.Is(got, engine.ErrSessionInUse) || got.Error() != engine.ErrSessionInUse.Error() {
+		t.Fatalf("got %q", got)
+	}
+	other := FromRPCError(&ResponseError{Code: CodeAppError, Message: "gone", Data: &ErrorData{Code: ErrCodeChatNotFound}})
+	if !errors.Is(other, engine.ErrChatNotFound) || other.Error() != "chat not found: gone" {
+		t.Fatalf("got %q", other)
 	}
 }
 

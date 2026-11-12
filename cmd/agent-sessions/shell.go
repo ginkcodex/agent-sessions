@@ -90,8 +90,10 @@ func (s *shell) openWindow() error {
 		})
 	})
 
-	// Linux hooks the mouse's side buttons per web view, once it exists.
+	// Native integration needs the window to exist: Linux hooks mouse side
+	// buttons per webview; macOS tests an opaque backing for this solid page.
 	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
+		configureWindowOpacity(window)
 		hookWindowMouseNavigation(window)
 	})
 

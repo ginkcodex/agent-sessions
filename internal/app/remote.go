@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
@@ -35,12 +36,18 @@ type AskpassPrompt struct {
 }
 
 // reconnect delays. Mutations are never retried across these.
-var reconnectBackoff = []time.Duration{
+var defaultReconnectBackoff = []time.Duration{
 	time.Second,
 	2 * time.Second,
 	5 * time.Second,
 	10 * time.Second,
 }
+
+// reconnectBackoff is atomic because tests swap it while a dial loop from an
+// earlier test, which Shutdown does not wait for, may still read it.
+var reconnectBackoff atomic.Pointer[[]time.Duration]
+
+func init() { reconnectBackoff.Store(&defaultReconnectBackoff) }
 
 // reconnectDelay holds at the final step rather than cycling after long outages.
 func reconnectDelay(attempt int) time.Duration {
@@ -48,10 +55,11 @@ func reconnectDelay(attempt int) time.Duration {
 	if index < 0 {
 		index = 0
 	}
-	if index >= len(reconnectBackoff) {
-		index = len(reconnectBackoff) - 1
+	backoff := *reconnectBackoff.Load()
+	if index >= len(backoff) {
+		index = len(backoff) - 1
 	}
-	return reconnectBackoff[index]
+	return backoff[index]
 }
 
 // ConnectionState is the snapshot the frontend renders.
@@ -98,6 +106,10 @@ type connSnap struct {
 // remote session is connected; events from a stale generation are dropped.
 type connection struct {
 	mu sync.Mutex
+	// leaveLocal runs when a connect is about to replace what the window
+	// shows; it ends the window's local chats, whose events would no longer
+	// reach it. Called without mu held.
+	leaveLocal func()
 	// dialMu lets a cancelled attempt finish cleanup before its replacement dials.
 	dialMu  sync.Mutex
 	state   ConnectionState
@@ -344,6 +356,12 @@ func (c *connection) Connect(ctx context.Context, alias string) error {
 			inUse.focusErr = claims.focusOwner(alias)
 			return err
 		}
+	}
+	c.mu.Lock()
+	leave := c.leaveLocal
+	c.mu.Unlock()
+	if leave != nil {
+		leave()
 	}
 	c.mu.Lock()
 	if c.stopped {

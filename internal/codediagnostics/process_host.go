@@ -1,26 +1,30 @@
-//go:build darwin || linux
+//go:build darwin || linux || windows
 
 package codediagnostics
 
 import (
 	"errors"
 	"os/exec"
-	"syscall"
+
+	"github.com/ginkcode/agent-sessions/internal/proctree"
 )
 
-type hostProcess struct{ cmd *exec.Cmd }
+type hostProcess struct {
+	cmd  *exec.Cmd
+	tree *proctree.Tree
+}
 
 func startProcess(in Invocation) (Process, error) {
 	cmd := exec.Command(in.Executable, in.Args...)
 	cmd.Dir, cmd.Env = in.Directory, in.Env
 	cmd.Stdout, cmd.Stderr = in.Stdout, in.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	// Bounds pipe draining even when an uncooperative descendant keeps a pipe open.
 	cmd.WaitDelay = in.CleanupTimeout
-	if err := cmd.Start(); err != nil {
+	tree, err := proctree.Start(cmd)
+	if err != nil {
 		return nil, err
 	}
-	return &hostProcess{cmd}, nil
+	return &hostProcess{cmd, tree}, nil
 }
 
 func (p *hostProcess) Wait() (int, error) {
@@ -35,11 +39,5 @@ func (p *hostProcess) Wait() (int, error) {
 	return 0, nil
 }
 
-func (p *hostProcess) Terminate() error {
-	err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
-	if errors.Is(err, syscall.ESRCH) {
-		return nil
-	}
-	return err
-}
-func (p *hostProcess) Close() error { return nil }
+func (p *hostProcess) Terminate() error { return p.tree.Kill() }
+func (p *hostProcess) Close() error     { return p.tree.Release() }

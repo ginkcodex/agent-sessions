@@ -12,6 +12,7 @@
   import AgentIcon from '../common/AgentIcon.svelte';
   import Icon from '../common/Icon.svelte';
   import NavButtons from './NavButtons.svelte';
+  import CodexRepairNotice from './CodexRepairNotice.svelte';
   import { link } from '../../stores/link.svelte';
   import { launcher } from '../../stores/launcher.svelte';
   import { preferences } from '../../stores/preferences.svelte';
@@ -20,6 +21,9 @@
   import { newSession } from '../../stores/newSession.svelte';
   import { terminals } from '../../stores/terminals.svelte';
   import { newSessionShortcutLabel } from '../../terminal';
+  import { chats } from '../../stores/chats.svelte';
+  import { chatOpen } from '../../stores/chatOpen.svelte';
+  import { manage } from '../../stores/manage.svelte';
 
   interface Props {
     meta: SessionMeta;
@@ -40,6 +44,11 @@
     /** Prepares the full Chat-level conversation in the shared print editor. */
     onPrint?: () => void;
     printPreparing?: boolean;
+    /**
+     * A new chat's session its agent has not saved yet: the same layout, with
+     * Resume and the ⋯ menu disabled and no counts, tokens or times.
+     */
+    pending?: boolean;
   }
 
   let {
@@ -54,7 +63,10 @@
     findOpen = false,
     onPrint,
     printPreparing = false,
+    pending = false,
   }: Props = $props();
+
+  const PENDING_TITLE = 'Available once the agent saves this session';
 
   // The agent's name, for the icon badge's tooltip and screen readers.
   let agentName = $derived(ALL_AGENTS.find((a) => a.id === meta.ref.agent)?.label ?? meta.ref.agent);
@@ -88,7 +100,21 @@
   $effect(() => {
     void link.dataHost;
     if (newSession.available) void newSession.refresh();
+    chatOpen.refresh();
   });
+
+  // A chat drives this session: the terminal does not resume it meanwhile.
+  let liveChat = $derived(chats.forSession(meta.ref));
+  let canChatHere = $derived(chatOpen.canChat(meta.ref.agent) && !meta.cwdMissing);
+  // New chats: every agent whose ACP adapter the host has.
+  let chatChoices = $derived(ALL_AGENTS.filter((a) => chatOpen.canChat(a.id)));
+  // Agents the host could chat with once their adapter is installed.
+  let chatMissing = $derived(chatOpen.available && chats.agents.some((a) => !a.available));
+
+  function startChat(agent: AgentID) {
+    newMenuOpen = false;
+    void chatOpen.startNew(agent, meta.cwd);
+  }
 
   function startNew(agent: AgentID) {
     newMenuOpen = false;
@@ -158,6 +184,8 @@
     </div>
   {/if}
 
+  <CodexRepairNotice {meta} disabledReason={liveChat ? 'Close this session’s chat before repairing it.' : runningTab ? 'Stop this session’s terminal before repairing it.' : ''} />
+
   <div class="header-top-row">
     <div class="header-badges">
       <NavButtons />
@@ -184,10 +212,14 @@
     </div>
 
     <div class="header-actions">
-      {#if runningTab}
+      {#if liveChat}
+        <span class="running-badge" title="This session is running in a chat below">● Live in chat</span>
+      {:else if runningTab}
         <span class="running-badge" title="This session is running in the terminal panel">● Running</span>
       {/if}
-      {#if launcher.canOpen || canOpenOther}
+      {#if pending}
+        <button type="button" class="action-btn resume-btn" title={PENDING_TITLE} disabled>Resume</button>
+      {:else if launcher.canOpen || canOpenOther}
         <div class="menu-container resume-split" bind:this={resumeMenuRoot}>
           {#if runningTab}
             {@const tabId = runningTab.id}
@@ -222,6 +254,7 @@
               if (resumeMenuOpen) {
                 moreMenuOpen = false;
                 newMenuOpen = false;
+                chatOpen.refresh();
               }
             }}
           >
@@ -272,6 +305,22 @@
                   <span>Copy command</span>
                 </button>
               {/if}
+              {#if canChatHere && !liveChat}
+                <button
+                  type="button"
+                  class="action-menu-item"
+                  role="menuitem"
+                  title="Continue this session in a chat in this window, which shows the agent's reply as it streams"
+                  disabled={chatOpen.opening}
+                  onclick={() => {
+                    resumeMenuOpen = false;
+                    void chatOpen.openSession(meta);
+                  }}
+                >
+                  <Icon name="message-square" size={14} />
+                  <span>Open in chat</span>
+                </button>
+              {/if}
             </div>
           {/if}
         </div>
@@ -311,6 +360,7 @@
                 resumeMenuOpen = false;
                 moreMenuOpen = false;
                 void newSession.refresh();
+                chatOpen.refresh();
               }
             }}
           >
@@ -334,6 +384,40 @@
                   {/if}
                 </button>
               {/each}
+              {#if chatChoices.length > 0}
+                <div class="menu-heading" role="presentation">Chat</div>
+                {#each chatChoices as choice (choice.id)}
+                  <button
+                    type="button"
+                    class="action-menu-item"
+                    role="menuitem"
+                    title="Start a new {choice.label} session in a chat in this window, in {meta.cwd}"
+                    disabled={chatOpen.opening}
+                    onclick={() => startChat(choice.id)}
+                  >
+                    <AgentIcon agent={choice.id} size={14} />
+                    <span>New {choice.label} chat</span>
+                  </button>
+                {/each}
+              {/if}
+              {#if chatMissing}
+                {#if chatChoices.length === 0}
+                  <div class="menu-heading" role="presentation">Chat</div>
+                {/if}
+                <button
+                  type="button"
+                  class="action-menu-item"
+                  role="menuitem"
+                  title="Some agents need their ACP adapter to chat: see how to install it"
+                  onclick={() => {
+                    newMenuOpen = false;
+                    manage.openSettings('agents');
+                  }}
+                >
+                  <Icon name="settings" size={14} />
+                  <span>Set up chat…</span>
+                </button>
+              {/if}
             </div>
           {/if}
         </div>
@@ -358,7 +442,8 @@
           type="button"
           class="action-btn icon-btn more-btn"
           class:active={moreMenuOpen}
-          title={printPreparing ? 'Preparing conversation for printing…' : 'Continue in another agent, export, or print'}
+          disabled={pending}
+          title={pending ? PENDING_TITLE : printPreparing ? 'Preparing conversation for printing…' : 'Continue in another agent, export, or print'}
           aria-busy={printPreparing}
           aria-label="More actions"
           aria-haspopup="menu"
@@ -500,6 +585,7 @@
       </div>
     {/if}
 
+    {#if !pending}
     <div class="meta-item count-item">
       <Icon name="message-square" size={13} class="meta-icon" />
       <span class="count-val">{messageTotal} msgs</span>
@@ -527,8 +613,10 @@
         </span>
       {/if}
     </div>
+    {/if}
   </div>
 
+  {#if !pending}
   <div class="header-time-row">
     {#each [{ label: 'Created', value: meta.createdAt }, { label: 'Updated', value: meta.updatedAt }] as stamp (stamp.label)}
       {#if isKnownTime(stamp.value)}
@@ -539,6 +627,7 @@
       {/if}
     {/each}
   </div>
+  {/if}
 </header>
 
 <style>
@@ -643,19 +732,8 @@
     background-color: currentColor;
   }
 
-  .live-pulse::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background-color: currentColor;
-    animation: live-ring 2s var(--ease-out) infinite;
-  }
-
-  @keyframes live-ring {
-    from { transform: scale(1); opacity: 0.6; }
-    to { transform: scale(2.6); opacity: 0; }
-  }
+  /* Live means an open process, including one waiting for input. Keep its
+     presence indicator static rather than compositing an idle animation. */
 
   .archived-badge {
     padding: 1px 7px;
@@ -847,6 +925,19 @@
   .action-btn.find-btn.active:hover {
     background-color: var(--active-bg);
     color: var(--accent-color);
+  }
+
+  /* A new chat's session, not saved yet: Resume and ⋯ wait for it. */
+  .action-btn.resume-btn:disabled:not(.resume-main) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .action-btn.more-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background-color: transparent;
+    color: var(--text-secondary);
   }
 
   .action-btn.more-btn.active {

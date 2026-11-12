@@ -53,6 +53,7 @@ let dropdownModule;
 let monoFontModule;
 let agentIconModule;
 const goToFileModules = {};
+const managedInstallModules = {};
 
 async function importCompiled(filename, code, replacements) {
   replacements = [
@@ -82,6 +83,7 @@ async function importCompiled(filename, code, replacements) {
   if (iconImport && !replacements.some(([from]) => from === iconImport)) {
     iconModule ??= loadServerComponent(new URL('../src/lib/components/common/Icon.svelte', import.meta.url), [
       ["'../../icons'", JSON.stringify(new URL('../src/lib/icons.ts', import.meta.url).href)],
+      ["'../../animationVisibility'", JSON.stringify(new URL('../src/lib/animationVisibility.ts', import.meta.url).href)],
     ]);
     globalThis.__icon = (await iconModule).default;
     replacements.push([iconImport, 'const Icon = globalThis.__icon;']);
@@ -118,6 +120,14 @@ async function importCompiled(filename, code, replacements) {
     agentIconModule ??= loadServerComponent(new URL('../src/lib/components/common/AgentIcon.svelte', import.meta.url), []);
     globalThis.__agentIcon = (await agentIconModule).default;
     replacements.push([agentIconImport, 'const AgentIcon = globalThis.__agentIcon;']);
+  }
+  // Code checks and the chat setup render the real shared install cards.
+  for (const name of ['ManagedInstallReview', 'ManagedInstallProgress']) {
+    const statement = code.match(new RegExp(`import ${name} from '[./]*(?:common/)?${name}\\.svelte';`))?.[0];
+    if (!statement || replacements.some(([from]) => from === statement)) continue;
+    managedInstallModules[name] ??= loadServerComponent(new URL(`../src/lib/components/common/${name}.svelte`, import.meta.url), []);
+    globalThis[`__${name}`] = (await managedInstallModules[name]).default;
+    replacements.push([statement, `const ${name} = globalThis.__${name};`]);
   }
   // Pure display-label helpers shared by the diagnostics components resolve to the real module.
   for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../problemOverview'", 'problemOverview'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools'], ["'../codeLanguages'", 'codeLanguages'], ["'../../../codeLanguages'", 'codeLanguages'], ["'../../../date'", 'date'], ["'../appearance'", 'appearance']]) {
@@ -251,12 +261,16 @@ export async function renderSessionHeader(fixture, props = {}) {
     ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
     ["import AgentIcon from '../common/AgentIcon.svelte';", 'const AgentIcon = () => {};'],
     ["import NavButtons from './NavButtons.svelte';", 'const NavButtons = () => {};'],
+    ["import CodexRepairNotice from './CodexRepairNotice.svelte';", 'const CodexRepairNotice = () => {};'],
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
     ["import { handoff } from '../../stores/handoff.svelte';", fixtureStore('handoff')],
     ["import { exporter } from '../../stores/export.svelte';", fixtureStore('exporter')],
     ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
     ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
     ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
+    ["import { chats } from '../../stores/chats.svelte';", fixtureStore('chats')],
+    ["import { chatOpen } from '../../stores/chatOpen.svelte';", fixtureStore('chatOpen')],
+    ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
   ]);
   const meta = {
     ref: { agent: 'codex', id: 's1' },
@@ -269,7 +283,7 @@ export async function renderSessionHeader(fixture, props = {}) {
   };
   return renderWithFixture(
     sessionHeaderModule,
-    { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, toast: {}, preferences: { timeZone: 'utc' }, newSession: { available: false, choices: [], starting: false, refresh() {} }, terminals: { tabFor: () => undefined }, ...fixture },
+    { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, toast: {}, preferences: { timeZone: 'utc' }, newSession: { available: false, choices: [], starting: false, refresh() {} }, terminals: { tabFor: () => undefined }, chats: { forSession: () => undefined }, chatOpen: { opening: false, refresh() {}, canChat: () => false }, ...fixture },
     { meta, mode: 'activity', onModeChange() {}, onResume() {}, ...props },
   );
 }

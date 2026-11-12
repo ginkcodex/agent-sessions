@@ -3,6 +3,8 @@ package codex
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,6 +137,10 @@ func TestScanIndex_EdgeChangeOnUnchangedRollouts(t *testing.T) {
 	root := platform.TempDir(t)
 	parent := indexRollout(t, root, indexID, false)
 	child := indexRollout(t, root, childID, false)
+	if err := os.WriteFile(child, []byte(line("2026-09-28T12:00:00Z", "session_meta", `{"id":"`+childID+`","source":{"subagent":{"parent_thread_id":"`+indexID+`"}}}`)), 0600); err != nil {
+		t.Fatal(err)
+	}
+
 	db := stateDB(t, root, "state_5.sqlite", stateSQL)
 	insertThread(t, db, indexID, parent, "Parent", 0)
 	insertThread(t, db, childID, child, "Child", 0)
@@ -405,5 +411,107 @@ func TestScanIndex_SymlinkEscapeAndExtraExplicitSource(t *testing.T) {
 	}
 	if len(res.Changed) != 1 || res.Changed[0].Title != "Explicit" || res.Changed[0].SourcePath != explicit {
 		t.Errorf("valid explicit index source not scanned: %+v", res)
+	}
+}
+
+// Matches the observed 0.167 Guardian shape; no real transcript is used.
+func guardianRollout(t *testing.T, root, id, parent string) string {
+	t.Helper()
+	return writeRollout(t, root, id, line("2026-09-28T12:00:00Z", "session_meta",
+		`{"id":"`+id+`","parent_thread_id":"`+parent+`","source":{"subagent":{"other":"guardian"}},"thread_source":"guardian_review","cwd":"/tmp/rollout-cwd"}`), false)
+}
+
+func TestScanIndex_GuardianExplicitParent(t *testing.T) {
+	for _, indexed := range []bool{false, true} {
+		t.Run(fmt.Sprint("index=", indexed), func(t *testing.T) {
+			root := t.TempDir()
+			indexRollout(t, root, indexID, false)
+			guardianRollout(t, root, childID, indexID)
+			if indexed {
+				stateDB(t, root, "state_5.sqlite", stateSQL)
+			}
+			p := New(root, nil)
+			first, err := p.Scan(context.Background(), provider.ScanState{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := metaByID(t, first, childID).ParentID; got != indexID {
+				t.Fatalf("cold parent=%q", got)
+			}
+			second, err := p.Scan(context.Background(), first.State)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(second.Changed) != 0 {
+				t.Fatalf("unchanged scan changed metadata: %+v", second.Changed)
+			}
+			// Recreate the pre-fix checkpoint: unchanged files must still be reparsed.
+			for path, src := range first.State.Sources {
+				var cp checkpoint
+				if err := json.Unmarshal(src.Checkpoint, &cp); err != nil {
+					t.Fatal(err)
+				}
+				cp.Version = 4
+				cp.GuardianParentID = ""
+				cp.Meta.ParentID = ""
+				if cp.Canonical != nil {
+					cp.Canonical.ParentID = ""
+				}
+				src.Checkpoint, _ = json.Marshal(cp)
+				first.State.Sources[path] = src
+			}
+			migrated, err := p.Scan(context.Background(), first.State)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := metaByID(t, migrated, childID).ParentID; got != indexID {
+				t.Fatalf("old checkpoint parent=%q", got)
+			}
+		})
+	}
+}
+
+func TestScanIndex_GuardianParentValidationAndEdgePrecedence(t *testing.T) {
+	for _, tc := range []struct{ name, parent, edge, want string }{
+		{"explicit", indexID, "", indexID},
+		{"missing parent", missingID, "", ""},
+		{"self", childID, "", ""},
+		{"edge overrides", indexID, orphanID, orphanID},
+		{"dangling edge blocks fallback", indexID, missingID, ""},
+		{"self edge blocks fallback", indexID, childID, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			indexRollout(t, root, indexID, false)
+			indexRollout(t, root, orphanID, false)
+			guardianRollout(t, root, childID, tc.parent)
+			db := stateDB(t, root, "state_5.sqlite", stateSQL)
+			if tc.edge != "" {
+				if _, err := db.Exec(`INSERT INTO thread_spawn_edges VALUES (?,?)`, tc.edge, childID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := New(root, nil)
+			res, err := p.Scan(context.Background(), provider.ScanState{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := metaByID(t, res, childID).ParentID; got != tc.want {
+				t.Fatalf("parent=%q want=%q", got, tc.want)
+			}
+			if tc.name == "explicit" {
+				// Removing the main rollout must detach its Guardian even on a warm scan.
+				if err := os.Remove(metaByID(t, res, indexID).SourcePath); err != nil {
+					t.Fatal(err)
+				}
+				next, err := p.Scan(context.Background(), res.State)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := metaByID(t, next, childID).ParentID; got != "" {
+					t.Fatalf("removed parent left link %q", got)
+				}
+			}
+		})
 	}
 }

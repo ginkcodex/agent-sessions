@@ -6,6 +6,7 @@
   import { epoch } from '../../link';
   import { filePrompt } from '../../stores/filePrompt.svelte';
   import { fileActions } from '../../stores/fileActions.svelte';
+  import ChatAdapters from '../chat/ChatAdapters.svelte';
 
   /** How long the restart prompt stands in for the close confirm. */
   const RESTART_CONFIRMED_MS = 15_000;
@@ -21,7 +22,7 @@
     applyError = '';
     try {
       const choice = await filePrompt.ask(host ? 'Reconnect to apply coding agents?' : 'Restart to apply coding agents?',
-        host ? 'Reconnecting ends the current host connection. Running remote terminal processes may end.' : 'Restarting closes this window and ends its running terminal processes, including coding agents. Unsaved files will be checked before closing.',
+        host ? 'Reconnecting ends the current host connection and its open chats. Running remote terminal processes may end.' : 'Restarting closes this window and ends its running terminal processes and chats, including coding agents. Unsaved files will be checked before closing.',
         [{ value: 'apply', label: host ? 'Reconnect' : 'Restart', danger: true }]);
       if (choice !== 'apply' || owner !== epoch() || link.stale || link.locked) return;
       if (host) {
@@ -80,6 +81,8 @@
     <p class="error" role="alert">{agentSettings.error}</p>
   {/if}
 </section>
+
+<ChatAdapters />
 
 <style>
   h3 { margin: 0 0 10px; font-size: 14px; }

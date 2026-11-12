@@ -26,7 +26,10 @@ coding tools (Claude Code, Codex CLI, OpenCode, …).
 
 ### Non-goals (v1)
 - Starting/driving agents from within the app (only "copy/launch resume command",
-  and a handoff prompt the user pastes or launches themselves).
+  and a handoff prompt the user pastes or launches themselves). *Reversed by
+  the ACP chat mode ([docs/plan/acp-chat.md](docs/plan/acp-chat.md)): the app
+  can drive an agent through its Agent Client Protocol adapter, on the
+  user's request, to stream the session live. The terminal launch stays.*
 - Syncing sessions across machines or general background network access. Remote
   browsing over SSH (M7) uses only the user's existing system `ssh` and
   `~/.ssh/config` to connect directly to hosts they choose. On Windows, a WSL

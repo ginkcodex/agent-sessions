@@ -108,10 +108,13 @@
     return id && !terminals.canSplit(id) ? `A tab holds up to ${MAX_GROUP_PANES} terminals` : `Split terminal (${splitShortcutLabel(isMac)})`;
   }
 
-  // Files dropped on the panel go to the pane under the drop point.
+  // Files dropped on the panel go to the pane under the drop point. Those
+  // dropped on a chat's composer are the chat's.
   onMount(() =>
     api.onFileDrop((x, y, paths) => {
-      const pane = document.elementFromPoint(x, y)?.closest('[data-pane]')?.getAttribute('data-pane');
+      const el = document.elementFromPoint(x, y);
+      if (el?.closest('[data-file-drop-target="chat"]')) return;
+      const pane = el?.closest('[data-pane]')?.getAttribute('data-pane');
       void terminals.dropFiles(paths, pane ?? terminals.active);
     }),
   );

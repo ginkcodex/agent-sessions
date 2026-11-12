@@ -57,7 +57,16 @@ type Notification struct {
 
 // Capabilities indicates the features supported on the remote host.
 type Capabilities struct {
-	RenameSession   bool `json:"renameSession,omitempty"`
+	RenameSession      bool `json:"renameSession,omitempty"`
+	RepairCodexSession bool `json:"repairCodexSession,omitempty"`
+	// ACPChat: the chat* methods run agents through their ACP adapters on
+	// the host, with chat:update and chat:exit notifications.
+	ACPChat bool `json:"acpChat,omitempty"`
+	// ChatAttachments: chatPrompt takes attachments (images and text files).
+	ChatAttachments bool `json:"chatAttachments,omitempty"`
+	// ChatQuestions: chatStart takes the questions flag, and chatAnswer
+	// answers the agents' questions (chat question updates).
+	ChatQuestions   bool `json:"chatQuestions,omitempty"`
 	AgentSettings   bool `json:"agentSettings,omitempty"`
 	DiscoveryStatus bool `json:"discoveryStatus,omitempty"`
 	GitDiff         bool `json:"gitDiff,omitempty"`

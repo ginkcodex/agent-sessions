@@ -32,6 +32,16 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| ACP adapter install | [acp-adapter-install](../plan/acp-adapter-install.md) | [acp-adapter-install/](acp-adapter-install/README.md) | 4/5 ✅ · 1 ⬜ |
+| ACP chat mode | [acp-chat](../plan/acp-chat.md) | [acp-chat/](acp-chat/README.md) | 17/18 ✅ · 1 🟡 |
+| Chat attachments | [chat-attachments](../plan/chat-attachments.md) | [chat-attachments/](chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
+| Chat end guard | [chat-end-guard](../plan/chat-end-guard.md) | [chat-end-guard/](chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
+| Host switch chat guard | [host-switch-chat-guard](../plan/host-switch-chat-guard.md) | [host-switch-chat-guard/](host-switch-chat-guard/README.md) | 2/3 ✅ · 1 ⬜ |
+| Codex daemon chat | [codex-daemon-chat](../plan/codex-daemon-chat.md) | [codex-daemon-chat/](codex-daemon-chat/README.md) | 4/5 ✅ · 1 ⬜ |
+| Chat adapter setup | [chat-adapter-setup](../plan/chat-adapter-setup.md) | [chat-adapter-setup/](chat-adapter-setup/README.md) | 4/5 ✅ · 1 ⬜ |
+| Chat questions | [chat-questions](../plan/chat-questions.md) | [chat-questions/](chat-questions/README.md) | 10/11 ✅ · 1 🟡 |
+| Orphaned task notifications | [orphan-task-notifications](../plan/orphan-task-notifications.md) | [orphan-task-notifications/](orphan-task-notifications/README.md) | 1/1 ✅ |
+| Idle rendering | [idle-rendering](../plan/idle-rendering.md) | [idle-rendering/](idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](../plan/file-translate.md) | [file-translate/](file-translate/README.md) | 2/2 ✅ |
 | Print page setup | [print-page-setup](../plan/print-page-setup.md) | [print-page-setup/](print-page-setup/README.md) | 1/1 ✅ |
 | Windows CI test stability | [windows-ci-test-stability](../plan/windows-ci-test-stability.md) | [windows-ci-test-stability/](windows-ci-test-stability/README.md) | 1/1 ✅ |
@@ -73,3 +83,6 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Wails v3 upgrade | [wails-v3-upgrade](../plan/wails-v3-upgrade.md) | [wails-v3-upgrade/](wails-v3-upgrade/README.md) | 1/2 ✅ · 1 ⬜ |
 | Arch Linux AUR package | [aur-package](../plan/aur-package.md) | [aur-package/](aur-package/README.md) | 4/7 ✅ · 3 🟡 |
 | Remote reconnect | [remote-reconnect](../plan/remote-reconnect.md) | [remote-reconnect/](remote-reconnect/README.md) | 8/8 ✅ |
+| Codex Guardian ancestry | [codex-guardian-ancestry](../plan/codex-guardian-ancestry.md) | [codex-guardian-ancestry/](codex-guardian-ancestry/README.md) | 1/1 ✅ |
+| Live filter for chat sessions | [chat-live-filter](../plan/chat-live-filter.md) | [chat-live-filter/](chat-live-filter/README.md) | 2/2 ✅ |
+| Codex restore filenames | [codex-restore-filenames](../plan/codex-restore-filenames.md) | [codex-restore-filenames/](codex-restore-filenames/README.md) | 6/6 ✅ |

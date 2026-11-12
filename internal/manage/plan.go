@@ -131,16 +131,38 @@ func (m *Manager) planOne(ctx context.Context, meta model.SessionMeta, idx *cata
 			return operation{}, err
 		}
 	}
+	if err := m.ownedError(meta.Ref); err != nil {
+		return operation{}, err
+	}
+	var op operation
+	var err error
 	switch meta.Ref.Agent {
 	case model.AgentClaude:
-		return m.planClaude(ctx, meta, idx)
+		op, err = m.planClaude(ctx, meta, idx)
 	case model.AgentCodex:
-		return m.planCodex(ctx, meta, idx)
+		op, err = m.planCodex(ctx, meta, idx)
 	case model.AgentOpenCode:
-		return m.planOpenCode(ctx, meta)
+		op, err = m.planOpenCode(ctx, meta)
 	default:
 		return operation{}, ErrUnsupportedAction
 	}
+	if err != nil {
+		return operation{}, err
+	}
+	for _, d := range op.Descendants {
+		if err := m.ownedError(d); err != nil {
+			return operation{}, err
+		}
+	}
+	return op, nil
+}
+
+// ownedError refuses a session that a chat in the app drives.
+func (m *Manager) ownedError(ref model.SessionRef) error {
+	if m.owned != nil && m.owned(ref) {
+		return fmt.Errorf("%w: session is open in a chat", ErrLive)
+	}
+	return nil
 }
 
 func (m *Manager) planClaude(ctx context.Context, meta model.SessionMeta, idx *catalogIndex) (operation, error) {

@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/files"
@@ -77,6 +78,10 @@ type App struct {
 	fullscreen        fullscreenController
 	searches          fileSearches
 	gitSyncs          fileSearches // fetch/pull/push in progress, by sync ID
+
+	// chatsOpen is what the frontend last said: whether the window has an
+	// open chat, on this computer or on the host it shows (SetChatsOpen).
+	chatsOpen atomic.Bool
 
 	// Agent alerts: notify is set up on first use; notifierOverride and
 	// notifyRaise replace the desktop's notifications and raising the
@@ -202,7 +207,7 @@ func (a *App) onStartup(ctx context.Context) {
 	}
 	a.conn.setBusy(a.terminals.Running)
 	a.fileClose.mu.Lock()
-	a.fileClose.busy = a.terminals.AnyRunning
+	a.fileClose.busy = a.windowBusy
 	a.fileClose.mu.Unlock()
 	if dir := a.claimsDir(); dir != "" {
 		claims := newHostClaims(dir, func() { raiseWindow(ctx) })
@@ -340,7 +345,10 @@ func (a *App) onShutdown() {
 
 // close gracefully terminates background scans, watchers, indexers, and the database.
 func (a *App) close() error {
-	// Terminals end first: an SSH tab shares the connection's ssh master.
+	// Chats end first, so no agent outlives its window and every pending
+	// permission request is answered cancelled.
+	a.closeChats()
+	// Terminals end next: an SSH tab shares the connection's ssh master.
 	if a.terminals != nil {
 		a.terminals.CloseAll()
 	}

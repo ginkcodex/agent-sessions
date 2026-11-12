@@ -299,13 +299,7 @@
     background-color: var(--status-live);
     box-shadow: 0 0 6px var(--status-live);
     flex-shrink: 0;
-    animation: pulse 2s infinite ease-in-out;
-  }
-
-  @keyframes pulse {
-    0% { opacity: 0.6; }
-    50% { opacity: 1; transform: scale(1.1); }
-    100% { opacity: 0.6; }
+    /* Liveness is presence, not work in progress. No idle pulse. */
   }
 
   /* One 16px slot for the agent's mark, or the checkbox over it. */

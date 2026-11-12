@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ginkcode/agent-sessions/internal/acp"
 	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/manage"
@@ -18,6 +19,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/all"
 	"github.com/ginkcode/agent-sessions/internal/scan"
+	"github.com/ginkcode/agent-sessions/internal/version"
 	"github.com/ginkcode/agent-sessions/internal/watch"
 )
 
@@ -39,6 +41,8 @@ type Engine struct {
 	emitter         Emitter
 	codeDiagnostics *diagnosticsOwner
 	managedTools    *managedToolsOwner
+	chats           *ChatManager
+	chatLaunch      func(context.Context, model.AgentID, string) (acp.Command, error)
 	// logs keeps failed code check logs (codeCheckLogs); logsMu may be taken
 	// under mu, never the reverse.
 	logs   *checkLogs
@@ -138,6 +142,14 @@ func WithManage(mgr *manage.Manager) Option {
 	}
 }
 
+// WithChatLaunch replaces how chats find the agent's ACP adapter (useful in
+// tests).
+func WithChatLaunch(fn func(context.Context, model.AgentID, string) (acp.Command, error)) Option {
+	return func(e *Engine) {
+		e.chatLaunch = fn
+	}
+}
+
 // NewEngine creates an Engine instance with default options.
 func NewEngine(opts ...Option) *Engine {
 	e := &Engine{
@@ -148,6 +160,18 @@ func NewEngine(opts ...Option) *Engine {
 	for _, opt := range opts {
 		opt(e)
 	}
+	launch := e.chatLaunch
+	if launch == nil {
+		launch = e.ChatLaunch
+	}
+	e.chats = NewChatManager(ChatManagerOptions{
+		Launch:           launch,
+		Agents:           e.ChatAgents,
+		Refresh:          e.refreshAgent,
+		OwnershipChanged: func() { e.Events().NotifyFullRefresh() },
+		Emitter:          e.emitter,
+		ClientInfo:       acp.Implementation{Name: "agent-sessions", Version: version.Version},
+	})
 
 	if e.svc == nil {
 		roots := e.roots
@@ -174,6 +198,7 @@ func NewEngine(opts ...Option) *Engine {
 		}
 	}
 
+	e.svc.chatOwners = e.chats.owners
 	if e.roots.Data != "" && e.svc.dataDir == "" {
 		e.svc.SetDataDir(e.roots.Data)
 	}
@@ -192,6 +217,11 @@ func (e *Engine) Refresher() *index.Refresher {
 	return e.refresher
 }
 
+// Chats returns the chat manager; nil for an engine not made by NewEngine.
+func (e *Engine) Chats() *ChatManager {
+	return e.chats
+}
+
 // Events returns the catalog bus.
 func (e *Engine) Events() *CatalogBus {
 	e.mu.Lock()
@@ -207,6 +237,7 @@ func (e *Engine) SetEmitter(emitter Emitter) {
 		emitter = NopEmitter{}
 	}
 	e.emitter = emitter
+	e.chats.SetEmitter(emitter)
 	e.setDiscoveryEmitter(emitter)
 	if e.events != nil {
 		e.events.emitter = emitter
@@ -274,16 +305,7 @@ func (e *Engine) startWatcher(ctx context.Context) func() error {
 		if !ok {
 			return
 		}
-		go func() {
-			e.mu.Lock()
-			refresher := e.refresher
-			e.mu.Unlock()
-			if refresher == nil {
-				return
-			}
-			_, _, _ = refresher.Refresh(ctx, p)
-			e.svc.ApplyReport(refresher.Report())
-		}()
+		go e.refreshProvider(ctx, p)
 	}
 	done := startupObservation(ctx).begin("watcher_setup")
 	closeWatch, err := watch.Start(ctx, e.svc.Providers(), onChange)
@@ -292,6 +314,34 @@ func (e *Engine) startWatcher(ctx context.Context) func() error {
 		return nil
 	}
 	return closeWatch
+}
+
+// refreshProvider rescans one provider. It looks up the refresher each time
+// because a reader swaps it when promoted.
+func (e *Engine) refreshProvider(ctx context.Context, p provider.Provider) {
+	e.mu.Lock()
+	refresher := e.refresher
+	e.mu.Unlock()
+	if refresher == nil {
+		return
+	}
+	_, _, _ = refresher.Refresh(ctx, p)
+	e.svc.ApplyReport(refresher.Report())
+}
+
+// refreshAgent starts a rescan of agent's sessions, as the watcher would on
+// a change, without waiting for it. A chat calls it when a turn ends so the
+// saved records arrive quickly. Without the cache there is nothing to do.
+func (e *Engine) refreshAgent(agent model.AgentID) {
+	e.mu.Lock()
+	ctx := e.runCtx
+	e.mu.Unlock()
+	if ctx == nil || e.svc == nil {
+		return
+	}
+	if p, ok := e.svc.Providers().Get(agent); ok {
+		go e.refreshProvider(ctx, p)
+	}
 }
 
 // Scan triggers a scan across all providers.
@@ -330,6 +380,8 @@ func (e *Engine) Scan(ctx context.Context) error {
 // Close gracefully terminates background scans, watchers, indexers, and the database.
 // It is idempotent and uses an explicit shutdown order.
 func (e *Engine) Close() error {
+	// First, so no agent outlives the app; chats need nothing below.
+	e.chats.CloseAll()
 	e.mu.Lock()
 	if e.closed {
 		e.mu.Unlock()
@@ -598,7 +650,11 @@ func (e *Engine) ensureManage() (*manage.Manager, error) {
 	}
 	cfgPath := filepath.Join(roots.Config, "config.toml")
 
-	opts := []manage.Option{}
+	// A chat in any window owns its session; the registry is process-wide.
+	opts := []manage.Option{manage.WithOwned(func(ref model.SessionRef) bool {
+		_, owned := e.chats.Owned(ref)
+		return owned
+	})}
 	if e.svc != nil {
 		if p, ok := e.svc.Providers().Get(model.AgentClaude); ok {
 			if ld, ok := p.(provider.LiveDetector); ok {

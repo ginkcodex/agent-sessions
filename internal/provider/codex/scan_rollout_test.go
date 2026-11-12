@@ -799,3 +799,25 @@ func TestScan_TurnState(t *testing.T) {
 		state = result.State
 	}
 }
+
+func TestTopLevelSubagentParentMetadata(t *testing.T) {
+	for _, tc := range []struct{ name, payload, wantParent, wantGuardian string }{
+		{"guardian source", `{"id":"child","parent_thread_id":"main","source":{"subagent":{"other":"guardian"}}}`, "main", "main"},
+		{"guardian thread marker", `{"id":"child","parent_thread_id":"main","source":{"subagent":{}},"thread_source":"guardian_review"}`, "main", "main"},
+		{"uppercase source", `{"id":"child","parent_thread_id":"main","source":{"SubAgent":{"other":"guardian"}}}`, "main", "main"},
+		{"ordinary subagent", `{"id":"child","parent_thread_id":"main","source":{"subagent":{"thread_spawn":{}}}}`, "main", ""},
+		{"legacy nested", `{"id":"child","source":{"subagent":{"parent_thread_id":"main"}}}`, "main", ""},
+		{"main thread", `{"id":"child","parent_thread_id":"main","source":"cli"}`, "", ""},
+		{"self parent", `{"id":"child","parent_thread_id":"child","source":{"subagent":{"other":"guardian"}}}`, "", ""},
+		{"invalid parent type", `{"id":"child","parent_thread_id":123,"source":{"subagent":{"other":"guardian"}}}`, "", ""},
+		{"session id is not ancestry", `{"id":"child","session_id":"main","source":{"subagent":{"other":"guardian"}}}`, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var cp checkpoint
+			cp.consume([]byte(line("2026-11-11T12:00:00Z", "session_meta", tc.payload)), &provider.Diagnostics{})
+			if cp.Meta.ParentID != tc.wantParent || cp.GuardianParentID != tc.wantGuardian {
+				t.Fatalf("parent=%q Guardian=%q", cp.Meta.ParentID, cp.GuardianParentID)
+			}
+		})
+	}
+}

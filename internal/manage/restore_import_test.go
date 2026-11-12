@@ -206,7 +206,7 @@ func TestRestore_Codex_RewritesCWD(t *testing.T) {
 		t.Fatalf("report = %+v", report)
 	}
 
-	dest := filepath.Join(roots.Codex, "sessions", "2026", "09", "29", "rollout-restored-"+uuidA+".jsonl")
+	dest := filepath.Join(roots.Codex, "sessions", "2026", "09", "29", "rollout-2026-09-28T12-00-00-"+uuidA+".jsonl")
 	info, err := os.Stat(dest)
 	if err != nil {
 		t.Fatalf("stat rollout: %v", err)
@@ -264,6 +264,10 @@ func TestRestore_Codex_CollisionCopyRemapsID(t *testing.T) {
 	if report.Restored != 1 || report.CreatedRefs[0].ID != prev.CopyID {
 		t.Fatalf("report = %+v", report)
 	}
+	if got := filepath.Base(report.Items[0].Created[0]); got != "rollout-2026-09-28T12-00-00-"+prev.CopyID+".jsonl" {
+		t.Fatalf("copy filename=%q", got)
+	}
+
 	body, err := os.ReadFile(report.Items[0].Created[0])
 	if err != nil {
 		t.Fatal(err)
@@ -290,5 +294,65 @@ func TestRestore_Codex_NoNative(t *testing.T) {
 	req := RestoreRequest{Bundle: b, TargetAgent: model.AgentCodex, TargetCWD: localCWD("/home/dev/work")}
 	if _, err := m.PreviewRestore(context.Background(), req, nil); err != ErrRestoreNoNative {
 		t.Fatalf("want ErrRestoreNoNative, got %v", err)
+	}
+}
+
+func TestRestoredCodexRolloutName(t *testing.T) {
+	fallback := time.Date(2026, 11, 12, 1, 2, 3, 0, time.UTC)
+	for _, tc := range []struct {
+		name, native, raw, want string
+		fallback                time.Time
+		fail                    bool
+	}{
+		{name: "preserve original timestamp", native: "rollout-2026-08-21T13-52-35-" + uuidA + ".jsonl", want: "rollout-2026-08-21T13-52-35-" + uuidB + ".jsonl"},
+		{name: "repair exported legacy name", native: "rollout-restored-" + uuidA + ".jsonl", raw: `{"timestamp":"2026-09-28T12:00:00Z","type":"session_meta","payload":{"timestamp":"2026-08-21T13:52:35+07:00"}}`, want: "rollout-2026-08-21T06-52-35-" + uuidB + ".jsonl"},
+		{name: "record timestamp", native: "rollout-restored-" + uuidA + ".jsonl", raw: `{"timestamp":"2026-09-28T12:00:00Z","type":"session_meta","payload":{}}`, want: "rollout-2026-09-28T12-00-00-" + uuidB + ".jsonl"},
+		{name: "bundle timestamp fallback", native: "rollout-bad.jsonl", fallback: fallback, want: "rollout-2026-11-12T01-02-03-" + uuidB + ".jsonl"},
+		{name: "invalid original timestamp", native: "rollout-2026-99-28T12-00-00-" + uuidA + ".jsonl", fallback: fallback, want: "rollout-2026-11-12T01-02-03-" + uuidB + ".jsonl"},
+		{name: "missing all timestamps", native: "rollout-restored-" + uuidA + ".jsonl", fail: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := restoredCodexRolloutName(tc.native, uuidB, []byte(tc.raw), tc.fallback)
+			if tc.fail {
+				if err == nil {
+					t.Fatal("expected missing timestamp error")
+				}
+				return
+			}
+			if err != nil || got != tc.want {
+				t.Fatalf("name=%q err=%v want=%q", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestRestoreCodexLegacyBundleCanonicalPreviewStable(t *testing.T) {
+	roots := testRoots(t)
+	if err := os.MkdirAll(roots.Codex, 0700); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 12, 1, 2, 3, 0, time.UTC)
+	m, _ := newTestManager(t, roots, WithNow(func() time.Time { return now }))
+	b := makeCodexBundle(uuidA, localCWD("/old/project"))
+	b.Manifest.Sessions[0].Native[0].RootRel = "sessions/2026/11/06/rollout-restored-" + uuidA + ".jsonl"
+	req := RestoreRequest{Bundle: b, TargetAgent: model.AgentCodex, TargetCWD: localCWD("/new/project")}
+	preview, err := m.PreviewRestore(context.Background(), req, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	report, err := m.Restore(context.Background(), req, nil, preview.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Restored != 1 || report.Failed != 0 {
+		t.Fatalf("restore=%+v", report)
+	}
+	want := "rollout-2026-09-28T12-00-00-" + uuidA + ".jsonl"
+	if len(report.Items[0].Created) != 1 || filepath.Base(report.Items[0].Created[0]) != want {
+		t.Fatalf("restored paths=%v", report.Items[0].Created)
+	}
+	if preview.Items[0].Paths[0] != report.Items[0].Created[0] {
+		t.Fatal("preview and execute paths differ")
 	}
 }

@@ -17,9 +17,7 @@ import (
 )
 
 func TestConnection_AutomaticAttempts(t *testing.T) {
-	previous := reconnectBackoff
-	reconnectBackoff = []time.Duration{time.Millisecond}
-	t.Cleanup(func() { reconnectBackoff = previous })
+	useReconnectBackoff(t, time.Millisecond)
 	for _, dropped := range []bool{false, true} {
 		t.Run(fmt.Sprintf("dropped=%v", dropped), func(t *testing.T) {
 			c := newConnection(nil)
@@ -107,9 +105,7 @@ func TestConnection_ConnectThenDisconnect(t *testing.T) {
 		}
 		return nil, errors.New("ssh: refused")
 	}
-	prev := reconnectBackoff
-	reconnectBackoff = []time.Duration{time.Hour}
-	t.Cleanup(func() { reconnectBackoff = prev })
+	useReconnectBackoff(t, time.Hour)
 
 	if err := c.Connect(context.Background(), "box"); err != nil {
 		t.Fatal(err)
@@ -145,9 +141,7 @@ func TestConnection_ConnectThenDisconnect(t *testing.T) {
 }
 
 func TestConnection_ConnectedUsesRemoteBackend(t *testing.T) {
-	prev := reconnectBackoff
-	reconnectBackoff = []time.Duration{time.Hour}
-	t.Cleanup(func() { reconnectBackoff = prev })
+	useReconnectBackoff(t, time.Hour)
 
 	c := newConnection(nil)
 	released := make(chan struct{})
@@ -284,9 +278,7 @@ func TestConnection_SwitchingHostsIsOfflineUntilConnected(t *testing.T) {
 	c := newConnection(nil)
 	c.wantHost = "a"
 	c.localActive = false // a was connected
-	prev := reconnectBackoff
-	reconnectBackoff = []time.Duration{time.Hour}
-	t.Cleanup(func() { reconnectBackoff = prev })
+	useReconnectBackoff(t, time.Hour)
 	block := make(chan struct{})
 	t.Cleanup(func() { close(block) })
 	c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
@@ -366,9 +358,7 @@ func TestConnection_ShutdownBlocksConnect(t *testing.T) {
 type markerBackend struct{ engine.Backend }
 
 func TestConnection_PermanentDialErrorStopsRetrying(t *testing.T) {
-	prev := reconnectBackoff
-	reconnectBackoff = []time.Duration{time.Millisecond}
-	t.Cleanup(func() { reconnectBackoff = prev })
+	useReconnectBackoff(t, time.Millisecond)
 	for _, tc := range []struct {
 		host    string
 		failure error
@@ -430,9 +420,7 @@ func TestConnection_ExplicitLeaveStopsMaster(t *testing.T) {
 		mu.Unlock()
 		return nil
 	}
-	prev := reconnectBackoff
-	reconnectBackoff = []time.Duration{time.Hour}
-	t.Cleanup(func() { reconnectBackoff = prev })
+	useReconnectBackoff(t, time.Hour)
 	c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -478,6 +466,13 @@ func TestConnection_ExplicitLeaveStopsMaster(t *testing.T) {
 	}
 }
 
+// useReconnectBackoff sets the reconnect delays for one test.
+func useReconnectBackoff(t *testing.T, steps ...time.Duration) {
+	t.Helper()
+	prev := reconnectBackoff.Swap(&steps)
+	t.Cleanup(func() { reconnectBackoff.Store(prev) })
+}
+
 func TestReconnectDelay(t *testing.T) {
 	for i, want := range []time.Duration{time.Second, 2 * time.Second, 5 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second} {
 		if got := reconnectDelay(i + 1); got != want {
@@ -487,9 +482,7 @@ func TestReconnectDelay(t *testing.T) {
 }
 
 func TestConnection_RetryWaitsForCancelledDial(t *testing.T) {
-	previous := reconnectBackoff
-	reconnectBackoff = []time.Duration{time.Millisecond}
-	t.Cleanup(func() { reconnectBackoff = previous })
+	useReconnectBackoff(t, time.Millisecond)
 	c := newConnection(nil)
 	defer c.Shutdown()
 	started := make(chan int, 4)

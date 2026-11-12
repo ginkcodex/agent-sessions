@@ -151,6 +151,19 @@ func (p *Provider) NewSessionCommand(dir string) provider.Command {
 	return provider.Command{Argv: []string{"codex"}, Dir: dir}
 }
 
+// ACPAdapter runs Codex through its ACP adapter, pointed at the installed
+// codex.
+func (p *Provider) ACPAdapter() provider.ACPAdapter {
+	return provider.ACPAdapter{
+		Executable: "codex-acp",
+		CLIEnv:     "CODEX_PATH",
+		Managed:    "codex-acp",
+		// Without the daemon, a session the Codex CLI just quit stays
+		// locked to the daemon for a minute.
+		DaemonBridge: true,
+	}
+}
+
 func (p *Provider) ResumeCommand(m model.SessionMeta) provider.Command {
 	return provider.Command{
 		Argv: []string{"codex", "resume", m.Ref.ID},

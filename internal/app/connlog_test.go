@@ -97,9 +97,7 @@ func TestConnection_LogsPhaseChanges(t *testing.T) {
 	c := newConnection(nil)
 	c.phases.logf = out.logf
 	c.setEnv(map[string]string{"CLAUDE_CONFIG_DIR": "/secret/place"})
-	prev := reconnectBackoff
-	reconnectBackoff = []time.Duration{time.Hour}
-	t.Cleanup(func() { reconnectBackoff = prev })
+	useReconnectBackoff(t, time.Hour)
 	c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
 		return nil, errors.New("ssh: connect to host box port 22: Connection refused")
 	}

@@ -3,6 +3,7 @@
   // each OS's own colors and styles. Icons take currentColor and sit on the
   // text baseline like a glyph.
   import { icons, type IconName } from '../../icons';
+  import { animateWhenVisible } from '../../animationVisibility';
 
   interface Props {
     name: IconName;
@@ -18,6 +19,7 @@
 
 <svg
   class="icon {className}"
+  use:animateWhenVisible={className.split(/\s+/).includes('spin')}
   width={size}
   height={size}
   viewBox="0 0 24 24"
@@ -36,5 +38,10 @@
     display: inline-block;
     flex-shrink: 0;
     vertical-align: -0.125em;
+  }
+
+  .icon.spin {
+    transform-origin: center;
+    transform-box: view-box;
   }
 </style>

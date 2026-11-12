@@ -58,6 +58,12 @@ export function blobImage(blob: BlobResponse): LoadedImage {
   return { url: `data:${MIME[format]};base64,${blob.data}`, data: blob.data, format };
 }
 
+/** An image the window holds in base64, or null when it is none shown. */
+export function dataImage(base64: string): LoadedImage | null {
+  const format = sniffImageFormat(base64);
+  return format ? { url: `data:${MIME[format]};base64,${base64}`, data: base64, format } : null;
+}
+
 /** Bytes in base64 as a blob of the given type. */
 export function base64Blob(base64: string, type: string): Blob {
   const bin = atob(base64);

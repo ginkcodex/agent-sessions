@@ -34,8 +34,10 @@ type checkpoint struct {
 	FirstUserSeen   bool              `json:"firstUserSeen,omitempty"`
 	LastUserPrompt  string            `json:"lastUserPrompt,omitempty"`
 	MetaCWD         bool              `json:"metaCwd,omitempty"`
-	FirstLineTime   time.Time         `json:"firstLineTime,omitempty"`
-	LinesRead       int               `json:"linesRead,omitempty"`
+	// Guardian reviews have an explicit rollout parent but no DB spawn edge.
+	GuardianParentID string    `json:"guardianParentId,omitempty"`
+	FirstLineTime    time.Time `json:"firstLineTime,omitempty"`
+	LinesRead        int       `json:"linesRead,omitempty"`
 	// PendingCalls holds the IDs of tool calls without an output yet.
 	PendingCalls []string `json:"pendingCalls,omitempty"`
 	// TaskEvents is set once the rollout records task_started or
@@ -49,8 +51,9 @@ type checkpoint struct {
 }
 
 // checkpointVersion 3 normalizes Windows CWDs in their own style; 4 adds
-// Turn. A full rescan replaces metadata cached by earlier versions.
-const checkpointVersion = 4
+// Turn; 5 adds top-level subagent parents and Guardian ancestry fallback.
+// A full rescan replaces metadata cached by earlier versions.
+const checkpointVersion = 5
 
 // Rollout items known from Codex CLI source that are not conversational messages.
 // These are skipped safely without generating an unknown-type diagnostic.
@@ -172,6 +175,16 @@ func (c *checkpoint) consumeSessionMeta(payload gjson.Result, lineStamp string, 
 		c.Meta.ParentID = parentID
 	} else if parentID := payload.Get("source.subagent.parent_thread_id").String(); parentID != "" {
 		c.Meta.ParentID = parentID
+	}
+	if payload.Get("source.subagent").IsObject() || payload.Get("source.SubAgent").IsObject() {
+		if parent := payload.Get("parent_thread_id"); parent.Type == gjson.String && parent.String() != "" && parent.String() != c.Meta.Ref.ID {
+			c.Meta.ParentID = parent.String()
+			if payload.Get("thread_source").String() == "guardian_review" ||
+				payload.Get("source.subagent.other").String() == "guardian" ||
+				payload.Get("source.SubAgent.other").String() == "guardian" {
+				c.GuardianParentID = parent.String()
+			}
+		}
 	}
 
 	createdStr := payload.Get("timestamp").String()
@@ -423,9 +436,10 @@ func isArchivedPath(path string) bool {
 }
 
 type sourceScan struct {
-	path  string
-	state provider.SourceState
-	meta  model.SessionMeta
+	path             string
+	state            provider.SourceState
+	meta             model.SessionMeta
+	guardianParentID string
 	// decoded is the checkpoint of an unchanged source, decoded from the same
 	// bytes as state.Checkpoint and never modified.
 	decoded *checkpoint
@@ -589,9 +603,14 @@ feed:
 	}
 	if index.hasEdges {
 		for id, src := range byID {
-			// The edges table is authoritative, including removal of an old edge.
+			// Edges are authoritative for ordinary subagents. Guardian reviews
+			// are omitted from that table, so retain their explicit rollout link.
 			src.meta.ParentID = ""
-			if parent := index.edges[id]; parent != "" && parent != id {
+			parent, hasEdge := index.edges[id]
+			if !hasEdge {
+				parent = src.guardianParentID
+			}
+			if parent != "" && parent != id {
 				if _, validParent := byID[parent]; validParent {
 					src.meta.ParentID = parent
 				}
@@ -765,6 +784,7 @@ func (p *Provider) scanSource(ctx context.Context, path string, old provider.Sou
 	if resume && hasOld && old.Size == info.Size() && old.ModTimeNs == info.ModTime().UnixNano() {
 		out.state = old
 		out.decoded = &cp
+		out.guardianParentID = cp.GuardianParentID
 		out.meta = cp.finalize(path, info.ModTime())
 		if out.meta.CWD != "" {
 			out.meta.CWDMissing = !pathutil.Exists(out.meta.CWD)
@@ -842,6 +862,7 @@ func (p *Provider) scanSource(ctx context.Context, path string, old provider.Sou
 
 	cp.LinesRead = lineBase + r.LineNo()
 	cp.Version = checkpointVersion
+	out.guardianParentID = cp.GuardianParentID
 	out.meta = cp.finalize(path, info.ModTime())
 	if out.meta.CWD != "" {
 		out.meta.CWDMissing = !pathutil.Exists(out.meta.CWD)

@@ -2,7 +2,7 @@
   import type { FileRef, SessionRef } from '../../../types';
   import { api } from '../../../api';
   import { epoch } from '../../../link';
-  import { ImageCache, type LoadedImage } from '../../../images';
+  import { ImageCache, dataImage, type LoadedImage } from '../../../images';
 
   const cache = new ImageCache();
 
@@ -24,8 +24,9 @@
   import { untrack } from 'svelte';
   import { openViewer } from '../../../viewer';
 
-  // An image attached to a message. It is fetched once it scrolls into view
-  // and opens in the full-window viewer when clicked.
+  // An image attached to a message. It is fetched once it scrolls into view,
+  // unless the window holds its bytes, and opens in the full-window viewer
+  // when clicked.
   interface Props {
     file: FileRef;
     sessionRef: SessionRef;
@@ -43,8 +44,8 @@
   $effect(() => {
     const wanted = key;
     untrack(() => {
-      image = cache.get(wanted) ?? null;
-      error = file.ref ? null : 'The session does not keep this image.';
+      image = (file.data ? dataImage(file.data) : null) ?? cache.get(wanted) ?? null;
+      error = image || file.ref ? null : file.data ? 'The attachment is not a PNG, JPEG, GIF or WebP image.' : 'The session does not keep this image.';
     });
   });
 

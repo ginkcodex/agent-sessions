@@ -1,0 +1,170 @@
+{
+  "note": "Synthetic chat turns for ACP-11. Each agent's IDs, update order and what it saves follow the ACP-02 spike captures (docs/plan/acp-chat-spike.md); the text is made up. 'during' is what the saved transcript holds while the turn still runs, 'saved' what it holds once the turn has ended.",
+  "agents": [
+    {
+      "agent": "claude-code",
+      "turns": [
+        {
+          "label": "two tools, then the reply",
+          "prompt": "Create a file notes.txt containing hi, then run ls and tell me its output in one line.",
+          "sentAt": "2026-11-11T04:50:47.400Z",
+          "updates": [
+            { "sessionUpdate": "tool_call", "toolCallId": "toolu_01AbCdEfGhIjKlMnOpQrSt01", "title": "Write", "kind": "edit", "status": "pending", "rawInput": {} },
+            { "sessionUpdate": "tool_call_update", "toolCallId": "toolu_01AbCdEfGhIjKlMnOpQrSt01", "title": "Write /tmp/proj/notes.txt", "rawInput": { "file_path": "/tmp/proj/notes.txt", "content": "hi\n" }, "locations": [{ "path": "/tmp/proj/notes.txt" }] },
+            { "sessionUpdate": "tool_call_update", "toolCallId": "toolu_01AbCdEfGhIjKlMnOpQrSt01", "content": [{ "type": "diff", "path": "/tmp/proj/notes.txt", "oldText": null, "newText": "hi\n" }] },
+            { "sessionUpdate": "tool_call_update", "toolCallId": "toolu_01AbCdEfGhIjKlMnOpQrSt01", "status": "completed", "rawOutput": "File created successfully at: /tmp/proj/notes.txt" },
+            { "sessionUpdate": "tool_call", "toolCallId": "toolu_01AbCdEfGhIjKlMnOpQrSt02", "title": "Terminal", "kind": "execute", "status": "pending", "rawInput": {} },
+            { "sessionUpdate": "tool_call_update", "toolCallId": "toolu_01AbCdEfGhIjKlMnOpQrSt02", "title": "`ls`", "rawInput": { "command": "ls", "description": "List files" } },
+            { "sessionUpdate": "tool_call_update", "toolCallId": "toolu_01AbCdEfGhIjKlMnOpQrSt02", "status": "completed", "rawOutput": "main.go\nnotes.txt", "content": [{ "type": "content", "content": { "type": "text", "text": "main.go\nnotes.txt" } }] },
+            { "sessionUpdate": "agent_message_chunk", "messageId": "msg_011CgvAAAAAAAAAAAAAAAA03", "content": { "type": "text", "text": "Created notes.txt; " } },
+            { "sessionUpdate": "agent_message_chunk", "messageId": "msg_011CgvAAAAAAAAAAAAAAAA03", "content": { "type": "text", "text": "`ls` prints main.go and notes.txt." } }
+          ],
+          "stopReason": "end_turn",
+          "during": [
+            { "id": "", "role": "user", "time": "2026-11-11T04:50:47.578Z", "parts": [{ "kind": "text", "text": "Create a file notes.txt containing hi, then run ls and tell me its output in one line." }] },
+            { "id": "msg_011CgvAAAAAAAAAAAAAAAA01", "role": "assistant", "time": "2026-11-11T04:50:49.606Z", "parts": [{ "kind": "tool", "tool": { "id": "toolu_01AbCdEfGhIjKlMnOpQrSt01", "name": "Write", "input": { "file_path": "/tmp/proj/notes.txt", "content": "hi\n" }, "output": "File created successfully at: /tmp/proj/notes.txt", "status": "completed" } }] }
+          ],
+          "duringKeeps": ["toolu_01AbCdEfGhIjKlMnOpQrSt02", "msg_011CgvAAAAAAAAAAAAAAAA03"],
+          "saved": [
+            { "id": "", "role": "user", "time": "2026-11-11T04:50:47.578Z", "parts": [{ "kind": "text", "text": "Create a file notes.txt containing hi, then run ls and tell me its output in one line." }] },
+            { "id": "msg_011CgvAAAAAAAAAAAAAAAA01", "role": "assistant", "time": "2026-11-11T04:50:49.606Z", "parts": [{ "kind": "tool", "tool": { "id": "toolu_01AbCdEfGhIjKlMnOpQrSt01", "name": "Write", "input": { "file_path": "/tmp/proj/notes.txt", "content": "hi\n" }, "output": "File created successfully at: /tmp/proj/notes.txt", "status": "completed" } }] },
+            { "id": "msg_011CgvAAAAAAAAAAAAAAAA02", "role": "assistant", "time": "2026-11-11T04:50:51.172Z", "parts": [{ "kind": "tool", "tool": { "id": "toolu_01AbCdEfGhIjKlMnOpQrSt02", "name": "Bash", "input": { "command": "ls", "description": "List files" }, "output": "main.go\nnotes.txt", "status": "completed" } }] },
+            { "id": "msg_011CgvAAAAAAAAAAAAAAAA03", "role": "assistant", "time": "2026-11-11T04:50:52.779Z", "parts": [{ "kind": "text", "text": "Created notes.txt; `ls` prints main.go and notes.txt." }] }
+          ]
+        },
+        {
+          "label": "cancelled: the partial reply is never saved",
+          "prompt": "Write a long essay about terminals.",
+          "sentAt": "2026-11-11T04:53:20.900Z",
+          "updates": [
+            { "sessionUpdate": "agent_message_chunk", "messageId": "msg_011CgvAAAAAAAAAAAAAAAA04", "content": { "type": "text", "text": "Terminals began as " } }
+          ],
+          "stopReason": "cancelled",
+          "saved": [
+            { "id": "", "role": "user", "time": "2026-11-11T04:53:21.069Z", "parts": [{ "kind": "text", "text": "Write a long essay about terminals." }] },
+            { "id": "", "role": "user", "time": "2026-11-11T04:53:25.680Z", "parts": [{ "kind": "text", "text": "[Request interrupted by user]" }] }
+          ],
+          "savedKeeps": ["msg_011CgvAAAAAAAAAAAAAAAA04"]
+        },
+        {
+          "label": "the next saved turn clears the cancelled one",
+          "prompt": "Reply with ok.",
+          "sentAt": "2026-11-11T04:59:20.600Z",
+          "updates": [
+            { "sessionUpdate": "agent_message_chunk", "messageId": "msg_011CgvAAAAAAAAAAAAAAAA05", "content": { "type": "text", "text": "ok" } }
+          ],
+          "stopReason": "end_turn",
+          "saved": [
+            { "id": "", "role": "user", "time": "2026-11-11T04:59:20.763Z", "parts": [{ "kind": "text", "text": "Reply with ok." }] },
+            { "id": "msg_011CgvAAAAAAAAAAAAAAAA05", "role": "assistant", "time": "2026-11-11T04:59:23.219Z", "parts": [{ "kind": "text", "text": "ok" }] }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "codex",
+      "turns": [
+        {
+          "label": "a command whose saved ID differs",
+          "prompt": "Create a file notes.txt containing hi, then run ls and tell me its output in one line.",
+          "sentAt": "2026-11-11T04:54:48.300Z",
+          "updates": [
+            { "sessionUpdate": "agent_message_chunk", "messageId": "msg_0f4a06a52810f99e016af3f51a97d487d095b803b22926c001", "content": { "type": "text", "text": "I'll create the file, " } },
+            { "sessionUpdate": "agent_message_chunk", "messageId": "msg_0f4a06a52810f99e016af3f51a97d487d095b803b22926c001", "content": { "type": "text", "text": "then list the directory." } },
+            { "sessionUpdate": "tool_call", "toolCallId": "exec-04964f9c-9930-4ffe-9330-0f1a57767401", "title": "printf 'hi\\n' > notes.txt && ls", "kind": "execute", "status": "in_progress", "rawInput": { "command": ["bash", "-lc", "printf 'hi\\n' > notes.txt && ls"] }, "content": [{ "type": "terminal", "terminalId": "exec-04964f9c-9930-4ffe-9330-0f1a57767401" }] },
+            { "sessionUpdate": "tool_call_update", "toolCallId": "exec-04964f9c-9930-4ffe-9330-0f1a57767401", "status": "completed", "_meta": { "terminal_output_delta": { "terminal_id": "exec-04964f9c-9930-4ffe-9330-0f1a57767401", "data": "main.go\nnotes.txt\n" }, "terminal_exit": { "terminal_id": "exec-04964f9c-9930-4ffe-9330-0f1a57767401", "exit_code": 0, "signal": null } } },
+            { "sessionUpdate": "agent_message_chunk", "messageId": "msg_0f4a06a52810f99e016af3f51e6adc87d0b2cb485951378202", "content": { "type": "text", "text": "`ls`: main.go notes.txt" } }
+          ],
+          "stopReason": "end_turn",
+          "during": [
+            { "id": "msg_01a1c8f5-6770-76d2-b3ca-797834863301", "role": "user", "time": "2026-11-11T04:54:48.433Z", "parts": [{ "kind": "text", "text": "Create a file notes.txt containing hi, then run ls and tell me its output in one line." }] },
+            { "id": "msg_0f4a06a52810f99e016af3f51a97d487d095b803b22926c001", "role": "assistant", "time": "2026-11-11T04:54:51.243Z", "parts": [{ "kind": "text", "text": "I'll create the file, then list the directory." }, { "kind": "tool", "tool": { "id": "call_4a9a0e037f2c4a0ba841b95a92640501", "name": "exec_command", "input": { "cmd": "printf 'hi\\n' > notes.txt && ls" }, "output": "main.go\nnotes.txt\n", "status": "completed" } }] }
+          ],
+          "duringKeeps": ["exec-04964f9c-9930-4ffe-9330-0f1a57767401", "msg_0f4a06a52810f99e016af3f51e6adc87d0b2cb485951378202"],
+          "saved": [
+            { "id": "msg_01a1c8f5-6770-76d2-b3ca-797834863301", "role": "user", "time": "2026-11-11T04:54:48.433Z", "parts": [{ "kind": "text", "text": "Create a file notes.txt containing hi, then run ls and tell me its output in one line." }] },
+            { "id": "msg_0f4a06a52810f99e016af3f51a97d487d095b803b22926c001", "role": "assistant", "time": "2026-11-11T04:54:51.243Z", "parts": [{ "kind": "text", "text": "I'll create the file, then list the directory." }, { "kind": "tool", "tool": { "id": "call_4a9a0e037f2c4a0ba841b95a92640501", "name": "exec_command", "input": { "cmd": "printf 'hi\\n' > notes.txt && ls" }, "output": "main.go\nnotes.txt\n", "status": "completed" } }] },
+            { "id": "msg_0f4a06a52810f99e016af3f51e6adc87d0b2cb485951378202", "role": "assistant", "time": "2026-11-11T04:54:54.617Z", "parts": [{ "kind": "text", "text": "`ls`: main.go notes.txt" }] }
+          ]
+        },
+        {
+          "label": "cancelled: the prompt is saved, the partial reply is not",
+          "prompt": "Count to 100, one number per line, slowly.",
+          "sentAt": "2026-11-11T04:59:42.800Z",
+          "updates": [
+            { "sessionUpdate": "agent_message_chunk", "messageId": "msg_0b6e5f8f31136d1a016af3f640f60c87d082ea6b1092d1db03", "content": { "type": "text", "text": "1\n2\n3\n" } }
+          ],
+          "stopReason": "cancelled",
+          "saved": [
+            { "id": "msg_01a1c8f9-e5c3-7750-8ef9-6cad3ef59e02", "role": "user", "time": "2026-11-11T04:59:42.915Z", "parts": [{ "kind": "text", "text": "Count to 100, one number per line, slowly." }] }
+          ],
+          "savedKeeps": ["msg_0b6e5f8f31136d1a016af3f640f60c87d082ea6b1092d1db03"]
+        },
+        {
+          "label": "the next saved turn clears the cancelled one",
+          "prompt": "Reply with ok.",
+          "sentAt": "2026-11-11T05:00:23.100Z",
+          "updates": [
+            { "sessionUpdate": "agent_message_chunk", "messageId": "msg_0a38a145c9ca8998016af3f668e48887d089226c76ea2a04", "content": { "type": "text", "text": "ok" } }
+          ],
+          "stopReason": "end_turn",
+          "saved": [
+            { "id": "msg_01a1c8fa-831c-7d92-85df-d0d528dc2103", "role": "user", "time": "2026-11-11T05:00:23.196Z", "parts": [{ "kind": "text", "text": "Reply with ok." }] },
+            { "id": "msg_0a38a145c9ca8998016af3f668e48887d089226c76ea2a04", "role": "assistant", "time": "2026-11-11T05:00:25.029Z", "parts": [{ "kind": "text", "text": "ok" }] }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "opencode",
+      "turns": [
+        {
+          "label": "thoughts with a :reasoning:N suffix, and two tools",
+          "prompt": "Create a file notes.txt containing hi, then run ls and tell me its output in one line.",
+          "sentAt": "2026-11-11T04:47:35.900Z",
+          "updates": [
+            { "sessionUpdate": "agent_thought_chunk", "messageId": "msg_1c8eece93001ZGBV5fzyUkc001:reasoning:0", "content": { "type": "text", "text": "Write the file first, " } },
+            { "sessionUpdate": "agent_thought_chunk", "messageId": "msg_1c8eece93001ZGBV5fzyUkc001:reasoning:0", "content": { "type": "text", "text": "then list." } },
+            { "sessionUpdate": "tool_call", "toolCallId": "call_xqzw2v01", "title": "write", "kind": "edit", "status": "pending", "rawInput": {} },
+            { "sessionUpdate": "tool_call_update", "toolCallId": "call_xqzw2v01", "title": "notes.txt", "kind": "edit", "status": "in_progress", "rawInput": { "path": "notes.txt", "content": "hi\n" }, "locations": [{ "path": "/tmp/proj/notes.txt" }] },
+            { "sessionUpdate": "tool_call_update", "toolCallId": "call_xqzw2v01", "status": "completed", "content": [{ "type": "content", "content": { "type": "text", "text": "Created file successfully: notes.txt" } }] },
+            { "sessionUpdate": "agent_thought_chunk", "messageId": "msg_1c8eed499001aG2VHJOOLJ002:reasoning:0", "content": { "type": "text", "text": "Now run ls." } },
+            { "sessionUpdate": "tool_call", "toolCallId": "call_7kiuny02", "title": "shell", "kind": "execute", "status": "pending", "rawInput": {} },
+            { "sessionUpdate": "tool_call_update", "toolCallId": "call_7kiuny02", "kind": "execute", "status": "in_progress", "rawInput": { "command": "ls", "workdir": "/tmp/proj" } },
+            { "sessionUpdate": "tool_call_update", "toolCallId": "call_7kiuny02", "status": "completed", "content": [{ "type": "content", "content": { "type": "text", "text": "main.go\nnotes.txt\n" } }], "rawOutput": { "output": "main.go\nnotes.txt\n", "metadata": { "exit": 0, "truncated": false } } },
+            { "sessionUpdate": "agent_thought_chunk", "messageId": "msg_1c8eed96f001B5w7akBMm8003:reasoning:0", "content": { "type": "text", "text": "Report the listing." } },
+            { "sessionUpdate": "agent_message_chunk", "messageId": "msg_1c8eed96f001B5w7akBMm8003", "content": { "type": "text", "text": "main.go " } },
+            { "sessionUpdate": "agent_message_chunk", "messageId": "msg_1c8eed96f001B5w7akBMm8003", "content": { "type": "text", "text": "notes.txt" } }
+          ],
+          "stopReason": "end_turn",
+          "during": [
+            { "id": "msg_1c8eecd2d0013lsLyMeED3000", "role": "user", "time": "2026-11-11T04:47:36.068Z", "parts": [{ "kind": "text", "text": "Create a file notes.txt containing hi, then run ls and tell me its output in one line." }] },
+            { "id": "msg_1c8eece93001ZGBV5fzyUkc001", "role": "assistant", "time": "2026-11-11T04:47:36.087Z", "parts": [{ "kind": "reasoning", "text": "Write the file first, then list." }, { "kind": "tool", "tool": { "id": "call_xqzw2v01", "name": "write", "input": { "path": "notes.txt", "content": "hi\n" }, "output": "Created file successfully: notes.txt", "status": "completed" } }] },
+            { "id": "msg_1c8eed499001aG2VHJOOLJ002", "role": "assistant", "time": "2026-11-11T04:47:37.628Z", "parts": [{ "kind": "reasoning", "text": "Now run ls." }, { "kind": "tool", "tool": { "id": "call_7kiuny02", "name": "shell", "input": { "command": "ls", "workdir": "/tmp/proj" }, "output": "main.go\nnotes.txt\n", "status": "completed" } }] },
+            { "id": "msg_1c8eed96f001B5w7akBMm8003", "role": "assistant", "time": "2026-11-11T04:47:38.866Z", "parts": [{ "kind": "reasoning", "text": "Report the listing." }] }
+          ],
+          "duringKeeps": ["msg_1c8eed96f001B5w7akBMm8003"],
+          "saved": [
+            { "id": "msg_1c8eecd2d0013lsLyMeED3000", "role": "user", "time": "2026-11-11T04:47:36.068Z", "parts": [{ "kind": "text", "text": "Create a file notes.txt containing hi, then run ls and tell me its output in one line." }] },
+            { "id": "msg_1c8eece93001ZGBV5fzyUkc001", "role": "assistant", "time": "2026-11-11T04:47:36.087Z", "parts": [{ "kind": "reasoning", "text": "Write the file first, then list." }, { "kind": "tool", "tool": { "id": "call_xqzw2v01", "name": "write", "input": { "path": "notes.txt", "content": "hi\n" }, "output": "Created file successfully: notes.txt", "status": "completed" } }] },
+            { "id": "msg_1c8eed499001aG2VHJOOLJ002", "role": "assistant", "time": "2026-11-11T04:47:37.628Z", "parts": [{ "kind": "reasoning", "text": "Now run ls." }, { "kind": "tool", "tool": { "id": "call_7kiuny02", "name": "shell", "input": { "command": "ls", "workdir": "/tmp/proj" }, "output": "main.go\nnotes.txt\n", "status": "completed" } }] },
+            { "id": "msg_1c8eed96f001B5w7akBMm8003", "role": "assistant", "time": "2026-11-11T04:47:38.866Z", "parts": [{ "kind": "reasoning", "text": "Report the listing." }, { "kind": "text", "text": "main.go notes.txt" }] }
+          ]
+        },
+        {
+          "label": "cancelled while thinking: the thought is saved with a notice",
+          "prompt": "Write a long essay about terminals. Do not use tools.",
+          "sentAt": "2026-11-11T04:49:53.600Z",
+          "updates": [
+            { "sessionUpdate": "agent_thought_chunk", "messageId": "msg_1c8f0e83e001eQqW7tuBnG004:reasoning:0", "content": { "type": "text", "text": "An essay on terminals: start with teletypes." } }
+          ],
+          "stopReason": "cancelled",
+          "saved": [
+            { "id": "msg_1c8f0e6f7001DaUR5X7VAKn004", "role": "user", "time": "2026-11-11T04:49:53.714Z", "parts": [{ "kind": "text", "text": "Write a long essay about terminals. Do not use tools." }] },
+            { "id": "msg_1c8f0e83e001eQqW7tuBnG004", "role": "assistant", "time": "2026-11-11T04:49:53.730Z", "parts": [{ "kind": "reasoning", "text": "An essay on terminals: start with teletypes." }, { "kind": "notice", "text": "Request aborted" }] }
+          ]
+        }
+      ]
+    }
+  ]
+}

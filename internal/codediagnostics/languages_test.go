@@ -30,7 +30,9 @@ func TestLanguagesCoverEveryProviderAndTool(t *testing.T) {
 		t.Fatal("unknown provider has a language")
 	}
 	tools := ManagedToolNames()
-	if want := managedtools.ProposableTools(); len(tools) != len(want) || !slices.Equal(slices.Sorted(slices.Values(tools)), slices.Sorted(slices.Values(want))) {
+	// Every proposable language server, and none of chat's adapters.
+	want := slices.DeleteFunc(managedtools.ProposableTools(), func(tool string) bool { return slices.Contains(managedtools.AdapterTools(), tool) })
+	if len(tools) != len(want) || !slices.Equal(slices.Sorted(slices.Values(tools)), slices.Sorted(slices.Values(want))) {
 		t.Fatalf("managed tools %v, proposable %v", tools, want)
 	}
 	if got := LiveProviderIDs(); !slices.Equal(got, []string{"gopls", "typescript", "svelte", "ruff", "pyright", "rust-analyzer", "rubocop", "ruby-lsp", "jdtls", "intelephense"}) {

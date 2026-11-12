@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ginkcode/agent-sessions/internal/codexbridge"
 	"github.com/ginkcode/agent-sessions/internal/fdlimit"
 	"github.com/ginkcode/agent-sessions/internal/handoff"
 	"github.com/ginkcode/agent-sessions/internal/model"
@@ -26,6 +27,11 @@ import (
 )
 
 func main() {
+	// A Codex chat's adapter, started by `serve`, runs this program as its
+	// codex.
+	if code, ok := codexbridge.Main(os.Args[1:]); ok {
+		os.Exit(code)
+	}
 	// `serve` hosts language servers on remote machines; keep the raised
 	// open-file limit for them (see fdlimit).
 	_ = fdlimit.Inherit()

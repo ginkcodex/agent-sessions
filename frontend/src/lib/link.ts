@@ -35,6 +35,15 @@ export function isDisconnectedError(err: unknown): boolean {
 }
 
 /**
+ * Matches engine.ErrSessionInUse: the agent refused a session another of
+ * its clients has open, as Codex does for a minute after its CLI quits.
+ */
+export function isSessionInUseError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return msg.includes('the session is open in another Codex client');
+}
+
+/**
  * Matches files.ErrSaveIncomplete: a save failed after writing began, so the
  * file may hold the old bytes, the new ones or a mix.
  */

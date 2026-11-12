@@ -47,6 +47,71 @@ status). To reproduce a failure, open the index with `index.OpenReadOnly`,
 load the saved states with `LoadSnapshot` and run each provider's `Scan` with
 its state. This reads the live index in place, so nothing needs to be copied.
 
+## macOS idle GPU usage and native window opacity
+
+On 2026-11-11, the user reported GPU usage near 70% with the app open.
+Removing decorative Live animations and using low-rate work indicators helped,
+but reported usage still averaged about 30%. After testing the opaque native
+window change, the user reported **0% GPU usage when idle with the app open**.
+This is a user-observed result, not a controlled GPU benchmark; scrolling and
+active-terminal performance after the opacity change remain unverified.
+
+### Native backing matters even when the page looks solid
+
+Wails v3.1.0 initializes its macOS `NSWindow` with a clear backing color and
+`opaque = NO`. Our main window did not override this: the default background
+color has zero alpha, and the Normal backdrop path does not restore opacity.
+A solid HTML/CSS page does not itself tell AppKit that its window is opaque.
+This does **not** establish that WKWebView itself was configured transparent.
+
+`cmd/agent-sessions/windowopacity_darwin.go` and `.m` now set the main window's
+backing to adaptive `NSColor.windowBackgroundColor`, then `opaque = YES`, using
+public AppKit APIs. The main-window runtime-ready handler queues the operation
+onto Wails' UI thread and resolves the native handle there, safely skipping a
+window already torn down. About windows, WKWebView/child layers, window alpha,
+shadows and titlebar configuration are untouched. Other platforms use a no-op.
+
+For a same-binary comparison, `AGENT_SESSIONS_MACOS_OPAQUE=0` preserves Wails'
+original native configuration; unset or `1` enables the opaque backing. This
+is a temporary process-level experiment switch, not a persisted setting.
+Fully quit between runs after preserving any terminal work, then launch the
+rebuilt app's `Contents/MacOS/agent-sessions` executable with the chosen value.
+Reusing an existing process with `open -a` does not apply a new environment.
+
+### Avoid continuous decorative rendering
+
+- Live badges/dots remain visible but static: an open process is not necessarily
+  doing work.
+- Shared spinner icons turn in eight discrete steps per second; working dots
+  toggle every 800 ms, without CSS interpolation. IntersectionObserver gates
+  them to the viewport, and shared timers stop when the last subscriber leaves.
+  Reduced motion halves spinner speed and keeps working dots steady.
+- Do not globally pause animations on hidden documents or stale panes: entrance
+  animations can strand dialogs at opacity zero, and loading pulses can freeze.
+- Keep the session-list `translateZ(0)` workaround **Linux-only**; do not remove
+  the native-verified WebKitGTK scrollbar fix or spread forced layers everywhere.
+- Terminal rendering, cursor blinking, transport and output cadence are unchanged.
+
+Metal captures showed WindowServer-heavy GPU work and display surface updates
+reaching 120/s on the test Mac's ProMotion display, with much lower WebKit GPU
+work. They were system-wide, not synchronized to specific gestures, and later
+captures included other apps. They do not isolate a particular animation or
+prove the native-opacity mechanism. Summed GPU-channel execution intervals can
+overlap and are not the device-utilization counter. YouTube video decoding can
+use dedicated media hardware, so its GPU percentage is not a like-for-like
+comparison with desktop compositing.
+
+Automated coverage includes observer/indicator lifecycle and cleanup, reduced
+motion, platform CSS scope, and an actual AppKit helper fixture checking native
+opacity, adaptive backing color and retained window properties. These checks
+are not full WKWebView visual QA or GPU measurements. Controlled idle/scrolling
+A/B, resize/fullscreen/file-drop checks and native Windows/Linux validation
+remain open; a Windows cross-compile is not native testing.
+
+See the [plan](docs/plan/idle-rendering.md),
+[QA evidence](docs/plan/idle-rendering-qa.md) and
+[tasks](docs/tasks/idle-rendering/README.md) for results and remaining gates.
+
 ## Linux rendering (DMA-BUF)
 
 **Don't set `WEBKIT_DISABLE_DMABUF_RENDERER=1` for everyone.** Without

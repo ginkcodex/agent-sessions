@@ -35,6 +35,9 @@ func (f *fakeManagedInstaller) Discover(tool string) (string, error) {
 	}
 	return "", os.ErrNotExist
 }
+func (f *fakeManagedInstaller) Runtime(string) (string, error) {
+	return "/backend/private/node", nil
+}
 func (f *fakeManagedInstaller) Dirs() []string { return []string{"/backend/private"} }
 
 func (f *fakeManagedInstaller) Install(ctx context.Context, _ mt.Binding, token string) (string, error) {
@@ -163,7 +166,7 @@ func TestManagedStatusReportsEachTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := e.ManagedTool(context.Background(), ManagedToolRequest{Action: "status", ExpectedHostID: host})
-	want := map[string]string{"gopls": "unavailable", "ruff": "available", "vtsls": "missingTool", "pyright": "missingTool", "rust-analyzer": "missingTool", "svelte-language-server": "missingTool"}
+	want := map[string]string{"gopls": "unavailable", "ruff": "available", "vtsls": "missingTool", "pyright": "missingTool", "rust-analyzer": "missingTool", "svelte-language-server": "missingTool", "claude-agent-acp": "missingTool", "codex-acp": "missingTool"}
 	if err != nil || out.State != "idle" || !maps.Equal(out.Tools, want) || f.calls.Load() != 0 {
 		t.Fatalf("%+v %v", out, err)
 	}

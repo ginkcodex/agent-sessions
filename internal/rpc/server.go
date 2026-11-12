@@ -51,6 +51,7 @@ type Server struct {
 	closed            chan struct{}
 	idleTimeout       time.Duration
 	diagnostics       diagnosticsRPC
+	chats             chatRPC
 	rawW              io.Writer
 	rawR              io.Reader
 }
@@ -62,6 +63,7 @@ func NewServer(backend engine.Backend, r io.Reader, w io.Writer) *Server {
 		rawW:        w,
 		rawR:        r,
 		diagnostics: diagnosticsRPC{owned: map[string]cd.Context{}, queue: make(chan Notification, 64), pendingUpdates: map[string]map[string]int{}},
+		chats:       chatRPC{owned: map[string]bool{}},
 		reader:      NewFrameReader(r),
 		writer:      NewFrameWriter(w),
 		cancelReg:   NewCancelRegistry(),
@@ -114,6 +116,7 @@ func (s *Server) Serve(parent context.Context) error {
 		s.handlers.Wait()
 		s.startups.Wait()
 		s.expireDiagnostics()
+		s.closeChats()
 	}()
 	go s.diagnosticsWriter(ctx)
 
@@ -369,12 +372,19 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 	s.mu.Lock()
 	_, caps.AgentSettings = s.backend.(engine.AgentSettingsBackend)
 	_, caps.RenameSession = s.backend.(engine.RenameSessionBackend)
+	_, caps.RepairCodexSession = s.backend.(engine.CodexRepairBackend)
 	_, caps.DiscoveryStatus = s.backend.(engine.DiscoveryBackend)
 	_, caps.TranscriptDelta = s.backend.(engine.TranscriptDeltaBackend)
 	_, caps.ProjectSnapshot = s.backend.(engine.ProjectSnapshotBackend)
 	_, caps.ListDirectory = s.backend.(engine.ListDirectoryBackend)
 	_, caps.Workspaces = s.backend.(engine.WorkspaceBackend)
 	_, caps.SessionSearch = s.backend.(engine.SessionSearchBackend)
+	caps.ACPChat = chatManager(s.backend) != nil
+	caps.ChatAttachments = caps.ACPChat
+	caps.ChatQuestions = caps.ACPChat
+	s.chats.mu.Lock()
+	s.chats.enabled = caps.ACPChat
+	s.chats.mu.Unlock()
 	_, historyBackend := s.backend.(engine.GitHistoryBackend)
 	caps.GitHistory = caps.GitHistory && historyBackend
 	s.gitHistory = caps.GitHistory
@@ -448,6 +458,8 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 	switch req.Method {
 	case "managedTool":
 		return s.dispatchManagedTool(ctx, req)
+	case "chatAgents", "chatStart", "chatPrompt", "chatCancel", "chatRespond", "chatAnswer", "chatSetOption", "chatClose", "chatList":
+		return s.dispatchChat(ctx, backend, req)
 	case "invalidateCodeDiagnosticsPath", "attachCodeDiagnostics", "detachCodeDiagnostics", "getCodeDiagnosticsSnapshot", "approveCodeDiagnostics", "revokeCodeDiagnostics", "runCodeDiagnostics", "cancelCodeDiagnostics",
 		"openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument", "navigateCode", "readNavigationFile":
 		return s.dispatchDiagnostics(ctx, req)
@@ -715,6 +727,17 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
 		}
 		return backend.PrepareFileDownload(ctx, p.Dir, p.Path, p.Token)
+
+	case "repairCodexSession":
+		b, ok := backend.(engine.CodexRepairBackend)
+		if !ok {
+			return nil, engine.ErrUnsupportedAction
+		}
+		var p RepairCodexParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return b.RepairCodexSession(ctx, p.Ref)
 
 	case "renameSession":
 		b, ok := backend.(engine.RenameSessionBackend)
