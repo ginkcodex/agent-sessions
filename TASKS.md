@@ -123,3 +123,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Chat option dropdowns | [chat-options-dropdown](docs/plan/chat-options-dropdown.md) | [chat-options-dropdown/](docs/tasks/chat-options-dropdown/README.md) | 2/4 ✅ · 2 ⬜ |
 | Workspace filter release | [workspace-filter-release](docs/plan/workspace-filter-release.md) | [workspace-filter-release/](docs/tasks/workspace-filter-release/README.md) | 2/3 ✅ · 1 ⬜ |
 | Chat login environment | [chat-login-env](docs/plan/chat-login-env.md) | [chat-login-env/](docs/tasks/chat-login-env/README.md) | 3/4 ✅ · 1 ⬜ |
+| Code block run | [code-block-run](docs/plan/code-block-run.md) | [code-block-run/](docs/tasks/code-block-run/README.md) | 1/4 ✅ · 3 ⬜ |
