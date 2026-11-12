@@ -45,7 +45,8 @@ export function parseMessageFileLink(value: string): MessageFileLink | null {
   // Ambiguous fragments, queries, colons, and shell/markup syntax are not paths
   // we recognize. A drive's colon is the sole exception.
   const tail = drive ? path.slice(2) : path;
-  if (!tail || /[?#:<>|*`]/.test(tail) || !path.trim() ||
+  // A trailing separator names a directory; only files open from a message.
+  if (!tail || /[\\/]$/.test(path) || /[?#:<>|*`]/.test(tail) || !path.trim() ||
       path === '.' || path === '..' || /^[\\/]+$/.test(tail)) return null;
   return { path, ...location };
 }

@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [transcript-directory-links.md](transcript-directory-links.md) | [transcript-directory-links](../tasks/transcript-directory-links/README.md) | Exclude trailing-separator directory paths from session-content file-opening links |
 | [terminal-auto-activation.md](terminal-auto-activation.md) | [terminal-auto-activation](../tasks/terminal-auto-activation/README.md) | Default-enabled preference to stop session selection/focus from switching internal terminal tabs |
 | [acp-adapter-install.md](acp-adapter-install.md) | [acp-adapter-install](../tasks/acp-adapter-install/README.md) | One-click, consented install of pinned Claude and Codex ACP adapters through the managed-tools installer, on this computer and on WSL/SSH hosts |
 | [acp-chat.md](acp-chat.md) | [acp-chat](../tasks/acp-chat/README.md) | Drive Claude Code, Codex and OpenCode over ACP to stream live messages, tool calls and permissions into the transcript, locally and on WSL/SSH hosts |
