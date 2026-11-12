@@ -74,12 +74,13 @@ const chat = (fields = {}) => ({
 async function openComposer(fields, props = {}) {
   const target = document.createElement('div');
   document.body.appendChild(target);
-  const state = proxy({ chat: chat(fields), onSwitchToTerminal: props.onSwitchToTerminal, onRestart: props.onRestart });
+  const state = proxy({ chat: chat(fields), onSwitchToTerminal: props.onSwitchToTerminal, sessionSaved: props.sessionSaved ?? true, onRestart: props.onRestart });
   const component = mount(Composer, { target, props: state });
   flushSync();
   const text = (el) => el.textContent.trim().replace(/\s+/g, ' ');
   const trigger = () => target.querySelector('[aria-haspopup="menu"]');
   const items = () => [...target.querySelectorAll('[role="menu"] [role="menuitem"]')].map(text);
+  const disabledItems = () => [...target.querySelectorAll('[role="menu"] [role="menuitem"]:disabled')].map(text);
   const clickItem = (name) => {
     const b = [...target.querySelectorAll('[role="menuitem"]')].find((el) => text(el) === name);
     assert.ok(b, `a menu item ${name}`);
@@ -104,19 +105,32 @@ async function openComposer(fields, props = {}) {
     calls.length = 0;
     ask = async () => 'cancel';
   };
-  return { target, trigger, items, clickItem, openMenu, escape, outside, close };
+  return { target, trigger, items, disabledItems, clickItem, openMenu, escape, outside, close };
 }
 
-test('the power button opens a menu with the two items, and only for a saved session both', async () => {
+test('the power button opens a menu with the two items, Switch to terminal enabled only for a saved session', async () => {
   const both = await openComposer({ phase: 'idle' }, { onSwitchToTerminal: async () => calls.push(['switch']) });
   assert.deepEqual(both.items(), [], 'closed at first');
   both.openMenu();
   assert.deepEqual(both.items(), ['End the chat', 'Switch to terminal']);
+  assert.deepEqual(both.disabledItems(), []);
   both.close();
 
-  const unsaved = await openComposer({ phase: 'idle', session: undefined }, { onSwitchToTerminal: async () => calls.push(['switch']) });
+  const noId = await openComposer({ phase: 'idle', session: undefined }, { onSwitchToTerminal: async () => calls.push(['switch']) });
+  noId.openMenu();
+  assert.deepEqual(noId.items(), ['End the chat', 'Switch to terminal']);
+  assert.deepEqual(noId.disabledItems(), ['Switch to terminal'], 'no session to resume');
+  noId.close();
+
+  // A new chat: the agent named a session ID, but saves nothing before the
+  // first turn, so the index does not know it yet.
+  const unsaved = await openComposer({ phase: 'idle' }, { onSwitchToTerminal: async () => calls.push(['switch']), sessionSaved: false });
   unsaved.openMenu();
-  assert.deepEqual(unsaved.items(), ['End the chat'], 'nothing to resume yet');
+  assert.deepEqual(unsaved.disabledItems(), ['Switch to terminal'], 'nothing to resume yet');
+  assert.match(unsaved.target.querySelector('[role="menuitem"]:disabled').title, /once the agent saves this session/);
+  unsaved.clickItem('Switch to terminal');
+  await settle();
+  assert.deepEqual(calls, [], 'a disabled item does nothing');
   unsaved.close();
 
   const alone = await openComposer({ phase: 'idle' });
@@ -252,6 +266,10 @@ test('switching to a terminal stops the chat and resumes the session in a panel 
   await withOpener({}, async ({ opener }) => {
     assert.equal(await opener.switchToTerminal(chat({ session: undefined }), META), false, 'nothing to resume');
     assert.deepEqual(calls, []);
+  });
+  await withOpener({}, async ({ opener }) => {
+    assert.equal(await opener.switchToTerminal(chat(), null), false, 'a new chat its agent has not saved yet');
+    assert.deepEqual(calls, [], 'the chat stays');
   });
 });
 

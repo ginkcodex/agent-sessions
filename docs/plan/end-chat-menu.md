@@ -25,8 +25,8 @@ sits at the window's bottom, so the menu opens upward. It closes before an
 item's action runs. Items:
 
 - **End the chat** (always): the current `endChat()`.
-- **Switch to terminal** (only while the chat has a saved session): asks
-  while the agent works, then switches.
+- **Switch to terminal**: enabled only while the chat has a saved session;
+  asks while the agent works, then switches.
 
 ### Switch to terminal
 
@@ -54,14 +54,24 @@ start the terminal says so in a toast and the session is still saved.
 
 A new `onSwitchToTerminal` prop, wired from `TranscriptView` like
 `onRestart`, keeps the composer free of terminal and app state. The item
-shows only when the prop is given and `chat.session` is set.
+shows when the prop is given, and is enabled only when `chat.session` is
+set and the `sessionSaved` prop is true. `TranscriptView` passes
+`sessionSaved` from `appState.selectedSessionMeta`, the signal the header's
+`pending` state uses: an ACP agent names a session ID at `session/new` but
+saves nothing before the first turn, so a new chat's ID alone resumes
+nothing. While disabled the item says "Available once the agent saves this
+session", as the header's Resume does. `chatOpen.switchToTerminal` also
+refuses without meta, before it ends the chat.
 
 ## Decisions
 
 1. **Switching asks while the agent works**, worded for switching, as End
    chat does: both stop a running turn (asked and confirmed by the user).
-2. **The item hides until the chat has a saved session**: a resume command
-   names a session ID, and a chat whose agent has not saved one has none.
+2. **The item is disabled until the chat has a saved session**: a resume
+   command names a session ID the agent has saved, and a new chat's ID is
+   not saved before its first turn. Disabled rather than hidden, so the
+   menu does not change shape and the title says when it becomes
+   available.
 3. **The terminal is always the panel tab**, whatever `launcher.openMode`
    says: the feature is "resume into a terminal tab", not into an external
    terminal window.

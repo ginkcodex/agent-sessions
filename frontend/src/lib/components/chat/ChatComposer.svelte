@@ -31,11 +31,17 @@
     onRestart?: () => void;
     /** Ends the chat and continues its session in a terminal tab. */
     onSwitchToTerminal?: () => Promise<void>;
+    /**
+     * The agent saved the chat's session where the index finds it. A new
+     * chat's agent names a session ID at once but saves nothing before its
+     * first turn, so there is nothing to resume in a terminal until then.
+     */
+    sessionSaved?: boolean;
     /** Sets one of the session's options; without it no pickers show. */
     onOption?: (configId: string, value: string | boolean) => Promise<void>;
   }
 
-  let { chat, focus, onRestart, onSwitchToTerminal, onOption }: Props = $props();
+  let { chat, focus, onRestart, onSwitchToTerminal, sessionSaved = false, onOption }: Props = $props();
 
   let text = $state('');
   let attachments = $state<ChatAttachment[]>([]);
@@ -48,6 +54,7 @@
 
   let agentName = $derived(ALL_AGENTS.find((a) => a.id === chat.agent)?.label ?? chat.agent);
   let closed = $derived(chat.phase === 'exited');
+  let canSwitch = $derived(!!chat.session && sessionSaved);
   // A chat whose agent (or host) does not say what a prompt may carry takes
   // text only.
   let caps = $derived(chat.promptCapabilities);
@@ -272,8 +279,14 @@
           {#if endMenuOpen}
             <div class="action-dropdown-menu" role="menu">
               <button type="button" class="action-menu-item" role="menuitem" onclick={() => { endMenuOpen = false; void endChat(); }}>End the chat</button>
-              {#if onSwitchToTerminal && chat.session}
-                <button type="button" class="action-menu-item" role="menuitem" title="Stop the chat and continue the session in a terminal tab" onclick={() => { endMenuOpen = false; void switchToTerminal(); }}
+              {#if onSwitchToTerminal}
+                <button
+                  type="button"
+                  class="action-menu-item"
+                  role="menuitem"
+                  title={canSwitch ? 'Stop the chat and continue the session in a terminal tab' : 'Available once the agent saves this session'}
+                  disabled={!canSwitch}
+                  onclick={() => { endMenuOpen = false; void switchToTerminal(); }}
                   >Switch to terminal</button
                 >
               {/if}
@@ -489,6 +502,16 @@
   .action-menu-item:hover {
     background: var(--hover-bg);
     color: var(--text-primary);
+  }
+
+  .action-menu-item:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .action-menu-item:disabled:hover {
+    background: transparent;
+    color: var(--text-secondary);
   }
 
   .usage .track {

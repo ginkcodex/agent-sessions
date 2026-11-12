@@ -66,7 +66,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | ACP chat mode | [acp-chat](docs/plan/acp-chat.md) | [acp-chat/](docs/tasks/acp-chat/README.md) | 18/19 ✅ · 1 🟡 |
 | Chat attachments | [chat-attachments](docs/plan/chat-attachments.md) | [chat-attachments/](docs/tasks/chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
 | Chat end guard | [chat-end-guard](docs/plan/chat-end-guard.md) | [chat-end-guard/](docs/tasks/chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
-| End chat menu | [end-chat-menu](docs/plan/end-chat-menu.md) | [end-chat-menu/](docs/tasks/end-chat-menu/README.md) | 3/4 ✅ · 1 ⬜ |
+| End chat menu | [end-chat-menu](docs/plan/end-chat-menu.md) | [end-chat-menu/](docs/tasks/end-chat-menu/README.md) | 4/5 ✅ · 1 ⬜ |
 | Switch to chat | [switch-to-chat](docs/plan/switch-to-chat.md) | [switch-to-chat/](docs/tasks/switch-to-chat/README.md) | 3/4 ✅ · 1 ⬜ |
 | Close dialog groups | [close-dialog-groups](docs/plan/close-dialog-groups.md) | [close-dialog-groups/](docs/tasks/close-dialog-groups/README.md) | 4/5 ✅ · 1 ⬜ |
 | Host switch chat guard | [host-switch-chat-guard](docs/plan/host-switch-chat-guard.md) | [host-switch-chat-guard/](docs/tasks/host-switch-chat-guard/README.md) | 2/3 ✅ · 1 ⬜ |
