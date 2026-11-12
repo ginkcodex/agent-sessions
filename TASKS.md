@@ -120,3 +120,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Codex Guardian ancestry | [codex-guardian-ancestry](docs/plan/codex-guardian-ancestry.md) | [codex-guardian-ancestry/](docs/tasks/codex-guardian-ancestry/README.md) | 1/1 ✅ |
 | Live filter for chat sessions | [chat-live-filter](docs/plan/chat-live-filter.md) | [chat-live-filter/](docs/tasks/chat-live-filter/README.md) | 2/2 ✅ |
 | Codex restore filenames | [codex-restore-filenames](docs/plan/codex-restore-filenames.md) | [codex-restore-filenames/](docs/tasks/codex-restore-filenames/README.md) | 6/6 ✅ |
+| Chat option dropdowns | [chat-options-dropdown](docs/plan/chat-options-dropdown.md) | [chat-options-dropdown/](docs/tasks/chat-options-dropdown/README.md) | 2/4 ✅ · 2 ⬜ |

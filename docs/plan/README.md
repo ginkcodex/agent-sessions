@@ -87,6 +87,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [codex-guardian-ancestry.md](codex-guardian-ancestry.md) | [codex-guardian-ancestry](../tasks/codex-guardian-ancestry/README.md) | Link Guardian reviews to their main session for browsing, counts and cleanup |
 | [chat-live-filter.md](chat-live-filter.md) | [chat-live-filter](../tasks/chat-live-filter/README.md) | Include sessions running in chat in the Live filter |
 | [codex-restore-filenames.md](codex-restore-filenames.md) | [codex-restore-filenames](../tasks/codex-restore-filenames/README.md) | Restore resumable Codex rollout filenames and repair previous imports |
+| [chat-options-dropdown.md](chat-options-dropdown.md) | [chat-options-dropdown](../tasks/chat-options-dropdown/README.md) | The chat's mode, model and effort pickers as the shared themed Dropdown, opening upward at the composer |
 
 ## Supporting documents
 

@@ -569,29 +569,42 @@ const OPTIONS = [
     { group: 'openai', name: 'OpenAI', options: [{ value: 'gpt-a', name: 'GPT A' }, { value: 'gpt-b', name: 'GPT B' }] },
   ] },
 ];
-const selected = (html) => [...html.matchAll(/<option value="([^"]*)"[^>]*selected/g)].map((m) => m[1]);
+// A picker is the shared dropdown: it shows the chosen value, and its name is its tooltip.
+const dropdowns = (html) =>
+  [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
+    .filter(([, attrs]) => attrs.includes('aria-haspopup="listbox"'))
+    .map(([, attrs, body]) => ({
+      name: attrs.match(/aria-label="([^"]*)"/)?.[1],
+      title: attrs.match(/title="([^"]*)"/)?.[1],
+      text: body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, '').trim(),
+      disabled: /\sdisabled(?:=|\s|$)/.test(attrs),
+    }));
 
 test('the composer shows a picker per option, on the value the agent reports', async () => {
   const onOption = async () => {};
   const html = unescapeHTML(await renderComposer(chat({ configOptions: OPTIONS }), { onOption }));
   assert.match(html, /data-chat-options/);
-  assert.deepEqual(selected(html), ['agent', 'gpt-b']);
-  assert.match(html, /<optgroup label="OpenAI">/);
-  assert.match(html, /Full Access \(no permission requests\)/);
+  assert.doesNotMatch(html, /<select\b/, 'native selects are not the convention');
+  assert.deepEqual(dropdowns(html).map((d) => [d.name, d.title, d.text, d.disabled]), [
+    ['Mode', 'Mode', 'Agent', false],
+    ['Model', 'Model', 'GPT B', false],
+  ]);
   assert.doesNotMatch(html, /runs tools without asking/);
-  // A select shows only its value; the option's name is its name and tooltip.
-  assert.match(html, /<select aria-label="Mode"/);
-  assert.match(html, /<label class="picker[^"]*" title="Model">/);
+  // A picker shows only its value; the option's name is its name and tooltip.
   assert.doesNotMatch(html, /picker-name/);
 
   // The agent reports another value: the picker follows it.
   const moved = chat({ configOptions: [{ ...OPTIONS[0], currentValue: 'agent-full-access' }, { ...OPTIONS[1], currentValue: 'gpt-a' }] });
   const after = unescapeHTML(await renderComposer(moved, { onOption }));
-  assert.deepEqual(selected(after), ['agent-full-access', 'gpt-a']);
+  assert.deepEqual(dropdowns(after).map((d) => d.text), ['Full Access', 'GPT A']);
   assert.match(after, /Mode: the agent runs tools without asking/);
 
-  const starting = await renderComposer(chat({ phase: 'starting', configOptions: OPTIONS }), { onOption });
-  assert.equal([...starting.matchAll(/<select[^>]*\sdisabled/g)].length, 2, 'no change while the agent starts');
+  // The agent reports no value yet: the picker says so and still offers the choices.
+  const unset = unescapeHTML(await renderComposer(chat({ configOptions: [{ ...OPTIONS[0], currentValue: undefined }] }), { onOption }));
+  assert.deepEqual(dropdowns(unset).map((d) => d.text), ['Not set']);
+
+  const starting = unescapeHTML(await renderComposer(chat({ phase: 'starting', configOptions: OPTIONS }), { onOption }));
+  assert.equal(dropdowns(starting).filter((d) => d.disabled).length, 2, 'no change while the agent starts');
   assert.doesNotMatch(await renderComposer(chat({ phase: 'exited', configOptions: OPTIONS, exit: { chatId: 'c1', seq: 2, reason: 'closed' } }), { onOption }), /data-chat-options/);
   assert.doesNotMatch(await renderComposer(chat({ configOptions: OPTIONS })), /data-chat-options/, 'no pickers without a setter');
   assert.doesNotMatch(await renderComposer(chat(), { onOption }), /data-chat-options/, 'no options');
