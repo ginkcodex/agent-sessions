@@ -7,11 +7,13 @@
   interface Props {
     text: string;
     onFileLink?: (value: string) => void;
+    /** Runs a shell block's command; shell blocks get a Run button when set. */
+    onRunCommand?: (command: string) => void;
   }
 
-  let { text, onFileLink }: Props = $props();
+  let { text, onFileLink, onRunCommand }: Props = $props();
 
-  let renderedHtml = $derived(renderMarkdown(text, 'transcript'));
+  let renderedHtml = $derived(renderMarkdown(text, 'transcript', undefined, { runnable: !!onRunCommand }));
   let container = $state<HTMLDivElement>();
 
   $effect(() => {
@@ -22,7 +24,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="text-part-container" bind:this={container} onclick={(event) => handleMessageClick(event, onFileLink)}>
+<div class="text-part-container" bind:this={container} onclick={(event) => handleMessageClick(event, onFileLink, onRunCommand)}>
   {@html renderedHtml}
 </div>
 
@@ -177,7 +179,7 @@
     text-transform: lowercase;
   }
 
-  :global(.text-part-container .copy-code-btn, .text-part-container .mermaid-toggle-btn, .text-part-container .mermaid-expand-btn) {
+  :global(.text-part-container .copy-code-btn, .text-part-container .run-code-btn, .text-part-container .mermaid-toggle-btn, .text-part-container .mermaid-expand-btn) {
     font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
     font-weight: 500;
     padding: 2px 8px;
@@ -189,7 +191,7 @@
     transition: background-color 0.15s ease, color 0.15s ease;
   }
 
-  :global(.text-part-container .copy-code-btn:hover, .text-part-container .mermaid-toggle-btn:hover, .text-part-container .mermaid-expand-btn:hover) {
+  :global(.text-part-container .copy-code-btn:hover, .text-part-container .run-code-btn:hover, .text-part-container .mermaid-toggle-btn:hover, .text-part-container .mermaid-expand-btn:hover) {
     background-color: var(--hover-bg);
     color: var(--text-primary);
   }

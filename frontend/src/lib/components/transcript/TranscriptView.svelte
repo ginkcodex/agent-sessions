@@ -52,6 +52,14 @@
     if (session && !session.cwdMissing) terminals.selectDirectory(session.cwd, link.dataHost ?? '', session);
   }
 
+  // A shell block of the agent's text runs in a new shell tab in the
+  // session's directory, where the panel can open one.
+  let runDir = $derived.by(() => {
+    const session = appState.selectedSessionMeta;
+    return launcher.info.panel && session && !session.cwdMissing ? session.cwd : '';
+  });
+  let onRunCommand = $derived(runDir ? (command: string) => void terminals.runCommand(command, runDir) : undefined);
+
   const fileOpener = createTerminalFileOpener({
     link: () => link,
     epoch,
@@ -874,6 +882,7 @@
                 message={msg}
                 sessionRef={appState.selectedSessionRef}
                 onFileLink={(value) => { if (appState.selectedSessionRef) openMessageFile(value, appState.selectedSessionRef); }}
+                {onRunCommand}
                 index={globalIndex}
                 {mode}
                 forceVisible={activeJump?.messageIndex === globalIndex}
@@ -902,6 +911,7 @@
             sessionRef={appState.selectedSessionRef}
             {mode}
             onFileLink={(value) => { if (appState.selectedSessionRef) openMessageFile(value, appState.selectedSessionRef); }}
+            onRunCommand={launcher.info.panel && chat.dir ? (command) => void terminals.runCommand(command, chat.dir) : undefined}
             onOpenTerminal={launcher.info.panel ? () => void terminals.newShell(chat.dir) : undefined}
           />
         {:else if !hasMore && messages.length > 0}

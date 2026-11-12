@@ -630,6 +630,106 @@ test('TerminalsStore tracks cwd independently for active and inactive tabs', asy
   });
 });
 
+/** Records what the store writes to each terminal, then passes it on. */
+function recordWrites(mock) {
+  const writes = [];
+  const write = mock.terminalWrite.bind(mock);
+  mock.terminalWrite = (id, data) => {
+    writes.push([id, data]);
+    return write(id, data);
+  };
+  return writes;
+}
+
+test('TerminalsStore runs a command in a new shell at its first prompt, once', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await withTerminals(async ({ store, mock }) => {
+    const writes = recordWrites(mock);
+    const tab = await store.runCommand('go test ./...', '/work');
+    assert.deepEqual([tab.kind, tab.dir, store.active], ['shell', '/work', tab.id]);
+
+    // Nothing is typed before the view and the shell's first prompt.
+    const sink = sinkFor(store, tab.id);
+    assert.deepEqual([sink.pastes, writes], [[], []]);
+    store.setCwd(tab.id, '/work');
+    assert.deepEqual(sink.pastes, ['go test ./...']);
+    await Promise.resolve();
+    assert.deepEqual(writes, [[tab.id, '\r']], 'Enter follows the paste');
+
+    // Later prompts and the fallback type nothing more.
+    store.setCwd(tab.id, '/work/sub');
+    t.mock.timers.tick(10_000);
+    assert.deepEqual([sink.pastes.length, writes.length], [1, 1]);
+  });
+});
+
+test('TerminalsStore types a run command after the fallback when the shell reports no directory', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await withTerminals(async ({ store, mock, RUN_FALLBACK_MS }) => {
+    const writes = recordWrites(mock);
+    const tab = await store.runCommand('make', '/work');
+    t.mock.timers.tick(RUN_FALLBACK_MS - 1);
+    // A view mounted before the fallback still waits for it.
+    const sink = sinkFor(store, tab.id);
+    assert.deepEqual(sink.pastes, []);
+    t.mock.timers.tick(1);
+    assert.deepEqual(sink.pastes, ['make']);
+    await Promise.resolve();
+    assert.deepEqual(writes, [[tab.id, '\r']]);
+
+    // A view mounted only after the fallback gets it as it attaches.
+    const late = await store.runCommand('ls', '/work');
+    t.mock.timers.tick(RUN_FALLBACK_MS);
+    const lateSink = sinkFor(store, late.id);
+    assert.deepEqual(lateSink.pastes, ['ls']);
+    lateSink.detach();
+    assert.deepEqual(sinkFor(store, late.id).pastes, [], 'reattaching types nothing more');
+
+    // A shell that already reported its directory gets the command at once.
+    const newShell = store.newShell.bind(store);
+    let readySink;
+    store.newShell = async (cwd) => {
+      const started = await newShell(cwd);
+      readySink = sinkFor(store, started.id);
+      store.setCwd(started.id, cwd);
+      return started;
+    };
+    const ready = await store.runCommand('pwd', '/work');
+    assert.deepEqual(readySink.pastes, ['pwd']);
+    await Promise.resolve();
+    assert.deepEqual(writes.at(-1), [ready.id, '\r']);
+  });
+});
+
+test('TerminalsStore types nothing into a run tab that closed, exited or never started', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await withTerminals(async ({ store, mock, toasts, RUN_FALLBACK_MS }) => {
+    const writes = recordWrites(mock);
+    const closed = await store.runCommand('rm -rf build', '/work');
+    const closedSink = sinkFor(store, closed.id);
+    store.close(closed.id);
+    t.mock.timers.tick(RUN_FALLBACK_MS);
+    store.setCwd(closed.id, '/work');
+
+    const failed = await store.runCommand('make', '/work');
+    const failedSink = sinkFor(store, failed.id);
+    mock.emit('term:exit', { id: failed.id, code: 2 });
+    assert.equal(store.tabs.find((x) => x.id === failed.id).status, 'exited');
+    store.setCwd(failed.id, '/work');
+    t.mock.timers.tick(RUN_FALLBACK_MS);
+    assert.deepEqual([closedSink.pastes, failedSink.pastes, writes], [[], [], []]);
+
+    // A shell that cannot start shows the usual toast and types nothing.
+    mock.panelShell = async () => {
+      throw new Error('no shell here');
+    };
+    assert.equal(await store.runCommand('make', '/work'), null);
+    assert.equal(toasts.length, 1);
+    t.mock.timers.tick(RUN_FALLBACK_MS);
+    assert.deepEqual(writes, []);
+  });
+});
+
 test('workspace activation is wired to directory, session and transcript interactions without stealing focus', () => {
   const source = path => readFileSync(new URL(`../src/lib/components/${path}.svelte`, import.meta.url), 'utf8');
   const tree = source('sidebar/GroupTree');

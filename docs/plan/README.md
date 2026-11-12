@@ -90,6 +90,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [chat-options-dropdown.md](chat-options-dropdown.md) | [chat-options-dropdown](../tasks/chat-options-dropdown/README.md) | The chat's mode, model and effort pickers as the shared themed Dropdown, opening upward at the composer |
 | [workspace-filter-release.md](workspace-filter-release.md) | [workspace-filter-release](../tasks/workspace-filter-release/README.md) | A click on the group tree's empty space releases the workspace filter; the open session's group gets a quieter highlight |
 | [chat-login-env.md](chat-login-env.md) | [chat-login-env](../tasks/chat-login-env/README.md) | A live chat's agent runs in the user's interactive login shell environment, so version-manager tools (mise, nvm) on PATH are found as in terminal tabs |
+| [code-block-run.md](code-block-run.md) | [code-block-run](../tasks/code-block-run/README.md) | A Run button on an agent's shell code blocks opens a terminal tab in the session's directory and runs the command there |
 
 ## Supporting documents
 

@@ -37,6 +37,12 @@ export function isPanelPosition(value: unknown): value is PanelPosition {
 export const KEEP_FAILED_MS = 3000;
 
 /**
+ * How long runCommand waits for a new shell's first directory report, its
+ * first prompt, before typing the command anyway.
+ */
+export const RUN_FALLBACK_MS = 5000;
+
+/**
  * The panel height kept within its limits for a window this tall: at least
  * the minimum, at most 70% of the window, and leaving the sessions room.
  */
@@ -183,6 +189,8 @@ export class TerminalsStore {
   private startedAt = new Map<string, number>();
   /** Input waiting for a tab's write in flight; null when none waits. */
   private writing = new Map<string, string | null>();
+  /** Commands runCommand waits to type; due once the fallback has passed. */
+  private pendingRuns = new Map<string, { command: string; due: boolean }>();
   private unsubscribe: (() => void) | null = null;
 
   /** Subscribes to terminal output and restores the panel's layout. */
@@ -285,6 +293,45 @@ export class TerminalsStore {
       toast.show(openFailed(err));
       return null;
     }
+  }
+
+  /**
+   * Opens a shell in cwd and types command into it at its first prompt, as
+   * if pasted and followed by Enter. The prompt is the shell's first
+   * directory report; a shell that sends none gets the command after
+   * RUN_FALLBACK_MS. A tab that exits or closes first gets nothing.
+   */
+  async runCommand(command: string, cwd = ''): Promise<PanelTab | null> {
+    const tab = await this.newShell(cwd);
+    if (!tab || tab.status !== 'running' || !command) return tab;
+    this.pendingRuns.set(tab.id, { command, due: false });
+    if (this.tabs.find((t) => t.id === tab.id)?.cwd) this.flushRun(tab.id);
+    else
+      setTimeout(() => {
+        const run = this.pendingRuns.get(tab.id);
+        if (!run) return;
+        run.due = true;
+        this.flushRun(tab.id);
+      }, RUN_FALLBACK_MS);
+    return tab;
+  }
+
+  /**
+   * Types tab id's waiting command through its view, so a multi-line command
+   * arrives as one paste. Without a view it waits for one.
+   */
+  private flushRun(id: string): void {
+    const run = this.pendingRuns.get(id);
+    if (!run) return;
+    if (this.tabs.find((t) => t.id === id)?.status !== 'running') {
+      this.pendingRuns.delete(id);
+      return;
+    }
+    const sink = this.sinks.get(id);
+    if (!sink) return;
+    this.pendingRuns.delete(id);
+    sink.paste(run.command);
+    this.write(id, '\r');
   }
 
   /** Whether the pane id is in a tab with room for another pane. */
@@ -416,6 +463,7 @@ export class TerminalsStore {
     for (const data of pending ?? []) sink.write(data);
     const tab = this.tabs.find((t) => t.id === id);
     if (tab?.status === 'exited' && tab.exitCode !== null) sink.exit(tab.exitCode);
+    if (this.pendingRuns.get(id)?.due) this.flushRun(id);
     return () => {
       if (this.sinks.get(id) === sink) this.sinks.delete(id);
     };
@@ -539,6 +587,7 @@ export class TerminalsStore {
     this.buffered.delete(tab.id);
     this.startedAt.delete(tab.id);
     this.writing.delete(tab.id);
+    this.pendingRuns.delete(tab.id);
     this.paneSizes.delete(tab.id);
     this.tracker.remove(tab.id);
     if (tab.id in this.attention) {
@@ -825,7 +874,9 @@ export class TerminalsStore {
   /** Records the directory a pane's shell reports. */
   setCwd(id: string, cwd: string): void {
     const tab = this.tabs.find((t) => t.id === id);
-    if (tab) tab.cwd = cwd;
+    if (!tab) return;
+    tab.cwd = cwd;
+    this.flushRun(id);
   }
 
   /** Records the size a view fits, pane id's, so new tabs and splits start near it. */

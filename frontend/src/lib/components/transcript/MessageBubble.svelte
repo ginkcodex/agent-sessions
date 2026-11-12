@@ -40,6 +40,8 @@
     /** Drops the search result's exception, so the message follows the display level again. */
     onResetLevel?: () => void;
     onFileLink?: (value: string) => void;
+    /** Runs a shell block of the assistant's text in a terminal tab. */
+    onRunCommand?: (command: string) => void;
   }
 
   let {
@@ -52,6 +54,7 @@
     searchParts = [],
     onResetLevel,
     onFileLink,
+    onRunCommand,
   }: Props = $props();
 
   // A short time beside the role; the full one, with its zone, on hover.
@@ -258,7 +261,7 @@
         {:else}
           {#each visibleParts as part, idx (idx)}
             {#if part.kind === 'text' && part.text}
-              <TextPart text={part.text} {onFileLink} />
+              <TextPart text={part.text} {onFileLink} onRunCommand={isAssistant ? onRunCommand : undefined} />
             {:else if part.kind === 'reasoning' && part.text}
               <ReasoningPart text={part.text} {onFileLink} defaultExpanded={searchKind === 'reasoning' || matchedParts.has(part)} />
             {:else if part.kind === 'tool' && part.tool}
