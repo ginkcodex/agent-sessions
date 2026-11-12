@@ -16,6 +16,11 @@
     node: GroupNode;
     level?: number;
     selectedKey: string | null;
+    /**
+     * The row whose group filters the session list. The highlighted row
+     * that is not it only holds the open session, and shows quieter.
+     */
+    filterKey?: string | null;
     collapsedKeys: Set<string>;
     defaultCollapsed: Set<string>;
     onSelect: (node: GroupNode) => void;
@@ -26,6 +31,7 @@
     node,
     level = 0,
     selectedKey,
+    filterKey = null,
     collapsedKeys,
     defaultCollapsed,
     onSelect,
@@ -36,6 +42,7 @@
   let kind = $derived(nodeKind(node));
   let isCollapsed = $derived(isKeyCollapsed(node.key, collapsedKeys, defaultCollapsed));
   let isSelected = $derived(selectedKey === node.key);
+  let isFilter = $derived(filterKey === node.key);
   // Directories show their name, with the whole path in a small line below.
   let name = $derived(kind === 'directory' ? directoryName(node.label) : node.label);
   let path = $derived(kind === 'directory' && name !== node.label ? node.label : '');
@@ -105,7 +112,8 @@
     class="node-row"
     class:dir={kind === 'directory'}
     class:group={kind === 'agent'}
-    class:selected={isSelected}
+    class:selected={isSelected && isFilter}
+    class:current={isSelected && !isFilter}
     class:missing={node.cwdMissing}
     style="padding-left: {level * 12 + 6}px"
     onclick={handleRowClick}
@@ -202,6 +210,7 @@
           node={child}
           level={level + 1}
           {selectedKey}
+          {filterKey}
           {collapsedKeys}
           {defaultCollapsed}
           {onSelect}
@@ -255,6 +264,13 @@
   .node-row.selected {
     background-color: var(--active-bg);
     color: var(--accent-color);
+    font-weight: 600;
+  }
+
+  /* Holds the open session without filtering the list. */
+  .node-row.current {
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
     font-weight: 600;
   }
 

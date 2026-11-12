@@ -95,4 +95,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Live filter for chat sessions | [chat-live-filter](../plan/chat-live-filter.md) | [chat-live-filter/](chat-live-filter/README.md) | 2/2 ✅ |
 | Codex restore filenames | [codex-restore-filenames](../plan/codex-restore-filenames.md) | [codex-restore-filenames/](codex-restore-filenames/README.md) | 6/6 ✅ |
 | Chat option dropdowns | [chat-options-dropdown](../plan/chat-options-dropdown.md) | [chat-options-dropdown/](chat-options-dropdown/README.md) | 2/4 ✅ · 2 ⬜ |
-| Workspace filter release | [workspace-filter-release](../plan/workspace-filter-release.md) | [workspace-filter-release/](workspace-filter-release/README.md) | 1/3 ✅ · 2 ⬜ |
+| Workspace filter release | [workspace-filter-release](../plan/workspace-filter-release.md) | [workspace-filter-release/](workspace-filter-release/README.md) | 2/3 ✅ · 1 ⬜ |
