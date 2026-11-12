@@ -46,3 +46,11 @@ test('the prompt shows item groups as counted cards, and none without items', as
   assert.match(prompt, /\{#if item\.badge\}<span class="badge">\{item\.badge\}<\/span>\{\/if\}/);
   assert.match(prompt, /and \{group\.more\} more/);
 });
+
+test('the prompt widens for its buttons so each label stays on one line', async () => {
+  const { readFileSync } = await import('node:fs');
+  const prompt = readFileSync(new URL('../src/lib/components/common/go-to-file/FilePrompt.svelte', import.meta.url), 'utf8');
+  assert.match(prompt, /\.file-prompt \{ width: min\(480px, 100%\); min-width: min-content;/, '480px unless the button row needs more');
+  assert.match(prompt, /\n  button \{ flex: none; white-space: nowrap;/, 'a label never wraps');
+  assert.match(prompt, /@media \(max-width: 640px\) \{[^}]*\.file-prompt \{ min-width: 0; \}/, 'a narrow window wraps the buttons instead');
+});

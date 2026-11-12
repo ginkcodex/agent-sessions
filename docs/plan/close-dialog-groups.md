@@ -74,6 +74,12 @@ cards, and the dialog chrome gets a polish pass (spacing, typography,
 a quieter Cancel beside the danger action, scrollable body) while every
 shared confirmation keeps working exactly as before.
 
+The dialog is 480px wide, and wider when its buttons need it: a label
+never wraps (`white-space: nowrap`, the panel's `min-width: min-content`),
+so the host-switch question's "End and close terminal tabs" stays on one
+line. Below a 640px window (only the browser build: the desktop window is
+at least 960px) the buttons wrap onto rows instead of overflowing.
+
 `confirmClosingWindow` passes `warning.groups` through; the host-switch
 prompts in `connection.svelte.ts` compose their messages from
 `CloseWarning` — the combined terminal-tabs question keeps its tabs
