@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/bundle"
 	"github.com/ginkcode/agent-sessions/internal/model"
@@ -132,7 +133,11 @@ func (cm *codexManager) planRestore(
 			if !strings.HasPrefix(filepath.Base(nf.RootRel), "rollout-") || !strings.HasSuffix(nf.RootRel, ".jsonl") {
 				return codexRestoreOp{}, fmt.Errorf("manage: %q is not a codex rollout", nf.RootRel)
 			}
-			dest := filepath.Join(sessionsDir, "rollout-restored-"+sessionID+".jsonl")
+			name, err := restoredCodexRolloutName(filepath.Base(nf.RootRel), sessionID, b.Native[nf.Name], b.Manifest.CreatedAt)
+			if err != nil {
+				return codexRestoreOp{}, err
+			}
+			dest := filepath.Join(sessionsDir, name)
 			if err := cm.ps.ensureWithinRoot(dest); err != nil {
 				return codexRestoreOp{}, fmt.Errorf("manage: path safety violation: %w", err)
 			}
@@ -170,6 +175,50 @@ func (cm *codexManager) planRestore(
 		TargetCWD: targetCWD,
 		IsCopy:    isCopy,
 	}, nil
+}
+
+// Codex's paginated reader requires rollout-<timestamp>-<uuid>.jsonl.
+// Prefer the native timestamp; exports of earlier broken restores can recover
+// it from metadata. All fallbacks are stable across preview and execution.
+func restoredCodexRolloutName(native, id string, raw []byte, fallback time.Time) (string, error) {
+	const stampFormat = "2006-01-02T15-04-05"
+	const prefix = "rollout-"
+	if len(native) == len(prefix)+len(stampFormat)+1+36+len(".jsonl") &&
+		strings.HasPrefix(native, prefix) && strings.HasSuffix(native, ".jsonl") &&
+		native[len(prefix)+len(stampFormat)] == '-' {
+		stamp := native[len(prefix) : len(prefix)+len(stampFormat)]
+		nativeID := native[len(prefix)+len(stampFormat)+1 : len(native)-len(".jsonl")]
+		if _, err := time.Parse(stampFormat, stamp); err == nil && uuidPattern.MatchString(nativeID) {
+			return prefix + stamp + "-" + id + ".jsonl", nil
+		}
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
+	scanner.Buffer(make([]byte, 64*1024), 64*1024*1024)
+	for scanner.Scan() {
+		var record struct {
+			Type      string `json:"type"`
+			Timestamp string `json:"timestamp"`
+			Payload   struct {
+				Timestamp string `json:"timestamp"`
+			} `json:"payload"`
+		}
+		if json.Unmarshal(scanner.Bytes(), &record) != nil || record.Type != "session_meta" {
+			continue
+		}
+		for _, value := range []string{record.Payload.Timestamp, record.Timestamp} {
+			if ts, err := time.Parse(time.RFC3339Nano, value); err == nil {
+				return prefix + ts.UTC().Format(stampFormat) + "-" + id + ".jsonl", nil
+			}
+		}
+		break
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("read Codex restore timestamp: %w", err)
+	}
+	if fallback.IsZero() {
+		return "", errors.New("manage: no timestamp for canonical Codex rollout filename")
+	}
+	return prefix + fallback.UTC().Format(stampFormat) + "-" + id + ".jsonl", nil
 }
 
 func (cm *codexManager) executeRestore(
