@@ -11,6 +11,7 @@ import {
   permissionView,
   planMarkdown,
   skippedToast,
+  switchToTerminalQuestion,
   tailBlocks,
   tailMessages,
   toolStatus,
@@ -748,5 +749,15 @@ test('End chat asks while the agent works, and ends an idle chat at once', () =>
     title: 'End the chat?',
     message: 'Codex is still working. Ending the chat stops its turn.',
     choices: [{ value: 'end', label: 'End chat', danger: true }],
+  });
+});
+
+test('Switch to terminal asks while the agent works, worded for switching', () => {
+  assert.equal(switchToTerminalQuestion('idle', 'Codex'), null);
+  assert.equal(switchToTerminalQuestion('starting', 'Codex'), null);
+  assert.deepEqual(switchToTerminalQuestion('working', 'Codex'), {
+    title: 'Switch to terminal?',
+    message: 'Codex is still working. Switching stops its turn.',
+    choices: [{ value: 'switch', label: 'Switch', danger: true }],
   });
 });

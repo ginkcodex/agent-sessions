@@ -141,6 +141,33 @@ export class ChatOpener {
   }
 
   /**
+   * Stops a live chat and continues its session in a panel terminal tab.
+   * The ended chat goes at once: the terminal tab is the continuation, so
+   * Dismiss and Restart are not offered. False when the chat has no saved
+   * session to resume, or when something failed.
+   */
+  async switchToTerminal(chat: Chat, meta?: SessionMeta | null): Promise<boolean> {
+    const ref = chat.session;
+    if (!ref) return false;
+    try {
+      await chats.close(chat.chatId);
+    } catch (err) {
+      if (!isStaleReply(err)) toast.show({ title: 'Could not end the chat', body: errorText(err, 'Please try again.'), tone: 'error' });
+      return false;
+    }
+    // The engine ends the chat before close answers, so the chat is known
+    // to be over and can go; a late exit event for it is ignored.
+    chats.dismiss(chat.key);
+    try {
+      await terminals.runResume(ref, meta?.cwd || chat.dir, meta?.title || meta?.firstPrompt || '');
+      return true;
+    } catch (err) {
+      if (!isStaleReply(err)) toast.show({ title: 'Could not open the terminal', body: `${errorText(err, 'The terminal did not start.')} The session is saved; resume it from the session header.`, tone: 'error' });
+      return false;
+    }
+  }
+
+  /**
    * Refuses to run a session in a terminal while a chat drives it, and
    * says so. True when refused.
    */

@@ -1,15 +1,15 @@
 <script lang="ts">
   // Where the user writes to a chat's agent: send, cancel the running turn,
-  // end the chat, and pick the session's options. One card: the attached
-  // files, the text box, then a toolbar with Attach and End chat on the left
-  // and, on the right, the context in use, the pickers and a round send (or,
-  // while a turn runs, stop) button. Files dropped on the card and images
-  // pasted into it are attached too.
+  // end the chat or switch it to a terminal, and pick the session's options.
+  // One card: the attached files, the text box, then a toolbar with Attach
+  // and the end menu on the left and, on the right, the context in use, the
+  // pickers and a round send (or, while a turn runs, stop) button. Files
+  // dropped on the card and images pasted into it are attached too.
   import { onMount } from 'svelte';
   import type { Chat } from '../../stores/chats.svelte';
   import type { ChatAttachment, ChatAttachResult } from '../../types';
   import { api } from '../../api';
-  import { addAttachments, canSendPrompt, endChatQuestion, skippedToast } from '../../chat';
+  import { addAttachments, canSendPrompt, endChatQuestion, skippedToast, switchToTerminalQuestion } from '../../chat';
   import AttachmentChips from './AttachmentChips.svelte';
   import { chats } from '../../stores/chats.svelte';
   import { toast } from '../../stores/toast.svelte';
@@ -29,16 +29,20 @@
     focus?: { focusRequest: number; focusHandled: number };
     /** Starts the agent again once the chat ended. */
     onRestart?: () => void;
+    /** Ends the chat and continues its session in a terminal tab. */
+    onSwitchToTerminal?: () => Promise<void>;
     /** Sets one of the session's options; without it no pickers show. */
     onOption?: (configId: string, value: string | boolean) => Promise<void>;
   }
 
-  let { chat, focus, onRestart, onOption }: Props = $props();
+  let { chat, focus, onRestart, onSwitchToTerminal, onOption }: Props = $props();
 
   let text = $state('');
   let attachments = $state<ChatAttachment[]>([]);
   let sending = $state(false);
   let attaching = $state(false);
+  let endMenuOpen = $state(false);
+  let endMenuRoot: HTMLDivElement | undefined = $state();
   let input: HTMLTextAreaElement | undefined = $state();
   let form: HTMLFormElement | undefined = $state();
 
@@ -179,6 +183,26 @@
     await act('end the chat', () => chats.close(chat.chatId));
   }
 
+  // Switching stops the chat as End chat does — a working turn with it —
+  // and the session continues in a terminal tab: ask first while it works.
+  async function switchToTerminal(): Promise<void> {
+    const question = switchToTerminalQuestion(chat.phase, agentName);
+    if (question && (await filePrompt.ask(question.title, question.message, question.choices)) !== 'switch') return;
+    await onSwitchToTerminal?.();
+  }
+
+  // The end menu closes on a click outside it, and on Escape, which puts
+  // the focus back on its trigger.
+  function handleWindowPointerDown(e: PointerEvent): void {
+    if (endMenuOpen && endMenuRoot && !endMenuRoot.contains(e.target as Node)) endMenuOpen = false;
+  }
+
+  function handleWindowKeydown(e: KeyboardEvent): void {
+    if (!endMenuOpen || e.key !== 'Escape') return;
+    endMenuOpen = false;
+    endMenuRoot?.querySelector('button')?.focus();
+  }
+
   /** A file's bytes in base64. */
   async function fileBase64(f: Blob): Promise<string> {
     const bytes = new Uint8Array(await f.arrayBuffer());
@@ -187,6 +211,8 @@
     return btoa(bin);
   }
 </script>
+
+<svelte:window onpointerdown={handleWindowPointerDown} onkeydown={handleWindowKeydown} />
 
 <form
   bind:this={form}
@@ -232,14 +258,28 @@
             ><Icon name="plus" size={17} /><span class="sr-only">Attach images or files</span></button
           >
         {/if}
-        <button
-          type="button"
-          class="icon"
-          title="End the chat and stop {agentName}"
-          disabled={chat.phase === 'starting'}
-          onclick={() => void endChat()}
-          ><Icon name="power" size={15} /><span class="sr-only">End chat</span></button
-        >
+        <div class="menu-container" bind:this={endMenuRoot}>
+          <button
+            type="button"
+            class="icon"
+            title="End the chat and stop {agentName}"
+            aria-haspopup="menu"
+            aria-expanded={endMenuOpen}
+            disabled={chat.phase === 'starting'}
+            onclick={() => (endMenuOpen = !endMenuOpen)}
+            ><Icon name="power" size={15} /><span class="sr-only">End chat</span></button
+          >
+          {#if endMenuOpen}
+            <div class="action-dropdown-menu" role="menu">
+              <button type="button" class="action-menu-item" role="menuitem" onclick={() => { endMenuOpen = false; void endChat(); }}>End the chat</button>
+              {#if onSwitchToTerminal && chat.session}
+                <button type="button" class="action-menu-item" role="menuitem" title="Stop the chat and continue the session in a terminal tab" onclick={() => { endMenuOpen = false; void switchToTerminal(); }}
+                  >Switch to terminal</button
+                >
+              {/if}
+            </div>
+          {/if}
+        </div>
         <span class="spacer"></span>
         {#if usage}
           <span class="usage" data-chat-usage title={usageTitle}>
@@ -415,6 +455,40 @@
   .usage circle {
     fill: none;
     stroke-width: 2.5;
+  }
+
+  /* The end menu, in SessionHeader's action-menu style. The composer sits
+     at the window's bottom edge, so the menu opens upward. */
+  .menu-container {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .action-dropdown-menu {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    z-index: 100;
+    min-width: 150px;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    box-shadow: var(--shadow-popover);
+  }
+
+  .action-menu-item {
+    justify-content: flex-start;
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .action-menu-item:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
   }
 
   .usage .track {

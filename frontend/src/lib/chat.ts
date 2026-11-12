@@ -252,3 +252,17 @@ export function endChatQuestion(phase: string, agentName: string): { title: stri
     choices: [{ value: 'end', label: 'End chat', danger: true }],
   };
 }
+
+/**
+ * What Switch to terminal asks while the agent works, or null when the chat
+ * may stop at once: switching ends the chat, so it stops a running turn
+ * just as End chat does.
+ */
+export function switchToTerminalQuestion(phase: string, agentName: string): { title: string; message: string; choices: { value: string; label: string; danger?: boolean }[] } | null {
+  if (phase !== 'working') return null;
+  return {
+    title: 'Switch to terminal?',
+    message: `${agentName} is still working. Switching stops its turn.`,
+    choices: [{ value: 'switch', label: 'Switch', danger: true }],
+  };
+}

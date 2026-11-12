@@ -940,6 +940,9 @@
         {chat}
         focus={chatOpen}
         onRestart={() => void chatOpen.restart(chat, !!appState.selectedSessionMeta)}
+        onSwitchToTerminal={async () => {
+          await chatOpen.switchToTerminal(chat, appState.selectedSessionMeta);
+        }}
         onOption={(configId, value) => chatOpen.choose(chat, configId, value)}
       />
     {/if}
