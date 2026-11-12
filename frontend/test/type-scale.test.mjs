@@ -153,7 +153,7 @@ test('message text keeps its sizes at the default 14.5px body', () => {
     ':global(.text-part-container table)': [13.3, 0.1],
     ':global(.text-part-container code.hljs)': [13.3, 0.1],
     ':global(.text-part-container .code-lang-tag)': [10.88, 0.1],
-    ':global(.text-part-container .copy-code-btn, .text-part-container .mermaid-toggle-btn, .text-part-container .mermaid-expand-btn)': [10.88, 0.1],
+    ':global(.text-part-container .copy-code-btn, .text-part-container .run-code-btn, .text-part-container .mermaid-toggle-btn, .text-part-container .mermaid-expand-btn)': [10.88, 0.1],
   };
   for (const [selector, [px, tolerance]] of Object.entries(expected)) {
     assert.ok(Math.abs(sizes[selector] - px) <= tolerance + 1e-9, `${selector}: ${sizes[selector]}px, was ${px}px`);

@@ -5,8 +5,14 @@
 
 import { highlightCode } from './highlight.js';
 import { isMessageFileLink, parseMessageFileLink } from './messageFileLinks.js';
+import { runnableCommand } from './runCommand.js';
 
 type FileLinkMode = boolean | 'transcript';
+
+export interface MarkdownOptions {
+  /** Shell blocks with a command get a Run button before Copy. */
+  runnable?: boolean;
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -240,7 +246,12 @@ function headingSlug(heading: string): string {
 
 // The slug map is shared through blockquote recursion, so a heading repeated
 // in and outside a quote still gets unique ids.
-export function renderMarkdown(source: string, fileLinks: FileLinkMode = false, headingIds?: Map<string, number>): string {
+export function renderMarkdown(
+  source: string,
+  fileLinks: FileLinkMode = false,
+  headingIds?: Map<string, number>,
+  options: MarkdownOptions = {},
+): string {
   if (!source) return '';
 
   const slugs = headingIds ?? new Map<string, number>();
@@ -270,12 +281,20 @@ export function renderMarkdown(source: string, fileLinks: FileLinkMode = false, 
       }
       const highlighted = highlightCode(rawCode, lang);
       const displayLang = lang || 'text';
+      const copy = `<button type="button" class="copy-code-btn" data-code="${escapeHtml(rawCode)}">Copy</button>`;
+      const command = options.runnable ? runnableCommand(lang, rawCode) : '';
+      const actions = command
+        ? `<span class="code-block-actions">` +
+            `<button type="button" class="run-code-btn" data-command="${escapeHtml(command)}" title="Run in a new terminal tab">Run</button>` +
+            copy +
+          `</span>`
+        : copy;
 
       out.push(
         `<div class="code-block-container" data-lang="${escapeHtml(displayLang)}">` +
           `<div class="code-block-header">` +
             `<span class="code-lang-tag">${escapeHtml(displayLang)}</span>` +
-            `<button type="button" class="copy-code-btn" data-code="${escapeHtml(rawCode)}">Copy</button>` +
+            actions +
           `</div>` +
           `<pre><code class="hljs language-${escapeHtml(displayLang)}">${highlighted}</code></pre>` +
         `</div>`
@@ -307,7 +326,7 @@ export function renderMarkdown(source: string, fileLinks: FileLinkMode = false, 
         quoteLines.push(lines[i].replace(/^>\s?/, ''));
         i++;
       }
-      const quoteContent = renderMarkdown(quoteLines.join('\n'), fileLinks, slugs);
+      const quoteContent = renderMarkdown(quoteLines.join('\n'), fileLinks, slugs, options);
       out.push(`<blockquote>${quoteContent}</blockquote>`);
       continue;
     }

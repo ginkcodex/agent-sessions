@@ -17,11 +17,13 @@
     sessionRef: SessionRef;
     mode?: TranscriptMode;
     onFileLink?: (value: string) => void;
+    /** Runs a shell block of the agent's text in a terminal tab. */
+    onRunCommand?: (command: string) => void;
     /** Opens a terminal tab in the chat's directory, to log in there. */
     onOpenTerminal?: () => void;
   }
 
-  let { chat, sessionRef, mode = 'activity', onFileLink, onOpenTerminal }: Props = $props();
+  let { chat, sessionRef, mode = 'activity', onFileLink, onRunCommand, onOpenTerminal }: Props = $props();
 
   let blocks = $derived(tailBlocks(chat.tail));
   // A late question, or one the agent keeps working through, does not hold the turn.
@@ -50,7 +52,7 @@
   {#each blocks as block (block.kind === 'message' ? block.message.id : `answer:${block.answer.key}`)}
     {#if block.kind === 'message'}
       <div class="live-message">
-        <MessageBubble message={block.message} {sessionRef} {mode} {onFileLink} />
+        <MessageBubble message={block.message} {sessionRef} {mode} {onFileLink} {onRunCommand} />
       </div>
     {:else}
       <div class="answer-line" class:answered={block.answer.outcome === 'accept'} data-answer-line={block.answer.questionId}>
