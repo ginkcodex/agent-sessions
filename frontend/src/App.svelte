@@ -59,9 +59,10 @@
   import { isSearchShortcut, searchSeed } from './lib/contentSearch';
   import { hasOpenModal, isEditableTarget } from './lib/search';
   import { navigationButton, navigationShortcut, type NavDirection } from './lib/navHistory';
-  import { api, subscribeMouseNavigate } from './lib/api';
+  import { api, subscribeMouseNavigate, subscribeUpdateCheck } from './lib/api';
   import { isDesktop } from './lib/desktopRuntime';
-  import { startUpdateChecks, updateToast, type UpdateInfo } from './lib/update';
+  import { createUpdateAnnouncer, startUpdateChecks } from './lib/update';
+  import { updates } from './lib/stores/updates.svelte';
   import { formatVersion } from './lib/format';
   import { themeButtonTitle } from './lib/theme';
   import { appearanceVars, applyRootVars } from './lib/appearance';
@@ -118,27 +119,54 @@
     );
   }
 
-  function openReleasePage(info: UpdateInfo) {
-    api.openURL(info.url).catch((err: unknown) =>
+  function openReleasePage(url: string) {
+    api.openURL(url).catch((err: unknown) =>
       toast.show({
         title: "Couldn't open the release page",
         body: err instanceof Error ? err.message : String(err),
-        code: info.url,
+        code: url,
         tone: 'error',
       }),
     );
   }
 
-  // The desktop app looks for a newer release once a day; the browser demo
-  // has nothing to update.
+  // The desktop app looks for a newer release once a day and, where it can,
+  // downloads it and offers a restart; the browser demo has nothing to update.
   function checkForUpdates(): () => void {
     const check = api.checkForUpdate?.bind(api);
     if (!isWails || !check) return () => {};
-    return startUpdateChecks({
+    const announcer = createUpdateAnnouncer({
+      show: (message) => toast.show(message),
+      restart: () => void updates.restart().then(() => {
+        if (updates.error) toast.show({ title: "Couldn't restart to update", body: updates.error, tone: 'error' });
+      }),
+      openPage: openReleasePage,
+    });
+    void updates.init((status) => announcer.announce(status));
+    const checks = startUpdateChecks({
       check,
-      notify: (info) => toast.show(updateToast(info, () => openReleasePage(info))),
+      checked: (failed) => (updates.checkFailed = failed),
+      notify: (info) => {
+        // Ask what the backend did with the release; without the binding it
+        // can only be the release page.
+        const state = api.updateState?.() ?? Promise.resolve({ state: 'unsupported' as const });
+        void state.catch(() => ({ state: 'unsupported' as const })).then((status) => announcer.announce(status, info));
+      },
       storage: typeof localStorage === 'undefined' ? null : localStorage,
     });
+    // Settings › Updates › Check for updates.
+    updates.setChecker(() => checks.checkNow());
+    // The macOS app menu's Check for Updates…: show the answer in Settings.
+    const stopMenuChecks = subscribeUpdateCheck(() => {
+      manage.openSettings('general');
+      void updates.checkNow();
+    });
+    return () => {
+      stopMenuChecks();
+      updates.setChecker(null);
+      checks.stop();
+      updates.destroy();
+    };
   }
 
   function openNewWindow() {

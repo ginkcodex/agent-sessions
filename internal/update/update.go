@@ -1,6 +1,10 @@
-// Package update finds out whether a newer release of the app is out. It
-// only reads GitHub's latest release; users download and install it
-// themselves from the release page.
+// Package update finds out whether a newer release of the app is out.
+//
+// The preferred source is the latest release's minisign-signed SHA256SUMS
+// (Checker.Feed), which names the version and the installer and cannot be
+// forged by whoever answers the request. Until a release is signed, or when
+// no key is built in, it falls back to GitHub's latest-release API, which only
+// supports a notice with the release page.
 package update
 
 import (
@@ -10,9 +14,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"runtime"
 	"strings"
 	"time"
 
+	"aead.dev/minisign"
 	"golang.org/x/mod/semver"
 )
 
@@ -35,6 +42,9 @@ type Info struct {
 	// Available is set when Latest is newer than Current. A build without a
 	// release version ("dev") never has an update.
 	Available bool `json:"available"`
+	// Release is the verified installer for this platform. It is set only
+	// when the answer came from the signed feed, and is not sent to the UI.
+	Release *Release `json:"-"`
 }
 
 // Checker reads the latest release.
@@ -42,6 +52,16 @@ type Checker struct {
 	HTTP *http.Client
 	// API is the latest-release endpoint; LatestAPI unless a test sets it.
 	API string
+	// Releases is the releases page whose latest/download/ and download/
+	// paths serve the signed files; ReleasesPage unless a test or
+	// AGENT_SESSIONS_UPDATE_URL sets it.
+	Releases string
+	// Keys are the trusted minisign public keys. With none, only the
+	// unsigned API check runs.
+	Keys []minisign.PublicKey
+	// GOOS and GOARCH pick the installer; the running platform unless a test
+	// sets them.
+	GOOS, GOARCH string
 }
 
 // NewChecker returns a Checker that honours the proxy environment variables
@@ -49,7 +69,18 @@ type Checker struct {
 func NewChecker() *Checker {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = http.ProxyFromEnvironment
-	return &Checker{HTTP: &http.Client{Timeout: 15 * time.Second, Transport: transport}, API: LatestAPI}
+	releases := ReleasesPage
+	if override := strings.TrimSpace(os.Getenv("AGENT_SESSIONS_UPDATE_URL")); override != "" {
+		releases = override
+	}
+	return &Checker{
+		HTTP:     &http.Client{Timeout: 15 * time.Second, Transport: transport},
+		API:      LatestAPI,
+		Releases: releases,
+		Keys:     builtinKeys(),
+		GOOS:     runtime.GOOS,
+		GOARCH:   runtime.GOARCH,
+	}
 }
 
 // Check compares current with the latest release. A build without a release
@@ -58,6 +89,22 @@ func (c *Checker) Check(ctx context.Context, current string) (Info, error) {
 	info := Info{Current: current}
 	if !semver.IsValid(tag(current)) {
 		return info, nil
+	}
+	rel, err := c.Feed(ctx)
+	switch {
+	case err == nil:
+		info.Latest, info.URL = rel.Version, rel.Page
+		info.Available = Newer(rel.Version, current)
+		if info.Available {
+			info.Release = &rel
+		}
+		return info, nil
+	case errors.Is(err, ErrUnsigned):
+		// No signed feed to use: ask the API, for a notice only.
+	default:
+		// A bad signature, or the network failed: report it, and do not
+		// fall back to an answer that nothing vouches for.
+		return info, err
 	}
 	latest, url, err := c.latest(ctx)
 	if err != nil {

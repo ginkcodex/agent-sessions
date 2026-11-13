@@ -41,7 +41,7 @@ func TestAppMenuAboutOpensTheAboutWindow(t *testing.T) {
 	}
 	application.New(application.Options{Name: "Agent Sessions"})
 	menu := application.DefaultApplicationMenu()
-	if !replaceAboutItem(menu, func() {}) {
+	if !replaceAboutItem(menu, func() {}, func() {}) {
 		t.Fatal("the app menu has no About item to replace")
 	}
 	// The About role sends AppKit's standard panel and skips click handlers.
@@ -52,7 +52,34 @@ func TestAppMenuAboutOpensTheAboutWindow(t *testing.T) {
 	if got := appMenu.ItemAt(0).Label(); got != "About Agent Sessions" {
 		t.Fatalf("first app menu item = %q, want About Agent Sessions", got)
 	}
+	if got := appMenu.ItemAt(1).Label(); got != "Check for Updates…" {
+		t.Fatalf("second app menu item = %q, want Check for Updates…", got)
+	}
 	if appMenu.FindByRole(application.Quit) == nil {
 		t.Fatal("the rest of the app menu is gone")
+	}
+}
+
+type namedWindow struct {
+	application.Window
+	name string
+}
+
+func (w namedWindow) Name() string { return w.name }
+
+func TestUpdateCheckGoesToAnAppWindow(t *testing.T) {
+	about, main1, main2 := namedWindow{name: aboutWindowName}, namedWindow{name: "window-1"}, namedWindow{name: "window-2"}
+	all := []application.Window{about, main1, main2}
+	if got := updateWindow(main2, all); got != application.Window(main2) {
+		t.Fatalf("the focused app window should show the check, got %v", got)
+	}
+	if got := updateWindow(about, all); got != application.Window(main1) {
+		t.Fatalf("with About focused, the check goes to an app window, got %v", got)
+	}
+	if got := updateWindow(nil, all); got != application.Window(main1) {
+		t.Fatalf("with nothing focused, got %v", got)
+	}
+	if got := updateWindow(about, []application.Window{about}); got != nil {
+		t.Fatalf("only About is open: got %v, want no window", got)
 	}
 }

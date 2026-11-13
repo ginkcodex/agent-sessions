@@ -155,6 +155,19 @@ shasum -a 256 <downloaded-file>
 Get-FileHash .\<downloaded-file> -Algorithm SHA256
 ```
 
+Each release's `SHA256SUMS` is also signed with
+[minisign](https://jedisct1.github.io/minisign/); the signature is the release's
+`SHA256SUMS.minisig`. The desktop app updates only from a release whose
+signature verifies against the keys built into it. To check one by hand:
+
+```sh
+minisign -Vm SHA256SUMS -P RWR127s0GEvTCatCwsSCdVikj8CsSg6vv53ICkzxytDmPta9Dfks6/bF
+```
+
+The primary key is above; the backup key, kept offline and used only if the
+primary is lost, is `RWQxgXSi+X7Z7MotztNJWrJtPUAIB/aE/kVTprTClstsg16ZMQVgDsBR`
+(pass it as `-P` the same way).
+
 Desktop packages include the headless servers used for SSH and WSL connections;
 you do not need to install the desktop app on each remote host.
 

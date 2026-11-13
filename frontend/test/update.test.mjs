@@ -10,6 +10,10 @@ import {
   UPDATE_CHECK_KEY,
   checkDelay,
   startUpdateChecks,
+  createUpdateAnnouncer,
+  pageToast,
+  readyToast,
+  updateSummary,
   updateToast,
 } from '../src/lib/update.ts';
 
@@ -49,16 +53,17 @@ function fakeTime(start = 1_000_000) {
   return clock;
 }
 
-function start(clock, storage, check, shown = []) {
-  const stop = startUpdateChecks({
+function start(clock, storage, check, shown = [], checked = []) {
+  const checks = startUpdateChecks({
     check,
     notify: (info) => shown.push(info),
+    checked: (failed) => checked.push(failed),
     storage,
     now: () => clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
   });
-  return { stop, shown };
+  return { stop: checks.stop, checkNow: checks.checkNow, shown, checked };
 }
 
 test('the next check waits for startup, then for its due time, and never more than a day', () => {
@@ -173,11 +178,197 @@ test('without storage a window keeps its own schedule', async () => {
 test('only the desktop app checks, through the backend, and opens the page in the browser', () => {
   const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
   assert.match(app, /const check = api\.checkForUpdate\?\.bind\(api\);\s*if \(!isWails \|\| !check\) return \(\) => \{\};/);
-  assert.match(app, /notify: \(info\) => toast\.show\(updateToast\(info, \(\) => openReleasePage\(info\)\)\)/);
-  assert.match(app, /api\.openURL\(info\.url\)/);
+  assert.match(app, /announcer\.announce\(status, info\)/);
+  assert.match(app, /api\.openURL\(url\)/);
+  assert.match(app, /updates\.init\(\(status\) => announcer\.announce\(status\)\)/);
   assert.match(app, /const stopUpdateChecks = checkForUpdates\(\);/);
   assert.match(app, /return \(\) => \{\s*stopUpdateChecks\(\);/);
+  assert.match(app, /updates\.setChecker\(\(\) => checks\.checkNow\(\)\);/, 'Settings checks through the window\'s scheduler');
+  assert.match(app, /stopMenuChecks\(\);\s*updates\.setChecker\(null\);\s*checks\.stop\(\);/);
   const api = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8');
   assert.match(api, /checkForUpdate\?\(\): Promise<UpdateInfo>;/, 'the browser demo has no updates');
   assert.match(api, /return await this\.binding\.CheckForUpdate\(\);/);
+});
+
+function announcer() {
+  const log = { shown: [], restarts: 0, opened: [] };
+  const a = createUpdateAnnouncer({
+    show: (m) => log.shown.push(m),
+    restart: () => log.restarts++,
+    openPage: (url) => log.opened.push(url),
+  });
+  return { log, ...a };
+}
+
+test('a ready update gets a persistent toast with Restart now and Later', () => {
+  const m = readyToast('1.6.0', () => {});
+  assert.equal(m.persistent, true);
+  assert.match(m.body, /1\.6\.0/);
+  assert.deepEqual(m.actions.map((a) => a.label), ['Restart now', 'Later']);
+});
+
+test('ready: the toast shows once per version; Restart now restarts, Later does nothing', () => {
+  const { log, announce } = announcer();
+  announce({ state: 'ready', version: '1.6.0', url: 'u' });
+  announce({ state: 'ready', version: '1.6.0', url: 'u' });
+  assert.equal(log.shown.length, 1, 'repeated events do not bring the toast back after Later');
+  log.shown[0].actions[1].onSelect();
+  assert.equal(log.restarts, 0);
+  log.shown[0].actions[0].onSelect();
+  assert.equal(log.restarts, 1);
+  announce({ state: 'ready', version: '1.6.1', url: 'u' });
+  assert.equal(log.shown.length, 2, 'a newer version is announced again');
+});
+
+test('downloading shows nothing; idle shows nothing unless a check just found a release', () => {
+  const { log, announce } = announcer();
+  announce({ state: 'downloading', version: '1.6.0' });
+  announce({ state: 'idle' });
+  assert.equal(log.shown.length, 0);
+  // A failed download is retried at the next check; the page toast still helps.
+  announce({ state: 'idle' }, newer);
+  assert.equal(log.shown.length, 1);
+  assert.equal(log.shown[0].title, 'Update available');
+});
+
+test('manual and unsupported keep the release page toast', () => {
+  for (const state of ['manual', 'unsupported']) {
+    const { log, announce } = announcer();
+    announce({ state, version: '1.3.0', url: newer.url }, newer);
+    assert.equal(log.shown.length, 1, state);
+    assert.deepEqual(log.shown[0].actions.map((a) => a.label), ['Open release page']);
+    log.shown[0].actions[0].onSelect();
+    assert.deepEqual(log.opened, [newer.url]);
+  }
+});
+
+test('a state change to manual without a check still shows the page, once', () => {
+  const { log, announce } = announcer();
+  announce({ state: 'manual', version: '1.3.0', url: newer.url });
+  announce({ state: 'manual', version: '1.3.0', url: newer.url });
+  assert.equal(log.shown.length, 1);
+  assert.match(log.shown[0].body, /1\.3\.0/);
+  log.shown[0].actions[0].onSelect();
+  assert.deepEqual(log.opened, [newer.url]);
+  const m = pageToast({ state: 'manual' }, () => {});
+  assert.doesNotMatch(m.body, /undefined/);
+});
+
+test('Settings says where the update is', () => {
+  assert.equal(updateSummary({ state: 'idle' }, false), 'Up to date');
+  assert.equal(updateSummary({ state: 'idle' }, true), 'Last check failed');
+  assert.equal(updateSummary({ state: 'ready', version: '1.6.0' }, false), 'Ready: restart to install 1.6.0');
+  assert.equal(updateSummary({ state: 'downloading', version: '1.6.0' }, true), 'Downloading 1.6.0…');
+  assert.equal(updateSummary({ state: 'manual', version: '1.6.0' }, false), '1.6.0 is available');
+  assert.equal(updateSummary({ state: 'unsupported', version: '1.6.0' }, false), '1.6.0 is available');
+});
+
+test('checks report whether they failed', async () => {
+  const clock = fakeTime();
+  const results = [];
+  let fail = true;
+  startUpdateChecks({
+    check: async () => { if (fail) throw new Error('offline'); return same; },
+    notify() {},
+    checked: (failed) => results.push(failed),
+    storage: memoryStorage(),
+    now: () => clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  await clock.next();
+  fail = false;
+  await clock.next();
+  assert.deepEqual(results, [true, false]);
+});
+
+const settle = async () => {
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+};
+
+test('checking by hand runs at once and counts as the day\'s check in every window', async () => {
+  const clock = fakeTime();
+  const storage = memoryStorage();
+  let checks = 0;
+  const check = async () => (checks++, newer);
+  const a = start(clock, storage, check);
+  const b = start(clock, storage, check);
+
+  clock.now += 1000; // before the startup check
+  assert.deepEqual(await a.checkNow(), newer);
+  assert.equal(checks, 1);
+  assert.deepEqual(a.shown, [newer], 'announced as the daily check does');
+  assert.deepEqual(a.checked, [false]);
+  const nextDay = clock.now + CHECK_INTERVAL_MS;
+  assert.equal(Number(storage.getItem(UPDATE_CHECK_KEY)), nextDay);
+  // This window's startup timer was replaced by one a day away.
+  assert.equal(clock.timers.filter((t) => t.at === nextDay).length, 1);
+
+  // The other window's startup check finds it done and waits for the day.
+  await clock.next();
+  assert.equal(checks, 1);
+  assert.deepEqual(clock.timers.map((t) => t.at), [nextDay, nextDay]);
+  a.stop();
+  b.stop();
+});
+
+test('checking by hand during a check shares it', async () => {
+  const clock = fakeTime();
+  let finish;
+  let checks = 0;
+  const { stop, checkNow } = start(clock, memoryStorage(), () => (checks++, new Promise((resolve) => (finish = resolve))));
+  void clock.next(); // the startup check begins
+  await settle();
+  const first = checkNow();
+  const second = checkNow();
+  finish(same);
+  assert.deepEqual(await first, same);
+  assert.deepEqual(await second, same);
+  assert.equal(checks, 1);
+  assert.equal(clock.timers.length, 1, 'one timer, a day away');
+  assert.equal(clock.timers[0].at, clock.now + CHECK_INTERVAL_MS);
+  stop();
+});
+
+test('a failed check by hand keeps the schedule and reports the failure', async () => {
+  const clock = fakeTime();
+  const storage = memoryStorage();
+  const due = clock.now + 6 * 60 * 60 * 1000;
+  storage.setItem(UPDATE_CHECK_KEY, String(due));
+  const { stop, checkNow, shown, checked } = start(clock, storage, async () => { throw new Error('offline'); });
+  await assert.rejects(checkNow(), /offline/);
+  assert.equal(Number(storage.getItem(UPDATE_CHECK_KEY)), due);
+  assert.deepEqual(checked, [true]);
+  assert.deepEqual(shown, []);
+  assert.deepEqual(clock.timers.map((t) => t.at), [due]);
+  stop();
+  await assert.rejects(checkNow(), /stopped/, 'a closed window checks nothing');
+});
+
+test('Settings reports what a check by hand found while nothing else is going on', () => {
+  const idle = { state: 'idle' };
+  assert.equal(updateSummary(idle, false, { info: same }), 'Up to date: 1.2.3 is the latest version');
+  assert.equal(updateSummary(idle, false, { info: { current: 'dev', latest: '', url: '', available: false } }),
+    'Development build: there is no release to compare it with');
+  assert.equal(updateSummary(idle, false, { info: newer }), '1.3.0 is available');
+  assert.equal(updateSummary(idle, true, { error: 'offline' }), 'Last check failed');
+  assert.equal(updateSummary({ state: 'ready', version: '1.3.0' }, false, { info: newer }), 'Ready: restart to install 1.3.0');
+});
+
+test('the macOS menu\'s Check for Updates… opens Settings and checks there', async () => {
+  const { subscribeUpdateCheck, UPDATE_CHECK_EVENT } = await import('../src/lib/api.ts');
+  assert.equal(UPDATE_CHECK_EVENT, 'update:check', 'the name cmd/agent-sessions/about.go sends');
+  const handlers = new Map();
+  const backend = { onEvent: (name, fn) => (handlers.set(name, fn), () => handlers.delete(name)) };
+  let requests = 0;
+  const off = subscribeUpdateCheck(() => requests++, backend);
+  handlers.get(UPDATE_CHECK_EVENT)();
+  assert.equal(requests, 1);
+  off();
+  assert.equal(handlers.size, 0);
+
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  assert.match(app, /subscribeUpdateCheck\(\(\) => \{\s*manage\.openSettings\('general'\);\s*void updates\.checkNow\(\);\s*\}\);/);
+  const go = readFileSync(new URL('../../cmd/agent-sessions/about.go', import.meta.url), 'utf8');
+  assert.match(go, /const checkUpdatesEvent = "update:check"/);
 });

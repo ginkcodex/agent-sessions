@@ -2,49 +2,23 @@ package main
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
+
+	"github.com/ginkcode/agent-sessions/internal/winmsi"
 )
 
-const upgradeCode = "{D7786BE1-BF16-4887-9C3B-345C5D87CD95}"
+const (
+	upgradeCode   = winmsi.UpgradeCode
+	userUnmanaged = winmsi.UserUnmanaged
+)
 
-// MSI compares the first three numeric version fields, not semantic versions.
-type msiVersion [3]uint64
+type (
+	msiVersion = winmsi.Version
+	product    = winmsi.Product
+)
 
-func parseVersion(s string) (msiVersion, error) {
-	var v msiVersion
-	parts := strings.Split(s, ".")
-	if len(parts) != 3 {
-		return v, fmt.Errorf("invalid MSI version %q (expected major.minor.build)", s)
-	}
-	for i, p := range parts {
-		if p == "" || strings.IndexFunc(p, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
-			return v, fmt.Errorf("invalid MSI version %q", s)
-		}
-		n, err := strconv.ParseUint(p, 10, 16)
-		if err != nil || (i < 2 && n > 255) {
-			return v, fmt.Errorf("MSI version out of range: %q", s)
-		}
-		v[i] = n
-	}
-	return v, nil
-}
-
-func (v msiVersion) newerThan(other msiVersion) bool {
-	for i := range v {
-		if v[i] != other[i] {
-			return v[i] > other[i]
-		}
-	}
-	return false
-}
-
-type product struct {
-	Code, Version, SID string
-	Context            uint32
-}
-
-const userUnmanaged = 2
+func parseVersion(s string) (msiVersion, error) { return winmsi.ParseVersion(s) }
+func validGUID(s string) bool                   { return winmsi.ValidGUID(s) }
 
 type payload struct {
 	Path, Directory, Version, Code string
@@ -107,7 +81,7 @@ func runSetup(p platform) outcome {
 		if err != nil {
 			return fail(err.Error())
 		}
-		if installed.newerThan(version) {
+		if installed.NewerThan(version) {
 			return fail("A newer version (" + product.Version + ") is installed. Setup will not downgrade or remove it.")
 		}
 	}
@@ -227,22 +201,6 @@ func statusMessage(operation string, status uint32) string {
 	default:
 		return fmt.Sprintf("%s failed (Windows Installer status %d).", operation, status)
 	}
-}
-
-func validGUID(s string) bool {
-	if len(s) != 38 || s[0] != '{' || s[37] != '}' {
-		return false
-	}
-	for i := 1; i < 37; i++ {
-		if i == 9 || i == 14 || i == 19 || i == 24 {
-			if s[i] != '-' {
-				return false
-			}
-		} else if !strings.ContainsRune("0123456789abcdefABCDEF", rune(s[i])) {
-			return false
-		}
-	}
-	return true
 }
 
 func sameProducts(a, b []product) bool {

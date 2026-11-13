@@ -13,6 +13,8 @@
   import { keyHandled } from '../../fullscreen';
   import { terminalOptions } from '../../terminal';
   import { preferences } from '../../stores/preferences.svelte';
+  import { updates } from '../../stores/updates.svelte';
+  import { updateSummary } from '../../update';
   import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';
   import { installedFonts } from '../../stores/installedFonts.svelte';
   import { CODE_LANGUAGES } from '../../codeLanguages';
@@ -143,6 +145,45 @@
               </div>
               <p class="hint">Used for message, session and list timestamps on every host. Local time follows this computer's time zone.</p>
             </section>
+
+            {#if updates.available}
+              <section class="section updates">
+                <h3>Updates</h3>
+                <p class="update-status" role="status">{updateSummary(updates.status, updates.checkFailed, updates.checkResult)}</p>
+                {#if updates.status.state === 'ready' || updates.canCheck}
+                  <div class="update-actions">
+                    {#if updates.status.state === 'ready'}
+                      <button type="button" class="primary" disabled={updates.restarting} onclick={() => void updates.restart()}>Restart now</button>
+                    {/if}
+                    {#if updates.canCheck}
+                      <button
+                        type="button"
+                        disabled={updates.checking || updates.status.state === 'downloading'}
+                        onclick={() => void updates.checkNow()}
+                      >{updates.checking ? 'Checking…' : 'Check for updates'}</button>
+                    {/if}
+                  </div>
+                {/if}
+                {#if updates.checkResult?.error}
+                  <p class="error" role="alert">Couldn't check for updates: {updates.checkResult.error}</p>
+                {/if}
+                {#if updates.status.supported}
+                  <label class="setting">
+                    <input
+                      type="checkbox"
+                      checked={updates.auto}
+                      disabled={updates.saving}
+                      onchange={(e) => void updates.setAuto((e.currentTarget as HTMLInputElement).checked)}
+                    />
+                    Download updates automatically
+                  </label>
+                  <p class="hint">A new version is downloaded in the background and installed when you quit. The app never restarts by itself.</p>
+                {/if}
+                {#if updates.error}
+                  <p class="error" role="alert">{updates.error}</p>
+                {/if}
+              </section>
+            {/if}
           {:else if section === 'appearance'}
             <AppearanceSettings />
           {:else if section === 'agents'}
@@ -516,6 +557,8 @@
   .nav button.active { background: var(--active-bg); color: var(--accent-color); font-weight: 600; }
   .body { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 28px 24px; font-size: .8rem; }
   .section > p:not(.hint):not(.error) { margin: 0 0 12px; line-height: 1.5; color: var(--text-secondary); }
+  .update-status { margin: 0 0 8px; }
+  .update-actions { display: flex; gap: 8px; }
   .setting { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-weight: 600; }
   .setting.disabled { opacity: .5; }
   .setting input { accent-color: var(--accent-color); }

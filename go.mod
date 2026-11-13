@@ -8,6 +8,7 @@ tool (
 )
 
 require (
+	aead.dev/minisign v0.3.0
 	github.com/BurntSushi/toml v1.6.0
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/coder/websocket v1.8.14

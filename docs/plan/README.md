@@ -92,6 +92,8 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [workspace-filter-release.md](workspace-filter-release.md) | [workspace-filter-release](../tasks/workspace-filter-release/README.md) | A click on the group tree's empty space releases the workspace filter; the open session's group gets a quieter highlight |
 | [chat-login-env.md](chat-login-env.md) | [chat-login-env](../tasks/chat-login-env/README.md) | A live chat's agent runs in the user's interactive login shell environment, so version-manager tools (mise, nvm) on PATH are found as in terminal tabs |
 | [code-block-run.md](code-block-run.md) | [code-block-run](../tasks/code-block-run/README.md) | A Run button on an agent's shell code blocks opens a terminal tab in the session's directory and runs the command there |
+| [linux-repos.md](linux-repos.md) | [linux-repos](../tasks/linux-repos/README.md) | Signed apt and dnf repositories on the website Worker (releases recorded in Postgres) that list every stable release, with package downloads redirected to GitHub |
+| [auto-update.md](auto-update.md) | [auto-update](../tasks/auto-update/README.md) | macOS and Windows read GitHub's latest release, download and check it in the background, and install it on restart or quit |
 
 ## Supporting documents
 

@@ -1,6 +1,7 @@
 package main
 
+import "github.com/ginkcode/agent-sessions/internal/winmsi"
+
 func installerArgs(operation, target, logPath string) []string {
-	return []string{operation, target, "/quiet", "/norestart", "/L*v", logPath,
-		"REBOOT=ReallySuppress", "MSIRESTARTMANAGERCONTROL=DisableShutdown", "MSIDISABLERMRESTART=1"}
+	return winmsi.InstallerArgs(operation, target, logPath)
 }

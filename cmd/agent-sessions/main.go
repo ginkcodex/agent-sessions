@@ -19,6 +19,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/codexbridge"
 	"github.com/ginkcode/agent-sessions/internal/fdlimit"
 	"github.com/ginkcode/agent-sessions/internal/remote"
+	"github.com/ginkcode/agent-sessions/internal/update"
 )
 
 // WebKitGTK's DMA-BUF renderer stays on: Wails turns it off itself where
@@ -31,6 +32,11 @@ import (
 func main() {
 	// A Codex chat's adapter runs this program as its codex.
 	if code, ok := codexbridge.Main(os.Args[1:]); ok {
+		os.Exit(code)
+	}
+	// The update helper: a copy of this program that swaps in the new app
+	// once this one has quit.
+	if code, ok := update.ApplyMain(os.Args[1:]); ok {
 		os.Exit(code)
 	}
 	if sock := os.Getenv("AGENT_SESSIONS_ASKPASS_SOCK"); sock != "" {

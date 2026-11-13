@@ -13,6 +13,7 @@ export const APP_METHODS = [
   'ApproveCodeDiagnostics',
   'AskpassReply',
   'AttachCodeDiagnostics',
+  'AutoUpdate',
   'BlameFile',
   'BrowseWorkspace',
   'BuildBundleHandoff',
@@ -136,6 +137,7 @@ export const APP_METHODS = [
   'ReplaceInFiles',
   'ResolveTerminalFile',
   'RestartApp',
+  'RestartToUpdate',
   'RestoreBundle',
   'RevealFile',
   'RevealSource',
@@ -153,6 +155,7 @@ export const APP_METHODS = [
   'SearchSession',
   'SetAgentSettings',
   'SetAllowPermanentDelete',
+  'SetAutoUpdate',
   'SetChatsOpen',
   'SetHostEnv',
   'SetManageEnabled',
@@ -174,6 +177,7 @@ export const APP_METHODS = [
   'Translate',
   'TranslateSelection',
   'TranslateSettings',
+  'UpdateState',
 ] as const satisfies readonly (keyof WailsAppBinding)[];
 
 // Fails to compile when WailsAppBinding gains a method APP_METHODS lacks.
