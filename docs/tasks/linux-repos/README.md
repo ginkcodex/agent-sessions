@@ -1,7 +1,7 @@
 # Linux repositories — tasks
 
 - **Plan:** [linux-repos.md](../../plan/linux-repos.md)
-- **Progress:** 15/21 done
+- **Progress:** 16/21 done
 
 Planned 2026-11-13. LR-01 and LR-02 check the risky assumptions first.
 LR-03…06 record releases in the website Worker (`agent-sessions-web`);
@@ -26,10 +26,10 @@ website test flake found during LR-01. LR-21 came out of LR-15's checks.
 | [LR-12](LR-12.md) | ✅ Done | Worker: dnf repodata builder | 3 h | LR-03, LR-10 |
 | [LR-13](LR-13.md) | ✅ Done | Worker: signing and public key files | 2.5 h | LR-02 |
 | [LR-14](LR-14.md) | 🟡 Partial: CPU time to be measured on production (LR-19) | Worker: generations, rebuild, serving and redirects | 3.5 h | LR-05, LR-11, LR-12, LR-13 |
-| [LR-15](LR-15.md) | 🟡 Partial: RPM key made; the repository key and the preview trial need the maintainer | Keys: generate, store, renewal and rotation procedure | 2 h | LR-02 |
+| [LR-15](LR-15.md) | ✅ Done | Keys: generate, store, renewal and rotation procedure | 2 h | LR-02 |
 | [LR-16](LR-16.md) | 🟡 Partial: ran on `wrangler dev`, arm64; preview/production run in LR-19 | Container checks for Ubuntu, Debian and Fedora | 3 h | LR-14 |
 | [LR-17](LR-17.md) | ✅ Done | App: Linux update toast knows the repository | 2.5 h | — |
 | [LR-18](LR-18.md) | 🟡 Partial: key fingerprints wait for the real keys (LR-19) | Install docs: README and website | 2 h | LR-16 |
-| [LR-19](LR-19.md) | ⬜ Not started (needs the maintainer) | Production setup, backfill and first release through the repositories | 2.5 h | LR-06, LR-07, LR-08, LR-15, LR-16 |
+| [LR-19](LR-19.md) | 🟡 Partial: production serves signed, empty repositories; the first signed release is next | Production setup, backfill and first release through the repositories | 2.5 h | LR-06, LR-07, LR-08, LR-15, LR-16 |
 | [LR-20](LR-20.md) | ✅ Done | Website: theme menu test fails now and then | 1 h | — |
 | [LR-21](LR-21.md) | ⬜ Not started (needs a decision) | Ship the repository keyring in the `.deb` (needs a decision) | 3 h | LR-15 |

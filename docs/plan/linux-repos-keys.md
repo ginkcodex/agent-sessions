@@ -13,12 +13,11 @@ Both are v4 EdDSA (algorithm 22) Ed25519 OpenPGP keys, valid for three years.
 ## The keys
 
 The maintainer makes them as in [Making the keys](#making-the-keys) and fills
-in this table. The RPM key was made on 2026-11-13; the repository key is not
-recorded yet.
+in this table. Both were made on 2026-11-13.
 
 | Key | Fingerprint | Expires | Renew by | Secret | Public |
 |---|---|---|---|---|---|
-| Repository | — | — | — | Worker secret `REPO_SIGNING_KEY` (production) | `/apt/agent-sessions.gpg`, `/apt/agent-sessions.asc`, first block of `/rpm/RPM-GPG-KEY-agent-sessions` |
+| Repository (2026) | `7637 85E5 4AFF 78DC D0EE  DEC0 5BC4 5A34 7713 470B` | 2029-11-12 | 2029-05-13 | Worker secret `REPO_SIGNING_KEY` (production) | `/apt/agent-sessions.gpg`, `/apt/agent-sessions.asc`, first block of `/rpm/RPM-GPG-KEY-agent-sessions` |
 | RPM (2026) | `A0B9 1ED7 3F0F B844 6C41  AB61 60FD FBC4 72CB A9C8` | 2029-11-12 | 2029-05-13 | `RPM_SIGNING_KEY`, a secret of this repository's `release` environment | `RPM_PUBLIC_KEYS` in the website's `worker/repo/keys.ts`, served after the repository key in `/rpm/RPM-GPG-KEY-agent-sessions` |
 
 "Renew by" is six months before the expiry date. Put it in a calendar with a
