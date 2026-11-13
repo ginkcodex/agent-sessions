@@ -28,6 +28,10 @@
 # repository variable LINUX_REPOS_SITE points it at another deployment, such
 # as a preview; it defaults to https://agent-sessions.ginklab.cv. The AUR
 # job's secret is described in aur.yml.
+#
+# The release environment's RPM_SIGNING_KEY signs the .rpm packages before
+# they are published (packaging/linux/sign-rpms.sh); a release fails without
+# it. docs/plan/linux-repos-keys.md says how the key is made and stored.
 name: Release
 
 on:
@@ -394,11 +398,33 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Install apt-ftparchive and createrepo_c
+      - name: Install apt-ftparchive, createrepo_c and rpmsign
         timeout-minutes: 10
         uses: ./src/.github/actions/apt-install
         with:
-          packages: apt-utils createrepo-c rpm-common
+          packages: apt-utils createrepo-c rpm-common rpm
+      - name: Sign the .rpm packages
+        # dnf checks each package against the RPM key, and rpm 6 (Fedora 45)
+        # will not install an unsigned one with rpm -i
+        # (docs/plan/linux-repos-keys.md). Signing rewrites each header, so
+        # it comes before repo-meta.json and the checksums. It runs here, not
+        # in the linux job that builds them: the key is a secret of the
+        # release environment, as MINISIGN_KEY is, and is kept away from the
+        # build's npm and Go code. A release fails without it; a manual run
+        # warns and leaves the packages unsigned.
+        env:
+          PUBLISH: ${{ needs.version.outputs.publish }}
+          RPM_SIGNING_KEY: ${{ secrets.RPM_SIGNING_KEY }}
+        run: |
+          if [ -z "$RPM_SIGNING_KEY" ]; then
+            if [ "$PUBLISH" = true ]; then
+              echo "::error::RPM_SIGNING_KEY is not set in the release environment. The repositories' .repo file sets gpgcheck=1, so dnf would refuse unsigned packages."
+              exit 1
+            fi
+            echo "::warning::RPM_SIGNING_KEY is not set in the release environment: the .rpm packages stay unsigned"
+            exit 0
+          fi
+          bash src/packaging/linux/sign-rpms.sh dist
       - name: Write repo-meta.json
         # The Linux repositories' index entries for these packages
         # (docs/plan/linux-repos.md). Here rather than in the linux job, which
@@ -486,11 +512,33 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Install apt-ftparchive and createrepo_c
+      - name: Install apt-ftparchive, createrepo_c and rpmsign
         timeout-minutes: 10
         uses: ./src/.github/actions/apt-install
         with:
-          packages: apt-utils createrepo-c rpm-common
+          packages: apt-utils createrepo-c rpm-common rpm
+      - name: Sign the .rpm packages
+        # dnf checks each package against the RPM key, and rpm 6 (Fedora 45)
+        # will not install an unsigned one with rpm -i
+        # (docs/plan/linux-repos-keys.md). Signing rewrites each header, so
+        # it comes before repo-meta.json and the checksums. It runs here, not
+        # in the linux job that builds them: the key is a secret of the
+        # release environment, as MINISIGN_KEY is, and is kept away from the
+        # build's npm and Go code. A release fails without it; a manual run
+        # warns and leaves the packages unsigned.
+        env:
+          PUBLISH: ${{ needs.version.outputs.publish }}
+          RPM_SIGNING_KEY: ${{ secrets.RPM_SIGNING_KEY }}
+        run: |
+          if [ -z "$RPM_SIGNING_KEY" ]; then
+            if [ "$PUBLISH" = true ]; then
+              echo "::error::RPM_SIGNING_KEY is not set in the release environment. The repositories' .repo file sets gpgcheck=1, so dnf would refuse unsigned packages."
+              exit 1
+            fi
+            echo "::warning::RPM_SIGNING_KEY is not set in the release environment: the .rpm packages stay unsigned"
+            exit 0
+          fi
+          bash src/packaging/linux/sign-rpms.sh dist
       - name: Write repo-meta.json
         # The Linux repositories' index entries for these packages
         # (docs/plan/linux-repos.md). Here rather than in the linux job, which

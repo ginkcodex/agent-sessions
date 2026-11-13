@@ -18,10 +18,13 @@ and fills in this table.
 | Key | Fingerprint | Expires | Renew by | Secret | Public |
 |---|---|---|---|---|---|
 | Repository | — | — | — | Worker secret `REPO_SIGNING_KEY` (production) | `/apt/agent-sessions.gpg`, `/apt/agent-sessions.asc`, first block of `/rpm/RPM-GPG-KEY-agent-sessions` |
-| RPM | — | — | — | This repository's Actions secret `RPM_SIGNING_KEY` (LR-08) | `RPM_PUBLIC_KEYS` in the website's `worker/repo/keys.ts`, served after the repository key in `/rpm/RPM-GPG-KEY-agent-sessions` |
+| RPM | — | — | — | `RPM_SIGNING_KEY`, a secret of this repository's `release` environment | `RPM_PUBLIC_KEYS` in the website's `worker/repo/keys.ts`, served after the repository key in `/rpm/RPM-GPG-KEY-agent-sessions` |
 
 "Renew by" is six months before the expiry date. Put it in a calendar with a
-reminder a month earlier.
+reminder a month earlier. By that date the repository key is extended, and
+the RPM key is replaced by a new one (see
+[Rotating the RPM key](#rotating-the-rpm-key)). `repo-keys.sh show` says which
+to do.
 
 Previews never get the production repository key. A preview runs code that
 nobody has reviewed yet, and whoever holds the repository key can get any
@@ -31,8 +34,8 @@ made the same way.
 ## Making the keys
 
 Make the keys on an offline machine with GnuPG 2.4, keeping `<dir>` on
-encrypted storage. The keys have no passphrase, because the Worker and nfpm
-read them as they are, so `<dir>` and its backups are what need protecting.
+encrypted storage. The keys have no passphrase, because the Worker and
+`sign-rpms.sh` read them as they are, so `<dir>` and its backups are what need protecting.
 
 ```sh
 packaging/linux/repo-keys.sh new repo <dir>
@@ -74,8 +77,9 @@ tool's standard input:
 # Website (in agent-sessions-web): production only.
 packaging/linux/repo-keys.sh secret <dir> <repository fingerprint> | npx wrangler secret put REPO_SIGNING_KEY
 
-# This repository (LR-08 reads it in the release job).
-gh secret set RPM_SIGNING_KEY -R ginkcodex/agent-sessions < <dir>/rpm-<key ID>.secret.asc
+# This repository: a secret of the release environment, which the release
+# jobs' sign-rpms.sh reads.
+gh secret set RPM_SIGNING_KEY --env release -R ginkcodex/agent-sessions < <dir>/rpm-<key ID>.secret.asc
 ```
 
 Then:
@@ -101,17 +105,22 @@ generation stays served.
 
 ## Renewal (extending the expiry)
 
-Renew by the "Renew by" date in the table.
+This is for the repository key only. Renew it by the "Renew by" date in the
+table.
+
+The RPM key is never extended: `repo-keys.sh extend` refuses it. rpm 4.19
+(Fedora 40) keeps the copy of the key it imported first. Importing the
+extended key changes nothing, so once the old expiry date passes, packages
+signed after the renewal fail on those machines (see
+[RPM signatures](#rpm-signatures-lr-08)). Make a new RPM key instead, as in
+[Rotating the RPM key](#rotating-the-rpm-key).
 
 1. Run `packaging/linux/repo-keys.sh extend <dir> <fingerprint>`. The key gets
    a new self-signature valid for three years from today; its fingerprint
    stays the same.
 2. Store it again, as in [Storing them](#storing-them):
-   - the repository key: `secret … | wrangler secret put REPO_SIGNING_KEY`;
-   - the RPM key: replace its block in `RPM_PUBLIC_KEYS` and update the
-     Actions secret.
-
-   The next rebuild serves the renewed public key and signs with it.
+   `secret … | wrangler secret put REPO_SIGNING_KEY`. The next rebuild serves
+   the renewed public key and signs with it.
 3. Update the table, the calendar entry and the backup.
 4. **apt users have to fetch the keyring again before the old expiry date.**
    apt checks against the copy in `/usr/share/keyrings/agent-sessions.gpg`,
@@ -164,18 +173,25 @@ Steps (A is the old key, B the new one):
 
 ## Rotating the RPM key
 
+Rotate the RPM key by its "Renew by" date, as well as when moving to a new
+key or after a leak.
+
 Every release stays listed, and each `.rpm` keeps the signature it was
-built with. So an old RPM key stays in `RPM_PUBLIC_KEYS` for as long as
-packages signed with it are listed, which means for good.
+signed with. So an old RPM key stays in `RPM_PUBLIC_KEYS` for as long as
+packages signed with it are listed, which means for good. Its expiry does not
+matter for those packages: rpm checks a signature against the key as it was
+when the signature was made, and the packages it signed kept verifying after
+it expired (see [RPM signatures](#rpm-signatures-lr-08)).
 
 1. Make the new key: `repo-keys.sh new rpm <dir>`.
 2. Add its public block to `RPM_PUBLIC_KEYS` after the old one. Deploy the
    website and wait for the next rebuild.
-3. Only then switch the `RPM_SIGNING_KEY` Actions secret.
+3. Only then switch the `RPM_SIGNING_KEY` secret of the `release`
+   environment.
 
-When a user first installs a package signed by the new key, dnf asks to
-import it from the key file. This step has not been tried with signed
-packages yet: that is [LR-08](../tasks/linux-repos/LR-08.md) and
+When a user first installs a package signed by the new key, dnf should ask
+to import it from the key file, as it did for a new repository key. This has
+not been tried with signed packages from the repository yet:
 [LR-16](../tasks/linux-repos/LR-16.md).
 
 ## If a key leaks
@@ -190,7 +206,8 @@ every apt user's machine.
    Revoking it in the served key files is not done by the Worker today.
    apt users who replace their keyring drop the old key anyway.
 
-**The RPM key.** Make a new RPM key and replace the Actions secret. Then
+**The RPM key.** Make a new RPM key and replace the `RPM_SIGNING_KEY`
+secret. Then
 decide whether the packages signed with the old key stay listed. Their
 `.rpm` files are on GitHub and cannot be re-signed in place.
 
@@ -263,5 +280,34 @@ from one step to the next.
 
 - A real key, and the steps on a preview deployment. Both need the
   maintainer.
-- The RPM key's rotation and expiry with signed packages (LR-08, LR-16).
+- The RPM key's rotation through the repository with signed packages
+  (LR-16). Its expiry and renewal were checked with `rpm` (below).
 - dnf-automatic, which may not answer the import prompt in rotation step 4.
+
+### RPM signatures (LR-08)
+
+`packaging/linux/sign-rpms.sh` signs with rpmsign 4.18.2 (Ubuntu 24.04, as on
+the release job's runner). The packages were the v1.5.6 release's two `.rpm`
+files and a small test package, signed with throwaway keys from the LR-15
+checks.
+
+| Check | Fedora 40 (rpm 4.19.1.1) | Fedora 45 (rpm 6.1.0) |
+|---|---|---|
+| Signed v1.5.6, key imported: `rpm -K` | ✅ `Signature, key ID 306c3b25: OK` | ✅ `signature, key fingerprint: …306c3b25: OK` |
+| Signed v1.5.6, key not imported: `rpm -i --test` | ✅ installs with a `NOKEY` warning | ❌ `does not verify: … NOKEY` |
+| Unsigned v1.5.6 (as released today): `rpm -i --test` | ✅ | ❌ `does not verify: no signature` |
+| Payload changed after signing: `rpm -K` | ❌ `Payload SHA256 digest: BAD` | ❌ same |
+| `dnf install ./file.rpm`, signed or not, key imported or not | ✅ | ✅ with `skipped OpenPGP checks … @commandline` |
+| Signed while the key was valid, checked with the expired copy | ✅ | ✅ |
+| Signed while the key was valid, checked with the extended key | ✅ | ✅ |
+| Signed after an extension, checked with the expired copy | ❌ `NOTTRUSTED`: key not alive | ❌ same |
+| The same, after `rpm --import` of the extended key | ❌ the import exits 0 but keeps the old copy | ✅ the import updates it |
+
+What they mean:
+
+- rpm 6 refuses to install an unsigned package, or one whose key is not
+  imported, with plain `rpm -i`. dnf does not check local files.
+- Old packages keep verifying after their key expires. So an expired RPM key
+  can stay in `RPM_PUBLIC_KEYS`.
+- Extending the RPM key breaks rpm 4.19 machines once the old expiry passes.
+  Hence the rule: rotate the RPM key, never extend it.

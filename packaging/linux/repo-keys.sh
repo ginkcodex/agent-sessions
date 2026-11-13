@@ -4,7 +4,7 @@
 # encrypted storage; it never sends anything anywhere.
 #
 #   repo-keys.sh new    <repo|rpm> <dir>         a new key, valid for 3 years
-#   repo-keys.sh extend <dir> <fingerprint>      3 more years from today
+#   repo-keys.sh extend <dir> <fingerprint>      3 more years from today (repository key)
 #   repo-keys.sh show   <dir>                    fingerprints, expiry, renewal date
 #   repo-keys.sh secret <dir> <fingerprint>...   the secret keys, in that order,
 #                                                for REPO_SIGNING_KEY or RPM_SIGNING_KEY
@@ -13,8 +13,8 @@
 #
 # <dir> holds a GnuPG home (gnupg/) and, per key, <name>.pub.asc,
 # <name>.secret.asc and <name>.rev.asc (its revocation certificate), where
-# <name> is <role>-<key ID>. The keys have no passphrase: the Worker and nfpm
-# read them as they are, so <dir> and its backups are what need protecting.
+# <name> is <role>-<key ID>. The keys have no passphrase: the Worker and
+# sign-rpms.sh read them as they are, so <dir> and its backups are what need protecting.
 #
 # Both keys are v4 EdDSA (algorithm 22) Ed25519 keys: RFC 9580's Ed25519
 # (algorithm 27) fails on Ubuntu 24.04's gpgv and Fedora 40's rpm (LR-02).
@@ -119,11 +119,16 @@ show() { # <dir>
     while IFS=$'\t' read -r fpr created expires uid; do
       echo "$fpr  $uid"
       echo "    created $(day "$created")"
+      # An RPM key is replaced by a new one, never extended (cmd_extend).
+      case $uid in
+        "$(uid_for rpm) "*) renew="make its successor" ;;
+        *) renew="renew" ;;
+      esac
       if [ -n "$expires" ]; then
         if [ "$expires" -le "$(date -u +%s)" ]; then
-          echo "    EXPIRED $(day "$expires"): extend it, then update its secret and public files"
+          echo "    EXPIRED $(day "$expires"): $renew, then update the secrets and public files"
         else
-          echo "    expires $(day "$expires"); renew by $(day $((expires - RENEW_BEFORE_DAYS * 86400)))"
+          echo "    expires $(day "$expires"); $renew by $(day $((expires - RENEW_BEFORE_DAYS * 86400)))"
         fi
       else
         echo "    never expires"
@@ -156,6 +161,12 @@ cmd_extend() { # <dir> <fingerprint>
   need_gpg
   use_home "$dir"
   fpr=$(full_fingerprint "$2")
+  # rpm 4.19 keeps the copy of a key it imported first: importing the
+  # extended key changes nothing, and packages signed after the old expiry
+  # date fail on those machines (LR-08). A new RPM key has a new key ID,
+  # which dnf imports from the .repo file's gpgkey.
+  [ "$(role_of "$fpr")" = repo ] ||
+    die "$fpr is an RPM key: make a new one instead (docs/plan/linux-repos-keys.md, Rotating the RPM key)"
   g --quick-set-expire "$fpr" "$VALIDITY"
   check_key "$fpr"
   write_files "$dir" "$fpr"

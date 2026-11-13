@@ -54,9 +54,15 @@ updater reads GitHub Releases directly ([auto-update.md](auto-update.md)).
 
 ### In CI (this repository)
 
-- **RPMs are signed at build time** by nfpm with the RPM key (secret in this
-  repository). The signed file is the release asset, so `SHA256SUMS` covers
-  it and `rpm -K` checks it in `packaging/linux/verify-packages.sh`.
+- **RPMs are signed in the jobs that gather the release set** (`artifacts`,
+  `release`) by `packaging/linux/sign-rpms.sh`, with rpmsign and the RPM key
+  (`RPM_SIGNING_KEY`, a secret of the `release` environment, as
+  `MINISIGN_KEY` is). The script then checks each signature against that key
+  alone. Signing comes before `repo-meta.json` and `SHA256SUMS`, so both
+  describe the signed file, which is the release asset. A release fails
+  without the key; a manual run warns and leaves the RPMs unsigned. The
+  `linux` jobs that build the packages never see the key (LR-08 moved
+  signing there from nfpm in the build).
 - **`repo-meta.json`** is written by `packaging/linux/repo-meta.sh` from the
   built packages, in the jobs that gather the release set (`artifacts`,
   `release`), since each `linux` job builds one architecture:
