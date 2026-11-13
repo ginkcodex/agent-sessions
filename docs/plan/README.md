@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [layout-memory.md](layout-memory.md) | [layout-memory](../tasks/layout-memory/README.md) | Content-fit pane sizing and remembered window and pane geometry across launches |
 | [transcript-tool-readability.md](transcript-tool-readability.md) | [transcript-tool-readability](../tasks/transcript-tool-readability/README.md) | Readable tool summaries, decoded text envelopes and expandable output previews at Activity and All levels |
 | [message-file-single-match.md](message-file-single-match.md) | [message-file-single-match](../tasks/message-file-single-match/README.md) | A file name or partial path in a message or terminal that matches one project file opens it directly; several matches still offer a toast |
 | [transcript-directory-links.md](transcript-directory-links.md) | [transcript-directory-links](../tasks/transcript-directory-links/README.md) | Exclude trailing-separator directory paths from session-content file-opening links |
