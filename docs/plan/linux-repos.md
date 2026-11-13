@@ -83,7 +83,10 @@ updater reads GitHub Releases directly ([auto-update.md](auto-update.md)).
 The website's Worker gains code. `wrangler.jsonc` sets
 `assets.run_worker_first` for `/api/*`, `/apt/*` and `/rpm/*`; every other
 path stays a static asset as today. The Worker connects to the maintainer's
-Postgres through a Hyperdrive binding (`HYPERDRIVE`).
+Postgres through a Hyperdrive binding (`HYPERDRIVE`), with the postgres.js
+client. Production uses `agent_sessions_prod`; previews bind their own
+config to `agent_sessions_demo`. Both are reached through Cloudflare
+Tunnels.
 
 The repository lives in the database, not in the deployed files, so a
 website deploy, from any branch or by hand, cannot remove or roll it back.
@@ -228,8 +231,12 @@ Otherwise it links to the website's install guide
 - **Postgres or Hyperdrive down:** ingest fails and uncached index reads
   fail. The cron retries ingest; cached files keep serving for their TTL.
 - **Worker CPU limits.** Rebuilding and signing in one request may need more
-  than the free plan's CPU time. LR-01 measures it; the Workers Paid plan
-  may be needed.
+  than the free plan's CPU time (10 ms per invocation). In local workerd
+  (LR-01), a full rebuild takes 2.6 ms for 50 releases, 6.4 ms for 300 and
+  17 ms for 1000, before database work. The free plan fits today; Workers
+  Paid is needed at a few hundred releases, or sooner if the preview's
+  measurement is higher. A rebuild skips work when its inputs are
+  unchanged.
 - **Redirects across hosts.** apt and dnf follow the 302 from our domain to
   github.com and on to GitHub's file host; some corporate proxies may not.
   LR-02 checks both clients.
