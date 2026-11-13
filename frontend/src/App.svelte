@@ -62,6 +62,8 @@
   import { api, subscribeMouseNavigate, subscribeUpdateCheck } from './lib/api';
   import { isDesktop } from './lib/desktopRuntime';
   import { createUpdateAnnouncer, startUpdateChecks } from './lib/update';
+  import { copyToClipboard } from './lib/portable';
+  import { copyFailed } from './lib/guidance';
   import { updates } from './lib/stores/updates.svelte';
   import { formatVersion } from './lib/format';
   import { themeButtonTitle } from './lib/theme';
@@ -141,6 +143,15 @@
         if (updates.error) toast.show({ title: "Couldn't restart to update", body: updates.error, tone: 'error' });
       }),
       openPage: openReleasePage,
+      // Linux: the apt, dnf or AUR command that brings the update.
+      copy: (command) =>
+        void copyToClipboard(command).then((ok) =>
+          toast.show(
+            ok
+              ? { title: 'Command copied', body: 'Run it in a terminal to update Agent Sessions.', code: command }
+              : copyFailed('the command', new Error('The clipboard is not available.')),
+          ),
+        ),
     });
     void updates.init((status) => announcer.announce(status));
     const checks = startUpdateChecks({

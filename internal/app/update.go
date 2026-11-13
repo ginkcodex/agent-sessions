@@ -33,6 +33,9 @@ var (
 	canSelfUpdate = func() bool { return false }
 	applyUpdate   func(r update.Ready, relaunch bool) error
 	prepareUpdate func(ctx context.Context, r update.Ready) error
+	// installMethod says how this install gets updates where the system's
+	// package manager brings them (Linux), so the toast can say what to run.
+	installMethod func() string
 )
 
 // newUpdateManager is the process's updater, shared by every window: one
@@ -41,6 +44,7 @@ func newUpdateManager() *update.Manager {
 	m := &update.Manager{
 		Supported: func() bool { return applyUpdate != nil && canSelfUpdate() },
 		Prepare:   prepareUpdate,
+		Install:   installMethod,
 		Auto: func() bool {
 			roots, err := paths.Default()
 			if err != nil {

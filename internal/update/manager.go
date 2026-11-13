@@ -39,6 +39,9 @@ type Status struct {
 	// Supported says this install can update itself, so the setting means
 	// something. It is filled in when the status is read.
 	Supported bool `json:"supported"`
+	// Install says how a Linux install gets updates (LinuxInstall); empty
+	// elsewhere. It is filled in when the status is read.
+	Install string `json:"install,omitempty"`
 }
 
 // Manager turns the result of a check into a downloaded, checked installer,
@@ -51,6 +54,9 @@ type Manager struct {
 	Supported func() bool
 	// Auto reports the "Download updates automatically" setting. Nil means on.
 	Auto func() bool
+	// Install reports how this install gets updates, for Status.Install. Nil
+	// leaves it empty.
+	Install func() string
 	// Prepare gets a downloaded version ready to install, such as staging it
 	// beside the app, and runs before the version is called ready. An error
 	// sends the user to the release page for that version. Nil means nothing
@@ -91,6 +97,9 @@ func (m *Manager) view(s Status) Status {
 		s.State = StateIdle
 	}
 	s.Supported = m.supported()
+	if m.Install != nil {
+		s.Install = m.Install()
+	}
 	return s
 }
 

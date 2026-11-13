@@ -13,7 +13,28 @@ export interface UpdateInfo {
   /** The latest release's page. */
   url: string;
   available: boolean;
+  /** How a Linux install gets updates; absent elsewhere. */
+  install?: InstallMethod;
 }
+
+/**
+ * How a Linux install gets its updates, from the backend:
+ *
+ *  - apt-repo, dnf-repo: the system lists this project's repository.
+ *  - aur: an Arch system, which gets the app from the AUR.
+ *  - manual: a package installed by hand.
+ */
+export type InstallMethod = 'apt-repo' | 'dnf-repo' | 'aur' | 'manual';
+
+/** The website's install guide, for Linux packages installed by hand. */
+export const INSTALL_GUIDE_URL = 'https://agent-sessions.ginklab.cv/download';
+
+/** What brings the new version, for the installs whose package manager does. */
+export const UPGRADE_COMMANDS: Record<Exclude<InstallMethod, 'manual'>, string> = {
+  'apt-repo': 'sudo apt update && sudo apt upgrade',
+  'dnf-repo': 'sudo dnf upgrade',
+  aur: 'paru -Syu agent-sessions-bin',
+};
 
 /**
  * Where a downloaded update is, from the backend's UpdateState and its
@@ -37,6 +58,8 @@ export interface UpdateStatus {
   version?: string;
   /** Its release page. */
   url?: string;
+  /** How a Linux install gets updates; absent elsewhere. */
+  install?: InstallMethod;
 }
 
 /** When the next check is due, in epoch milliseconds, shared by every window. */
@@ -89,6 +112,50 @@ export function pageToast(status: UpdateStatus, openPage: () => void): ToastMess
   };
 }
 
+/**
+ * The toast for a newer release on Linux, where the system's package manager
+ * installs it: the command to run, with a copy action, or for a package
+ * installed by hand the install guide. current is absent when only the update
+ * state is known. Other systems and unknown methods get no toast here.
+ */
+export function linuxUpdateToast(
+  install: InstallMethod | undefined,
+  version: string,
+  current: string | undefined,
+  actions: { copy: (command: string) => void; openPage: (url: string) => void; releasePage: string },
+): ToastMessage | null {
+  const out = `${version ? `Agent Sessions ${version}` : 'A newer Agent Sessions'} is out${current ? `; you have ${current}` : ''}.`;
+  switch (install) {
+    case 'apt-repo':
+    case 'dnf-repo':
+    case 'aur': {
+      const command = UPGRADE_COMMANDS[install];
+      const how = install === 'aur' ? 'Update it with your AUR helper, such as paru or yay:' : `Update it with ${install === 'apt-repo' ? 'apt' : 'dnf'}:`;
+      return {
+        title: 'Update available',
+        body: `${out} ${how}`,
+        code: command,
+        actions: [{ label: 'Copy command', onSelect: () => actions.copy(command) }],
+        persistent: true,
+      };
+    }
+    case 'manual': {
+      const page = actions.releasePage;
+      return {
+        title: 'Update available',
+        body: `${out} Get it from the install guide.`,
+        actions: [
+          { label: 'Open install guide', onSelect: () => actions.openPage(INSTALL_GUIDE_URL) },
+          ...(page ? [{ label: 'Open release page', onSelect: () => actions.openPage(page) }] : []),
+        ],
+        persistent: true,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
 /** The answer to a check the user asked for in this window. */
 export interface CheckResult {
   info?: UpdateInfo;
@@ -123,6 +190,8 @@ export interface UpdateAnnouncerDeps {
   /** Quits through the usual path and installs. */
   restart: () => void;
   openPage: (url: string) => void;
+  /** Puts a Linux upgrade command on the clipboard. */
+  copy?: (command: string) => void;
 }
 
 /**
@@ -134,6 +203,13 @@ export interface UpdateAnnouncerDeps {
 export function createUpdateAnnouncer(deps: UpdateAnnouncerDeps) {
   let readyFor = '';
   let pageFor = '';
+  // On Linux the package manager, not a release page, brings the update.
+  const linux = (status: UpdateStatus, info: UpdateInfo | undefined, version: string): ToastMessage | null =>
+    linuxUpdateToast(info?.install ?? status.install, version, info?.current, {
+      copy: (command) => deps.copy?.(command),
+      openPage: deps.openPage,
+      releasePage: status.url || info?.url || '',
+    });
   return {
     announce(status: UpdateStatus, info?: UpdateInfo): void {
       const version = status.version ?? info?.latest ?? '';
@@ -147,16 +223,16 @@ export function createUpdateAnnouncer(deps: UpdateAnnouncerDeps) {
           return;
         case 'idle':
           // A failed download is retried at the next check; the page still helps.
-          if (info) deps.show(updateToast(info, () => deps.openPage(info.url)));
+          if (info) deps.show(linux(status, info, info.latest) ?? updateToast(info, () => deps.openPage(info.url)));
           return;
         default: {
           const url = status.url || info?.url || '';
           if (info) {
             pageFor = info.latest;
-            deps.show(updateToast(info, () => deps.openPage(url || info.url)));
+            deps.show(linux(status, info, info.latest) ?? updateToast(info, () => deps.openPage(url || info.url)));
           } else if (version && pageFor !== version) {
             pageFor = version;
-            deps.show(pageToast(status, () => deps.openPage(url)));
+            deps.show(linux(status, info, version) ?? pageToast(status, () => deps.openPage(url)));
           }
         }
       }

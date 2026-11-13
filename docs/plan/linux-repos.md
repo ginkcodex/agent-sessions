@@ -164,12 +164,16 @@ Both get an expiry date and a written renewal and rotation procedure
 
 ### In the app
 
-On Linux the update toast checks whether the repository is set up: an
-`/etc/apt/sources.list.d/agent-sessions.*` or
-`/etc/yum.repos.d/agent-sessions.repo` that names our domain. If it is, the
-toast says to run `sudo apt update && sudo apt upgrade` (or
-`sudo dnf upgrade`). On Arch (`/etc/arch-release`) it says to update with the
-AUR helper. Otherwise it links to the website's install guide.
+On Linux the update toast checks whether the repository is set up: an apt
+source (`/etc/apt/sources.list`, or a `.list` or `.sources` file in
+`/etc/apt/sources.list.d/`) or a `/etc/yum.repos.d/*.repo` section that
+names our domain. Sources that are commented out (as `do-release-upgrade`
+leaves third-party ones), `Enabled: no` or `enabled=0` do not count. If it
+is, the toast shows `sudo apt update && sudo apt upgrade` (or
+`sudo dnf upgrade`) with **Copy command**. On Arch (`/etc/arch-release`) it
+says to update with the AUR helper (`paru -Syu agent-sessions-bin`).
+Otherwise it links to the website's install guide
+(`https://agent-sessions.ginklab.cv/download`) and the release page.
 
 ## Decisions
 

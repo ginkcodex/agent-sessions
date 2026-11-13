@@ -1,7 +1,7 @@
 # Linux repositories — tasks
 
 - **Plan:** [linux-repos.md](../../plan/linux-repos.md)
-- **Progress:** 0/19 done
+- **Progress:** 1/19 done
 
 Planned 2026-11-13. LR-01 and LR-02 check the risky assumptions first.
 LR-03…06 record releases in the website Worker (`agent-sessions-web`);
@@ -27,6 +27,6 @@ Linux toast. LR-15 and LR-19 need the maintainer's keys and accounts.
 | [LR-14](LR-14.md) | ⬜ Not started | Worker: generations, rebuild, serving and redirects | 3.5 h | LR-05, LR-11, LR-12, LR-13 |
 | [LR-15](LR-15.md) | ⬜ Not started | Keys: generate, store, renewal and rotation procedure | 2 h | LR-02 |
 | [LR-16](LR-16.md) | ⬜ Not started | Container checks for Ubuntu, Debian and Fedora | 3 h | LR-14 |
-| [LR-17](LR-17.md) | ⬜ Not started | App: Linux update toast knows the repository | 2.5 h | — |
+| [LR-17](LR-17.md) | ✅ Done | App: Linux update toast knows the repository | 2.5 h | — |
 | [LR-18](LR-18.md) | ⬜ Not started | Install docs: README and website | 2 h | LR-16 |
 | [LR-19](LR-19.md) | ⬜ Not started | Production setup, backfill and first release through the repositories | 2.5 h | LR-06, LR-07, LR-08, LR-15, LR-16 |

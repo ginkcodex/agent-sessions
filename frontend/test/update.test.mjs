@@ -11,6 +11,8 @@ import {
   checkDelay,
   startUpdateChecks,
   createUpdateAnnouncer,
+  INSTALL_GUIDE_URL,
+  linuxUpdateToast,
   pageToast,
   readyToast,
   updateSummary,
@@ -191,11 +193,12 @@ test('only the desktop app checks, through the backend, and opens the page in th
 });
 
 function announcer() {
-  const log = { shown: [], restarts: 0, opened: [] };
+  const log = { shown: [], restarts: 0, opened: [], copied: [] };
   const a = createUpdateAnnouncer({
     show: (m) => log.shown.push(m),
     restart: () => log.restarts++,
     openPage: (url) => log.opened.push(url),
+    copy: (command) => log.copied.push(command),
   });
   return { log, ...a };
 }
@@ -240,6 +243,71 @@ test('manual and unsupported keep the release page toast', () => {
     log.shown[0].actions[0].onSelect();
     assert.deepEqual(log.opened, [newer.url]);
   }
+});
+
+const linuxCommands = [
+  ['apt-repo', 'sudo apt update && sudo apt upgrade', /with apt:/],
+  ['dnf-repo', 'sudo dnf upgrade', /with dnf:/],
+  ['aur', 'paru -Syu agent-sessions-bin', /AUR helper/],
+];
+
+test('Linux repository and AUR installs: the toast shows the command and copies it', () => {
+  for (const [install, command, how] of linuxCommands) {
+    const { log, announce } = announcer();
+    announce({ state: 'unsupported', version: '1.3.0', url: newer.url, install }, { ...newer, install });
+    assert.equal(log.shown.length, 1, install);
+    const m = log.shown[0];
+    assert.equal(m.title, 'Update available');
+    assert.equal(m.persistent, true);
+    assert.match(m.body, /Agent Sessions 1\.3\.0 is out; you have 1\.2\.3\./);
+    assert.match(m.body, how);
+    assert.equal(m.code, command);
+    assert.deepEqual(m.actions.map((a) => a.label), ['Copy command']);
+    m.actions[0].onSelect();
+    assert.deepEqual(log.copied, [command]);
+    assert.deepEqual(log.opened, [], 'no release page');
+  }
+});
+
+test('a Linux package installed by hand: the toast opens the install guide or the release page', () => {
+  const { log, announce } = announcer();
+  announce({ state: 'unsupported', version: '1.3.0', url: newer.url, install: 'manual' }, { ...newer, install: 'manual' });
+  const m = log.shown[0];
+  assert.equal(m.code, undefined);
+  assert.deepEqual(m.actions.map((a) => a.label), ['Open install guide', 'Open release page']);
+  m.actions[0].onSelect();
+  m.actions[1].onSelect();
+  assert.deepEqual(log.opened, [INSTALL_GUIDE_URL, newer.url]);
+  assert.equal(INSTALL_GUIDE_URL, 'https://agent-sessions.ginklab.cv/download');
+});
+
+test('Linux: the install method in the update state alone is enough, and shows once', () => {
+  const { log, announce } = announcer();
+  announce({ state: 'unsupported', version: '1.3.0', url: newer.url, install: 'dnf-repo' });
+  announce({ state: 'unsupported', version: '1.3.0', url: newer.url, install: 'dnf-repo' });
+  assert.equal(log.shown.length, 1);
+  assert.match(log.shown[0].body, /^Agent Sessions 1\.3\.0 is out\. Update it with dnf:$/);
+  // A check that found it while idle (a download that failed elsewhere) too.
+  announce({ state: 'idle', install: 'apt-repo' }, newer);
+  assert.equal(log.shown[1].code, 'sudo apt update && sudo apt upgrade');
+});
+
+test('macOS and Windows toasts are unchanged: no install method, no Linux toast', () => {
+  assert.equal(linuxUpdateToast(undefined, '1.3.0', '1.2.3', { copy() {}, openPage() {}, releasePage: '' }), null);
+  for (const state of ['manual', 'unsupported', 'idle']) {
+    const { log, announce } = announcer();
+    announce({ state, version: '1.3.0', url: newer.url }, newer);
+    assert.deepEqual(log.shown[0].actions.map((a) => a.label), ['Open release page'], state);
+    assert.equal(log.shown[0].code, undefined);
+  }
+  const { log, announce } = announcer();
+  announce({ state: 'ready', version: '1.6.0', url: 'u', install: 'apt-repo' });
+  assert.deepEqual(log.shown[0].actions.map((a) => a.label), ['Restart now', 'Later'], 'a ready update is never a Linux toast');
+});
+
+test('the desktop app copies the Linux command through the native clipboard', () => {
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  assert.match(app, /copy: \(command\) =>\s*void copyToClipboard\(command\)/);
 });
 
 test('a state change to manual without a check still shows the page, once', () => {

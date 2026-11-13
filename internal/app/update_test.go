@@ -311,3 +311,27 @@ func TestFailedInstallFallsBackToTheNormalRestart(t *testing.T) {
 	w.Shutdown()
 	receive(t, starts, "restart")
 }
+
+func TestCheckForUpdateSaysHowLinuxInstallsGetUpdates(t *testing.T) {
+	saved := installMethod
+	t.Cleanup(func() { installMethod = saved })
+
+	installMethod = func() string { return update.InstallAptRepo }
+	a := &App{updates: &update.Checker{HTTP: http.DefaultClient, API: "http://unused.invalid"}}
+	info, err := a.CheckForUpdate()
+	if err != nil || info.Install != update.InstallAptRepo {
+		t.Fatalf("CheckForUpdate = %+v, %v", info, err)
+	}
+	if s := newUpdateManager().Status(); s.Install != update.InstallAptRepo {
+		t.Fatalf("update state = %+v", s)
+	}
+
+	// macOS and Windows: nothing to say.
+	installMethod = nil
+	if info, _ := a.CheckForUpdate(); info.Install != "" {
+		t.Fatalf("CheckForUpdate = %+v", info)
+	}
+	if s := newUpdateManager().Status(); s.Install != "" {
+		t.Fatalf("update state = %+v", s)
+	}
+}
