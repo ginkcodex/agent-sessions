@@ -1898,6 +1898,8 @@ export const DISCOVERY_STATUS_EVENT = 'discovery:status';
 export const CONNECTION_STATE_EVENT = 'connection:state';
 /** The downloaded update's state changed; see UpdateStatus. */
 export const UPDATE_STATE_EVENT = 'update:state';
+/** The macOS app menu's Check for Updates… item, sent to one window. */
+export const UPDATE_CHECK_EVENT = 'update:check';
 export const ASKPASS_PROMPT_EVENT = 'askpass:prompt';
 // The desktop app on Linux and macOS sends the mouse's side buttons as this
 // event, "back" or "forward": its web view does not report them to the page
@@ -1973,6 +1975,10 @@ export function subscribeAskpassPrompt(
     if (!prompt || typeof prompt !== 'object') return;
     fn(prompt);
   });
+}
+
+export function subscribeUpdateCheck(fn: () => void, backend: BackendAPI = api): () => void {
+  return backend.onEvent(UPDATE_CHECK_EVENT, () => fn());
 }
 
 export function subscribeUpdateState(fn: (status: UpdateStatus) => void, backend: BackendAPI = api): () => void {

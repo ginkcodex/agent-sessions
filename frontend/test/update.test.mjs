@@ -184,7 +184,7 @@ test('only the desktop app checks, through the backend, and opens the page in th
   assert.match(app, /const stopUpdateChecks = checkForUpdates\(\);/);
   assert.match(app, /return \(\) => \{\s*stopUpdateChecks\(\);/);
   assert.match(app, /updates\.setChecker\(\(\) => checks\.checkNow\(\)\);/, 'Settings checks through the window\'s scheduler');
-  assert.match(app, /updates\.setChecker\(null\);\s*checks\.stop\(\);/);
+  assert.match(app, /stopMenuChecks\(\);\s*updates\.setChecker\(null\);\s*checks\.stop\(\);/);
   const api = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8');
   assert.match(api, /checkForUpdate\?\(\): Promise<UpdateInfo>;/, 'the browser demo has no updates');
   assert.match(api, /return await this\.binding\.CheckForUpdate\(\);/);
@@ -353,4 +353,22 @@ test('Settings reports what a check by hand found while nothing else is going on
   assert.equal(updateSummary(idle, false, { info: newer }), '1.3.0 is available');
   assert.equal(updateSummary(idle, true, { error: 'offline' }), 'Last check failed');
   assert.equal(updateSummary({ state: 'ready', version: '1.3.0' }, false, { info: newer }), 'Ready: restart to install 1.3.0');
+});
+
+test('the macOS menu\'s Check for Updates… opens Settings and checks there', async () => {
+  const { subscribeUpdateCheck, UPDATE_CHECK_EVENT } = await import('../src/lib/api.ts');
+  assert.equal(UPDATE_CHECK_EVENT, 'update:check', 'the name cmd/agent-sessions/about.go sends');
+  const handlers = new Map();
+  const backend = { onEvent: (name, fn) => (handlers.set(name, fn), () => handlers.delete(name)) };
+  let requests = 0;
+  const off = subscribeUpdateCheck(() => requests++, backend);
+  handlers.get(UPDATE_CHECK_EVENT)();
+  assert.equal(requests, 1);
+  off();
+  assert.equal(handlers.size, 0);
+
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  assert.match(app, /subscribeUpdateCheck\(\(\) => \{\s*manage\.openSettings\('general'\);\s*void updates\.checkNow\(\);\s*\}\);/);
+  const go = readFileSync(new URL('../../cmd/agent-sessions/about.go', import.meta.url), 'utf8');
+  assert.match(go, /const checkUpdatesEvent = "update:check"/);
 });

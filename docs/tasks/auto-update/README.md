@@ -1,7 +1,7 @@
 # Auto-update — tasks
 
 - **Plan:** [auto-update.md](../../plan/auto-update.md)
-- **Progress:** 10/15 done
+- **Progress:** 11/15 done
 
 Planned 2026-11-13. AU-01 signs releases; AU-02…05 are the shared update
 flow; AU-06…08 are macOS, which ships first; AU-09…11 are Windows. AU-12
@@ -24,4 +24,4 @@ the docs. AU-14 and AU-15, added later the same day, check for updates by hand.
 | [AU-12](AU-12.md) | ⬜ Not started | Windows code signing in CI | 3 h | — |
 | [AU-13](AU-13.md) | ⬜ Not started | Docs: README, website, Windows packaging notes | 1.5 h | AU-08, AU-11, AU-14 |
 | [AU-14](AU-14.md) | ✅ Done | Check for updates by hand in Settings | 3 h | AU-05 |
-| [AU-15](AU-15.md) | ⬜ Not started | macOS app menu: Check for Updates… | 2 h | AU-14 |
+| [AU-15](AU-15.md) | ✅ Done | macOS app menu: Check for Updates… | 2 h | AU-14 |

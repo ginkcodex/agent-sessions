@@ -59,7 +59,7 @@
   import { isSearchShortcut, searchSeed } from './lib/contentSearch';
   import { hasOpenModal, isEditableTarget } from './lib/search';
   import { navigationButton, navigationShortcut, type NavDirection } from './lib/navHistory';
-  import { api, subscribeMouseNavigate } from './lib/api';
+  import { api, subscribeMouseNavigate, subscribeUpdateCheck } from './lib/api';
   import { isDesktop } from './lib/desktopRuntime';
   import { createUpdateAnnouncer, startUpdateChecks } from './lib/update';
   import { updates } from './lib/stores/updates.svelte';
@@ -156,7 +156,13 @@
     });
     // Settings › Updates › Check for updates.
     updates.setChecker(() => checks.checkNow());
+    // The macOS app menu's Check for Updates…: show the answer in Settings.
+    const stopMenuChecks = subscribeUpdateCheck(() => {
+      manage.openSettings('general');
+      void updates.checkNow();
+    });
     return () => {
+      stopMenuChecks();
       updates.setChecker(null);
       checks.stop();
       updates.destroy();
