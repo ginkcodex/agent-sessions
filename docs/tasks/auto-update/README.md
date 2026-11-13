@@ -1,7 +1,7 @@
 # Auto-update — tasks
 
 - **Plan:** [auto-update.md](../../plan/auto-update.md)
-- **Progress:** 4/13 done
+- **Progress:** 5/13 done
 
 Planned 2026-11-13. AU-01 signs releases; AU-02…05 are the shared update
 flow; AU-06…08 are macOS, which ships first; AU-09…11 are Windows. AU-12
@@ -14,7 +14,7 @@ the docs.
 | [AU-02](AU-02.md) | ✅ Done | Find an update from GitHub's latest release; signature check | 3 h | AU-01 |
 | [AU-03](AU-03.md) | ✅ Done | Download, check and keep the ready version | 3 h | AU-02 |
 | [AU-04](AU-04.md) | ✅ Done | Setting and update state for the frontend | 2.5 h | AU-03 |
-| [AU-05](AU-05.md) | ⬜ Not started | Frontend: ready toast, Later, fallback, setting | 3 h | AU-04 |
+| [AU-05](AU-05.md) | ✅ Done | Frontend: ready toast, Later, fallback, setting | 3 h | AU-04 |
 | [AU-06](AU-06.md) | ⬜ Not started | macOS: when possible, mount, check and stage the app | 3.5 h | AU-03 |
 | [AU-07](AU-07.md) | ⬜ Not started | macOS: apply on restart or quit, with rollback | 3.5 h | AU-04, AU-06 |
 | [AU-08](AU-08.md) | ⬜ Not started | macOS QA on a Mac | 3 h | AU-05, AU-07 |

@@ -36,6 +36,9 @@ type Status struct {
 	Version string `json:"version,omitempty"`
 	// URL is its release page, for the states that send the user there.
 	URL string `json:"url,omitempty"`
+	// Supported says this install can update itself, so the setting means
+	// something. It is filled in when the status is read.
+	Supported bool `json:"supported"`
 }
 
 // Manager turns the result of a check into a downloaded, checked installer,
@@ -68,11 +71,18 @@ type Manager struct {
 // Status is the current state.
 func (m *Manager) Status() Status {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.status.State == "" {
-		return Status{State: StateIdle}
+	s := m.status
+	m.mu.Unlock()
+	return m.view(s)
+}
+
+// view fills in what is not stored. mu must not be held.
+func (m *Manager) view(s Status) Status {
+	if s.State == "" {
+		s.State = StateIdle
 	}
-	return m.status
+	s.Supported = m.supported()
+	return s
 }
 
 // Subscribe calls fn with the new status whenever it changes, from another
@@ -119,6 +129,7 @@ func (m *Manager) notify() {
 		subs = append(subs, fn)
 	}
 	m.mu.Unlock()
+	cur = m.view(cur)
 	for _, fn := range subs {
 		fn(cur)
 	}

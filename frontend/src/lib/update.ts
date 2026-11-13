@@ -30,6 +30,8 @@ export type UpdateState = 'idle' | 'downloading' | 'ready' | 'manual' | 'unsuppo
 
 export interface UpdateStatus {
   state: UpdateState;
+  /** This install can update itself, so the download setting applies. */
+  supported?: boolean;
   /** The newer release's version; absent when idle. */
   version?: string;
   /** Its release page. */
@@ -63,10 +65,96 @@ export function updateToast(info: UpdateInfo, openPage: () => void): ToastMessag
   };
 }
 
+/** The toast for a downloaded update. Later (or closing it) keeps it hidden until the next launch. */
+export function readyToast(version: string, restart: () => void): ToastMessage {
+  return {
+    title: 'Update ready',
+    body: `Agent Sessions ${version} is downloaded. Restart to install it, or it installs when you quit.`,
+    actions: [
+      { label: 'Restart now', onSelect: restart },
+      { label: 'Later', onSelect: () => {} },
+    ],
+    persistent: true,
+  };
+}
+
+/** The toast for a newer release this install will not fetch by itself, from the update state alone. */
+export function pageToast(status: UpdateStatus, openPage: () => void): ToastMessage {
+  return {
+    title: 'Update available',
+    body: `${status.version ? `Agent Sessions ${status.version}` : 'A newer Agent Sessions'} is out. Download it from its release page.`,
+    actions: [{ label: 'Open release page', onSelect: openPage }],
+    persistent: true,
+  };
+}
+
+/** What the Settings page says about updates. */
+export function updateSummary(status: UpdateStatus, checkFailed: boolean): string {
+  switch (status.state) {
+    case 'ready':
+      return `Ready: restart to install ${status.version ?? 'the new version'}`;
+    case 'downloading':
+      return `Downloading ${status.version ?? 'the new version'}…`;
+    case 'manual':
+    case 'unsupported':
+      return `${status.version ?? 'A newer version'} is available`;
+    default:
+      return checkFailed ? 'Last check failed' : 'Up to date';
+  }
+}
+
+export interface UpdateAnnouncerDeps {
+  show: (message: ToastMessage) => void;
+  /** Quits through the usual path and installs. */
+  restart: () => void;
+  openPage: (url: string) => void;
+}
+
+/**
+ * Decides which toast an update state deserves. A ready update is announced
+ * once per launch and version; Later or closing the toast keeps it hidden.
+ * A check that found a release passes its info, which shows the release page
+ * toast as before for the states that cannot download.
+ */
+export function createUpdateAnnouncer(deps: UpdateAnnouncerDeps) {
+  let readyFor = '';
+  let pageFor = '';
+  return {
+    announce(status: UpdateStatus, info?: UpdateInfo): void {
+      const version = status.version ?? info?.latest ?? '';
+      switch (status.state) {
+        case 'ready':
+          if (!version || readyFor === version) return;
+          readyFor = version;
+          deps.show(readyToast(version, deps.restart));
+          return;
+        case 'downloading':
+          return;
+        case 'idle':
+          // A failed download is retried at the next check; the page still helps.
+          if (info) deps.show(updateToast(info, () => deps.openPage(info.url)));
+          return;
+        default: {
+          const url = status.url || info?.url || '';
+          if (info) {
+            pageFor = info.latest;
+            deps.show(updateToast(info, () => deps.openPage(url || info.url)));
+          } else if (version && pageFor !== version) {
+            pageFor = version;
+            deps.show(pageToast(status, () => deps.openPage(url)));
+          }
+        }
+      }
+    },
+  };
+}
+
 export interface UpdateCheckDeps {
   check: () => Promise<UpdateInfo>;
   /** Called with a check that found a newer release. */
   notify: (info: UpdateInfo) => void;
+  /** Called after each check with whether it failed. */
+  checked?: (failed: boolean) => void;
   storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
   now?: () => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
@@ -121,9 +209,11 @@ export function startUpdateChecks(deps: UpdateCheckDeps): () => void {
     try {
       const info = await deps.check();
       writeDue(now() + CHECK_INTERVAL_MS);
+      deps.checked?.(false);
       if (info.available && !stopped) deps.notify(info);
     } catch {
       // Offline or rate limited: the claim retries in an hour.
+      deps.checked?.(true);
     }
     schedule();
   };

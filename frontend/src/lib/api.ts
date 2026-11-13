@@ -1975,6 +1975,13 @@ export function subscribeAskpassPrompt(
   });
 }
 
+export function subscribeUpdateState(fn: (status: UpdateStatus) => void, backend: BackendAPI = api): () => void {
+  return backend.onEvent(UPDATE_STATE_EVENT, (status: UpdateStatus) => {
+    if (!status || typeof status !== 'object') return;
+    fn(status);
+  });
+}
+
 export function subscribeCatalogChanged(
   fn: (event: CatalogChanged) => void,
   backend: BackendAPI = api

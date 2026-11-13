@@ -18,7 +18,7 @@ const TRANSLATE_DEFAULTS = {
 async function renderSettingsDialog(
   launcher,
   preferences = { transcriptMode: 'activity', timeZone: 'utc' },
-  { section = 'general', translateSettings = {}, alerts = {}, manage: manageState = {}, codeDiagnostics = {}, terminals: terminalsState = {} } = {},
+  { section = 'general', updates = {}, translateSettings = {}, alerts = {}, manage: manageState = {}, codeDiagnostics = {}, terminals: terminalsState = {} } = {},
 ) {
   if (!settingsDialogModule) {
     globalThis.__dropdown = (await loadServerComponent(DROPDOWN_URL, [])).default;
@@ -44,6 +44,8 @@ async function renderSettingsDialog(
       ["import { alerts } from '../../stores/alerts.svelte';", fixtureStore('alerts')],
       ["import { translateSettings } from '../../stores/translate.svelte';", fixtureStore('translateSettings')],
       ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
+      ["import { updates } from '../../stores/updates.svelte';", fixtureStore('updates')],
+      ["import { updateSummary } from '../../update';", `import { updateSummary } from ${lib('../../update.ts')};`],
     ]);
   }
   const manage = {
@@ -58,6 +60,7 @@ async function renderSettingsDialog(
     alerts: { notifyNeeds: true, notifyDone: true, status: null, refreshStatus: async () => {}, ...alerts },
     translateSettings: { ...TRANSLATE_DEFAULTS, ...translateSettings },
     preferences: { disabledLanguages: [], autoInstallLanguageServers: true, ...preferences },
+    updates: { available: false, status: { state: 'idle' }, auto: true, checkFailed: false, saving: false, restarting: false, error: null, ...updates },
     codeDiagnostics,
   });
 }
@@ -294,4 +297,37 @@ test('Settings turns agent alerts on or off and says why notifications cannot sh
   assert.ok(checked(denied, 'Notify when an agent needs me'));
   assert.ok(!checked(denied, 'Notify when an agent finishes'));
   assert.ok(denied.includes(reason));
+});
+
+test('Settings › General shows the update state and the download setting on the desktop app', async () => {
+  const info = { terminal: true, chooseTerminal: false, shell: 'powershell' };
+  const checkbox = (html) => /<input[^>]*type="checkbox"([^>]*)\/?>\s*Download updates automatically/.exec(html);
+
+  const demo = await renderSettingsDialog({ info });
+  assert.doesNotMatch(demo, /<h3[^>]*>Updates<\/h3>/, 'the browser demo has no updates');
+
+  const idle = await renderSettingsDialog({ info }, undefined, { updates: { available: true, status: { state: 'idle', supported: true } } });
+  assert.match(idle, /<h3[^>]*>Updates<\/h3>/);
+  assert.match(idle, /Up to date/);
+  assert.match(checkbox(idle)[1], /checked/, 'on by default');
+  assert.doesNotMatch(idle, /Restart now/);
+
+  const off = await renderSettingsDialog({ info }, undefined, { updates: { available: true, auto: false, status: { state: 'idle', supported: true } } });
+  assert.doesNotMatch(checkbox(off)[1], /checked/);
+
+  const failed = await renderSettingsDialog({ info }, undefined, { updates: { available: true, checkFailed: true, status: { state: 'idle', supported: true } } });
+  assert.match(failed, /Last check failed/);
+
+  const ready = await renderSettingsDialog({ info }, undefined, { updates: { available: true, status: { state: 'ready', version: '1.6.0', supported: true } } });
+  assert.match(ready, /Ready: restart to install 1\.6\.0/);
+  assert.match(ready, /<button[^>]*class="primary[ "][^>]*>Restart now<\/button>/);
+
+  // An install that cannot update itself has no setting to offer.
+  const unsupported = await renderSettingsDialog({ info }, undefined, { updates: { available: true, status: { state: 'unsupported', version: '1.6.0', supported: false } } });
+  assert.match(unsupported, /1\.6\.0 is available/);
+  assert.doesNotMatch(unsupported, /Download updates automatically/);
+
+  const source = readFileSync(SETTINGS_DIALOG_URL, 'utf8');
+  assert.match(source, /onchange=\{\(e\) => void updates\.setAuto\(\(e\.currentTarget as HTMLInputElement\)\.checked\)\}/);
+  assert.match(source, /onclick=\{\(\) => void updates\.restart\(\)\}/);
 });

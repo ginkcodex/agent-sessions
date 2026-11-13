@@ -169,7 +169,7 @@ func TestUnsupportedInstallKeepsTheReleasePage(t *testing.T) {
 	r := newUpdater(t, false, nil)
 	a := &App{updater: r.M}
 	offer(r.M, "http://unused.invalid", true)
-	if s := a.UpdateState(); s.State != update.StateUnsupported || s.Version != "1.6.0" || s.URL != update.ReleasesPage+"/tag/v1.6.0" {
+	if s := a.UpdateState(); s.State != update.StateUnsupported || s.Version != "1.6.0" || s.URL != update.ReleasesPage+"/tag/v1.6.0" || s.Supported {
 		t.Fatalf("state = %+v", s)
 	}
 	if err := a.RestartToUpdate(); !errors.Is(err, errNoUpdate) {
@@ -217,6 +217,13 @@ func TestUpdateStateChangesReachTheWindow(t *testing.T) {
 type emitFunc func(name string, payload any)
 
 func (f emitFunc) Emit(name string, payload any) { f(name, payload) }
+
+func TestReadyStatusSaysTheInstallCanUpdateItself(t *testing.T) {
+	r := readyNow(t)
+	if s := (&App{updater: r.M}).UpdateState(); s.State != update.StateReady || !s.Supported {
+		t.Fatalf("state = %+v", s)
+	}
+}
 
 func TestQuittingInstallsTheReadyUpdate(t *testing.T) {
 	stubRestart(t, func() error { t.Error("started another copy"); return nil })
