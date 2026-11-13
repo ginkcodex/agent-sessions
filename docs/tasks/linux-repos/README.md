@@ -1,7 +1,7 @@
 # Linux repositories — tasks
 
 - **Plan:** [linux-repos.md](../../plan/linux-repos.md)
-- **Progress:** 7/20 done
+- **Progress:** 8/20 done
 
 Planned 2026-11-13. LR-01 and LR-02 check the risky assumptions first.
 LR-03…06 record releases in the website Worker (`agent-sessions-web`);
@@ -17,7 +17,7 @@ website test flake found during LR-01.
 | [LR-03](LR-03.md) | ✅ Done | Schema, migrations, local Postgres | 2 h | LR-01 |
 | [LR-04](LR-04.md) | ✅ Done | GitHub release reader: assets, `SHA256SUMS` checks, classification | 3 h | LR-03 |
 | [LR-05](LR-05.md) | ✅ Done | `POST /api/ingest`: auth, transaction, idempotency, rebuild hook | 3 h | LR-04 |
-| [LR-06](LR-06.md) | ⬜ Not started | Hourly cron catch-up and `npm run backfill` | 2 h | LR-05 |
+| [LR-06](LR-06.md) | ✅ Done | Hourly cron catch-up and `npm run backfill` | 2 h | LR-05 |
 | [LR-07](LR-07.md) | ⬜ Not started | Release workflow calls ingest | 1.5 h | LR-05 |
 | [LR-08](LR-08.md) | ⬜ Not started | Sign RPMs in CI and check them | 2 h | LR-02, LR-15 |
 | [LR-09](LR-09.md) | ✅ Done | `repo-meta.json` for `.deb` files; release set includes it | 3 h | — |
