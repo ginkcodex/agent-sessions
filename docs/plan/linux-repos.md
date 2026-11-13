@@ -173,10 +173,13 @@ each RPM's signature, so the download host does not have to be trusted.
 | Key | Type | Held by | Signs |
 |---|---|---|---|
 | Repository key | Ed25519 OpenPGP | Worker secret `REPO_SIGNING_KEY` | `InRelease`, `Release.gpg`, `repomd.xml.asc` |
-| RPM key | RSA 4096 OpenPGP, unless LR-02 shows Ed25519 works in nfpm and on Fedora 40 | This repository's secret, used by the linux job | Each `.rpm` |
+| RPM key | Ed25519 OpenPGP | This repository's secret, used by the linux job | Each `.rpm` |
 
-Both get an expiry date and a written renewal and rotation procedure
-(LR-15).
+Both are v4 keys with the EdDSA algorithm (22), the Ed25519 that
+`gpg --quick-gen-key ... ed25519` makes. RFC 9580's own Ed25519 (algorithm
+27) does not work: `gpgv` 2.4 on Ubuntu 24.04 cannot verify it and Fedora
+40's `rpm` refuses to import it (LR-02). Both get an expiry date and a
+written renewal and rotation procedure (LR-15).
 
 ### In the app
 
@@ -240,10 +243,11 @@ Otherwise it links to the website's install guide
   measurement on Cloudflare is higher. A rebuild skips work when its inputs are
   unchanged.
 - **Redirects across hosts.** apt and dnf follow the 302 from our domain to
-  github.com and on to GitHub's file host; some corporate proxies may not.
-  LR-02 checks both clients.
-- **Ubuntu's newer apt checks signatures with Sequoia (`sqv`)** and enforces
-  its own algorithm policy. LR-02 checks Ed25519 with both `gpgv` and `sqv`.
+  github.com and on to GitHub's file host (LR-02: apt 2.8, 3.0 and 3.3, dnf
+  4.22 and dnf5 5.4); some corporate proxies may not.
+- **Newer apt checks signatures with Sequoia (`sqv`)** (Debian 13, Ubuntu
+  26.10) and Ubuntu 24.04 with `gpgv` 2.4, each with its own algorithm
+  policy. LR-02 found one key type both accept: see Keys.
 - **Two repositories change together.** The Worker code lives in
   `agent-sessions-web`; CI and these docs live here. Each task names the
   repository it changes.

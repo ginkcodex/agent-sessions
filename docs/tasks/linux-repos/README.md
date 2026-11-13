@@ -1,7 +1,7 @@
 # Linux repositories — tasks
 
 - **Plan:** [linux-repos.md](../../plan/linux-repos.md)
-- **Progress:** 9/20 done
+- **Progress:** 10/20 done
 
 Planned 2026-11-13. LR-01 and LR-02 check the risky assumptions first.
 LR-03…06 record releases in the website Worker (`agent-sessions-web`);
@@ -13,7 +13,7 @@ website test flake found during LR-01.
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
 | [LR-01](LR-01.md) | ✅ Done | Spike: Worker code beside static assets, Hyperdrive, CPU budget | 2 h | — |
-| [LR-02](LR-02.md) | ⬜ Not started | Spike: redirects, Ed25519 signatures with gpgv/sqv/dnf, nfpm RPM key type | 3 h | LR-01 |
+| [LR-02](LR-02.md) | ✅ Done | Spike: redirects, Ed25519 signatures with gpgv/sqv/dnf, nfpm RPM key type | 3 h | LR-01 |
 | [LR-03](LR-03.md) | ✅ Done | Schema, migrations, local Postgres | 2 h | LR-01 |
 | [LR-04](LR-04.md) | ✅ Done | GitHub release reader: assets, `SHA256SUMS` checks, classification | 3 h | LR-03 |
 | [LR-05](LR-05.md) | ✅ Done | `POST /api/ingest`: auth, transaction, idempotency, rebuild hook | 3 h | LR-04 |
