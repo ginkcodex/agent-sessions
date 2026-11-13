@@ -99,5 +99,5 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Workspace filter release | [workspace-filter-release](../plan/workspace-filter-release.md) | [workspace-filter-release/](workspace-filter-release/README.md) | 2/3 ✅ · 1 ⬜ |
 | Chat login environment | [chat-login-env](../plan/chat-login-env.md) | [chat-login-env/](chat-login-env/README.md) | 3/4 ✅ · 1 ⬜ |
 | Code block run | [code-block-run](../plan/code-block-run.md) | [code-block-run/](code-block-run/README.md) | 3/4 ✅ · 1 ⬜ |
-| Linux repositories | [linux-repos](../plan/linux-repos.md) | [linux-repos/](linux-repos/README.md) | 8/20 ✅ · 12 ⬜ |
+| Linux repositories | [linux-repos](../plan/linux-repos.md) | [linux-repos/](linux-repos/README.md) | 9/20 ✅ · 11 ⬜ |
 | Auto-update (macOS, Windows) | [auto-update](../plan/auto-update.md) | [auto-update/](auto-update/README.md) | 12/17 ✅ · 1 🟡 · 4 ⬜ |

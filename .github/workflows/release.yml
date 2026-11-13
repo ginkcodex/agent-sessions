@@ -20,6 +20,14 @@
 # Those checks are static apart from installing the .deb in a clean Ubuntu
 # container and running the host's own remote server with `version`; the
 # Windows packages are never installed or run here.
+#
+# After a stable release, the linux-repos job asks the website to add it to
+# the apt and dnf repositories (docs/plan/linux-repos.md). It needs the
+# repository secret LINUX_REPOS_TOKEN, the website's INGEST_TOKEN; without it
+# the job warns and the website's hourly cron adds the release instead. The
+# repository variable LINUX_REPOS_SITE points it at another deployment, such
+# as a preview; it defaults to https://agent-sessions.ginklab.cv. The AUR
+# job's secret is described in aur.yml.
 name: Release
 
 on:
@@ -550,3 +558,24 @@ jobs:
       version: ${{ needs.version.outputs.version }}
     secrets:
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+
+  # The Linux repositories: the website reads the stable release just
+  # published from GitHub, checks it and rebuilds its apt and dnf
+  # repositories. Only the tag is sent. If this fails, the release stays
+  # published and the website's hourly cron adds it.
+  linux-repos:
+    if: needs.version.outputs.publish == 'true' && !contains(needs.version.outputs.version, '-')
+    needs: [version, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: packaging/linux/notify-ingest.sh
+          sparse-checkout-cone-mode: false
+      - name: Ask the website to record the release
+        env:
+          LINUX_REPOS_TOKEN: ${{ secrets.LINUX_REPOS_TOKEN }}
+          SITE: ${{ vars.LINUX_REPOS_SITE || 'https://agent-sessions.ginklab.cv' }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: bash packaging/linux/notify-ingest.sh "$SITE" "$TAG"
