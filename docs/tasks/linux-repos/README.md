@@ -25,7 +25,7 @@ website test flake found during LR-01.
 | [LR-11](LR-11.md) | ✅ Done | Worker: apt index builder | 3 h | LR-03, LR-09 |
 | [LR-12](LR-12.md) | ✅ Done | Worker: dnf repodata builder | 3 h | LR-03, LR-10 |
 | [LR-13](LR-13.md) | ✅ Done | Worker: signing and public key files | 2.5 h | LR-02 |
-| [LR-14](LR-14.md) | ⬜ Not started | Worker: generations, rebuild, serving and redirects | 3.5 h | LR-05, LR-11, LR-12, LR-13 |
+| [LR-14](LR-14.md) | 🟡 Partial: preview CPU not measured | Worker: generations, rebuild, serving and redirects | 3.5 h | LR-05, LR-11, LR-12, LR-13 |
 | [LR-15](LR-15.md) | ⬜ Not started | Keys: generate, store, renewal and rotation procedure | 2 h | LR-02 |
 | [LR-16](LR-16.md) | ⬜ Not started | Container checks for Ubuntu, Debian and Fedora | 3 h | LR-14 |
 | [LR-17](LR-17.md) | ✅ Done | App: Linux update toast knows the repository | 2.5 h | — |
