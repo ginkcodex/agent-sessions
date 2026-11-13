@@ -1,7 +1,7 @@
 # Linux repositories — tasks
 
 - **Plan:** [linux-repos.md](../../plan/linux-repos.md)
-- **Progress:** 11/20 done
+- **Progress:** 12/20 done
 
 Planned 2026-11-13. LR-01 and LR-02 check the risky assumptions first.
 LR-03…06 record releases in the website Worker (`agent-sessions-web`);
@@ -23,7 +23,7 @@ website test flake found during LR-01.
 | [LR-09](LR-09.md) | ✅ Done | `repo-meta.json` for `.deb` files; release set includes it | 3 h | — |
 | [LR-10](LR-10.md) | ✅ Done | `repo-meta.json` for `.rpm` files | 3 h | LR-09 |
 | [LR-11](LR-11.md) | ✅ Done | Worker: apt index builder | 3 h | LR-03, LR-09 |
-| [LR-12](LR-12.md) | ⬜ Not started | Worker: dnf repodata builder | 3 h | LR-03, LR-10 |
+| [LR-12](LR-12.md) | ✅ Done | Worker: dnf repodata builder | 3 h | LR-03, LR-10 |
 | [LR-13](LR-13.md) | ⬜ Not started | Worker: signing and public key files | 2.5 h | LR-02 |
 | [LR-14](LR-14.md) | ⬜ Not started | Worker: generations, rebuild, serving and redirects | 3.5 h | LR-05, LR-11, LR-12, LR-13 |
 | [LR-15](LR-15.md) | ⬜ Not started | Keys: generate, store, renewal and rotation procedure | 2 h | LR-02 |
