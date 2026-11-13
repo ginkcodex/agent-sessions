@@ -101,8 +101,10 @@ website deploy, from any branch or by hand, cannot remove or roll it back.
 ### Data
 
 Migrations are plain SQL files in `web/migrations/`, applied by
-`npm run db:migrate` with a `DATABASE_URL`. The Worker never changes the
-schema.
+`npm run db:migrate` with a `DATABASE_URL` and a login that owns the tables.
+The Worker never changes the schema: `--grant` gives Hyperdrive's login read
+and write on the tables but no DDL. An asset's download URL must be its own
+release's file on GitHub, so the pool redirects cannot point elsewhere.
 
 | Table | Holds |
 |---|---|
