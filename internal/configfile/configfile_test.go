@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
@@ -103,5 +104,34 @@ func TestUpdateKeepsConcurrentChanges(t *testing.T) {
 		if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
 			t.Errorf("mode = %v, %v", fi.Mode(), err)
 		}
+	}
+}
+
+func TestWriteAtomicSweepsStaleTemps(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	stale := filepath.Join(dir, "config-111.tmp")
+	fresh := filepath.Join(dir, "config-222.tmp")
+	for _, name := range []string{stale, fresh} {
+		if err := os.WriteFile(name, []byte("leftover"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A killed write's temp ages; a temp this write races is milliseconds old.
+	old := time.Now().Add(-staleTempAge - time.Minute)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteAtomic(path, []byte("[t]\nk = 1\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale temp survived: %v", err)
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Errorf("fresh temp removed: %v", err)
+	}
+	if data, err := os.ReadFile(path); err != nil || len(data) == 0 {
+		t.Errorf("config not written: %v, %q", err, data)
 	}
 }
