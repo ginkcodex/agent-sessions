@@ -181,6 +181,13 @@ Both are v4 keys with the EdDSA algorithm (22), the Ed25519 that
 40's `rpm` refuses to import it (LR-02). Both get an expiry date and a
 written renewal and rotation procedure (LR-15).
 
+`REPO_SIGNING_KEY` may hold more than one key, for a rotation. Each key signs
+`Release`, since apt needs one good signature among them. Only the first
+signs `repomd.xml`: dnf refuses a `repomd.xml.asc` with two signatures
+(LR-13). The RPM key's public half is committed in the website's
+`worker/repo/keys.ts`, and `RPM-GPG-KEY-agent-sessions` lists every
+repository key, then every RPM key.
+
 ### In the app
 
 On Linux the update toast checks whether the repository is set up: an apt
