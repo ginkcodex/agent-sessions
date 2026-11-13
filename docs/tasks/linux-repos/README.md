@@ -1,17 +1,18 @@
 # Linux repositories — tasks
 
 - **Plan:** [linux-repos.md](../../plan/linux-repos.md)
-- **Progress:** 3/19 done
+- **Progress:** 4/20 done
 
 Planned 2026-11-13. LR-01 and LR-02 check the risky assumptions first.
 LR-03…06 record releases in the website Worker (`agent-sessions-web`);
 LR-11…14 build and serve the repositories there. LR-07…10 change this
 repository's CI; LR-16 tests the result in containers; LR-17 is the app's
-Linux toast. LR-15 and LR-19 need the maintainer's keys and accounts.
+Linux toast. LR-15 and LR-19 need the maintainer's keys and accounts. LR-20 is a
+website test flake found during LR-01.
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
-| [LR-01](LR-01.md) | 🟡 Partial: preview deploy missing | Spike: Worker code beside static assets, Hyperdrive, CPU budget | 2 h | — |
+| [LR-01](LR-01.md) | ✅ Done | Spike: Worker code beside static assets, Hyperdrive, CPU budget | 2 h | — |
 | [LR-02](LR-02.md) | ⬜ Not started | Spike: redirects, Ed25519 signatures with gpgv/sqv/dnf, nfpm RPM key type | 3 h | LR-01 |
 | [LR-03](LR-03.md) | ⬜ Not started | Schema, migrations, local Postgres | 2 h | LR-01 |
 | [LR-04](LR-04.md) | ⬜ Not started | GitHub release reader: assets, `SHA256SUMS` checks, classification | 3 h | LR-03 |
@@ -30,3 +31,4 @@ Linux toast. LR-15 and LR-19 need the maintainer's keys and accounts.
 | [LR-17](LR-17.md) | ✅ Done | App: Linux update toast knows the repository | 2.5 h | — |
 | [LR-18](LR-18.md) | ⬜ Not started | Install docs: README and website | 2 h | LR-16 |
 | [LR-19](LR-19.md) | ⬜ Not started | Production setup, backfill and first release through the repositories | 2.5 h | LR-06, LR-07, LR-08, LR-15, LR-16 |
+| [LR-20](LR-20.md) | ⬜ Not started | Website: theme menu test fails now and then | 1 h | — |

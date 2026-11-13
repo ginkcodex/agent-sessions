@@ -234,8 +234,8 @@ Otherwise it links to the website's install guide
   than the free plan's CPU time (10 ms per invocation). In local workerd
   (LR-01), a full rebuild takes 2.6 ms for 50 releases, 6.4 ms for 300 and
   17 ms for 1000, before database work. The free plan fits today; Workers
-  Paid is needed at a few hundred releases, or sooner if the preview's
-  measurement is higher. A rebuild skips work when its inputs are
+  Paid is needed at a few hundred releases, or sooner if LR-14's
+  measurement on Cloudflare is higher. A rebuild skips work when its inputs are
   unchanged.
 - **Redirects across hosts.** apt and dnf follow the 302 from our domain to
   github.com and on to GitHub's file host; some corporate proxies may not.
