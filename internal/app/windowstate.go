@@ -130,8 +130,9 @@ func SaveWindowState(path string, role WindowRole, st WindowState) error {
 //   - GTK on X11: the window maps at its minimum size and un-maximising
 //     returns to that instead of the saved size.
 //
-// Those maximise after the first show instead, a brief normal frame first.
-// getenv reads the environment (os.Getenv).
+// macOS maximises from a hook just before the first show instead, once the
+// window is at its position; Windows and X11 after the first show, a brief
+// normal frame first. getenv reads the environment (os.Getenv).
 func MaximiseBeforeShow(goos string, getenv func(string) string) bool {
 	if goos != "linux" {
 		return false

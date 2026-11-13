@@ -90,9 +90,10 @@ func (s *shell) openWindow() error {
 	} else {
 		opts.InitialPosition = application.WindowCentered
 	}
-	// Only Wayland takes the maximise as part of the window's creation; the
-	// other platforms ask for it once the window is shown (see
-	// app.MaximiseBeforeShow and the WindowShow listener below).
+	// Only Wayland takes the maximise as part of the window's creation;
+	// macOS asks for it just before the first show, the other platforms
+	// once the window is shown (see app.MaximiseBeforeShow and the restore
+	// step below).
 	preShowMaximise := state.Maximised && app.MaximiseBeforeShow(runtime.GOOS, os.Getenv)
 	if preShowMaximise {
 		opts.StartState = application.WindowStateMaximised
@@ -115,10 +116,23 @@ func (s *shell) openWindow() error {
 	// the flag would grow the window by a state every run.
 	maximised := state.Maximised
 	refreshNormal := func() {
-		if window.IsMinimised() || window.IsMaximised() || window.IsFullscreen() {
+		// Read the state and the bounds in one go on the main thread, where
+		// every resize happens: read apart, a maximise landing between the
+		// two (the restore's own zoom races the events of its placement on
+		// macOS) records the maximised frame as the normal one. Wails runs
+		// nested main-thread calls inline.
+		var b application.Rect
+		normalNow := false
+		application.InvokeSync(func() {
+			if window.IsMinimised() || window.IsMaximised() || window.IsFullscreen() {
+				return
+			}
+			b = window.Bounds()
+			normalNow = true
+		})
+		if !normalNow {
 			return
 		}
-		b := window.Bounds()
 		// A closed window reports empty bounds; keep the last real ones
 		// instead of remembering a zero-sized window.
 		if b.Width <= 0 || b.Height <= 0 {
@@ -164,24 +178,25 @@ func (s *shell) openWindow() error {
 		remember()
 	})
 
-	// Once the window is first shown, two things the creation code could not
-	// do when it ran blind (the first window is made before the application
-	// runs, when Wails has no screen information): check the geometry
-	// against the real screens — a window whose screen is gone comes back
-	// into view instead of opening off-screen — and maximise a window that
-	// was closed maximised, unless Wayland already did it at creation. Both
-	// are no-ops when nothing is wrong.
+	// Once the window is first shown (on macOS: just before), two things the
+	// creation code could not do when it ran blind (the first window is made
+	// before the application runs, when Wails has no screen information):
+	// check the geometry against the real screens — a window whose screen
+	// is gone comes back into view instead of opening off-screen — and
+	// maximise a window that was closed maximised, unless Wayland already
+	// did it at creation. Both are no-ops when nothing is wrong.
 	//
 	// Only the first show counts. On Linux, WindowShow is the webview's
 	// load-finished event and fires again on every reload; on Windows it
-	// fires on every hide/show. Running this again would maximise a window
-	// the user has un-maximised since.
+	// fires on every hide/show; on macOS the navigation hook below fires on
+	// every reload. Running this again would maximise a window the user has
+	// un-maximised since.
 	var firstShow sync.Once
-	window.OnWindowEvent(events.Common.WindowShow, func(*application.WindowEvent) {
+	restore := func() {
 		firstShow.Do(func() {
 			maximise := func() {
 				if state.Maximised && !window.IsMaximised() {
-					window.Maximise()
+					restoreMaximised(window)
 				}
 			}
 			b := window.Bounds()
@@ -190,6 +205,13 @@ func (s *shell) openWindow() error {
 				return
 			}
 			want := app.WindowState{X: state.X, Y: state.Y, Width: b.Width, Height: b.Height}
+			if runtime.GOOS == "darwin" {
+				// Wails makes a macOS window's content area one point short
+				// of Width×Height but reports the frame, title bar included:
+				// keeping the reported size would grow the window by a title
+				// bar every run. The saved bounds are a frame; set that.
+				want.Width, want.Height = state.Width, state.Height
+			}
 			clamped := false
 			if screen := application.ScreenNearestDipRect(savedRect(want)); screen != nil {
 				work := screenArea(screen)
@@ -203,10 +225,23 @@ func (s *shell) openWindow() error {
 			mu.Lock()
 			normal = want
 			mu.Unlock()
+			if runtime.GOOS == "darwin" {
+				// Still hidden here, so neither step animates. Size first:
+				// a resize keeps the bottom-left corner (AppKit's origin),
+				// so it would move the top edge after a SetPosition, which
+				// is also why SetBounds does not do here. The maximise
+				// follows the placement, so un-maximising returns to it.
+				if b != savedRect(want) {
+					window.SetSize(want.Width, want.Height)
+					window.SetPosition(want.X, want.Y)
+				}
+				maximise()
+				return
+			}
 			if runtime.GOOS != "linux" {
-				// Windows and macOS created the window at exactly these
-				// bounds; only a clamp has to move it. The maximise follows
-				// the placement, so un-maximising returns to it.
+				// Windows created the window at exactly these bounds; only
+				// a clamp has to move it. The maximise follows the
+				// placement, so un-maximising returns to it.
 				if clamped {
 					window.SetBounds(savedRect(want))
 				}
@@ -222,7 +257,23 @@ func (s *shell) openWindow() error {
 			// maximise happened.
 			place(window, want.X, want.Y, maximise)
 		})
-	})
+	}
+	if runtime.GOOS == "darwin" {
+		// macOS shows a new window from a listener on the webview's first
+		// finished navigation, after the window is at its position. Hooks
+		// on that event run, synchronously, before any listener, so the
+		// window is checked and zoomed while still hidden and appears
+		// maximised from its first frame, not as a normal window that then
+		// grows (see restoreMaximised for why that also takes AppKit's own
+		// zoom). Un-maximising returns to the frame it had, the saved one.
+		window.RegisterHook(events.Mac.WebViewDidFinishNavigation, func(*application.WindowEvent) {
+			restore()
+		})
+	} else {
+		window.OnWindowEvent(events.Common.WindowShow, func(*application.WindowEvent) {
+			restore()
+		})
+	}
 
 	// The hook runs before the window closes and may keep it open; the
 	// listener runs only once the window really closes. Only the hook saves:
