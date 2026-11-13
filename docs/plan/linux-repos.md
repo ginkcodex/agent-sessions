@@ -179,7 +179,10 @@ Both are v4 keys with the EdDSA algorithm (22), the Ed25519 that
 `gpg --quick-gen-key ... ed25519` makes. RFC 9580's own Ed25519 (algorithm
 27) does not work: `gpgv` 2.4 on Ubuntu 24.04 cannot verify it and Fedora
 40's `rpm` refuses to import it (LR-02). Both get an expiry date and a
-written renewal and rotation procedure (LR-15).
+written renewal and rotation procedure:
+[linux-repos-keys.md](linux-repos-keys.md) (LR-15). apt checks against the
+keyring users downloaded, so a renewal or a rotation reaches apt users only
+when they fetch it again; dnf fetches the key file again by itself.
 
 `REPO_SIGNING_KEY` may hold more than one key, for a rotation. Each key signs
 `Release`, since apt needs one good signature among them. Only the first
