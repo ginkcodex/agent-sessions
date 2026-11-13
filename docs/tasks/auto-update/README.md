@@ -1,7 +1,7 @@
 # Auto-update — tasks
 
 - **Plan:** [auto-update.md](../../plan/auto-update.md)
-- **Progress:** 8/13 done
+- **Progress:** 9/13 done
 
 Planned 2026-11-13. AU-01 signs releases; AU-02…05 are the shared update
 flow; AU-06…08 are macOS, which ships first; AU-09…11 are Windows. AU-12
@@ -19,7 +19,7 @@ the docs.
 | [AU-07](AU-07.md) | ✅ Done | macOS: apply on restart or quit, with rollback | 3.5 h | AU-04, AU-06 |
 | [AU-08](AU-08.md) | ⬜ Not started | macOS QA on a Mac | 3 h | AU-05, AU-07 |
 | [AU-09](AU-09.md) | ✅ Done | Windows: when possible, download and check new and rollback MSIs | 3 h | AU-03 |
-| [AU-10](AU-10.md) | ⬜ Not started | Windows: apply on restart or quit, with rollback | 4 h | AU-04, AU-09 |
+| [AU-10](AU-10.md) | ✅ Done | Windows: apply on restart or quit, with rollback | 4 h | AU-04, AU-09 |
 | [AU-11](AU-11.md) | ⬜ Not started | Windows QA on Windows | 3 h | AU-05, AU-10 |
 | [AU-12](AU-12.md) | ⬜ Not started | Windows code signing in CI | 3 h | — |
 | [AU-13](AU-13.md) | ⬜ Not started | Docs: README, website, Windows packaging notes | 1.5 h | AU-08, AU-11 |

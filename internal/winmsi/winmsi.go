@@ -122,3 +122,10 @@ func ValidGUID(s string) bool {
 	}
 	return true
 }
+
+// InstallerArgs are the msiexec arguments for a quiet install ("/i") or
+// removal ("/x") of target with a verbose log: no restart, no dialogs.
+func InstallerArgs(operation, target, logPath string) []string {
+	return []string{operation, target, "/quiet", "/norestart", "/L*v", logPath,
+		"REBOOT=ReallySuppress", "MSIRESTARTMANAGERCONTROL=DisableShutdown", "MSIDISABLERMRESTART=1"}
+}

@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,15 +13,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-)
-
-const (
-	applyFlag    = "--apply-update"
-	applyLogName = "apply.log"
-	// applyTimeout is how long the helper waits for the app to quit. The app
-	// starts the helper as it exits, so this only matters when it hangs.
-	applyTimeout = 2 * time.Minute
-	helperPrefix = "agent-sessions-apply-"
 )
 
 // StartApply installs r after this process exits. It copies the running
@@ -124,31 +114,8 @@ func runApply(readyDir, bundle string, pid int, relaunch bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), applyTimeout)
 	defer cancel()
 	err := swap.Run(ctx)
-	switch {
-	case err == nil:
-		logger.Printf("update to %s done", version)
-	case errors.Is(err, ErrStillRunning):
-		logger.Printf("update to %s not installed: %v", version, err)
-	default:
-		logger.Printf("update to %s failed: %v", version, err)
-		// Trying again would fail the same way; the next launch shows the
-		// release page for this version.
-		if gerr := store.GiveUp(context.Background(), version); gerr != nil {
-			logger.Printf("record the failure: %v", gerr)
-		}
-	}
+	recordApply(store, version, logger.Printf, err)
 	return err
-}
-
-// openApplyLog appends to apply.log in the updates folder; if that cannot be
-// opened, the log goes nowhere.
-func openApplyLog(dir string) *log.Logger {
-	if err := os.MkdirAll(dir, 0o700); err == nil {
-		if f, err := os.OpenFile(filepath.Join(dir, applyLogName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
-			return log.New(f, "", log.LstdFlags)
-		}
-	}
-	return log.New(io.Discard, "", 0)
 }
 
 // waitExit returns when the process pid no longer exists, or when ctx ends.

@@ -4,8 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
+	"time"
+)
+
+const (
+	applyFlag    = "--apply-update"
+	applyLogName = "apply.log"
+	// applyTimeout is how long the helper waits for the app to quit. The app
+	// starts the helper as it exits, so this only matters when it hangs.
+	applyTimeout = 2 * time.Minute
+	helperPrefix = "agent-sessions-apply-"
 )
 
 // ErrStillRunning means the app did not quit in time, so the helper left the
@@ -153,4 +165,32 @@ func (s *Store) GiveUp(ctx context.Context, version string) error {
 	failures := s.readFailures()
 	failures[version] = s.maxFailures()
 	return s.writeFailures(failures)
+}
+
+// openApplyLog appends to apply.log in the updates folder; if that cannot be
+// opened, the log goes nowhere.
+func openApplyLog(dir string) *log.Logger {
+	if err := os.MkdirAll(dir, 0o700); err == nil {
+		if f, err := os.OpenFile(filepath.Join(dir, applyLogName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+			return log.New(f, "", log.LstdFlags)
+		}
+	}
+	return log.New(io.Discard, "", 0)
+}
+
+// recordApply logs how the helper ended. A failed install is marked, so the
+// next launch shows the release page for that version rather than trying
+// again. An app that never quit is not a failure.
+func recordApply(store *Store, version string, logf func(string, ...any), err error) {
+	switch {
+	case err == nil:
+		logf("update to %s done", version)
+	case errors.Is(err, ErrStillRunning):
+		logf("update to %s not installed: %v", version, err)
+	default:
+		logf("update to %s failed: %v", version, err)
+		if gerr := store.GiveUp(context.Background(), version); gerr != nil {
+			logf("record the failure: %v", gerr)
+		}
+	}
 }
