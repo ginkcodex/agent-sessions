@@ -135,13 +135,22 @@ func (s *Store) Ready(version string) (Ready, bool) {
 	if !safeName(version) {
 		return Ready{}, false
 	}
-	dir := s.versionDir(version)
+	r, ok := ReadReady(s.versionDir(version))
+	if !ok || r.Version != version {
+		return Ready{}, false
+	}
+	return r, true
+}
+
+// ReadReady returns the checked installer recorded in dir by its ready
+// marker, if there is one. It compares sizes only; Ready.Verify hashes.
+func ReadReady(dir string) (Ready, bool) {
 	data, err := os.ReadFile(filepath.Join(dir, readyName))
 	if err != nil {
 		return Ready{}, false
 	}
 	var r Ready
-	if json.Unmarshal(data, &r) != nil || r.Version != version || !safeName(r.File) || !hexSHA256.MatchString(r.SHA256) {
+	if json.Unmarshal(data, &r) != nil || !safeName(r.Version) || !safeName(r.File) || !hexSHA256.MatchString(r.SHA256) {
 		return Ready{}, false
 	}
 	r.Dir = dir
@@ -274,7 +283,7 @@ func (s *Store) Fetch(ctx context.Context, rel Release) (Ready, error) {
 		return Ready{}, fmt.Errorf("%w (%s)", ErrGaveUp, rel.Version)
 	}
 
-	r, err := s.download(ctx, rel)
+	r, err := s.download(ctx, rel, s.versionDir(rel.Version))
 	if err != nil {
 		if ctx.Err() == nil {
 			failures[rel.Version]++
@@ -289,9 +298,41 @@ func (s *Store) Fetch(ctx context.Context, rel Release) (Ready, error) {
 	return r, nil
 }
 
+// RollbackDir is where the installer of the version being replaced is kept,
+// inside the folder of the version replacing it: cleaning up the one removes
+// the other.
+func (s *Store) RollbackDir(newVersion string) string {
+	return filepath.Join(s.versionDir(newVersion), "rollback")
+}
+
+// FetchRollback downloads rel, the installer of the version that newVersion
+// will replace, so it can be put back if newVersion fails to install. The
+// same checks as Fetch apply. A failure here is not counted: it only means
+// this install cannot be updated safely for now.
+func (s *Store) FetchRollback(ctx context.Context, newVersion string, rel Release) (Ready, error) {
+	if !safeName(newVersion) || !safeName(rel.Version) || !safeName(rel.File) || !hexSHA256.MatchString(rel.SHA256) || rel.URL == "" {
+		return Ready{}, fmt.Errorf("refusing to download an unusable release %+v", rel)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	lock, err := s.lock(ctx, true)
+	if err != nil {
+		return Ready{}, err
+	}
+	defer lock.Unlock()
+
+	dir := s.RollbackDir(newVersion)
+	if r, ok := ReadReady(dir); ok && r.Version == rel.Version && r.File == rel.File && r.SHA256 == rel.SHA256 {
+		return r, nil
+	}
+	if _, err := os.Stat(s.versionDir(newVersion)); err != nil {
+		return Ready{}, err
+	}
+	return s.download(ctx, rel, dir)
+}
+
 // download needs the lock.
-func (s *Store) download(ctx context.Context, rel Release) (Ready, error) {
-	dir := s.versionDir(rel.Version)
+func (s *Store) download(ctx context.Context, rel Release, dir string) (Ready, error) {
 	// Start clean: a marker for other bytes must not outlive them.
 	if err := os.RemoveAll(dir); err != nil {
 		return Ready{}, err

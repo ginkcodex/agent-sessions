@@ -50,6 +50,12 @@ for source in "$source_dir"/*.go; do
     case "$source" in *_test.go) continue ;; esac
     cp -- "$source" "$bundle_dir/"
 done
+# The MSI reading is shared with the app's updater.
+mkdir -p -- "$stage/internal/winmsi"
+for source in "$root"/internal/winmsi/*.go; do
+    case "$source" in *_test.go) continue ;; esac
+    cp -- "$source" "$stage/internal/winmsi/"
+done
 cp -- "$msi" "$bundle_dir/payload.msi"
 cp -- "$source_dir/setup.ico" "$bundle_dir/setup.ico"
 cat > "$bundle_dir/setup.manifest" <<'MANIFEST'

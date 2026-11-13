@@ -62,6 +62,14 @@ func newFeed(t *testing.T, latest string, sums, sig map[string][]byte, goos, goa
 		fs.Requests.Add(1)
 		rest := strings.TrimPrefix(r.URL.Path, "/download/v")
 		version, file, _ := strings.Cut(rest, "/")
+		if file == "SHA256SUMS" {
+			if body, ok := sums[version]; ok {
+				_, _ = w.Write(body)
+				return
+			}
+			http.NotFound(w, r)
+			return
+		}
 		if file != "SHA256SUMS.minisig" {
 			http.NotFound(w, r)
 			return

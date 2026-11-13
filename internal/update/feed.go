@@ -184,6 +184,44 @@ func (c *Checker) Feed(ctx context.Context) (Release, error) {
 	if err != nil {
 		return Release{}, err
 	}
+	return c.signed(ctx, base, sumsData, sums, version, suffix)
+}
+
+// FeedFor reads the signed SHA256SUMS of one release, such as the version
+// that is installed, for this platform.
+func (c *Checker) FeedFor(ctx context.Context, version string) (Release, error) {
+	suffix, ok := installerSuffix(c.GOOS, c.GOARCH)
+	if !ok {
+		return Release{}, fmt.Errorf("%w: no installer for %s/%s", ErrUnsigned, c.GOOS, c.GOARCH)
+	}
+	if len(c.Keys) == 0 {
+		return Release{}, fmt.Errorf("%w: no trusted key", ErrUnsigned)
+	}
+	version = strings.TrimPrefix(version, "v")
+	if !semver.IsValid(tag(version)) || strings.ContainsAny(version, "/\\") {
+		return Release{}, fmt.Errorf("%w: %q is not a release version", ErrUnsigned, version)
+	}
+	base := strings.TrimSuffix(c.Releases, "/")
+	sumsData, found, err := c.fetch(ctx, base+"/download/v"+version+"/SHA256SUMS", maxSumsBytes)
+	if err != nil {
+		return Release{}, err
+	}
+	if !found {
+		return Release{}, fmt.Errorf("%w: release %s has no SHA256SUMS", ErrUnsigned, version)
+	}
+	sums, err := parseSums(sumsData)
+	if err != nil {
+		return Release{}, fmt.Errorf("%w: %v", ErrBadSignature, err)
+	}
+	if got, err := versionIn(sums, suffix); err != nil || got != version {
+		return Release{}, fmt.Errorf("%w: release %s does not list its installer", ErrUnsigned, version)
+	}
+	return c.signed(ctx, base, sumsData, sums, version, suffix)
+}
+
+// signed checks sumsData against the signature published with release
+// version, and only then reads its installer from sums.
+func (c *Checker) signed(ctx context.Context, base string, sumsData []byte, sums map[string]string, version, suffix string) (Release, error) {
 	releaseURL := base + "/download/v" + version + "/"
 
 	sig, found, err := c.fetch(ctx, releaseURL+"SHA256SUMS.minisig", maxSigBytes)
