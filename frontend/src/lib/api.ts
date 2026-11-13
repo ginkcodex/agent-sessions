@@ -6,7 +6,7 @@ import type { GitHistoryTarget, GitHistoryRepositoryList, GitHistoryRefList, Git
 import type { PortForwardRequest, PortForwardState } from './portForward';
 import type { ManagedToolRequest, ManagedToolState } from './managedTools';
 import type { TerminalFileTarget } from './terminalFileOpen';
-import type { UpdateInfo } from './update';
+import type { UpdateInfo, UpdateStatus } from './update';
 import { printPageSetup, type PrintPageSetup } from './printPageSetup';
 import type {
   AgentSettings,
@@ -148,6 +148,16 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   showAbout?(): Promise<void>;
   /** Compares the app with its latest GitHub release. Absent outside the desktop app. */
   checkForUpdate?(): Promise<UpdateInfo>;
+  /** Where the downloaded update is. Absent outside the desktop app. */
+  updateState?(): Promise<UpdateStatus>;
+  /** Whether new versions download in the background (on by default). */
+  autoUpdate?(): Promise<boolean>;
+  setAutoUpdate?(on: boolean): Promise<void>;
+  /**
+   * Quits like restartApp, installs the downloaded update and starts the new
+   * version. Warn about running terminals first.
+   */
+  restartToUpdate?(): Promise<void>;
   restartApp?(): Promise<void>;
   /**
    * Brings the app's next window to the front, or the previous one when
@@ -396,6 +406,10 @@ export interface WailsAppBinding {
   NewWindow(): Promise<void>;
   ShowAbout(): Promise<void>;
   CheckForUpdate(): Promise<UpdateInfo>;
+  UpdateState?(): Promise<UpdateStatus>;
+  AutoUpdate?(): Promise<boolean>;
+  SetAutoUpdate?(on: boolean): Promise<void>;
+  RestartToUpdate?(): Promise<void>;
   RestartApp?(): Promise<void>;
   FocusNextWindow?(forward: boolean): Promise<void>;
   NotificationStatus(): Promise<NotificationStatus>;
@@ -895,6 +909,43 @@ class WailsBackendAPI implements BackendAPI {
   async checkForUpdate(): Promise<UpdateInfo> {
     try {
       return await this.binding.CheckForUpdate();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async updateState(): Promise<UpdateStatus> {
+    try {
+      // Older apps lack the binding; they never download anything.
+      if (!this.binding.UpdateState) return { state: 'idle' };
+      return await this.binding.UpdateState();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async autoUpdate(): Promise<boolean> {
+    try {
+      if (!this.binding.AutoUpdate) return false;
+      return await this.binding.AutoUpdate();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async setAutoUpdate(on: boolean): Promise<void> {
+    try {
+      if (!this.binding.SetAutoUpdate) throw new Error('This app version cannot download updates by itself.');
+      await this.binding.SetAutoUpdate(on);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async restartToUpdate(): Promise<void> {
+    try {
+      if (!this.binding.RestartToUpdate) throw new Error('This app version cannot install updates by itself.');
+      await this.binding.RestartToUpdate();
     } catch (e) {
       throw normalizeError(e);
     }
@@ -1811,6 +1862,10 @@ const UNGUARDED = new Set<string>([
   'showAbout',
   // Updates are for the app on this computer, whichever host is shown.
   'checkForUpdate',
+  'updateState',
+  'autoUpdate',
+  'setAutoUpdate',
+  'restartToUpdate',
   'restartApp',
   'focusNextWindow',
   // Alerts are about panel tabs, which outlive a host switch.
@@ -1841,6 +1896,8 @@ export const CATALOG_CHANGED_EVENT = 'catalog:changed';
 export const INDEX_PROGRESS_EVENT = 'index:progress';
 export const DISCOVERY_STATUS_EVENT = 'discovery:status';
 export const CONNECTION_STATE_EVENT = 'connection:state';
+/** The downloaded update's state changed; see UpdateStatus. */
+export const UPDATE_STATE_EVENT = 'update:state';
 export const ASKPASS_PROMPT_EVENT = 'askpass:prompt';
 // The desktop app on Linux and macOS sends the mouse's side buttons as this
 // event, "back" or "forward": its web view does not report them to the page

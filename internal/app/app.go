@@ -69,6 +69,11 @@ type App struct {
 	translator *translate.Client
 	// updates replaces the release check in tests.
 	updates *update.Checker
+	// updater downloads and installs updates for the whole process; the
+	// windows share one. Nil outside the desktop app, where there is no
+	// update.
+	updater     *update.Manager
+	stopUpdates func()
 
 	events            *catalogBus
 	desktopEvents     engine.Emitter
@@ -217,6 +222,7 @@ func (a *App) onStartup(ctx context.Context) {
 		_ = claims.joinRing()
 	}
 	a.events = engine.NewCatalogBus(emitter)
+	a.stopUpdates = a.watchUpdates()
 
 	a.localEngine = engine.NewEngine(
 		engine.WithRoots(a.roots),
@@ -345,6 +351,9 @@ func (a *App) onShutdown() {
 
 // close gracefully terminates background scans, watchers, indexers, and the database.
 func (a *App) close() error {
+	if a.stopUpdates != nil {
+		a.stopUpdates()
+	}
 	// Chats end first, so no agent outlives its window and every pending
 	// permission request is answered cancelled.
 	a.closeChats()
@@ -377,7 +386,11 @@ func (a *App) CheckForUpdate() (update.Info, error) {
 	if checker == nil {
 		checker = update.NewChecker()
 	}
-	return checker.Check(a.appCtx(), version.Current())
+	info, err := checker.Check(a.appCtx(), version.Current())
+	if err == nil && a.updater != nil {
+		a.updater.Offer(info)
+	}
+	return info, err
 }
 
 // Ping returns a greeting confirmation from the backend service.

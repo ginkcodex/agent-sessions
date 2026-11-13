@@ -9,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/update"
 )
 
 // ErrWindowClosed is returned by calls from a window that is closed or
@@ -31,6 +33,9 @@ type Windows struct {
 	quit func()       // quits the app through ShouldQuit
 	// newApp creates a window's App; tests replace it.
 	newApp func() *App
+	// updater is shared by every window's App; Shutdown hands it the
+	// quit.
+	updater *update.Manager
 
 	mu      sync.Mutex
 	entries map[string]*windowEntry
@@ -70,6 +75,7 @@ func NewWindows(hub *NotificationHub, open func() error, quit func()) *Windows {
 		open:    open,
 		quit:    quit,
 		newApp:  NewApp,
+		updater: newUpdateManager(),
 		entries: map[string]*windowEntry{},
 	}
 }
@@ -88,6 +94,7 @@ func (w *Windows) Reserve() string {
 		ready: make(chan struct{}),
 		gone:  make(chan struct{}),
 	}
+	e.app.updater = w.updater
 	w.entries[e.name] = e
 	w.order = append(w.order, e)
 	return e.name
@@ -211,6 +218,10 @@ func (w *Windows) Shutdown() {
 	}
 	if w.hub != nil {
 		w.hub.Close()
+	}
+	// Every window is closed, so nothing the installer replaces is in use.
+	if w.finishUpdate() {
+		return
 	}
 	w.restartIfApproved()
 }

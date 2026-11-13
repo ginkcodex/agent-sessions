@@ -14,6 +14,28 @@ export interface UpdateInfo {
   available: boolean;
 }
 
+/**
+ * Where a downloaded update is, from the backend's UpdateState and its
+ * update:state event.
+ *
+ *  - idle: nothing to show.
+ *  - downloading: a new version is being fetched; show nothing.
+ *  - ready: it is downloaded and checked, and installs when the app quits.
+ *  - manual: a newer release is out; the app will not fetch it itself.
+ *  - unsupported: this install cannot update itself.
+ *
+ * manual and unsupported show today's toast with the release page.
+ */
+export type UpdateState = 'idle' | 'downloading' | 'ready' | 'manual' | 'unsupported';
+
+export interface UpdateStatus {
+  state: UpdateState;
+  /** The newer release's version; absent when idle. */
+  version?: string;
+  /** Its release page. */
+  url?: string;
+}
+
 /** When the next check is due, in epoch milliseconds, shared by every window. */
 export const UPDATE_CHECK_KEY = 'agent-sessions:next-update-check';
 /** The first check waits for startup to settle. */

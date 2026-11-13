@@ -129,3 +129,22 @@ func (w *Windows) restartIfApproved() {
 		log.Printf("agent-sessions: restart: %v", err)
 	}
 }
+
+// finishUpdate installs a downloaded update as the app quits. It reports
+// whether the installer took over, which also starts the new version after a
+// restart, so the app must not start another copy itself.
+func (w *Windows) finishUpdate() bool {
+	if w.updater == nil {
+		return false
+	}
+	w.quitMu.Lock()
+	relaunch := w.quitting.approved && w.quitting.restart
+	w.quitMu.Unlock()
+	if !w.updater.Finish(relaunch) {
+		return false
+	}
+	w.quitMu.Lock()
+	w.quitting.restart = false
+	w.quitMu.Unlock()
+	return true
+}
