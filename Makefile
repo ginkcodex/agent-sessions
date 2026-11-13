@@ -209,21 +209,30 @@ aur-package:
 	bash packaging/arch/verify-aur-package.sh "$(AUR_PKG_DIR)"
 
 # Tests packaging/linux/repo-meta.sh, and the repo-meta.json checks of
-# packaging/release-checksums.sh, on the .deb files of the published release
-# v$(REPO_META_VERSION), in an Ubuntu container (needs docker). The files are
-# downloaded once to REPO_META_DIR.
+# packaging/release-checksums.sh, on the .deb and .rpm files of the published
+# release v$(REPO_META_VERSION), in an Ubuntu container (needs docker); then,
+# in a Fedora container, that dnf reads a repository assembled from the file
+# and that signed packages come through unchanged. The files are downloaded
+# once to REPO_META_DIR.
 REPO_META_VERSION ?= 1.5.5
 REPO_META_DIR ?= build/repo-meta-test
 test-repo-meta:
 	mkdir -p "$(REPO_META_DIR)"
 	curl -fsSL --retry 3 -o "$(REPO_META_DIR)/SHA256SUMS" "$(RELEASES_URL)/v$(REPO_META_VERSION)/SHA256SUMS"
-	for arch in amd64 arm64; do \
-		f=agent-sessions_$(REPO_META_VERSION)_$$arch.deb; \
+	for f in agent-sessions_$(REPO_META_VERSION)_amd64.deb agent-sessions_$(REPO_META_VERSION)_arm64.deb \
+		agent-sessions-$(REPO_META_VERSION)-1.x86_64.rpm agent-sessions-$(REPO_META_VERSION)-1.aarch64.rpm; do \
 		test -s "$(REPO_META_DIR)/$$f" || curl -fsSL --retry 3 -o "$(REPO_META_DIR)/$$f" "$(RELEASES_URL)/v$(REPO_META_VERSION)/$$f" || exit 1; \
 	done
-	docker run --rm -v "$(CURDIR):/src:ro" -v "$(abspath $(REPO_META_DIR)):/debs:ro" ubuntu:24.04 bash -c \
-		'apt-get update -qq && apt-get install -y -qq --no-install-recommends apt-utils jq >/dev/null && \
-		bash /src/packaging/linux/test-repo-meta.sh /debs $(REPO_META_VERSION)'
+	rm -rf "$(REPO_META_DIR)/out"
+	mkdir -p "$(REPO_META_DIR)/out"
+	docker run --rm -v "$(CURDIR):/src:ro" -v "$(abspath $(REPO_META_DIR)):/pkgs:ro" \
+		-v "$(abspath $(REPO_META_DIR))/out:/out" ubuntu:24.04 bash -c \
+		'apt-get update -qq && apt-get install -y -qq --no-install-recommends apt-utils createrepo-c rpm-common jq >/dev/null && \
+		bash /src/packaging/linux/test-repo-meta.sh /pkgs $(REPO_META_VERSION) /out'
+	docker run --rm -v "$(CURDIR):/src:ro" -v "$(abspath $(REPO_META_DIR)):/pkgs:ro" \
+		-v "$(abspath $(REPO_META_DIR))/out:/out:ro" fedora:42 bash -c \
+		'{ dnf install -y createrepo_c jq rpm-sign gnupg2 >/tmp/dnf.log 2>&1 || { cat /tmp/dnf.log; exit 1; }; } && \
+		bash /src/packaging/linux/test-repo-meta-fedora.sh /pkgs $(REPO_META_VERSION) /out'
 
 # Universal macOS app wrapped in a .dmg in dist/. Runs on macOS only (cgo,
 # lipo, plutil, codesign, hdiutil) and needs jq. Each architecture is a plain

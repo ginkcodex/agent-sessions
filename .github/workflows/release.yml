@@ -386,11 +386,11 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Install apt-ftparchive
+      - name: Install apt-ftparchive and createrepo_c
         timeout-minutes: 10
         uses: ./src/.github/actions/apt-install
         with:
-          packages: apt-utils
+          packages: apt-utils createrepo-c rpm-common
       - name: Write repo-meta.json
         # The Linux repositories' index entries for these packages
         # (docs/plan/linux-repos.md). Here rather than in the linux job, which
@@ -478,11 +478,11 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Install apt-ftparchive
+      - name: Install apt-ftparchive and createrepo_c
         timeout-minutes: 10
         uses: ./src/.github/actions/apt-install
         with:
-          packages: apt-utils
+          packages: apt-utils createrepo-c rpm-common
       - name: Write repo-meta.json
         # The Linux repositories' index entries for these packages
         # (docs/plan/linux-repos.md). Here rather than in the linux job, which

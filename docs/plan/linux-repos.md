@@ -64,9 +64,18 @@ updater reads GitHub Releases directly ([auto-update.md](auto-update.md)).
     for that one file, with `Filename:` set to `pool/<version>/<file name>`;
   - for each `.rpm`, the `<package>` elements `createrepo_c` writes for that
     one file in `primary.xml`, `filelists.xml` and `other.xml`, with
-    `location href` set to `pool/<version>/<file name>`.
+    `location href` set to `pool/<version>/<file name>`. createrepo_c
+    records the file's mtime as `<time file>`, and a download sets that
+    mtime, so the script sets it to the package's build time: the same
+    package always gives the same entry. Ubuntu's createrepo_c (0.17, on the
+    runner) and Fedora's (1.2) write the same elements.
 - `release-checksums.sh` expects `repo-meta.json` in the release set, and
-  checks that it lists the release's packages with their sizes and hashes.
+  checks that it lists the release's packages with their sizes and hashes,
+  and that each stanza and `<package>` element names its file's location,
+  size and hash.
+- `packaging/linux/assemble-rpm-repo.sh` puts the elements together the way
+  LR-12 will, for the tests: `make test-repo-meta` has dnf read the result
+  in a Fedora container.
 - After publishing, a `linux-repos` job calls the Worker's ingest endpoint.
 
 ### Worker setup

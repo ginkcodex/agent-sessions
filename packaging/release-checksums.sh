@@ -63,13 +63,16 @@ done
 
 # The Linux repositories are built from repo-meta.json alone, so it must list
 # exactly these packages, with their sizes and hashes, in the paragraphs apt
-# reads too.
+# and dnf read too.
 meta=$dir/repo-meta.json
 jq -e --arg v "$version" '.version == $v and (.deb | type) == "array" and (.rpm | type) == "array"' \
     "$meta" >/dev/null 2>&1 || fail "repo-meta.json is not for $version, or is malformed"
 listed=$(jq -r '.deb[].file' "$meta" | LC_ALL=C sort)
 want=$(printf '%s\n' "agent-sessions_${pkg_version}_amd64.deb" "agent-sessions_${pkg_version}_arm64.deb" | LC_ALL=C sort)
 [ "$listed" = "$want" ] || fail "repo-meta.json lists other .deb files than the release's: ${listed//$'\n'/ }"
+listed=$(jq -r '.rpm[].file' "$meta" | LC_ALL=C sort)
+want=$(printf '%s\n' "agent-sessions-${pkg_version}-1.x86_64.rpm" "agent-sessions-${pkg_version}-1.aarch64.rpm" | LC_ALL=C sort)
+[ "$listed" = "$want" ] || fail "repo-meta.json lists other .rpm files than the release's: ${listed//$'\n'/ }"
 while IFS=$'\t' read -r file size sha256; do
     [ -f "$dir/$file" ] || fail "repo-meta.json lists $file, which is not in the release"
     actual_size=$(wc -c < "$dir/$file" | tr -d ' ')
@@ -80,6 +83,13 @@ bad=$(jq -r --arg v "$version" '.deb[] | . as $e | ($e.stanza | split("\n")) as 
     | select(any($l[]; . == "Filename: pool/\($v)/\($e.file)") and any($l[]; . == "Size: \($e.size)")
         and any($l[]; . == "SHA256: \($e.sha256)") | not) | $e.file' "$meta")
 [ -z "$bad" ] || fail "repo-meta.json: the paragraph of $bad disagrees with its file"
+bad=$(jq -r --arg v "$version" '.rpm[] | . as $e | ($e.primary | split("\n")) as $l
+    | select(any($l[]; . == "  <location href=\"pool/\($v)/\($e.file)\"/>")
+        and any($l[]; . == "  <checksum type=\"sha256\" pkgid=\"YES\">\($e.sha256)</checksum>")
+        and any($l[]; startswith("  <size package=\"\($e.size)\" "))
+        and ($e.filelists | startswith("<package pkgid=\"\($e.sha256)\" "))
+        and ($e.other | startswith("<package pkgid=\"\($e.sha256)\" ")) | not) | $e.file' "$meta")
+[ -z "$bad" ] || fail "repo-meta.json: the metadata of $bad disagrees with its file"
 
 (cd "$dir" && sha256sum -- * > SHA256SUMS && sha256sum --check --strict --quiet SHA256SUMS)
 printf 'release-checksums: %s assets for %s\n' "${#patterns[@]}" "$version"
