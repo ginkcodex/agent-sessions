@@ -1,19 +1,26 @@
 import { api, subscribeUpdateState } from '../api';
 import { errorText } from '../manage';
-import type { UpdateStatus } from '../update';
+import type { CheckResult, UpdateInfo, UpdateStatus } from '../update';
 
 /** The desktop app's downloaded-update state and the download setting. */
 export class UpdatesStore {
   status = $state<UpdateStatus>({ state: 'idle' });
   /** "Download updates automatically". */
   auto = $state(true);
-  /** The last daily check failed. */
+  /** The last check failed. */
   checkFailed = $state(false);
+  /** This window can check by hand: the desktop app's scheduler is running. */
+  canCheck = $state(false);
+  /** A check asked for here is running. */
+  checking = $state(false);
+  /** What the last check asked for here found, until the update state moves on. */
+  checkResult = $state<CheckResult | null>(null);
   saving = $state(false);
   restarting = $state(false);
   error = $state<string | null>(null);
 
   private stop: (() => void) | null = null;
+  private checker: (() => Promise<UpdateInfo>) | null = null;
 
   /** Reads the state and follows its changes. onStatus sees the initial state and every change. */
   async init(onStatus: (status: UpdateStatus) => void = () => {}): Promise<void> {
@@ -22,7 +29,7 @@ export class UpdatesStore {
     let changed = false;
     this.stop = subscribeUpdateState((status) => {
       changed = true;
-      this.status = status;
+      this.setStatus(status);
       onStatus(status);
     });
     try {
@@ -30,7 +37,7 @@ export class UpdatesStore {
       this.auto = auto;
       // An event that arrived meanwhile is newer.
       if (!changed) {
-        this.status = status;
+        this.setStatus(status);
         onStatus(status);
       }
     } catch {
@@ -41,6 +48,35 @@ export class UpdatesStore {
   destroy(): void {
     this.stop?.();
     this.stop = null;
+  }
+
+  private setStatus(status: UpdateStatus): void {
+    this.status = status;
+    // A download, a ready version or a release page says more than the check did.
+    if (status.state !== 'idle') this.checkResult = null;
+  }
+
+  /** Sets the check the button runs; null when this window has none. */
+  setChecker(check: (() => Promise<UpdateInfo>) | null): void {
+    this.checker = check;
+    this.canCheck = check !== null;
+  }
+
+  /** Checks for updates now, as the user asked. */
+  async checkNow(): Promise<void> {
+    if (!this.checker || this.checking) return;
+    this.checking = true;
+    this.checkResult = null;
+    try {
+      const info = await this.checker();
+      // A release that is being downloaded or is ready shows as the update
+      // state; the result only speaks while nothing else does.
+      this.checkResult = info.available && this.status.state !== 'idle' ? null : { info };
+    } catch (err) {
+      this.checkResult = { error: errorText(err, 'The check failed') };
+    } finally {
+      this.checking = false;
+    }
   }
 
   /** Whether the update setting and state are meaningful here. */

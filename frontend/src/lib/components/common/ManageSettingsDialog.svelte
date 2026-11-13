@@ -149,9 +149,23 @@
             {#if updates.available}
               <section class="section updates">
                 <h3>Updates</h3>
-                <p class="update-status" role="status">{updateSummary(updates.status, updates.checkFailed)}</p>
-                {#if updates.status.state === 'ready'}
-                  <button type="button" class="primary" disabled={updates.restarting} onclick={() => void updates.restart()}>Restart now</button>
+                <p class="update-status" role="status">{updateSummary(updates.status, updates.checkFailed, updates.checkResult)}</p>
+                {#if updates.status.state === 'ready' || updates.canCheck}
+                  <div class="update-actions">
+                    {#if updates.status.state === 'ready'}
+                      <button type="button" class="primary" disabled={updates.restarting} onclick={() => void updates.restart()}>Restart now</button>
+                    {/if}
+                    {#if updates.canCheck}
+                      <button
+                        type="button"
+                        disabled={updates.checking || updates.status.state === 'downloading'}
+                        onclick={() => void updates.checkNow()}
+                      >{updates.checking ? 'Checking…' : 'Check for updates'}</button>
+                    {/if}
+                  </div>
+                {/if}
+                {#if updates.checkResult?.error}
+                  <p class="error" role="alert">Couldn't check for updates: {updates.checkResult.error}</p>
                 {/if}
                 {#if updates.status.supported}
                   <label class="setting">
@@ -544,6 +558,7 @@
   .body { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 28px 24px; font-size: .8rem; }
   .section > p:not(.hint):not(.error) { margin: 0 0 12px; line-height: 1.5; color: var(--text-secondary); }
   .update-status { margin: 0 0 8px; }
+  .update-actions { display: flex; gap: 8px; }
   .setting { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-weight: 600; }
   .setting.disabled { opacity: .5; }
   .setting input { accent-color: var(--accent-color); }

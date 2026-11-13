@@ -143,7 +143,7 @@
       openPage: openReleasePage,
     });
     void updates.init((status) => announcer.announce(status));
-    const stopChecks = startUpdateChecks({
+    const checks = startUpdateChecks({
       check,
       checked: (failed) => (updates.checkFailed = failed),
       notify: (info) => {
@@ -154,8 +154,11 @@
       },
       storage: typeof localStorage === 'undefined' ? null : localStorage,
     });
+    // Settings › Updates › Check for updates.
+    updates.setChecker(() => checks.checkNow());
     return () => {
-      stopChecks();
+      updates.setChecker(null);
+      checks.stop();
       updates.destroy();
     };
   }

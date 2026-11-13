@@ -53,16 +53,17 @@ function fakeTime(start = 1_000_000) {
   return clock;
 }
 
-function start(clock, storage, check, shown = []) {
-  const stop = startUpdateChecks({
+function start(clock, storage, check, shown = [], checked = []) {
+  const checks = startUpdateChecks({
     check,
     notify: (info) => shown.push(info),
+    checked: (failed) => checked.push(failed),
     storage,
     now: () => clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
   });
-  return { stop, shown };
+  return { stop: checks.stop, checkNow: checks.checkNow, shown, checked };
 }
 
 test('the next check waits for startup, then for its due time, and never more than a day', () => {
@@ -182,6 +183,8 @@ test('only the desktop app checks, through the backend, and opens the page in th
   assert.match(app, /updates\.init\(\(status\) => announcer\.announce\(status\)\)/);
   assert.match(app, /const stopUpdateChecks = checkForUpdates\(\);/);
   assert.match(app, /return \(\) => \{\s*stopUpdateChecks\(\);/);
+  assert.match(app, /updates\.setChecker\(\(\) => checks\.checkNow\(\)\);/, 'Settings checks through the window\'s scheduler');
+  assert.match(app, /updates\.setChecker\(null\);\s*checks\.stop\(\);/);
   const api = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8');
   assert.match(api, /checkForUpdate\?\(\): Promise<UpdateInfo>;/, 'the browser demo has no updates');
   assert.match(api, /return await this\.binding\.CheckForUpdate\(\);/);
@@ -277,4 +280,77 @@ test('checks report whether they failed', async () => {
   fail = false;
   await clock.next();
   assert.deepEqual(results, [true, false]);
+});
+
+const settle = async () => {
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+};
+
+test('checking by hand runs at once and counts as the day\'s check in every window', async () => {
+  const clock = fakeTime();
+  const storage = memoryStorage();
+  let checks = 0;
+  const check = async () => (checks++, newer);
+  const a = start(clock, storage, check);
+  const b = start(clock, storage, check);
+
+  clock.now += 1000; // before the startup check
+  assert.deepEqual(await a.checkNow(), newer);
+  assert.equal(checks, 1);
+  assert.deepEqual(a.shown, [newer], 'announced as the daily check does');
+  assert.deepEqual(a.checked, [false]);
+  const nextDay = clock.now + CHECK_INTERVAL_MS;
+  assert.equal(Number(storage.getItem(UPDATE_CHECK_KEY)), nextDay);
+  // This window's startup timer was replaced by one a day away.
+  assert.equal(clock.timers.filter((t) => t.at === nextDay).length, 1);
+
+  // The other window's startup check finds it done and waits for the day.
+  await clock.next();
+  assert.equal(checks, 1);
+  assert.deepEqual(clock.timers.map((t) => t.at), [nextDay, nextDay]);
+  a.stop();
+  b.stop();
+});
+
+test('checking by hand during a check shares it', async () => {
+  const clock = fakeTime();
+  let finish;
+  let checks = 0;
+  const { stop, checkNow } = start(clock, memoryStorage(), () => (checks++, new Promise((resolve) => (finish = resolve))));
+  void clock.next(); // the startup check begins
+  await settle();
+  const first = checkNow();
+  const second = checkNow();
+  finish(same);
+  assert.deepEqual(await first, same);
+  assert.deepEqual(await second, same);
+  assert.equal(checks, 1);
+  assert.equal(clock.timers.length, 1, 'one timer, a day away');
+  assert.equal(clock.timers[0].at, clock.now + CHECK_INTERVAL_MS);
+  stop();
+});
+
+test('a failed check by hand keeps the schedule and reports the failure', async () => {
+  const clock = fakeTime();
+  const storage = memoryStorage();
+  const due = clock.now + 6 * 60 * 60 * 1000;
+  storage.setItem(UPDATE_CHECK_KEY, String(due));
+  const { stop, checkNow, shown, checked } = start(clock, storage, async () => { throw new Error('offline'); });
+  await assert.rejects(checkNow(), /offline/);
+  assert.equal(Number(storage.getItem(UPDATE_CHECK_KEY)), due);
+  assert.deepEqual(checked, [true]);
+  assert.deepEqual(shown, []);
+  assert.deepEqual(clock.timers.map((t) => t.at), [due]);
+  stop();
+  await assert.rejects(checkNow(), /stopped/, 'a closed window checks nothing');
+});
+
+test('Settings reports what a check by hand found while nothing else is going on', () => {
+  const idle = { state: 'idle' };
+  assert.equal(updateSummary(idle, false, { info: same }), 'Up to date: 1.2.3 is the latest version');
+  assert.equal(updateSummary(idle, false, { info: { current: 'dev', latest: '', url: '', available: false } }),
+    'Development build: there is no release to compare it with');
+  assert.equal(updateSummary(idle, false, { info: newer }), '1.3.0 is available');
+  assert.equal(updateSummary(idle, true, { error: 'offline' }), 'Last check failed');
+  assert.equal(updateSummary({ state: 'ready', version: '1.3.0' }, false, { info: newer }), 'Ready: restart to install 1.3.0');
 });

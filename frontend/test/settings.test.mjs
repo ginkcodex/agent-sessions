@@ -60,7 +60,7 @@ async function renderSettingsDialog(
     alerts: { notifyNeeds: true, notifyDone: true, status: null, refreshStatus: async () => {}, ...alerts },
     translateSettings: { ...TRANSLATE_DEFAULTS, ...translateSettings },
     preferences: { disabledLanguages: [], autoInstallLanguageServers: true, ...preferences },
-    updates: { available: false, status: { state: 'idle' }, auto: true, checkFailed: false, saving: false, restarting: false, error: null, ...updates },
+    updates: { available: false, status: { state: 'idle' }, auto: true, checkFailed: false, canCheck: false, checking: false, checkResult: null, saving: false, restarting: false, error: null, ...updates },
     codeDiagnostics,
   });
 }
@@ -330,4 +330,37 @@ test('Settings › General shows the update state and the download setting on th
   const source = readFileSync(SETTINGS_DIALOG_URL, 'utf8');
   assert.match(source, /onchange=\{\(e\) => void updates\.setAuto\(\(e\.currentTarget as HTMLInputElement\)\.checked\)\}/);
   assert.match(source, /onclick=\{\(\) => void updates\.restart\(\)\}/);
+});
+
+test('Settings › General checks for updates by hand and says what it found', async () => {
+  const info = { terminal: true, chooseTerminal: false, shell: 'powershell' };
+  const button = (html) => /<button type="button"([^>]*)>(Check for updates|Checking…)<\/button>/.exec(html);
+  const render = (updates) => renderSettingsDialog({ info }, undefined, { updates: { available: true, status: { state: 'idle', supported: true }, ...updates } });
+
+  assert.equal(button(await render({})), null, 'no button where this window runs no checks');
+
+  const idle = await render({ canCheck: true });
+  assert.equal(button(idle)[2], 'Check for updates');
+  assert.doesNotMatch(button(idle)[1], /disabled/);
+
+  const checking = await render({ canCheck: true, checking: true });
+  assert.equal(button(checking)[2], 'Checking…');
+  assert.match(button(checking)[1], /disabled/);
+
+  const downloading = await render({ canCheck: true, status: { state: 'downloading', version: '1.6.0', supported: true } });
+  assert.match(button(downloading)[1], /disabled/, 'nothing to check while a download runs');
+
+  const latest = await render({ canCheck: true, checkResult: { info: { current: '1.5.5', latest: '1.5.5', url: '', available: false } } });
+  assert.match(latest, /Up to date: 1\.5\.5 is the latest version/);
+
+  const failed = await render({ canCheck: true, checkFailed: true, checkResult: { error: 'dial tcp: no route to host' } });
+  assert.match(failed, /Last check failed/);
+  assert.match(failed, /<p class="error[^"]*" role="alert">Couldn(?:'|&#39;)t check for updates: dial tcp: no route to host<\/p>/);
+
+  // Restart now and the check sit side by side.
+  const ready = await render({ canCheck: true, status: { state: 'ready', version: '1.6.0', supported: true } });
+  assert.match(ready, />Restart now<\/button>[\s\S]*>Check for updates<\/button>/);
+
+  const source = readFileSync(SETTINGS_DIALOG_URL, 'utf8');
+  assert.match(source, /onclick=\{\(\) => void updates\.checkNow\(\)\}/);
 });

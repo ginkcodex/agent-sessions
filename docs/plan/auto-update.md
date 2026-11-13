@@ -101,6 +101,30 @@ never restarts on its own: running terminals and chats would be lost.
 **Restart now** goes through the normal quit, so the usual close
 confirmations still ask about running terminals.
 
+### Checking by hand
+
+The daily check runs about 10 s after launch when one is due, then once a
+day; the due time is shared by every window and survives a restart. So a new
+release can go unnoticed for up to a day. A manual check closes that gap:
+
+- **Settings › General › Updates** has **Check for updates** (AU-14). It
+  uses the same backend call as the daily check, so a release it finds is
+  downloaded, checked and announced as usual.
+- It counts as the day's check: on success the shared due time moves a day
+  ahead, so no window repeats it. A failure leaves the schedule as it was.
+- It always answers. While it runs the button says "Checking…" and is
+  disabled (also while a download runs). Then the status line reads
+  "Up to date: 1.6.0 is the latest version", or shows the update state as
+  for the daily check, or "Couldn't check for updates: <reason>". A
+  development build says it has no release to compare with.
+- A ready version whose toast was put off with **Later** is not toasted
+  again: the Settings line already offers **Restart now**.
+- It does not clear a give-up. A version that failed three downloads, or
+  failed to install, stays on its release page.
+- The macOS app menu gets **Check for Updates…** below About (AU-15). It
+  opens Settings › General and starts the check. Windows and Linux have no
+  app menu; Settings is the place there.
+
 ### Installing
 
 The app copies its own executable to a temporary folder and starts it with
@@ -168,6 +192,10 @@ the new server on their next connection.
   removes the SmartScreen warning on first install.
 - **macOS first.** Its signing and notarization are already in place.
   Windows follows.
+- **A manual check is the day's check**, not an extra one. Clicking it
+  should never make the daily check run again, nor hurry it.
+- **A manual check does not retry a given-up version.** The failure would
+  most likely repeat: the release page stays the way to get that version.
 
 ## Risks
 
