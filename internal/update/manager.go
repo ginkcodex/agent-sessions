@@ -188,11 +188,18 @@ func (m *Manager) Offer(info Info) {
 		m.set(page)
 		return
 	}
+	// GaveUp also covers an install that failed: the version is downloaded
+	// and would fail again.
+	if m.Store.GaveUp(rel.Version) {
+		page.State = StateManual
+		m.set(page)
+		return
+	}
 	if r, ok := m.Store.Ready(rel.Version); ok && r.File == rel.File && r.SHA256 == rel.SHA256 && m.isPrepared(rel.Version) {
 		m.set(Status{State: StateReady, Version: r.Version, URL: info.URL})
 		return
 	}
-	if m.Store.GaveUp(rel.Version) || !m.auto() {
+	if !m.auto() {
 		page.State = StateManual
 		m.set(page)
 		return
@@ -234,6 +241,11 @@ func (m *Manager) Resume(current string) {
 	}
 	if r, ok := m.Store.Newest(); ok && Newer(r.Version, current) && m.supported() {
 		page := ReleasesPage + "/tag/v" + r.Version
+		if m.Store.GaveUp(r.Version) {
+			// An earlier install of it failed.
+			m.set(Status{State: StateManual, Version: r.Version, URL: page})
+			return
+		}
 		if m.Prepare == nil {
 			m.set(Status{State: StateReady, Version: r.Version, URL: page})
 			return

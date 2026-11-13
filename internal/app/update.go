@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -25,9 +26,13 @@ const updateTable = "update"
 // platforms' installers set them (macOS, Windows); everywhere else, and in
 // builds that cannot update, they stay as they are, so a newer release only
 // shows its page.
+//
+// prepareUpdate, when set, gets a download ready before it is announced (the
+// macOS app is unpacked and checked beside the installed one).
 var (
 	canSelfUpdate = func() bool { return false }
 	applyUpdate   func(r update.Ready, relaunch bool) error
+	prepareUpdate func(ctx context.Context, r update.Ready) error
 )
 
 // newUpdateManager is the process's updater, shared by every window: one
@@ -35,6 +40,7 @@ var (
 func newUpdateManager() *update.Manager {
 	m := &update.Manager{
 		Supported: func() bool { return applyUpdate != nil && canSelfUpdate() },
+		Prepare:   prepareUpdate,
 		Auto: func() bool {
 			roots, err := paths.Default()
 			if err != nil {
