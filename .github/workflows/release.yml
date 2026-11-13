@@ -373,6 +373,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     needs: [version, linux, macos, windows, remote-servers]
     runs-on: ubuntu-latest
+    # Signs exactly as the release job does, so a manual run proves the
+    # signing secrets work before anything is published.
+    environment: release
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -385,6 +388,27 @@ jobs:
           merge-multiple: true
       - name: Check the release set and write checksums
         run: bash src/packaging/release-checksums.sh dist "$VERSION"
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: src/go.mod
+          cache: false
+      - name: Sign SHA256SUMS
+        # The app updates itself only from a release whose SHA256SUMS carries a
+        # minisign signature (docs/plan/auto-update.md). The tool refuses a
+        # signature the app's built-in keys would not accept, and a missing
+        # key stops the release: an unsigned one would never reach installed
+        # apps.
+        env:
+          MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        working-directory: src
+        run: |
+          if [ -z "$MINISIGN_KEY" ]; then
+            echo "::error::MINISIGN_KEY is not set in the release environment."
+            exit 1
+          fi
+          go run ./cmd/release-sign -version "$VERSION" ../dist/SHA256SUMS
+          test -s ../dist/SHA256SUMS.minisig
       - name: Record provenance
         id: provenance
         run: |
@@ -455,17 +479,17 @@ jobs:
       - name: Sign SHA256SUMS
         # The app updates itself only from a release whose SHA256SUMS carries a
         # minisign signature (docs/plan/auto-update.md). The tool refuses a
-        # signature the app's built-in keys would not accept. Without the
-        # secrets the release is still published, unsigned: the app then only
-        # shows the old notice.
+        # signature the app's built-in keys would not accept, and a missing
+        # key stops the release: an unsigned one would never reach installed
+        # apps.
         env:
           MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
           MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
         working-directory: src
         run: |
           if [ -z "$MINISIGN_KEY" ]; then
-            echo "::warning::MINISIGN_KEY is not set: $VERSION is published without SHA256SUMS.minisig, so installed apps will not update themselves to it."
-            exit 0
+            echo "::error::MINISIGN_KEY is not set in the release environment."
+            exit 1
           fi
           go run ./cmd/release-sign -version "$VERSION" ../dist/SHA256SUMS
           test -s ../dist/SHA256SUMS.minisig
