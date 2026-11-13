@@ -11,7 +11,7 @@ Linux toast. LR-15 and LR-19 need the maintainer's keys and accounts.
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
-| [LR-01](LR-01.md) | 🟡 Partial: preview deploy and production ID missing | Spike: Worker code beside static assets, Hyperdrive, CPU budget | 2 h | — |
+| [LR-01](LR-01.md) | 🟡 Partial: preview deploy missing | Spike: Worker code beside static assets, Hyperdrive, CPU budget | 2 h | — |
 | [LR-02](LR-02.md) | ⬜ Not started | Spike: redirects, Ed25519 signatures with gpgv/sqv/dnf, nfpm RPM key type | 3 h | LR-01 |
 | [LR-03](LR-03.md) | ⬜ Not started | Schema, migrations, local Postgres | 2 h | LR-01 |
 | [LR-04](LR-04.md) | ⬜ Not started | GitHub release reader: assets, `SHA256SUMS` checks, classification | 3 h | LR-03 |
