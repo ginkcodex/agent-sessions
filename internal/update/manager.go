@@ -51,6 +51,11 @@ type Manager struct {
 	Supported func() bool
 	// Auto reports the "Download updates automatically" setting. Nil means on.
 	Auto func() bool
+	// Prepare gets a downloaded version ready to install, such as staging it
+	// beside the app, and runs before the version is called ready. An error
+	// sends the user to the release page for that version. Nil means nothing
+	// to prepare. It must stop when ctx ends.
+	Prepare func(ctx context.Context, r Ready) error
 	// Apply installs r once the app has quit, and starts the new version when
 	// relaunch is set. It is called from Finish. Nil means no installer.
 	Apply func(r Ready, relaunch bool) error
@@ -64,6 +69,10 @@ type Manager struct {
 	nextSub int
 	closed  bool
 	wg      sync.WaitGroup
+	// prepared and unusable are the versions Prepare accepted or refused
+	// during this run, so a daily check does not repeat the work.
+	prepared map[string]bool
+	unusable map[string]bool
 
 	emitMu sync.Mutex
 }
@@ -174,7 +183,12 @@ func (m *Manager) Offer(info Info) {
 	m.stop()
 	m.reconcile(rel.Version)
 
-	if r, ok := m.Store.Ready(rel.Version); ok && r.File == rel.File && r.SHA256 == rel.SHA256 {
+	if m.isUnusable(rel.Version) {
+		page.State = StateManual
+		m.set(page)
+		return
+	}
+	if r, ok := m.Store.Ready(rel.Version); ok && r.File == rel.File && r.SHA256 == rel.SHA256 && m.isPrepared(rel.Version) {
 		m.set(Status{State: StateReady, Version: r.Version, URL: info.URL})
 		return
 	}
@@ -183,7 +197,31 @@ func (m *Manager) Offer(info Info) {
 		m.set(page)
 		return
 	}
-	m.download(*rel, info.URL)
+	m.start(rel.Version, info.URL, func(ctx context.Context) (Ready, error) { return m.Store.Fetch(ctx, *rel) })
+}
+
+func (m *Manager) isPrepared(version string) bool {
+	if m.Prepare == nil {
+		return true
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.prepared[version]
+}
+
+func (m *Manager) isUnusable(version string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.unusable[version]
+}
+
+func (m *Manager) remember(set *map[string]bool, version string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if *set == nil {
+		*set = map[string]bool{}
+	}
+	(*set)[version] = true
 }
 
 // Resume picks up a download an earlier run left ready: it is installed at
@@ -195,7 +233,14 @@ func (m *Manager) Resume(current string) {
 		return // not a release build
 	}
 	if r, ok := m.Store.Newest(); ok && Newer(r.Version, current) && m.supported() {
-		m.set(Status{State: StateReady, Version: r.Version, URL: ReleasesPage + "/tag/v" + r.Version})
+		page := ReleasesPage + "/tag/v" + r.Version
+		if m.Prepare == nil {
+			m.set(Status{State: StateReady, Version: r.Version, URL: page})
+			return
+		}
+		// Ready once it has been prepared again, which checks what a
+		// previous run staged.
+		m.start(r.Version, page, func(context.Context) (Ready, error) { return r, nil })
 		return
 	}
 	m.reconcile("")
@@ -224,7 +269,9 @@ func (m *Manager) reconcile(keep string) {
 	}
 }
 
-func (m *Manager) download(rel Release, page string) {
+// start runs fetch, then Prepare, in the background and sets the status to
+// downloading until they are done.
+func (m *Manager) start(version, page string, fetch func(ctx context.Context) (Ready, error)) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.mu.Lock()
 	if m.closed {
@@ -237,12 +284,18 @@ func (m *Manager) download(rel Release, page string) {
 	m.cancel = cancel
 	m.wg.Add(1)
 	m.mu.Unlock()
-	m.set(Status{State: StateDownloading, Version: rel.Version, URL: page})
+	m.set(Status{State: StateDownloading, Version: version, URL: page})
 
 	go func() {
 		defer m.wg.Done()
 		defer cancel()
-		r, err := m.Store.Fetch(ctx, rel)
+		r, err := fetch(ctx)
+		prepareErr := error(nil)
+		if err == nil && m.Prepare != nil {
+			if prepareErr = m.Prepare(ctx, r); prepareErr == nil {
+				m.remember(&m.prepared, version)
+			}
+		}
 
 		m.mu.Lock()
 		current := m.gen == gen
@@ -254,15 +307,21 @@ func (m *Manager) download(rel Release, page string) {
 			return // replaced or stopped; whoever did it set the status
 		}
 		switch {
-		case err == nil:
+		case err == nil && prepareErr == nil:
 			m.set(Status{State: StateReady, Version: r.Version, URL: page})
 		case ctx.Err() != nil:
 			m.set(Status{State: StateIdle})
-		case m.Store.GaveUp(rel.Version):
-			log.Printf("agent-sessions: update %s: %v; giving up", rel.Version, err)
-			m.set(Status{State: StateManual, Version: rel.Version, URL: page})
+		case err == nil:
+			// The download is fine but this install cannot use it; trying
+			// again would give the same answer.
+			log.Printf("agent-sessions: update %s cannot be installed: %v", version, prepareErr)
+			m.remember(&m.unusable, version)
+			m.set(Status{State: StateManual, Version: version, URL: page})
+		case m.Store.GaveUp(version):
+			log.Printf("agent-sessions: update %s: %v; giving up", version, err)
+			m.set(Status{State: StateManual, Version: version, URL: page})
 		default:
-			log.Printf("agent-sessions: update %s: %v; will retry at the next check", rel.Version, err)
+			log.Printf("agent-sessions: update %s: %v; will retry at the next check", version, err)
 			m.set(Status{State: StateIdle})
 		}
 	}()

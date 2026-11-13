@@ -1,6 +1,8 @@
 package update
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -369,5 +371,94 @@ func TestResumeRemovesWhatTheRunningVersionHasPassed(t *testing.T) {
 	m.Resume("1.5.5")
 	if m.Status().State != StateIdle {
 		t.Fatalf("status = %+v", m.Status())
+	}
+}
+
+func TestPrepareRunsBeforeTheVersionIsReady(t *testing.T) {
+	e := newMgr(t, nil)
+	release := make(chan struct{})
+	var prepared []string
+	e.M.Prepare = func(_ context.Context, r Ready) error {
+		<-release
+		prepared = append(prepared, r.Version)
+		return nil
+	}
+	e.M.Offer(e.info("1.6.0"))
+	time.Sleep(50 * time.Millisecond)
+	if s := e.M.Status(); s.State != StateDownloading {
+		t.Fatalf("status = %+v while preparing, want downloading", s)
+	}
+	close(release)
+	waitFor(t, e.M, StateReady)
+	if len(prepared) != 1 || prepared[0] != "1.6.0" {
+		t.Fatalf("prepared = %v", prepared)
+	}
+	// Another check of the same release prepares nothing again.
+	e.M.Offer(e.info("1.6.0"))
+	if len(prepared) != 1 || e.M.Status().State != StateReady {
+		t.Fatalf("second offer: prepared %v, status %+v", prepared, e.M.Status())
+	}
+}
+
+func TestAVersionThisInstallCannotUseShowsThePageAndIsNotTriedAgain(t *testing.T) {
+	e := newMgr(t, nil)
+	var tries atomic.Int32
+	e.M.Prepare = func(context.Context, Ready) error { tries.Add(1); return errors.New("signed by another team") }
+	e.M.Offer(e.info("1.6.0"))
+	s := waitFor(t, e.M, StateManual)
+	if s.Version != "1.6.0" || s.URL == "" {
+		t.Fatalf("status = %+v", s)
+	}
+	// Neither the daily check nor the setting changing repeats the work.
+	e.M.Offer(e.info("1.6.0"))
+	e.M.SettingsChanged()
+	time.Sleep(50 * time.Millisecond)
+	if tries.Load() != 1 || e.Srv.Hits.Load() != 1 || e.M.Status().State != StateManual {
+		t.Fatalf("tries %d, downloads %d, status %+v", tries.Load(), e.Srv.Hits.Load(), e.M.Status())
+	}
+	// A newer release gets its own try.
+	e.M.Prepare = func(context.Context, Ready) error { return nil }
+	e.M.Offer(e.info("1.6.1"))
+	waitFor(t, e.M, StateReady)
+}
+
+func TestResumePreparesWhatAnEarlierRunDownloaded(t *testing.T) {
+	e := newMgr(t, nil)
+	e.M.Offer(e.info("1.6.0"))
+	waitFor(t, e.M, StateReady)
+
+	m := &Manager{Store: e.M.Store, Supported: e.Supported.Load, Apply: e.M.Apply}
+	prepared := make(chan string, 1)
+	m.Prepare = func(_ context.Context, r Ready) error { prepared <- r.Version; return nil }
+	m.Resume("1.5.5")
+	select {
+	case v := <-prepared:
+		if v != "1.6.0" {
+			t.Fatalf("prepared %s", v)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the resumed download was not prepared")
+	}
+	waitFor(t, m, StateReady)
+
+	// If preparing fails, the user is sent to the release page.
+	m = &Manager{Store: e.M.Store, Supported: e.Supported.Load, Apply: e.M.Apply}
+	m.Prepare = func(context.Context, Ready) error { return errors.New("no") }
+	m.Resume("1.5.5")
+	waitFor(t, m, StateManual)
+}
+
+func TestFinishCancelsPreparingAndInstallsNothing(t *testing.T) {
+	e := newMgr(t, nil)
+	started := make(chan struct{})
+	e.M.Prepare = func(ctx context.Context, _ Ready) error {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	e.M.Offer(e.info("1.6.0"))
+	<-started
+	if e.M.Finish(false) || len(e.Applied) != 0 {
+		t.Fatal("installed a version that was still being prepared")
 	}
 }
