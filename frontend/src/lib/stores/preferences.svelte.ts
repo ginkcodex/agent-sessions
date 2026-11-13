@@ -27,9 +27,12 @@ export interface PaneWidths {
   sessionList: number;
 }
 
+// The defaults leave room above the floors for each column's header: the full
+// filter placeholders ("Filter by directory…", "Filter sessions (title,
+// prompt, cwd, model)…") with space to spare.
 export const LIMITS = {
-  sidebar: { min: 200, default: 260 },
-  sessionList: { min: 260, default: 340 },
+  sidebar: { min: 200, default: 280 },
+  sessionList: { min: 260, default: 380 },
   transcriptMin: 380,
 };
 

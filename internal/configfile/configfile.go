@@ -51,6 +51,28 @@ func Update(path string, edit func([]byte) []byte) error {
 	return WriteAtomic(path, edit(data))
 }
 
+// staleTempAge is how old a config-*.tmp must be before a later write may
+// delete it. Killed writes leave their temp behind, while a temp this write
+// races belongs to a live writer and is renamed away in milliseconds.
+const staleTempAge = time.Minute
+
+// sweepStaleTemps deletes config-*.tmp files that a killed write left in dir.
+// Writers of different config files take different locks, so a temp is only
+// removed once it is clearly abandoned (see staleTempAge).
+func sweepStaleTemps(dir string) {
+	temps, err := filepath.Glob(filepath.Join(dir, "config-*.tmp"))
+	if err != nil {
+		return
+	}
+	for _, name := range temps {
+		info, err := os.Stat(name)
+		if err != nil || time.Since(info.ModTime()) < staleTempAge {
+			continue
+		}
+		_ = os.Remove(name)
+	}
+}
+
 // WriteAtomic replaces path with data through a synced 0600 temp file in the
 // same 0700 directory.
 func WriteAtomic(path string, data []byte) error {
@@ -60,6 +82,7 @@ func WriteAtomic(path string, data []byte) error {
 	}
 	// Enforce 0700 on an existing directory as well.
 	_ = os.Chmod(dir, 0o700)
+	sweepStaleTemps(dir)
 
 	tmp, err := os.CreateTemp(dir, "config-*.tmp")
 	if err != nil {

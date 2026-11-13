@@ -40,14 +40,14 @@ const { PreferencesStore } = await loadServerModule(new URL('../src/lib/stores/p
 test('transcript equalizes against both navigation columns, not just the session list', () => {
   const store = new PreferencesStore();
   store.equalizeNavigationAndTranscript(1400);
-  assert.deepEqual(store.widths, { sidebar: 260, sessionList: 440 });
+  assert.deepEqual(store.widths, { sidebar: 280, sessionList: 420 });
   assert.equal(store.widths.sidebar + store.widths.sessionList, 1400 / 2);
 });
 
 test('navigation equalization adjusts the directory only when the list hits its minimum', () => {
   const store = new PreferencesStore();
   store.equalizeNavigationAndTranscript(1800);
-  assert.deepEqual(store.widths, { sidebar: 260, sessionList: 640 });
+  assert.deepEqual(store.widths, { sidebar: 280, sessionList: 620 });
   store.widths = { sidebar: 450, sessionList: 550 };
   store.equalizeNavigationAndTranscript(1000);
   assert.deepEqual(store.widths, { sidebar: 240, sessionList: 260 });
@@ -64,7 +64,7 @@ test('navigation equalization respects minimum sizes without fixed maximums', ()
 test('sidebar and session list equalize together within shared size limits', () => {
   const store = new PreferencesStore();
   store.equalizeSidebarAndSessionList();
-  assert.deepEqual(store.widths, { sidebar: 300, sessionList: 300 });
+  assert.deepEqual(store.widths, { sidebar: 330, sessionList: 330 });
   store.widths = { sidebar: 200, sessionList: 260 };
   store.equalizeSidebarAndSessionList();
   assert.deepEqual(store.widths, { sidebar: 260, sessionList: 260 });
