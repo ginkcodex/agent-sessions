@@ -1,7 +1,7 @@
 # Linux repositories — tasks
 
 - **Plan:** [linux-repos.md](../../plan/linux-repos.md)
-- **Progress:** 1/19 done
+- **Progress:** 2/19 done
 
 Planned 2026-11-13. LR-01 and LR-02 check the risky assumptions first.
 LR-03…06 record releases in the website Worker (`agent-sessions-web`);
@@ -19,7 +19,7 @@ Linux toast. LR-15 and LR-19 need the maintainer's keys and accounts.
 | [LR-06](LR-06.md) | ⬜ Not started | Hourly cron catch-up and `npm run backfill` | 2 h | LR-05 |
 | [LR-07](LR-07.md) | ⬜ Not started | Release workflow calls ingest | 1.5 h | LR-05 |
 | [LR-08](LR-08.md) | ⬜ Not started | Sign RPMs in CI and check them | 2 h | LR-02, LR-15 |
-| [LR-09](LR-09.md) | ⬜ Not started | `repo-meta.json` for `.deb` files; release set includes it | 3 h | — |
+| [LR-09](LR-09.md) | ✅ Done | `repo-meta.json` for `.deb` files; release set includes it | 3 h | — |
 | [LR-10](LR-10.md) | ⬜ Not started | `repo-meta.json` for `.rpm` files | 3 h | LR-09 |
 | [LR-11](LR-11.md) | ⬜ Not started | Worker: apt index builder | 3 h | LR-03, LR-09 |
 | [LR-12](LR-12.md) | ⬜ Not started | Worker: dnf repodata builder | 3 h | LR-03, LR-10 |

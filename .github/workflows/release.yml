@@ -386,6 +386,16 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Install apt-ftparchive
+        timeout-minutes: 10
+        uses: ./src/.github/actions/apt-install
+        with:
+          packages: apt-utils
+      - name: Write repo-meta.json
+        # The Linux repositories' index entries for these packages
+        # (docs/plan/linux-repos.md). Here rather than in the linux job, which
+        # builds one architecture at a time.
+        run: bash src/packaging/linux/repo-meta.sh "$VERSION" dist
       - name: Check the release set and write checksums
         run: bash src/packaging/release-checksums.sh dist "$VERSION"
       - uses: actions/setup-go@v7
@@ -468,6 +478,16 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Install apt-ftparchive
+        timeout-minutes: 10
+        uses: ./src/.github/actions/apt-install
+        with:
+          packages: apt-utils
+      - name: Write repo-meta.json
+        # The Linux repositories' index entries for these packages
+        # (docs/plan/linux-repos.md). Here rather than in the linux job, which
+        # builds one architecture at a time.
+        run: bash src/packaging/linux/repo-meta.sh "$VERSION" dist
       - name: Check the release set and write checksums
         # The servers' own SHA256SUMS is verified, then replaced by one over
         # every asset.

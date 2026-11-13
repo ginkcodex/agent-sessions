@@ -58,13 +58,15 @@ updater reads GitHub Releases directly ([auto-update.md](auto-update.md)).
   repository). The signed file is the release asset, so `SHA256SUMS` covers
   it and `rpm -K` checks it in `packaging/linux/verify-packages.sh`.
 - **`repo-meta.json`** is written by `packaging/linux/repo-meta.sh` from the
-  built packages:
+  built packages, in the jobs that gather the release set (`artifacts`,
+  `release`), since each `linux` job builds one architecture:
   - for each `.deb`, the `Packages` stanza `apt-ftparchive packages` writes
     for that one file, with `Filename:` set to `pool/<version>/<file name>`;
   - for each `.rpm`, the `<package>` elements `createrepo_c` writes for that
     one file in `primary.xml`, `filelists.xml` and `other.xml`, with
     `location href` set to `pool/<version>/<file name>`.
-- `release-checksums.sh` expects `repo-meta.json` in the release set.
+- `release-checksums.sh` expects `repo-meta.json` in the release set, and
+  checks that it lists the release's packages with their sizes and hashes.
 - After publishing, a `linux-repos` job calls the Worker's ingest endpoint.
 
 ### Worker setup

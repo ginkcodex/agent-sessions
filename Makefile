@@ -24,7 +24,7 @@ APPICON := frontend/assets/Icon-universal.png
 MACOS_APPICON := frontend/assets/Icon-macOS.png
 
 .PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps check-gui-linkage \
-	package-linux package-macos package-windows windows-app aur-package \
+	package-linux package-macos package-windows windows-app aur-package test-repo-meta \
 	remote-servers conpty windows-setup version tags set-version tag untag release sync help check-app-icons
 
 # Headless servers the desktop app deploys over SSH. CGO stays off: these
@@ -207,6 +207,23 @@ aur-package:
 	curl -fsSL --retry 3 -o "$(AUR_PKG_DIR)/SHA256SUMS.release" "$(RELEASES_URL)/v$(VERSION)/SHA256SUMS"
 	bash packaging/arch/render-pkgbuild.sh --pkgrel "$(PKGREL)" "$(VERSION)" "$(AUR_PKG_DIR)/SHA256SUMS.release" "$(AUR_PKG_DIR)"
 	bash packaging/arch/verify-aur-package.sh "$(AUR_PKG_DIR)"
+
+# Tests packaging/linux/repo-meta.sh, and the repo-meta.json checks of
+# packaging/release-checksums.sh, on the .deb files of the published release
+# v$(REPO_META_VERSION), in an Ubuntu container (needs docker). The files are
+# downloaded once to REPO_META_DIR.
+REPO_META_VERSION ?= 1.5.5
+REPO_META_DIR ?= build/repo-meta-test
+test-repo-meta:
+	mkdir -p "$(REPO_META_DIR)"
+	curl -fsSL --retry 3 -o "$(REPO_META_DIR)/SHA256SUMS" "$(RELEASES_URL)/v$(REPO_META_VERSION)/SHA256SUMS"
+	for arch in amd64 arm64; do \
+		f=agent-sessions_$(REPO_META_VERSION)_$$arch.deb; \
+		test -s "$(REPO_META_DIR)/$$f" || curl -fsSL --retry 3 -o "$(REPO_META_DIR)/$$f" "$(RELEASES_URL)/v$(REPO_META_VERSION)/$$f" || exit 1; \
+	done
+	docker run --rm -v "$(CURDIR):/src:ro" -v "$(abspath $(REPO_META_DIR)):/debs:ro" ubuntu:24.04 bash -c \
+		'apt-get update -qq && apt-get install -y -qq --no-install-recommends apt-utils jq >/dev/null && \
+		bash /src/packaging/linux/test-repo-meta.sh /debs $(REPO_META_VERSION)'
 
 # Universal macOS app wrapped in a .dmg in dist/. Runs on macOS only (cgo,
 # lipo, plutil, codesign, hdiutil) and needs jq. Each architecture is a plain
