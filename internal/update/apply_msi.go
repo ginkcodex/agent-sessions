@@ -50,10 +50,12 @@ func (a *MSIApply) Run(ctx context.Context) error {
 	if err := a.WaitIdle(ctx); err != nil {
 		return fmt.Errorf("%w: %v", ErrStillRunning, err)
 	}
+	// The app has quit. Until the removal starts, a failure leaves the
+	// installed version as it was, and a restart starts it again (stopped).
 	if a.Lock != nil {
 		unlock, err := a.Lock(ctx)
 		if err != nil {
-			return fmt.Errorf("lock the updates folder: %w", err)
+			return a.stopped(fmt.Errorf("lock the updates folder: %w", err))
 		}
 		defer unlock()
 	}
@@ -61,15 +63,15 @@ func (a *MSIApply) Run(ctx context.Context) error {
 	// The installers sat in a folder the user can write to: check them again.
 	newInfo, err := a.check(a.New, a.New.Version)
 	if err != nil {
-		return fmt.Errorf("the new installer: %w", err)
+		return a.stopped(fmt.Errorf("the new installer: %w", err))
 	}
 	rbInfo, err := a.check(a.Rollback, a.Rollback.Version)
 	if err != nil {
-		return fmt.Errorf("the rollback installer: %w", err)
+		return a.stopped(fmt.Errorf("the rollback installer: %w", err))
 	}
 	product, err := a.Win.Product()
 	if err != nil {
-		return err
+		return a.stopped(err)
 	}
 
 	a.logf("removing %s %s", product.Code, product.Version)
@@ -145,6 +147,13 @@ func (a *MSIApply) start() {
 	if err := a.Launch(a.Win.InstallPath()); err != nil {
 		a.logf("start the app: %v", err)
 	}
+}
+
+// stopped, in a restart, starts the installed version that a failed update
+// did not touch, then returns cause.
+func (a *MSIApply) stopped(cause error) error {
+	a.start()
+	return cause
 }
 
 // recover makes sure an app is installed after cause stopped the update. If

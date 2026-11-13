@@ -120,13 +120,29 @@ func TestSwapWhoseNewAppWillNotOpenGoesBack(t *testing.T) {
 }
 
 func TestSwapThatCannotMoveTheOldAppChangesNothing(t *testing.T) {
-	e := newSwapEnv(t, false)
-	e.Swap.rename = func(from, to string) error { return errors.New("permission denied") }
-	if err := e.Swap.Run(context.Background()); err == nil {
-		t.Fatal("Run = nil")
+	for _, relaunch := range []bool{false, true} {
+		e := newSwapEnv(t, relaunch)
+		e.Swap.rename = func(from, to string) error { return errors.New("permission denied") }
+		if err := e.Swap.Run(context.Background()); err == nil {
+			t.Fatal("Run = nil")
+		}
+		if got := e.marker(t); got != "old" {
+			t.Fatalf("installed app = %q", got)
+		}
+		if want := map[bool]int{false: 0, true: 1}[relaunch]; len(e.launched) != want || (want == 1 && e.launched[0] != "old") {
+			t.Fatalf("relaunch %v: opened %v", relaunch, e.launched)
+		}
 	}
-	if got := e.marker(t); got != "old" {
-		t.Fatalf("installed app = %q", got)
+}
+
+func TestSwapThatCannotLockReopensTheAppInARestart(t *testing.T) {
+	e := newSwapEnv(t, true)
+	e.Swap.Lock = func(context.Context) (func(), error) { return nil, ErrBusy }
+	if err := e.Swap.Run(context.Background()); !errors.Is(err, ErrBusy) {
+		t.Fatalf("Run = %v", err)
+	}
+	if got := e.marker(t); got != "old" || len(e.launched) != 1 || e.launched[0] != "old" {
+		t.Fatalf("installed %q, opened %v", got, e.launched)
 	}
 }
 
@@ -163,6 +179,10 @@ func TestSwapChecksTheStagedAppAgainBeforeUsingIt(t *testing.T) {
 			}
 			if got := e.marker(t); got != "old" {
 				t.Fatalf("installed app = %q", got)
+			}
+			// The app had quit for a restart: the user gets the old one back.
+			if len(e.launched) != 1 || e.launched[0] != "old" {
+				t.Fatalf("opened %v, want the old app", e.launched)
 			}
 		})
 	}

@@ -1,14 +1,15 @@
 # Auto-update — tasks
 
 - **Plan:** [auto-update.md](../../plan/auto-update.md)
-- **Progress:** 12/16 done
+- **Progress:** 12/17 done
 
 Planned 2026-11-13. AU-01 signs releases; AU-02…05 are the shared update
 flow; AU-06…08 are macOS, which ships first; AU-09…11 are Windows. AU-12
 (Windows code signing) is wanted but not needed for the release; AU-13 is
 the docs. AU-14 and AU-15, added later the same day, check for updates by hand.
 AU-16 fixes the macOS update helper, which a hand test of 1.5.6 found being
-killed on start.
+killed on start; AU-17 does the same checks for Windows and makes a restart
+always bring an app back.
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -22,9 +23,10 @@ killed on start.
 | [AU-08](AU-08.md) | ⬜ Not started | macOS QA on a Mac | 3 h | AU-05, AU-07, AU-14, AU-15, AU-16 |
 | [AU-09](AU-09.md) | ✅ Done | Windows: when possible, download and check new and rollback MSIs | 3 h | AU-03 |
 | [AU-10](AU-10.md) | ✅ Done | Windows: apply on restart or quit, with rollback | 4 h | AU-04, AU-09 |
-| [AU-11](AU-11.md) | ⬜ Not started | Windows QA on Windows | 3 h | AU-05, AU-10 |
+| [AU-11](AU-11.md) | ⬜ Not started | Windows QA on Windows | 3 h | AU-05, AU-10, AU-14, AU-17 |
 | [AU-12](AU-12.md) | ⬜ Not started | Windows code signing in CI | 3 h | — |
 | [AU-13](AU-13.md) | ⬜ Not started | Docs: README, website, Windows packaging notes | 1.5 h | AU-08, AU-11, AU-14 |
 | [AU-14](AU-14.md) | ✅ Done | Check for updates by hand in Settings | 3 h | AU-05 |
 | [AU-15](AU-15.md) | ✅ Done | macOS app menu: Check for Updates… | 2 h | AU-14 |
 | [AU-16](AU-16.md) | ✅ Done | macOS: the update helper is killed on start | 2 h | AU-07 |
+| [AU-17](AU-17.md) | 🟡 Partial (Windows tests not yet run on Windows) | Windows helper reports in; a restart always brings the app back | 2.5 h | AU-10, AU-16 |

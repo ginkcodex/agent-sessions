@@ -32,6 +32,10 @@ const (
 // and starts the copy detached with --apply-update. The copy waits for this
 // process to end, runs the removal and installation of the MSIs and, when
 // relaunch is set, starts the new app. r must have been prepared by w.Prepare.
+//
+// StartApply returns nil only once the helper has reported in. Otherwise the
+// error tells the caller that no installer took over, so a restart starts the
+// old app again rather than leaving the user with none.
 func StartApply(w *Windows, r Ready, relaunch bool) error {
 	if _, ok := w.Rollback(r); !ok {
 		return fmt.Errorf("version %s has no rollback installer", r.Version)
@@ -61,20 +65,57 @@ func StartApply(w *Windows, r Ready, relaunch bool) error {
 	if relaunch {
 		args = append(args, "--relaunch")
 	}
-	// The helper must outlive this process. A job object around the app may
-	// kill its children when it closes; ask to leave it, and without that
-	// where the job forbids it.
+	if err := startDetached(helper, args, helperStartTimeout); err != nil {
+		_ = os.RemoveAll(dir)
+		return err
+	}
+	return nil
+}
+
+// startDetached starts exe with args so that it outlives this process, and
+// waits up to timeout for it to report in (startHelper). A job object around
+// the app may kill its children when it closes, so it first asks to leave the
+// job, and starts it without that where the job forbids it. A helper that
+// started and then failed is not started again.
+func startDetached(exe string, args []string, timeout time.Duration) error {
 	const detached = windows.DETACHED_PROCESS | windows.CREATE_NEW_PROCESS_GROUP
-	var startErr error
+	var err error
 	for _, flags := range []uint32{detached | windows.CREATE_BREAKAWAY_FROM_JOB, detached} {
-		cmd := exec.Command(helper, args...)
+		cmd := exec.Command(exe, args...)
 		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: flags, HideWindow: true}
-		if startErr = cmd.Start(); startErr == nil {
-			return cmd.Process.Release()
+		if err = startHelper(cmd, timeout); err == nil || cmd.Process != nil {
+			return err
 		}
 	}
-	_ = os.RemoveAll(dir)
-	return startErr
+	return err
+}
+
+// startHelper starts cmd with an inheritable pipe, whose handle it adds to the
+// arguments as --notify-handle, and waits up to timeout for the helper to
+// report in there (awaitHelper).
+func startHelper(cmd *exec.Cmd, timeout time.Duration) error {
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return err
+	}
+	defer pr.Close()
+	h := windows.Handle(pw.Fd())
+	if err := windows.SetHandleInformation(h, windows.HANDLE_FLAG_INHERIT, windows.HANDLE_FLAG_INHERIT); err != nil {
+		pw.Close()
+		return fmt.Errorf("start the update helper: %w", err)
+	}
+	cmd.Args = append(cmd.Args, "--notify-handle", strconv.FormatUint(uint64(h), 10))
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	// Only this handle and the standard ones are inherited.
+	cmd.SysProcAttr.AdditionalInheritedHandles = append(cmd.SysProcAttr.AdditionalInheritedHandles, syscall.Handle(h))
+	err = cmd.Start()
+	pw.Close()
+	if err != nil {
+		return fmt.Errorf("start the update helper: %w", err)
+	}
+	return awaitHelper(cmd, pr, timeout)
 }
 
 func copyExecutable(from, to string) error {
@@ -105,9 +146,13 @@ func ApplyMain(args []string) (code int, ok bool) {
 	pid := fs.Int("pid", 0, "process to wait for")
 	from := fs.String("from", "", "version being replaced")
 	relaunch := fs.Bool("relaunch", false, "start the new app afterwards")
+	notify := fs.Uint64("notify-handle", 0, "pipe handle to report on once running")
 	if err := fs.Parse(args[2:]); err != nil || *pid <= 0 || *from == "" {
-		fmt.Fprintln(os.Stderr, "usage: --apply-update <ready folder> --pid <n> --from <version> [--relaunch]")
+		fmt.Fprintln(os.Stderr, "usage: --apply-update <ready folder> --pid <n> --from <version> [--relaunch] [--notify-handle <n>]")
 		return 2, true
+	}
+	if *notify != 0 {
+		reportStarted(uintptr(*notify))
 	}
 	if err := runApply(readyDir, *pid, *from, *relaunch); err != nil {
 		return 1, true
@@ -125,9 +170,24 @@ func runApply(readyDir string, pid int, from string, relaunch bool) error {
 	}
 
 	local := os.Getenv("LOCALAPPDATA")
+	installed := (&Windows{LocalAppData: local}).InstallPath()
+	// Failures before MSIApply runs change nothing. In a restart the user
+	// still gets the app back: the installed one, once this one has quit.
+	early := func(err error) error {
+		if relaunch {
+			ctx, cancel := context.WithTimeout(context.Background(), idleTimeout)
+			defer cancel()
+			if werr := waitProcess(ctx, pid); werr != nil {
+				logger.Printf("not starting the app again: %v", werr)
+			} else if lerr := launchDetached(installed); lerr != nil {
+				logger.Printf("start the app: %v", lerr)
+			}
+		}
+		return fail(err)
+	}
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
-		return fail(fmt.Errorf("read the current user: %w", err))
+		return early(fmt.Errorf("read the current user: %w", err))
 	}
 	// The helper runs from a copy; the app it replaces is the one the MSI
 	// installs.
@@ -139,15 +199,15 @@ func runApply(readyDir string, pid int, from string, relaunch bool) error {
 
 	newReady, ok := ReadReady(readyDir)
 	if !ok {
-		return fail(fmt.Errorf("%s holds no downloaded update", readyDir))
+		return early(fmt.Errorf("%s holds no downloaded update", readyDir))
 	}
 	rollback, ok := win.Rollback(newReady)
 	if !ok {
-		return fail(fmt.Errorf("version %s has no rollback installer", version))
+		return early(fmt.Errorf("version %s has no rollback installer", version))
 	}
 	msiexec, err := msiexecPath()
 	if err != nil {
-		return fail(err)
+		return early(err)
 	}
 
 	a := &MSIApply{

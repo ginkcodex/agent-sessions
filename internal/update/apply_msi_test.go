@@ -248,6 +248,10 @@ func TestMSIApplyRefusesInstallersThatChangedOnDisk(t *testing.T) {
 			if len(e.Calls) != 0 || e.installed() != "1.5.5" {
 				t.Fatalf("calls %v, installed %v; nothing may be removed first", e.Calls, e.Products)
 			}
+			// The app had quit for a restart: the user gets it back.
+			if len(e.Launched) != 1 || e.Launched[0] != e.W.InstallPath() {
+				t.Fatalf("started %v", e.Launched)
+			}
 		})
 	}
 }
@@ -257,6 +261,9 @@ func TestMSIApplyStopsWhenTheInstallIsNoLongerOurs(t *testing.T) {
 	e.Products = append(e.Products, e.Products[0]) // a second registration appeared
 	if err := e.Apply.Run(context.Background()); err == nil || len(e.Calls) != 0 {
 		t.Fatalf("Run = %v, calls %v", err, e.Calls)
+	}
+	if len(e.Launched) != 1 {
+		t.Fatalf("started %v; a restart must bring the app back", e.Launched)
 	}
 }
 
@@ -276,10 +283,15 @@ func TestMSIApplyLockIsHeldAndReleased(t *testing.T) {
 	if held {
 		t.Fatal("the lock was not released")
 	}
-	e = newMSIEnv(t, false)
-	e.Apply.Lock = func(context.Context) (func(), error) { return nil, ErrBusy }
-	if err := e.Apply.Run(context.Background()); !errors.Is(err, ErrBusy) || len(e.Calls) != 0 {
-		t.Fatalf("Run = %v, calls %v", err, e.Calls)
+	for _, relaunch := range []bool{false, true} {
+		e = newMSIEnv(t, relaunch)
+		e.Apply.Lock = func(context.Context) (func(), error) { return nil, ErrBusy }
+		if err := e.Apply.Run(context.Background()); !errors.Is(err, ErrBusy) || len(e.Calls) != 0 {
+			t.Fatalf("Run = %v, calls %v", err, e.Calls)
+		}
+		if want := map[bool]int{false: 0, true: 1}[relaunch]; len(e.Launched) != want {
+			t.Fatalf("relaunch %v: started %v", relaunch, e.Launched)
+		}
 	}
 }
 

@@ -18,13 +18,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// helperStartTimeout is how long StartApply waits for the helper to say it
-// is running before it gives up and keeps the app open.
-const helperStartTimeout = 20 * time.Second
-
-// helperReady is what the helper writes to its notify pipe once it runs.
-const helperReady = "ok\n"
-
 // StartApply installs r after this process exits. It copies the running app
 // bundle to the updates folder, since the installed bundle is about to be
 // replaced, and starts the copy's executable detached with --apply-update.
@@ -84,8 +77,7 @@ func StartApply(m *Mac, r Ready, relaunch bool) error {
 }
 
 // startHelper starts cmd with a pipe as file descriptor 3 and waits up to
-// timeout for it to write helperReady there. It then lets the process go. A
-// helper that exits, closes the pipe or stays silent is killed and reported.
+// timeout for it to report in there (awaitHelper).
 func startHelper(cmd *exec.Cmd, timeout time.Duration) error {
 	pr, pw, err := os.Pipe()
 	if err != nil {
@@ -98,22 +90,7 @@ func startHelper(cmd *exec.Cmd, timeout time.Duration) error {
 	if err != nil {
 		return fmt.Errorf("start the update helper: %w", err)
 	}
-	_ = pr.SetReadDeadline(time.Now().Add(timeout))
-	buf := make([]byte, len(helperReady))
-	_, readErr := io.ReadFull(pr, buf)
-	if readErr == nil && string(buf) == helperReady {
-		return cmd.Process.Release()
-	}
-	_ = cmd.Process.Kill()
-	waitErr := cmd.Wait()
-	switch {
-	case errors.Is(readErr, os.ErrDeadlineExceeded):
-		return fmt.Errorf("the update helper did not start within %s", timeout)
-	case waitErr != nil:
-		return fmt.Errorf("the update helper did not start: %w", waitErr)
-	default:
-		return errors.New("the update helper did not start")
-	}
+	return awaitHelper(cmd, pr, timeout)
 }
 
 // copyBundle copies the app bundle from to the new path to. It clones it
@@ -194,10 +171,7 @@ func ApplyMain(args []string) (code int, ok bool) {
 		return 2, true
 	}
 	if *notify > 2 {
-		if f := os.NewFile(uintptr(*notify), "notify"); f != nil {
-			_, _ = f.WriteString(helperReady)
-			_ = f.Close()
-		}
+		reportStarted(uintptr(*notify))
 	}
 	// The helper runs from its own copy of the bundle in the updates folder;
 	// remove that copy on the way out.

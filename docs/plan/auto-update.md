@@ -135,10 +135,13 @@ next launch shows any failure.
 On macOS the copy is the whole `.app` bundle (an APFS clone where possible),
 not just the executable: a Developer ID executable with the hardened runtime
 is bound to its bundle's `Info.plist`, and macOS kills a bare copy as it
-starts (AU-16). On both systems the app quits only once the helper has
-reported in over a pipe (macOS) or started (Windows). A helper that cannot
+starts (AU-16). On both systems the app counts on the helper only once it
+has reported in over an inherited pipe (AU-16, AU-17). A helper that cannot
 start counts as a failed install: the app restarts or quits as if no update
-were ready, and the next launch points to the release page.
+were ready, and the next launch points to the release page. A helper that
+stops before it has touched the installed app (the lock is held, the staged
+app or an MSI no longer checks out) starts that app again in a restart, so
+**Restart now** never ends with no app open.
 
 **macOS:**
 
