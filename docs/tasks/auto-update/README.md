@@ -10,7 +10,7 @@ the docs.
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
-| [AU-01](AU-01.md) | ⬜ Not started | Sign `SHA256SUMS` with minisign in the release job | 2 h | — |
+| [AU-01](AU-01.md) | 🟡 Partial | Sign `SHA256SUMS` with minisign in the release job | 2 h | — |
 | [AU-02](AU-02.md) | ✅ Done | Find an update from GitHub's latest release; signature check | 3 h | AU-01 |
 | [AU-03](AU-03.md) | ⬜ Not started | Download, check and keep the ready version | 3 h | AU-02 |
 | [AU-04](AU-04.md) | ⬜ Not started | Setting and update state for the frontend | 2.5 h | AU-03 |

@@ -266,3 +266,19 @@ func TestExtraKeysAddQATrustAtBuildTime(t *testing.T) {
 		t.Fatalf("builtinKeys = %v, want only the valid extra key", keys)
 	}
 }
+
+func TestBuiltInKeysParse(t *testing.T) {
+	if got, want := len(builtinKeys()), len(trustedKeys); got != want {
+		t.Fatalf("%d of the %d built-in keys parse; an entry is mistyped", got, want)
+	}
+	seen := map[uint64]bool{}
+	for _, key := range builtinKeys() {
+		if seen[key.ID()] {
+			t.Fatalf("key %X is listed twice", key.ID())
+		}
+		seen[key.ID()] = true
+	}
+	if seen[0] {
+		t.Fatal("a built-in key has no ID")
+	}
+}

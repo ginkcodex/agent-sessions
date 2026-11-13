@@ -7,11 +7,14 @@ import (
 )
 
 // trustedKeys are the minisign public keys that may sign a release's
-// SHA256SUMS: the primary key and an offline backup, so losing the primary
-// does not strand installed apps. Each entry is the key's base64 line from
-// its .pub file. AU-01 fills this in; until then no release verifies and the
-// app keeps its unsigned release-page notice.
-var trustedKeys = []string{}
+// SHA256SUMS: the primary key, whose secret half is a secret of the release
+// workflow, and an offline backup, so losing the primary does not strand
+// installed apps. Each entry is the key's base64 line from its .pub file.
+// Both are listed in the README for checking a download by hand.
+var trustedKeys = []string{
+	"RWR127s0GEvTCatCwsSCdVikj8CsSg6vv53ICkzxytDmPta9Dfks6/bF", // primary
+	"RWQxgXSi+X7Z7MotztNJWrJtPUAIB/aE/kVTprTClstsg16ZMQVgDsBR", // backup (offline)
+}
 
 // extraKeys adds public keys, comma separated, at build time, for QA builds
 // that check a feed signed with a throwaway key:
@@ -39,4 +42,15 @@ func builtinKeys() []minisign.PublicKey {
 		keys = append(keys, key)
 	}
 	return keys
+}
+
+// Verifies reports whether any built-in key signed message. The release
+// workflow uses it to check a fresh signature exactly as the app will.
+func Verifies(message, signature []byte) bool {
+	for _, key := range builtinKeys() {
+		if minisign.Verify(key, message, signature) {
+			return true
+		}
+	}
+	return false
 }
