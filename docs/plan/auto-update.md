@@ -127,10 +127,18 @@ release can go unnoticed for up to a day. A manual check closes that gap:
 
 ### Installing
 
-The app copies its own executable to a temporary folder and starts it with
-`--apply-update <ready folder>`. That copy waits for the app to exit, so no
-file it replaces is in use. It writes a log to the updates folder, and the
+The app copies itself to `helper/` in the updates folder and starts the copy
+with `--apply-update <ready folder>`. That copy waits for the app to exit, so
+no file it replaces is in use. It writes a log to the updates folder, and the
 next launch shows any failure.
+
+On macOS the copy is the whole `.app` bundle (an APFS clone where possible),
+not just the executable: a Developer ID executable with the hardened runtime
+is bound to its bundle's `Info.plist`, and macOS kills a bare copy as it
+starts (AU-16). On both systems the app quits only once the helper has
+reported in over a pipe (macOS) or started (Windows). A helper that cannot
+start counts as a failed install: the app restarts or quits as if no update
+were ready, and the next launch points to the release page.
 
 **macOS:**
 
@@ -201,7 +209,11 @@ the new server on their next connection.
 
 - **A broken updater cannot update itself.** The fallback toast must keep
   working whatever the updater's state, and every release is tested
-  updating to the next one (AU-08, AU-11).
+  updating to the next one (AU-08, AU-11). This happened: 1.5.6 shipped a
+  macOS helper that macOS kills on start (AU-16). A 1.5.6 install downloads
+  the next version, and every Restart now or quit then ends with no update
+  and no relaunch. Users on 1.5.6 must install the next version from its
+  `.dmg` once, and its release notes must say so.
 - **Windows removal succeeds, install and rollback both fail:** the app is
   gone. The log names the kept MSIs for a manual install, and the next
   manual setup recovers.

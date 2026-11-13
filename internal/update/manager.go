@@ -391,6 +391,11 @@ func (m *Manager) Finish(relaunch bool) bool {
 	}
 	if err := m.Apply(r, relaunch); err != nil {
 		log.Printf("agent-sessions: install update %s: %v", r.Version, err)
+		// As when the installer itself fails: the next launch points to the
+		// release page for this version instead of failing at every quit.
+		if gerr := m.Store.GiveUp(context.Background(), r.Version); gerr != nil {
+			log.Printf("agent-sessions: record the failed update %s: %v", r.Version, gerr)
+		}
 		return false
 	}
 	return true

@@ -25,10 +25,6 @@ const (
 	idleTimeout = time.Minute
 	// msiTimeout bounds each msiexec run.
 	msiTimeout = 10 * time.Minute
-	// helperDirName is the folder in the updates folder that holds the
-	// helper's copy of the executable. It is not a version, so the store's
-	// cleanup leaves it alone.
-	helperDirName = "helper"
 )
 
 // StartApply installs r after this process exits. It copies the running

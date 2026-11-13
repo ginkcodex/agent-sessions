@@ -18,6 +18,10 @@ const (
 	// starts the helper as it exits, so this only matters when it hangs.
 	applyTimeout = 2 * time.Minute
 	helperPrefix = "agent-sessions-apply-"
+	// helperDirName is the folder in the updates folder that holds the
+	// helper's copy of the app. It is not a version, so the store's cleanup
+	// leaves it alone.
+	helperDirName = "helper"
 )
 
 // ErrStillRunning means the app did not quit in time, so the helper left the
