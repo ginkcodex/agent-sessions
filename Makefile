@@ -24,7 +24,7 @@ APPICON := frontend/assets/Icon-universal.png
 MACOS_APPICON := frontend/assets/Icon-macOS.png
 
 .PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps check-gui-linkage \
-	package-linux package-macos package-windows windows-app aur-package test-repo-meta \
+	package-linux package-macos package-windows windows-app aur-package test-repo-meta verify-repo \
 	remote-servers conpty windows-setup version tags set-version tag untag release sync help check-app-icons
 
 # Headless servers the desktop app deploys over SSH. CGO stays off: these
@@ -233,6 +233,16 @@ test-repo-meta:
 		-v "$(abspath $(REPO_META_DIR))/out:/out:ro" fedora:42 bash -c \
 		'{ dnf install -y createrepo_c jq rpm-sign gnupg2 >/tmp/dnf.log 2>&1 || { cat /tmp/dnf.log; exit 1; }; } && \
 		bash /src/packaging/linux/test-repo-meta-fedora.sh /pkgs $(REPO_META_VERSION) /out'
+
+# Checks the apt and dnf repositories at REPO_URL with the documented setup
+# commands, in clean Ubuntu, Debian and Fedora containers (needs docker):
+# every version in REPO_VERSIONS is listed, and the oldest upgrades to the
+# newest. See packaging/linux/verify-repo.sh for --between and --images.
+#   make verify-repo REPO_URL=https://agent-sessions.ginklab.cv REPO_VERSIONS="1.6.0 1.6.1"
+REPO_URL ?= https://agent-sessions.ginklab.cv
+verify-repo:
+	@test -n "$(REPO_VERSIONS)" || { echo "make verify-repo: set REPO_VERSIONS, e.g. REPO_VERSIONS=\"1.6.0 1.6.1\"" >&2; exit 2; }
+	bash packaging/linux/verify-repo.sh "$(REPO_URL)" $(REPO_VERSIONS)
 
 # Universal macOS app wrapped in a .dmg in dist/. Runs on macOS only (cgo,
 # lipo, plutil, codesign, hdiutil) and needs jq. Each architecture is a plain

@@ -185,14 +185,17 @@ it expired (see [RPM signatures](#rpm-signatures-lr-08)).
 
 1. Make the new key: `repo-keys.sh new rpm <dir>`.
 2. Add its public block to `RPM_PUBLIC_KEYS` after the old one. Deploy the
-   website and wait for the next rebuild.
+   website, then wait an hour: the key file stays in caches for up to an
+   hour.
 3. Only then switch the `RPM_SIGNING_KEY` secret of the `release`
    environment.
 
-When a user first installs a package signed by the new key, dnf should ask
-to import it from the key file, as it did for a new repository key. This has
-not been tried with signed packages from the repository yet:
-[LR-16](../tasks/linux-repos/LR-16.md).
+When a user first installs or upgrades to a package signed by the new key,
+dnf asks to import it from the key file, as it did for the first one. This
+was tried in [LR-16](../tasks/linux-repos/LR-16.md) with a throwaway second
+key, on Fedora 40 and Fedora 45: `dnf upgrade` imported it
+("Importing GPG key 0x95CA35D6" / "Importing OpenPGP key 0x95CA35D6") and
+installed the package; the package signed by the first key stayed listed.
 
 ## If a key leaks
 
@@ -280,8 +283,9 @@ from one step to the next.
 
 - A real key, and the steps on a preview deployment. Both need the
   maintainer.
-- The RPM key's rotation through the repository with signed packages
-  (LR-16). Its expiry and renewal were checked with `rpm` (below).
+- The RPM key's rotation through the repository with signed packages was
+  checked later, in LR-16 ([above](#rotating-the-rpm-key)). Its expiry and
+  renewal were checked with `rpm` (below).
 - dnf-automatic, which may not answer the import prompt in rotation step 4.
 
 ### RPM signatures (LR-08)

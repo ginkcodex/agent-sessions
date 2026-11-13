@@ -16,9 +16,14 @@ echo "deb [signed-by=/usr/share/keyrings/agent-sessions.gpg] https://agent-sessi
 sudo apt update && sudo apt install agent-sessions
 
 # Fedora 40+
-sudo dnf config-manager addrepo --from-repofile=https://agent-sessions.ginklab.cv/rpm/agent-sessions.repo
+curl -fsSL https://agent-sessions.ginklab.cv/rpm/agent-sessions.repo \
+  | sudo tee /etc/yum.repos.d/agent-sessions.repo >/dev/null
 sudo dnf install agent-sessions
 ```
+
+The dnf lines avoid `dnf config-manager`, whose syntax differs between
+Fedora 40's dnf 4 (`--add-repo`) and dnf 5 (`addrepo --from-repofile=`)
+(LR-16). `packaging/linux/verify-repo.sh` runs these same lines.
 
 Every stable version stays listed and downloadable, so users skipping
 several releases, or upgrading from an old package list, never hit a 404.
@@ -179,7 +184,7 @@ each RPM's signature, so the download host does not have to be trusted.
 | Key | Type | Held by | Signs |
 |---|---|---|---|
 | Repository key | Ed25519 OpenPGP | Worker secret `REPO_SIGNING_KEY` | `InRelease`, `Release.gpg`, `repomd.xml.asc` |
-| RPM key | Ed25519 OpenPGP | This repository's secret, used by the linux job | Each `.rpm` |
+| RPM key | Ed25519 OpenPGP | `RPM_SIGNING_KEY`, a secret of this repository's `release` environment, used by the release jobs | Each `.rpm` |
 
 Both are v4 keys with the EdDSA algorithm (22), the Ed25519 that
 `gpg --quick-gen-key ... ed25519` makes. RFC 9580's own Ed25519 (algorithm

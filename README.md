@@ -55,8 +55,8 @@ Expand **Assets** on the release page if the downloads are hidden.
 | --- | --- | --- |
 | **Windows** | x64 / amd64 | `agent-sessions_<version>_windows_amd64_setup.exe` |
 | **macOS** | Apple silicon + Intel | `agent-sessions_<version>_macos_universal.dmg` |
-| **Debian / Ubuntu** | amd64 or arm64 | `agent-sessions_<version>_<arch>.deb` |
-| **Fedora / RPM-based Linux** | x86_64 or aarch64 | `agent-sessions-<version>-1.<arch>.rpm` |
+| **Debian / Ubuntu** | amd64 or arm64 | The [apt repository](#linux), or `agent-sessions_<version>_<arch>.deb` |
+| **Fedora / RPM-based Linux** | x86_64 or aarch64 | The [dnf repository](#linux), or `agent-sessions-<version>-1.<arch>.rpm` |
 | **Arch Linux** | x86_64 or aarch64 | [`agent-sessions-bin`](https://aur.archlinux.org/packages/agent-sessions-bin) on the AUR |
 
 On Linux, `uname -m` reports `x86_64` for amd64 or `aarch64` for arm64.
@@ -99,21 +99,66 @@ Gatekeeper warnings.
 
 ### Linux
 
-Download the package for your distribution and architecture, then run the
-appropriate command from the directory containing it. Replace the example
-filename with the file you downloaded.
+On Debian, Ubuntu and Fedora, add the Agent Sessions repository once. Your
+system's updates then bring each new stable release, and every stable release
+stays available, so an update works even after skipping several. The
+repository serves amd64 / x86_64 and arm64 / aarch64.
 
-**Debian / Ubuntu**
+**Debian 13+ / Ubuntu 24.04+**
+
+```sh
+curl -fsSL https://agent-sessions.ginklab.cv/apt/agent-sessions.gpg \
+  | sudo tee /usr/share/keyrings/agent-sessions.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/agent-sessions.gpg] https://agent-sessions.ginklab.cv/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/agent-sessions.list
+sudo apt update && sudo apt install agent-sessions
+```
+
+Update with `sudo apt update && sudo apt upgrade`. apt checks the repository
+against the key you downloaded with the first command. If `apt update` ever
+reports that this key has expired or is missing, run that command again to
+fetch the current key.
+
+**Fedora 40+**
+
+```sh
+curl -fsSL https://agent-sessions.ginklab.cv/rpm/agent-sessions.repo \
+  | sudo tee /etc/yum.repos.d/agent-sessions.repo >/dev/null
+sudo dnf install agent-sessions
+```
+
+dnf asks to import the repository's signing keys; answer yes. It asks again
+if a release is signed with a new key. Update with `sudo dnf upgrade`.
+
+**Removing the repository**
+
+```sh
+# Debian / Ubuntu
+sudo apt remove agent-sessions
+sudo rm /etc/apt/sources.list.d/agent-sessions.list /usr/share/keyrings/agent-sessions.gpg
+sudo apt update
+
+# Fedora
+sudo dnf remove agent-sessions
+sudo rm /etc/yum.repos.d/agent-sessions.repo
+```
+
+**A downloaded package**
+
+You can also download the `.deb` or `.rpm` from the release and install it
+from the directory containing it. It is not updated by your system's updates.
+Replace the example filename with the file you downloaded.
 
 ```sh
 sudo apt install ./agent-sessions_<version>_amd64.deb
-```
-
-**Fedora**
-
-```sh
 sudo dnf install ./agent-sessions-<version>-1.x86_64.rpm
 ```
+
+`dnf install` works whether or not you imported the key. Plain `rpm -i` on
+Fedora 45 or newer needs the key imported first, with
+`sudo rpm --import https://agent-sessions.ginklab.cv/rpm/RPM-GPG-KEY-agent-sessions`,
+and refuses the unsigned `.rpm` files of releases from before the repository;
+install those with `dnf`.
 
 **Arch Linux**
 
