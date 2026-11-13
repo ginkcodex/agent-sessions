@@ -73,9 +73,11 @@ flowchart TD
 
 - Remembered user layout beats calculated layout. Content-based sizing fills the
   gaps: first run, remembered widths that no longer fit, and window resize.
-- The sidebar and session list keep their current sizing: at real window sizes
-  they fit their content. Only the transcript header is measured, and only the
-  window size changes what users see.
+- The sidebar and session list keep fixed defaults, not measured ones. Only
+  the transcript header is measured, and only the window size changes what
+  users see. The defaults were 260 / 340 px, barely above the 200 / 260 px
+  floors, where the column headers only just fit; they are now 280 / 380 px
+  so the headers show in full (LL-05).
 - Window geometry lives on the Go side (`window-state.json`), pane layout in
   `localStorage` as today. The frontend never needs new bindings, so
   `internal/app/binding_contract_test.go` is untouched.
