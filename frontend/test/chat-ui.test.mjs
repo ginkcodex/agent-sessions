@@ -7,6 +7,9 @@ import {
   chatAgentAvailable,
   commandChoices,
   endChatQuestion,
+  isPluginListing,
+  PLUGIN_COMMAND,
+  pluginRows,
   MAX_CHAT_ATTACHMENTS,
   pendingChatMeta,
   permissionView,
@@ -161,6 +164,29 @@ test('commandChoices lists the commands a / or $ word could name, by full or sho
   assert.deepEqual(commandChoices([], '/'), []);
 });
 
+test('/plugin is the app\'s listing unless the agent has its own, and a plugin is loaded only by its commands', () => {
+  assert.equal(isPluginListing('/plugin', []), true);
+  assert.equal(isPluginListing(' /plugin\n', [{ name: 'mcp' }]), true);
+  assert.equal(isPluginListing('/plugin list', []), false);
+  assert.equal(isPluginListing('/plugins', []), false);
+  assert.equal(isPluginListing('/plugin', [{ name: 'plugin' }]), false, 'the agent answers its own');
+  assert.deepEqual(commandChoices([PLUGIN_COMMAND], '/plug').map((c) => c.text), ['/plugin']);
+
+  const plugins = [
+    { id: 'ponytail@ponytail', name: 'ponytail', enabled: true },
+    { id: 'sites@m', name: 'sites', enabled: true },
+    { id: 'gopls-lsp@m', name: 'gopls-lsp', enabled: false },
+    { id: 'mcp@m', name: 'mcp', enabled: true },
+    { id: 'pony@m', name: 'pony', enabled: true },
+  ];
+  const commands = [{ name: 'ponytail:ponytail' }, { name: '$sites:sites' }, { name: 'mcp:server:prompt' }, { name: 'gopls-lsp' }];
+  assert.deepEqual(
+    pluginRows(plugins, commands).map((p) => [p.name, p.loaded]),
+    [['ponytail', true], ['sites', true], ['gopls-lsp', false], ['mcp', false], ['pony', false]],
+  );
+  assert.deepEqual(pluginRows([], commands), []);
+});
+
 // --- Components ------------------------------------------------------------
 
 const COMPOSER_URL = new URL('../src/lib/components/chat/ChatComposer.svelte', import.meta.url);
@@ -190,6 +216,7 @@ async function renderComposer(c, props = {}) {
     ["import { api } from '../../api';", 'const api = {};'],
     ["'../../chat'", lib('../../chat.ts', COMPOSER_URL)],
     ["import AttachmentChips from './AttachmentChips.svelte';", 'const AttachmentChips = () => {};'],
+    ["import PluginInventory from './PluginInventory.svelte';", 'const PluginInventory = () => {};'],
     [
       "import QueuedMessages from './QueuedMessages.svelte';",
       'const QueuedMessages = ($$renderer, p) => $$renderer.push(`<div data-stub-queue="${p.chat.queue.length}" data-empty="${p.composerEmpty}"></div>`);',

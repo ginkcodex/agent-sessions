@@ -24,20 +24,21 @@ const { mount, unmount, flushSync } = await import(new URL('../node_modules/svel
 const { proxy } = await import(new URL('../node_modules/svelte/src/internal/client/index.js', import.meta.url).href);
 const lib = (rel, base) => JSON.stringify(new URL(rel, base).href);
 
-async function loadComponent(name) {
+async function loadComponent(name, { keepMount = false } = {}) {
   const url = new URL(`../src/lib/components/chat/${name}.svelte`, import.meta.url);
   const filename = fileURLToPath(url);
   let code = compile(readFileSync(filename, 'utf8'), { generate: 'client', filename, css: 'external' }).js.code;
+  if (!keepMount) code = code.replace("import { onMount } from 'svelte';", 'const onMount = () => {};');
   code = code
-    .replace("import { onMount } from 'svelte';", 'const onMount = () => {};')
     .replace("'svelte/internal/disclose-version'", svelte('internal/disclose-version.js'))
     .replace("'svelte/internal/client'", svelte('internal/client/index.js'))
     .replace("from 'svelte';", `from ${svelte('index-client.js')};`)
-    .replace("import { api } from '../../api';", 'const api = {};')
+    .replace("import { api } from '../../api';", 'const api = globalThis.__endMenu.api;')
     .replace("'../../chat'", lib('../../chat.ts', url))
     .replace("import AttachmentChips from './AttachmentChips.svelte';", 'const AttachmentChips = () => {};')
     .replace("import ChatOptions from './ChatOptions.svelte';", 'const ChatOptions = () => {};')
     .replace("import QueuedMessages from './QueuedMessages.svelte';", 'const QueuedMessages = globalThis.__endMenu.QueuedMessages;')
+    .replace("import PluginInventory from './PluginInventory.svelte';", 'const PluginInventory = globalThis.__endMenu.PluginInventory;')
     .replace("import Icon from '../common/Icon.svelte';", 'const Icon = () => {};')
     .replace("import { chats } from '../../stores/chats.svelte';", 'const chats = globalThis.__endMenu.chats;')
     .replace("import { toast } from '../../stores/toast.svelte';", 'const toast = globalThis.__endMenu.toast;')
@@ -62,6 +63,7 @@ globalThis.__endMenu = {
     },
   },
   toast: { show: (t) => calls.push(['toast', t.title]) },
+  api: {},
   filePrompt: {
     ask: async (title, message, choices) => {
       calls.push(['ask', title, choices.map((c) => c.label)]);
@@ -70,6 +72,7 @@ globalThis.__endMenu = {
   },
 };
 globalThis.__endMenu.QueuedMessages = await loadComponent('QueuedMessages');
+globalThis.__endMenu.PluginInventory = await loadComponent('PluginInventory', { keepMount: true });
 const Composer = await loadComponent('ChatComposer');
 
 // Lets every pending promise chain run before an assertion.
@@ -522,4 +525,102 @@ test('a / word lists the agent\'s commands; choosing one inserts it and only sen
   assert.equal(box.value, '/other:understand');
   assert.deepEqual(calls, []);
   c.close();
+});
+
+test('/plugin lists the installed plugins above the composer without sending anything to the agent', async () => {
+  const commands = [{ name: 'ponytail:ponytail', input: { hint: '[lite|full]' } }];
+  const listed = [];
+  let reply;
+  globalThis.__endMenu.api.chatPlugins = (chatId) => {
+    listed.push(chatId);
+    return new Promise((resolve, reject) => (reply = { resolve, reject }));
+  };
+  const c = await openComposer({ phase: 'idle', agent: 'claude', commands });
+  const box = c.target.querySelector('textarea');
+  const type = (value) => {
+    box.value = value;
+    box.dispatchEvent(new window.Event('input', { bubbles: true }));
+    flushSync();
+  };
+  const enter = async () => {
+    box.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    flushSync();
+    await settle();
+    flushSync();
+  };
+  const panel = () => c.target.querySelector('[data-chat-plugins]');
+  const state = () => panel()?.querySelector('[data-plugins-state]')?.dataset.pluginsState;
+  const answer = async (fn) => {
+    fn();
+    await settle();
+    flushSync();
+  };
+
+  // The app's /plugin is in the list, and inserted bare.
+  type('/plu');
+  assert.deepEqual([...c.target.querySelectorAll('[role="option"] .command-name')].map((o) => o.textContent), ['/plugin']);
+  await enter();
+  assert.equal(box.value, '/plugin');
+  assert.equal(panel(), null, 'choosing it lists nothing yet');
+  await enter();
+  assert.deepEqual(calls, [], 'no prompt reaches the agent');
+  assert.equal(box.value, '');
+  assert.deepEqual(listed, ['c1']);
+  assert.equal(state(), 'loading');
+  assert.match(panel().textContent, /This can take a minute/);
+
+  // A plugin without commands is listed; only one with commands in the catalog is loaded.
+  await answer(() =>
+    reply.resolve({
+      supported: true,
+      plugins: [
+        { id: 'ponytail@ponytail', name: 'ponytail', marketplace: 'ponytail', version: '5.3.3', scope: 'user', enabled: true },
+        { id: 'gopls-lsp@official', name: 'gopls-lsp', marketplace: 'official', enabled: false },
+      ],
+    }),
+  );
+  assert.equal(state(), 'listed');
+  const rows = [...panel().querySelectorAll('li')].map((li) => li.textContent.trim().replace(/\s+/g, ' '));
+  assert.deepEqual(rows, ['ponytail @ponytail 5.3.3 user enabled loaded', 'gopls-lsp @official disabled']);
+  assert.deepEqual([...panel().querySelectorAll('button')].map((b) => b.textContent.trim()), ['Close'], 'no install or enable actions');
+  panel().querySelector('button').click();
+  flushSync();
+  assert.equal(panel(), null);
+
+  for (const [out, want, text] of [
+    [{ supported: false, plugins: [] }, 'unsupported', /cannot list its plugins/],
+    [{ supported: true, plugins: [] }, 'empty', /No plugins installed/],
+  ]) {
+    type('/plugin');
+    await enter();
+    await answer(() => reply.resolve(out));
+    assert.equal(state(), want);
+    assert.match(panel().textContent, text);
+  }
+  type('/plugin');
+  await enter();
+  await answer(() => reply.reject(new Error('could not list Claude Code plugins: boom')));
+  assert.equal(state(), 'error');
+  assert.match(panel().textContent, /boom/);
+
+  // Closed while it lists: the late answer shows nowhere.
+  type('/plugin');
+  await enter();
+  panel().querySelector('button').click();
+  flushSync();
+  await answer(() => reply.resolve({ supported: true, plugins: [{ id: 'x@y', name: 'x', enabled: true }] }));
+  assert.equal(panel(), null);
+  assert.deepEqual(calls, []);
+  c.close();
+
+  // An agent with its own /plugin gets it as a prompt.
+  const own = await openComposer({ phase: 'idle', agent: 'claude', commands: [{ name: 'plugin', input: null }] });
+  const ownBox = own.target.querySelector('textarea');
+  ownBox.value = '/plugin';
+  ownBox.dispatchEvent(new window.Event('input', { bubbles: true }));
+  flushSync();
+  ownBox.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await settle();
+  assert.deepEqual(calls, [['prompt', 'c1', '/plugin']]);
+  own.close();
 });

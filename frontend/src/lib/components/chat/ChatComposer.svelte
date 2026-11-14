@@ -7,12 +7,13 @@
   // dropped on the card and images pasted into it are attached too. While
   // the agent works a message is queued, and the queue shows above the card.
   // A / (or Codex's $) word lists the agent's commands above the card: Enter
-  // or Tab puts the chosen one in the text, and only sending runs it.
+  // or Tab puts the chosen one in the text, and only sending runs it. The
+  // app answers /plugin itself, above the card, without asking the agent.
   import { onMount } from 'svelte';
   import type { Chat } from '../../stores/chats.svelte';
   import type { ChatAttachment, ChatAttachResult, ChatDraft } from '../../types';
   import { api } from '../../api';
-  import { addAttachments, canSendPrompt, commandChoices, endChatQuestion, skippedToast, switchToTerminalQuestion } from '../../chat';
+  import { addAttachments, canSendPrompt, commandChoices, endChatQuestion, isPluginListing, PLUGIN_COMMAND, skippedToast, switchToTerminalQuestion } from '../../chat';
   import AttachmentChips from './AttachmentChips.svelte';
   import { chats } from '../../stores/chats.svelte';
   import { toast } from '../../stores/toast.svelte';
@@ -22,6 +23,7 @@
   import { ALL_AGENTS } from '../../portable';
   import ChatOptions from './ChatOptions.svelte';
   import QueuedMessages from './QueuedMessages.svelte';
+  import PluginInventory from './PluginInventory.svelte';
   import Icon from '../common/Icon.svelte';
 
   interface Props {
@@ -59,6 +61,8 @@
   // The highlighted command, and the text whose list Escape closed.
   let active = $state(0);
   let dismissed = $state<string | null>(null);
+  // The last /plugin: each one lists afresh, and only for the chat it asked.
+  let pluginListing = $state<{ chatId: string; n: number } | null>(null);
 
   let agentName = $derived(ALL_AGENTS.find((a) => a.id === chat.agent)?.label ?? chat.agent);
   let closed = $derived(chat.phase === 'exited');
@@ -81,7 +85,10 @@
           : `Message ${agentName}…`,
   );
   let hintId = $derived(`chat-hint-${chat.key}`);
-  let choices = $derived(chat.phase === 'starting' || closed ? [] : commandChoices(chat.commands ?? [], text));
+  let commands = $derived(chat.commands ?? []);
+  let choices = $derived(
+    chat.phase === 'starting' || closed ? [] : commandChoices(commands.some((c) => c.name === PLUGIN_COMMAND.name) ? commands : [...commands, PLUGIN_COMMAND], text),
+  );
   let picking = $derived(choices.length > 0 && dismissed !== text);
   let listId = $derived(`chat-commands-${chat.key}`);
   // WebKit (macOS and Linux) reads autocorrect on a textarea; Svelte's types
@@ -110,6 +117,11 @@
   });
 
   async function send(): Promise<void> {
+    if (chat.phase !== 'starting' && !closed && attachments.length === 0 && isPluginListing(text, commands)) {
+      text = '';
+      pluginListing = { chatId: chat.chatId, n: (pluginListing?.n ?? 0) + 1 };
+      return;
+    }
     if (!canSend) return;
     const prompt = text.trim() === '' ? '' : text;
     const files = $state.snapshot(attachments) as ChatAttachment[];
@@ -289,6 +301,11 @@
     void send();
   }}
 >
+  {#if pluginListing?.chatId === chat.chatId && !closed}
+    {#key pluginListing.n}
+      <PluginInventory chatId={pluginListing.chatId} {agentName} {commands} onClose={() => (pluginListing = null)} />
+    {/key}
+  {/if}
   {#if chat.queue.length > 0 && !closed}
     <QueuedMessages {chat} {agentName} composerEmpty={empty} onEdit={edit} />
   {/if}

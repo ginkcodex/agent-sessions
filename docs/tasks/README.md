@@ -32,7 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| Chat MCP and plugin commands | [chat-plugin-commands](../plan/chat-plugin-commands.md) | [chat-plugin-commands/](chat-plugin-commands/README.md) | 7/10 ✅ · 3 ⬜ |
+| Chat MCP and plugin commands | [chat-plugin-commands](../plan/chat-plugin-commands.md) | [chat-plugin-commands/](chat-plugin-commands/README.md) | 8/10 ✅ · 2 ⬜ |
 | Layout memory | [layout-memory](../plan/layout-memory.md) | [layout-memory/](layout-memory/README.md) | 3/5 ✅ · 2 ⬜ |
 | Transcript tool readability | [transcript-tool-readability](../plan/transcript-tool-readability.md) | [transcript-tool-readability/](transcript-tool-readability/README.md) | 3/4 ✅ · 1 ⬜ |
 | Message file single match | [message-file-single-match](../plan/message-file-single-match.md) | [message-file-single-match/](message-file-single-match/README.md) | 1/1 ✅ |

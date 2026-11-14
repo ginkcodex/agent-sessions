@@ -1,6 +1,6 @@
 // What the chat UI shows: the live tail as transcript messages, and which
 // agents can chat. Every function here is pure.
-import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatCommand, ChatPermission, ChatQueuedPrompt, Message, Part, SessionMeta, SessionRef, ToolStatus } from './types';
+import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatCommand, ChatPermission, ChatPlugin, ChatQueuedPrompt, Message, Part, SessionMeta, SessionRef, ToolStatus } from './types';
 import { toolOutput, type ChatTail, type TailAnswer, type TailDiff, type TailItem, type TailTool } from './chatTail';
 
 /**
@@ -273,6 +273,27 @@ export function commandChoices(commands: readonly ChatCommand[], text: string): 
     out.push({ text: args ? `${full} ` : full, description: c.description ?? '', hint: args ? (c.input?.hint ?? '') : '', exact: full.toLowerCase() === q });
   }
   return out.sort((a, b) => Number(b.exact) - Number(a.exact)).map(({ exact: _, ...c }) => c);
+}
+
+/**
+ * The app's own /plugin: no adapter advertises it, so the composer lists the
+ * installed plugins itself instead of sending it to the agent.
+ */
+export const PLUGIN_COMMAND: ChatCommand = { name: 'plugin', description: 'List the installed plugins (shown here, not sent to the agent)', input: null };
+
+/** Whether text is /plugin for the app: the agent does not have its own. */
+export function isPluginListing(text: string, commands: readonly ChatCommand[]): boolean {
+  return text.trim() === '/plugin' && !commands.some((c) => c.name === 'plugin');
+}
+
+/**
+ * /plugin's rows. The CLI says what is installed and enabled on disk; a
+ * plugin is loaded in the chat only when its catalog has a command named
+ * "<plugin>:…" (Codex: "$<plugin>:…"). mcp: names are MCP prompts.
+ */
+export function pluginRows(plugins: readonly ChatPlugin[], commands: readonly ChatCommand[]): (ChatPlugin & { loaded: boolean })[] {
+  const names = commands.map((c) => c.name.replace(/^\$/, ''));
+  return plugins.map((p) => ({ ...p, loaded: p.name !== 'mcp' && names.some((n) => n.startsWith(`${p.name}:`)) }));
 }
 
 /** "2 queued messages", the end questions' and the queue's way to count them. */
