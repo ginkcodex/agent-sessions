@@ -24,7 +24,7 @@ APPICON := frontend/assets/Icon-universal.png
 MACOS_APPICON := frontend/assets/Icon-macOS.png
 
 .PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps check-gui-linkage \
-	package-linux package-macos package-windows windows-app aur-package \
+	package-linux package-macos package-windows windows-app aur-package test-repo-meta verify-repo \
 	remote-servers conpty windows-setup version tags set-version tag untag release sync help check-app-icons
 
 # Headless servers the desktop app deploys over SSH. CGO stays off: these
@@ -207,6 +207,42 @@ aur-package:
 	curl -fsSL --retry 3 -o "$(AUR_PKG_DIR)/SHA256SUMS.release" "$(RELEASES_URL)/v$(VERSION)/SHA256SUMS"
 	bash packaging/arch/render-pkgbuild.sh --pkgrel "$(PKGREL)" "$(VERSION)" "$(AUR_PKG_DIR)/SHA256SUMS.release" "$(AUR_PKG_DIR)"
 	bash packaging/arch/verify-aur-package.sh "$(AUR_PKG_DIR)"
+
+# Tests packaging/linux/repo-meta.sh, and the repo-meta.json checks of
+# packaging/release-checksums.sh, on the .deb and .rpm files of the published
+# release v$(REPO_META_VERSION), in an Ubuntu container (needs docker); then,
+# in a Fedora container, that dnf reads a repository assembled from the file
+# and that signed packages come through unchanged. The files are downloaded
+# once to REPO_META_DIR.
+REPO_META_VERSION ?= 1.5.5
+REPO_META_DIR ?= build/repo-meta-test
+test-repo-meta:
+	mkdir -p "$(REPO_META_DIR)"
+	curl -fsSL --retry 3 -o "$(REPO_META_DIR)/SHA256SUMS" "$(RELEASES_URL)/v$(REPO_META_VERSION)/SHA256SUMS"
+	for f in agent-sessions_$(REPO_META_VERSION)_amd64.deb agent-sessions_$(REPO_META_VERSION)_arm64.deb \
+		agent-sessions-$(REPO_META_VERSION)-1.x86_64.rpm agent-sessions-$(REPO_META_VERSION)-1.aarch64.rpm; do \
+		test -s "$(REPO_META_DIR)/$$f" || curl -fsSL --retry 3 -o "$(REPO_META_DIR)/$$f" "$(RELEASES_URL)/v$(REPO_META_VERSION)/$$f" || exit 1; \
+	done
+	rm -rf "$(REPO_META_DIR)/out"
+	mkdir -p "$(REPO_META_DIR)/out"
+	docker run --rm -v "$(CURDIR):/src:ro" -v "$(abspath $(REPO_META_DIR)):/pkgs:ro" \
+		-v "$(abspath $(REPO_META_DIR))/out:/out" ubuntu:24.04 bash -c \
+		'apt-get update -qq && apt-get install -y -qq --no-install-recommends apt-utils createrepo-c rpm-common jq >/dev/null && \
+		bash /src/packaging/linux/test-repo-meta.sh /pkgs $(REPO_META_VERSION) /out'
+	docker run --rm -v "$(CURDIR):/src:ro" -v "$(abspath $(REPO_META_DIR)):/pkgs:ro" \
+		-v "$(abspath $(REPO_META_DIR))/out:/out:ro" fedora:42 bash -c \
+		'{ dnf install -y createrepo_c jq rpm-sign gnupg2 >/tmp/dnf.log 2>&1 || { cat /tmp/dnf.log; exit 1; }; } && \
+		bash /src/packaging/linux/test-repo-meta-fedora.sh /pkgs $(REPO_META_VERSION) /out'
+
+# Checks the apt and dnf repositories at REPO_URL with the documented setup
+# commands, in clean Ubuntu, Debian and Fedora containers (needs docker):
+# every version in REPO_VERSIONS is listed, and the oldest upgrades to the
+# newest. See packaging/linux/verify-repo.sh for --between and --images.
+#   make verify-repo REPO_URL=https://agent-sessions.ginklab.cv REPO_VERSIONS="1.6.0 1.6.1"
+REPO_URL ?= https://agent-sessions.ginklab.cv
+verify-repo:
+	@test -n "$(REPO_VERSIONS)" || { echo "make verify-repo: set REPO_VERSIONS, e.g. REPO_VERSIONS=\"1.6.0 1.6.1\"" >&2; exit 2; }
+	bash packaging/linux/verify-repo.sh "$(REPO_URL)" $(REPO_VERSIONS)
 
 # Universal macOS app wrapped in a .dmg in dist/. Runs on macOS only (cgo,
 # lipo, plutil, codesign, hdiutil) and needs jq. Each architecture is a plain

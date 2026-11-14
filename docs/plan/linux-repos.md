@@ -16,9 +16,14 @@ echo "deb [signed-by=/usr/share/keyrings/agent-sessions.gpg] https://agent-sessi
 sudo apt update && sudo apt install agent-sessions
 
 # Fedora 40+
-sudo dnf config-manager addrepo --from-repofile=https://agent-sessions.ginklab.cv/rpm/agent-sessions.repo
+curl -fsSL https://agent-sessions.ginklab.cv/rpm/agent-sessions.repo \
+  | sudo tee /etc/yum.repos.d/agent-sessions.repo >/dev/null
 sudo dnf install agent-sessions
 ```
+
+The dnf lines avoid `dnf config-manager`, whose syntax differs between
+Fedora 40's dnf 4 (`--add-repo`) and dnf 5 (`addrepo --from-repofile=`)
+(LR-16). `packaging/linux/verify-repo.sh` runs these same lines.
 
 Every stable version stays listed and downloadable, so users skipping
 several releases, or upgrading from an old package list, never hit a 404.
@@ -54,17 +59,34 @@ updater reads GitHub Releases directly ([auto-update.md](auto-update.md)).
 
 ### In CI (this repository)
 
-- **RPMs are signed at build time** by nfpm with the RPM key (secret in this
-  repository). The signed file is the release asset, so `SHA256SUMS` covers
-  it and `rpm -K` checks it in `packaging/linux/verify-packages.sh`.
+- **RPMs are signed in the jobs that gather the release set** (`artifacts`,
+  `release`) by `packaging/linux/sign-rpms.sh`, with rpmsign and the RPM key
+  (`RPM_SIGNING_KEY`, a secret of the `release` environment, as
+  `MINISIGN_KEY` is). The script then checks each signature against that key
+  alone. Signing comes before `repo-meta.json` and `SHA256SUMS`, so both
+  describe the signed file, which is the release asset. A release fails
+  without the key; a manual run warns and leaves the RPMs unsigned. The
+  `linux` jobs that build the packages never see the key (LR-08 moved
+  signing there from nfpm in the build).
 - **`repo-meta.json`** is written by `packaging/linux/repo-meta.sh` from the
-  built packages:
+  built packages, in the jobs that gather the release set (`artifacts`,
+  `release`), since each `linux` job builds one architecture:
   - for each `.deb`, the `Packages` stanza `apt-ftparchive packages` writes
     for that one file, with `Filename:` set to `pool/<version>/<file name>`;
   - for each `.rpm`, the `<package>` elements `createrepo_c` writes for that
     one file in `primary.xml`, `filelists.xml` and `other.xml`, with
-    `location href` set to `pool/<version>/<file name>`.
-- `release-checksums.sh` expects `repo-meta.json` in the release set.
+    `location href` set to `pool/<version>/<file name>`. createrepo_c
+    records the file's mtime as `<time file>`, and a download sets that
+    mtime, so the script sets it to the package's build time: the same
+    package always gives the same entry. Ubuntu's createrepo_c (0.17, on the
+    runner) and Fedora's (1.2) write the same elements.
+- `release-checksums.sh` expects `repo-meta.json` in the release set, and
+  checks that it lists the release's packages with their sizes and hashes,
+  and that each stanza and `<package>` element names its file's location,
+  size and hash.
+- `packaging/linux/assemble-rpm-repo.sh` puts the elements together the way
+  LR-12 will, for the tests: `make test-repo-meta` has dnf read the result
+  in a Fedora container.
 - After publishing, a `linux-repos` job calls the Worker's ingest endpoint.
 
 ### Worker setup
@@ -72,7 +94,10 @@ updater reads GitHub Releases directly ([auto-update.md](auto-update.md)).
 The website's Worker gains code. `wrangler.jsonc` sets
 `assets.run_worker_first` for `/api/*`, `/apt/*` and `/rpm/*`; every other
 path stays a static asset as today. The Worker connects to the maintainer's
-Postgres through a Hyperdrive binding (`HYPERDRIVE`).
+Postgres through a Hyperdrive binding (`HYPERDRIVE`), with the postgres.js
+client. Production uses `agent_sessions_prod`; previews bind their own
+config to `agent_sessions_demo`. Both are reached through Cloudflare
+Tunnels.
 
 The repository lives in the database, not in the deployed files, so a
 website deploy, from any branch or by hand, cannot remove or roll it back.
@@ -87,8 +112,10 @@ website deploy, from any branch or by hand, cannot remove or roll it back.
 ### Data
 
 Migrations are plain SQL files in `web/migrations/`, applied by
-`npm run db:migrate` with a `DATABASE_URL`. The Worker never changes the
-schema.
+`npm run db:migrate` with a `DATABASE_URL` and a login that owns the tables.
+The Worker never changes the schema: `--grant` gives Hyperdrive's login read
+and write on the tables but no DDL. An asset's download URL must be its own
+release's file on GitHub, so the pool redirects cannot point elsewhere.
 
 | Table | Holds |
 |---|---|
@@ -157,19 +184,36 @@ each RPM's signature, so the download host does not have to be trusted.
 | Key | Type | Held by | Signs |
 |---|---|---|---|
 | Repository key | Ed25519 OpenPGP | Worker secret `REPO_SIGNING_KEY` | `InRelease`, `Release.gpg`, `repomd.xml.asc` |
-| RPM key | RSA 4096 OpenPGP, unless LR-02 shows Ed25519 works in nfpm and on Fedora 40 | This repository's secret, used by the linux job | Each `.rpm` |
+| RPM key | Ed25519 OpenPGP | `RPM_SIGNING_KEY`, a secret of this repository's `release` environment, used by the release jobs | Each `.rpm` |
 
-Both get an expiry date and a written renewal and rotation procedure
-(LR-15).
+Both are v4 keys with the EdDSA algorithm (22), the Ed25519 that
+`gpg --quick-gen-key ... ed25519` makes. RFC 9580's own Ed25519 (algorithm
+27) does not work: `gpgv` 2.4 on Ubuntu 24.04 cannot verify it and Fedora
+40's `rpm` refuses to import it (LR-02). Both get an expiry date and a
+written renewal and rotation procedure:
+[linux-repos-keys.md](linux-repos-keys.md) (LR-15). apt checks against the
+keyring users downloaded, so a renewal or a rotation reaches apt users only
+when they fetch it again; dnf fetches the key file again by itself.
+
+`REPO_SIGNING_KEY` may hold more than one key, for a rotation. Each key signs
+`Release`, since apt needs one good signature among them. Only the first
+signs `repomd.xml`: dnf refuses a `repomd.xml.asc` with two signatures
+(LR-13). The RPM key's public half is committed in the website's
+`worker/repo/keys.ts`, and `RPM-GPG-KEY-agent-sessions` lists every
+repository key, then every RPM key.
 
 ### In the app
 
-On Linux the update toast checks whether the repository is set up: an
-`/etc/apt/sources.list.d/agent-sessions.*` or
-`/etc/yum.repos.d/agent-sessions.repo` that names our domain. If it is, the
-toast says to run `sudo apt update && sudo apt upgrade` (or
-`sudo dnf upgrade`). On Arch (`/etc/arch-release`) it says to update with the
-AUR helper. Otherwise it links to the website's install guide.
+On Linux the update toast checks whether the repository is set up: an apt
+source (`/etc/apt/sources.list`, or a `.list` or `.sources` file in
+`/etc/apt/sources.list.d/`) or a `/etc/yum.repos.d/*.repo` section that
+names our domain. Sources that are commented out (as `do-release-upgrade`
+leaves third-party ones), `Enabled: no` or `enabled=0` do not count. If it
+is, the toast shows `sudo apt update && sudo apt upgrade` (or
+`sudo dnf upgrade`) with **Copy command**. On Arch (`/etc/arch-release`) it
+says to update with the AUR helper (`paru -Syu agent-sessions-bin`).
+Otherwise it links to the website's install guide
+(`https://agent-sessions.ginklab.cv/download`) and the release page.
 
 ## Decisions
 
@@ -213,13 +257,18 @@ AUR helper. Otherwise it links to the website's install guide.
 - **Postgres or Hyperdrive down:** ingest fails and uncached index reads
   fail. The cron retries ingest; cached files keep serving for their TTL.
 - **Worker CPU limits.** Rebuilding and signing in one request may need more
-  than the free plan's CPU time. LR-01 measures it; the Workers Paid plan
-  may be needed.
+  than the free plan's CPU time (10 ms per invocation). In local workerd
+  (LR-01), a full rebuild takes 2.6 ms for 50 releases, 6.4 ms for 300 and
+  17 ms for 1000, before database work. The free plan fits today; Workers
+  Paid is needed at a few hundred releases, or sooner if LR-14's
+  measurement on Cloudflare is higher. A rebuild skips work when its inputs are
+  unchanged.
 - **Redirects across hosts.** apt and dnf follow the 302 from our domain to
-  github.com and on to GitHub's file host; some corporate proxies may not.
-  LR-02 checks both clients.
-- **Ubuntu's newer apt checks signatures with Sequoia (`sqv`)** and enforces
-  its own algorithm policy. LR-02 checks Ed25519 with both `gpgv` and `sqv`.
+  github.com and on to GitHub's file host (LR-02: apt 2.8, 3.0 and 3.3, dnf
+  4.22 and dnf5 5.4); some corporate proxies may not.
+- **Newer apt checks signatures with Sequoia (`sqv`)** (Debian 13, Ubuntu
+  26.10) and Ubuntu 24.04 with `gpgv` 2.4, each with its own algorithm
+  policy. LR-02 found one key type both accept: see Keys.
 - **Two repositories change together.** The Worker code lives in
   `agent-sessions-web`; CI and these docs live here. Each task names the
   repository it changes.

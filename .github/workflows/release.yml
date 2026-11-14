@@ -20,6 +20,18 @@
 # Those checks are static apart from installing the .deb in a clean Ubuntu
 # container and running the host's own remote server with `version`; the
 # Windows packages are never installed or run here.
+#
+# After a stable release, the linux-repos job asks the website to add it to
+# the apt and dnf repositories (docs/plan/linux-repos.md). It needs the
+# repository secret LINUX_REPOS_TOKEN, the website's INGEST_TOKEN; without it
+# the job warns and the website's hourly cron adds the release instead. The
+# repository variable LINUX_REPOS_SITE points it at another deployment, such
+# as a preview; it defaults to https://agent-sessions.ginklab.cv. The AUR
+# job's secret is described in aur.yml.
+#
+# The release environment's RPM_SIGNING_KEY signs the .rpm packages before
+# they are published (packaging/linux/sign-rpms.sh); a release fails without
+# it. docs/plan/linux-repos-keys.md says how the key is made and stored.
 name: Release
 
 on:
@@ -386,6 +398,38 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Install apt-ftparchive, createrepo_c and rpmsign
+        timeout-minutes: 10
+        uses: ./src/.github/actions/apt-install
+        with:
+          packages: apt-utils createrepo-c rpm-common rpm
+      - name: Sign the .rpm packages
+        # dnf checks each package against the RPM key, and rpm 6 (Fedora 45)
+        # will not install an unsigned one with rpm -i
+        # (docs/plan/linux-repos-keys.md). Signing rewrites each header, so
+        # it comes before repo-meta.json and the checksums. It runs here, not
+        # in the linux job that builds them: the key is a secret of the
+        # release environment, as MINISIGN_KEY is, and is kept away from the
+        # build's npm and Go code. A release fails without it; a manual run
+        # warns and leaves the packages unsigned.
+        env:
+          PUBLISH: ${{ needs.version.outputs.publish }}
+          RPM_SIGNING_KEY: ${{ secrets.RPM_SIGNING_KEY }}
+        run: |
+          if [ -z "$RPM_SIGNING_KEY" ]; then
+            if [ "$PUBLISH" = true ]; then
+              echo "::error::RPM_SIGNING_KEY is not set in the release environment. The repositories' .repo file sets gpgcheck=1, so dnf would refuse unsigned packages."
+              exit 1
+            fi
+            echo "::warning::RPM_SIGNING_KEY is not set in the release environment: the .rpm packages stay unsigned"
+            exit 0
+          fi
+          bash src/packaging/linux/sign-rpms.sh dist
+      - name: Write repo-meta.json
+        # The Linux repositories' index entries for these packages
+        # (docs/plan/linux-repos.md). Here rather than in the linux job, which
+        # builds one architecture at a time.
+        run: bash src/packaging/linux/repo-meta.sh "$VERSION" dist
       - name: Check the release set and write checksums
         run: bash src/packaging/release-checksums.sh dist "$VERSION"
       - uses: actions/setup-go@v7
@@ -468,6 +512,38 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Install apt-ftparchive, createrepo_c and rpmsign
+        timeout-minutes: 10
+        uses: ./src/.github/actions/apt-install
+        with:
+          packages: apt-utils createrepo-c rpm-common rpm
+      - name: Sign the .rpm packages
+        # dnf checks each package against the RPM key, and rpm 6 (Fedora 45)
+        # will not install an unsigned one with rpm -i
+        # (docs/plan/linux-repos-keys.md). Signing rewrites each header, so
+        # it comes before repo-meta.json and the checksums. It runs here, not
+        # in the linux job that builds them: the key is a secret of the
+        # release environment, as MINISIGN_KEY is, and is kept away from the
+        # build's npm and Go code. A release fails without it; a manual run
+        # warns and leaves the packages unsigned.
+        env:
+          PUBLISH: ${{ needs.version.outputs.publish }}
+          RPM_SIGNING_KEY: ${{ secrets.RPM_SIGNING_KEY }}
+        run: |
+          if [ -z "$RPM_SIGNING_KEY" ]; then
+            if [ "$PUBLISH" = true ]; then
+              echo "::error::RPM_SIGNING_KEY is not set in the release environment. The repositories' .repo file sets gpgcheck=1, so dnf would refuse unsigned packages."
+              exit 1
+            fi
+            echo "::warning::RPM_SIGNING_KEY is not set in the release environment: the .rpm packages stay unsigned"
+            exit 0
+          fi
+          bash src/packaging/linux/sign-rpms.sh dist
+      - name: Write repo-meta.json
+        # The Linux repositories' index entries for these packages
+        # (docs/plan/linux-repos.md). Here rather than in the linux job, which
+        # builds one architecture at a time.
+        run: bash src/packaging/linux/repo-meta.sh "$VERSION" dist
       - name: Check the release set and write checksums
         # The servers' own SHA256SUMS is verified, then replaced by one over
         # every asset.
@@ -530,3 +606,24 @@ jobs:
       version: ${{ needs.version.outputs.version }}
     secrets:
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+
+  # The Linux repositories: the website reads the stable release just
+  # published from GitHub, checks it and rebuilds its apt and dnf
+  # repositories. Only the tag is sent. If this fails, the release stays
+  # published and the website's hourly cron adds it.
+  linux-repos:
+    if: needs.version.outputs.publish == 'true' && !contains(needs.version.outputs.version, '-')
+    needs: [version, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: packaging/linux/notify-ingest.sh
+          sparse-checkout-cone-mode: false
+      - name: Ask the website to record the release
+        env:
+          LINUX_REPOS_TOKEN: ${{ secrets.LINUX_REPOS_TOKEN }}
+          SITE: ${{ vars.LINUX_REPOS_SITE || 'https://agent-sessions.ginklab.cv' }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: bash packaging/linux/notify-ingest.sh "$SITE" "$TAG"

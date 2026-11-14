@@ -42,6 +42,9 @@ type Info struct {
 	// Available is set when Latest is newer than Current. A build without a
 	// release version ("dev") never has an update.
 	Available bool `json:"available"`
+	// Install says how a Linux install gets updates (InstallAptRepo, ...).
+	// It is empty on other systems.
+	Install string `json:"install,omitempty"`
 	// Release is the verified installer for this platform. It is set only
 	// when the answer came from the signed feed, and is not sent to the UI.
 	Release *Release `json:"-"`

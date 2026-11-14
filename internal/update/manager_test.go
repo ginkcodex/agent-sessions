@@ -256,6 +256,10 @@ func TestFinishFailingToApplyLeavesTheAppToRestartItself(t *testing.T) {
 	if e.M.Finish(true) {
 		t.Fatal("Finish claimed an install that failed")
 	}
+	// The next launch offers the release page instead of failing again.
+	if !e.M.Store.GaveUp("1.6.0") {
+		t.Fatal("a failed install was not recorded")
+	}
 }
 
 func TestFinishRefusesAChangedInstaller(t *testing.T) {

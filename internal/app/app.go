@@ -387,6 +387,9 @@ func (a *App) CheckForUpdate() (update.Info, error) {
 		checker = update.NewChecker()
 	}
 	info, err := checker.Check(a.appCtx(), version.Current())
+	if err == nil && installMethod != nil {
+		info.Install = installMethod()
+	}
 	if err == nil && a.updater != nil {
 		a.updater.Offer(info)
 	}

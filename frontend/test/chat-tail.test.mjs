@@ -249,6 +249,24 @@ test("reconcile drops a whole ended turn once its last message is saved: Codex's
   assert.deepEqual(t.items.map((i) => [i.turn, i.type, i.text ?? '']), [[2, 'text', 'again'], [2, 'text', 'Working']]);
 });
 
+test('reconcile drops thoughts and compactions before the last saved item of a running turn', () => {
+  const compact = (id) => ({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Compact conversation', kind: 'think', status: 'completed' });
+  const t = apply(
+    turn('go'),
+    chunk('agent_thought_chunk', 'a', 'm1'),
+    compact('c1'),
+    chunk('agent_thought_chunk', 'b', 'm2'),
+    { sessionUpdate: 'tool_call', toolCallId: 'toolu_1', title: 'Bash', kind: 'execute', status: 'in_progress' },
+    compact('c2'),
+    chunk('agent_thought_chunk', 'c', 'm3'),
+  );
+  // Claude saves a thinking block empty, so no saved part stands for a thought.
+  const saved = [msg('u1', 'user', [{ kind: 'text', text: 'go' }]), msg('m2', 'assistant', [{ kind: 'tool', tool: { id: 'toolu_1', name: 'Bash', status: 'pending' } }])];
+  assert.deepEqual(reconcile(t, saved).items.map((i) => i.toolCallId ?? i.messageId), ['toolu_1', 'c2', 'm3']);
+  // Nothing saved yet: nothing is dropped.
+  assert.equal(reconcile(t, [saved[0]]).items.length, t.items.length - 1);
+});
+
 test('reconcile drops a prompt once a saved user message has its text, not an older one', () => {
   const sentAt = Date.parse('2026-11-11T10:00:00Z');
   const t = beginTurn(emptyTail(), { text: 'continue', sentAt });

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 )
@@ -18,7 +19,61 @@ const (
 	// starts the helper as it exits, so this only matters when it hangs.
 	applyTimeout = 2 * time.Minute
 	helperPrefix = "agent-sessions-apply-"
+	// helperDirName is the folder in the updates folder that holds the
+	// helper's copy of the app. It is not a version, so the store's cleanup
+	// leaves it alone.
+	helperDirName = "helper"
+	// helperStartTimeout is how long StartApply waits for the helper to say
+	// it is running before it gives up and reports that no installer took
+	// over.
+	helperStartTimeout = 20 * time.Second
+	// helperReady is what the helper writes to its notify pipe once it runs.
+	helperReady = "ok\n"
 )
+
+// awaitHelper waits up to timeout for the started helper cmd to write
+// helperReady to pr, the read end of its notify pipe, and then lets the
+// process go. A helper that exits, closes the pipe or stays silent is killed,
+// reaped and reported: the app must not quit counting on it.
+func awaitHelper(cmd *exec.Cmd, pr *os.File, timeout time.Duration) error {
+	got := make(chan error, 1)
+	go func() {
+		buf := make([]byte, len(helperReady))
+		_, err := io.ReadFull(pr, buf)
+		if err == nil && string(buf) != helperReady {
+			err = fmt.Errorf("unexpected report %q", buf)
+		}
+		got <- err
+	}()
+	var readErr error
+	select {
+	case readErr = <-got:
+		if readErr == nil {
+			return cmd.Process.Release()
+		}
+	case <-time.After(timeout):
+		readErr = os.ErrDeadlineExceeded
+	}
+	_ = cmd.Process.Kill()
+	waitErr := cmd.Wait()
+	switch {
+	case errors.Is(readErr, os.ErrDeadlineExceeded):
+		return fmt.Errorf("the update helper did not start within %s", timeout)
+	case waitErr != nil:
+		return fmt.Errorf("the update helper did not start: %w", waitErr)
+	default:
+		return errors.New("the update helper did not start")
+	}
+}
+
+// reportStarted tells the app that started this helper that it runs, on the
+// inherited pipe fd, and closes it.
+func reportStarted(fd uintptr) {
+	if f := os.NewFile(fd, "notify"); f != nil {
+		_, _ = f.WriteString(helperReady)
+		_ = f.Close()
+	}
+}
 
 // ErrStillRunning means the app did not quit in time, so the helper left the
 // installed app alone. It is not a failed update: the next quit tries again.
@@ -72,10 +127,12 @@ func (s *Swap) Run(ctx context.Context) error {
 	if err := s.WaitExit(ctx); err != nil {
 		return fmt.Errorf("%w: %v", ErrStillRunning, err)
 	}
+	// The app has quit. Until the installed bundle is moved aside, a failure
+	// leaves it as it was, and a restart opens it again (reopen).
 	if s.Lock != nil {
 		unlock, err := s.Lock(ctx)
 		if err != nil {
-			return fmt.Errorf("lock the updates folder: %w", err)
+			return s.reopen(ctx, fmt.Errorf("lock the updates folder: %w", err))
 		}
 		defer unlock()
 	}
@@ -90,17 +147,17 @@ func (s *Swap) Run(ctx context.Context) error {
 		}
 	}
 	if err := s.Mac.Eligible(ctx); err != nil {
-		return err
+		return s.reopen(ctx, err)
 	}
 	if err := s.Mac.verify(ctx, staged, s.Version, true); err != nil {
-		return err
+		return s.reopen(ctx, err)
 	}
 	if err := os.RemoveAll(backup); err != nil {
-		return fmt.Errorf("clear an old backup: %w", err)
+		return s.reopen(ctx, fmt.Errorf("clear an old backup: %w", err))
 	}
 
 	if err := s.move(bundle, backup); err != nil {
-		return fmt.Errorf("move the installed app aside: %w", err)
+		return s.reopen(ctx, fmt.Errorf("move the installed app aside: %w", err))
 	}
 	if err := s.move(staged, bundle); err != nil {
 		err = fmt.Errorf("put the new app in place: %w", err)
@@ -116,6 +173,17 @@ func (s *Swap) Run(ctx context.Context) error {
 		s.logf("remove the old app %s: %v", backup, err) // the update itself worked
 	}
 	return nil
+}
+
+// reopen, in a restart, opens the installed app that a failed update left
+// in place, then returns cause. The user asked for the app back and gets it.
+func (s *Swap) reopen(ctx context.Context, cause error) error {
+	if s.Relaunch && exists(s.Mac.Bundle) {
+		if err := s.Launch(ctx, s.Mac.Bundle); err != nil {
+			s.logf("open the app: %v", err)
+		}
+	}
+	return cause
 }
 
 // rollback puts the old app back and, in a restart, opens it, then returns

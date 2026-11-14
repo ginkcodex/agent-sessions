@@ -307,7 +307,12 @@ const PROMPT_CLOCK_SLACK_MS = 60_000;
  *   covers tool calls the agent saves under other IDs (Codex) and plans;
  * - every item of a turn before one the saved messages reach by ID. An agent
  *   saves turns in order, so what an earlier turn left unsaved (a cancelled
- *   reply, a failed prompt) never will be, and would show out of order.
+ *   reply, a failed prompt) never will be, and would show out of order;
+ * - within a turn, the thoughts and compactions before the last item the
+ *   saved messages reach by ID. Claude saves a thinking block without its
+ *   text and never saves a compaction as a tool call, so neither matches a
+ *   saved part, and in a long turn they would pile up under the saved
+ *   messages for as long as the turn runs.
  */
 export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
   if (tail.items.length === 0 || saved.length === 0) return tail;
@@ -375,8 +380,26 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
     if (id && (tool ? tools.has(id) : byId.has(id))) reached = it.turn;
   }
 
-  const items = tail.items.filter((it, i) => it.turn >= reached && !savedTurns.has(it.turn) && !covered(it, i));
+  // The last item the saved messages reach by an agent's own ID. The agent
+  // saved everything it streamed before that item, in order.
+  let anchor = -1;
+  tail.items.forEach((it, i) => {
+    if (it.type === 'tool') {
+      if (tools.has(it.toolCallId)) anchor = i;
+    } else if ((it.type === 'text' || it.type === 'thought') && it.messageId && byId.has(savedMessageId(it.messageId))) {
+      anchor = i;
+    }
+  });
+  const unsaved = (it: TailItem, i: number) => i < anchor && (it.type === 'thought' || (it.type === 'tool' && isCompaction(it)));
+
+  const items = tail.items.filter((it, i) => it.turn >= reached && !savedTurns.has(it.turn) && !covered(it, i) && !unsaved(it, i));
   return items.length === tail.items.length ? tail : { ...tail, items };
+}
+
+// The adapters report a context compaction as a tool call of this title
+// (kind think); the saved transcript has it as a compaction part instead.
+function isCompaction(t: TailTool): boolean {
+  return t.kind === 'think' && t.title === 'Compact conversation';
 }
 
 function hasPart(m: Message | undefined, kind: 'text' | 'reasoning'): boolean {
