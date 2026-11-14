@@ -19,6 +19,7 @@
   import { manualBashMessage, manualBashMarkdown } from '../../manualBash';
   import ReasoningPart from './parts/ReasoningPart.svelte';
   import ToolPart from './parts/ToolPart.svelte';
+  import type { ToolFileTarget } from '../../toolPresentation';
   import PatchPart from './parts/PatchPart.svelte';
   import CompactionPart from './parts/CompactionPart.svelte';
   import NoticePart from './parts/NoticePart.svelte';
@@ -40,6 +41,8 @@
     /** Drops the search result's exception, so the message follows the display level again. */
     onResetLevel?: () => void;
     onFileLink?: (value: string) => void;
+    /** Opens the file a tool call reads or changes. */
+    onOpenFile?: (target: ToolFileTarget) => void;
     /** Runs a shell block of the assistant's text in a terminal tab. */
     onRunCommand?: (command: string) => void;
   }
@@ -54,6 +57,7 @@
     searchParts = [],
     onResetLevel,
     onFileLink,
+    onOpenFile,
     onRunCommand,
   }: Props = $props();
 
@@ -265,7 +269,7 @@
             {:else if part.kind === 'reasoning' && part.text}
               <ReasoningPart text={part.text} {onFileLink} defaultExpanded={searchKind === 'reasoning' || matchedParts.has(part)} />
             {:else if part.kind === 'tool' && part.tool}
-              <ToolPart tool={part.tool} {sessionRef} defaultExpanded={searchKind === 'tool' || matchedParts.has(part)} />
+              <ToolPart tool={part.tool} {sessionRef} {onOpenFile} defaultExpanded={searchKind === 'tool' || matchedParts.has(part)} />
             {:else if part.kind === 'patch'}
               <PatchPart files={part.files} text={part.text} />
             {:else if part.kind === 'compaction'}

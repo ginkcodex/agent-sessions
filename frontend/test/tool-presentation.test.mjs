@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readableToolOutput, toolOutputPreview, toolInputSummary } from '../src/lib/toolPresentation.ts';
+import { readableToolOutput, toolOutputPreview, toolInputSummary, toolFileTarget } from '../src/lib/toolPresentation.ts';
 import { render } from 'svelte/server';
 import { loadServerComponent } from './helpers.mjs';
 
@@ -59,4 +59,34 @@ test('long outputs are bounded; search expansion renders the landing text', () =
   const expanded = render(tool.default, { props: { ...longProps, defaultExpanded: true } }).body;
   assert.ok(expanded.includes('line 49'));
   assert.ok(!expanded.includes('Show more output'));
+});
+
+test('file tools name their file; other tools and directories do not', () => {
+  // Claude Code, OpenCode, notebooks and JSON-string input.
+  assert.deepEqual(toolFileTarget('Edit', { file_path: '/w/docs/plan.md', old_string: 'a' }), { path: '/w/docs/plan.md' });
+  assert.deepEqual(toolFileTarget('write', { filePath: 'src/main.go' }), { path: 'src/main.go' });
+  assert.deepEqual(toolFileTarget('NotebookEdit', { notebook_path: 'a.ipynb' }), { path: 'a.ipynb' });
+  assert.deepEqual(toolFileTarget('Write', '{"file_path":"b.ts"}'), { path: 'b.ts' });
+  // Any tool whose input names a file_path, such as an ACP title.
+  assert.deepEqual(toolFileTarget('Read main.go', { file_path: 'main.go' }), { path: 'main.go' });
+  // A generic path is a file only for file tools.
+  assert.deepEqual(toolFileTarget('read', { path: 'a.txt' }), { path: 'a.txt' });
+  assert.equal(toolFileTarget('Grep', { path: 'src', pattern: 'x' }), null);
+  assert.equal(toolFileTarget('Glob', { path: '/w', pattern: '*.go' }), null);
+  assert.equal(toolFileTarget('Bash', { command: 'cat a.txt' }), null);
+  // Nothing to open.
+  for (const input of [undefined, null, 'not json', [], { file_path: '' }, { file_path: '  ' }, { file_path: 3 },
+    { file_path: 'docs/' }, { file_path: 'C:\\w\\' }, { file_path: 'a\nb' }]) {
+    assert.equal(toolFileTarget('Edit', input), null, JSON.stringify(input));
+  }
+});
+
+test('Read opens at its offset; the path is never URI-decoded', () => {
+  assert.deepEqual(toolFileTarget('Read', { file_path: 'a.go', offset: 120, limit: 40 }), { path: 'a.go', line: 120 });
+  for (const offset of [0, -3, 1.5, '12']) {
+    assert.deepEqual(toolFileTarget('Read', { file_path: 'a.go', offset }), { path: 'a.go' });
+  }
+  // OpenCode's read may count from 0, so only Claude Code's Read gets a line.
+  assert.deepEqual(toolFileTarget('read', { filePath: 'a.go', offset: 120 }), { path: 'a.go' });
+  assert.deepEqual(toolFileTarget('Edit', { file_path: 'docs/100%25 done.md' }), { path: 'docs/100%25 done.md' });
 });
