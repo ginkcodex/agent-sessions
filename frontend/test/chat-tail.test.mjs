@@ -280,6 +280,25 @@ test('reconcile drops a prompt once a saved user message has its text, not an ol
   assert.equal(reconcile(replayed, [msg('u7', 'user', [{ kind: 'text', text: 'other' }])]).items.length, 0);
 });
 
+test('reconcile matches a command typed by its short name to the full name it is saved under', () => {
+  const sentAt = Date.parse('2026-11-11T10:00:00Z');
+  const at = '2026-11-11T10:00:01Z';
+  const user = (text) => [msg('u1', 'user', [{ kind: 'text', text }], at)];
+  const left = (typed, saved) => reconcile(beginTurn(emptyTail(), { text: typed, sentAt }), user(saved)).items.length;
+  assert.equal(left('/ponytail full', '/ponytail:ponytail full'), 0);
+  assert.equal(left('/ponytail', '/ponytail:ponytail'), 0);
+  assert.equal(left('/ponytail:ponytail full', '/ponytail:ponytail full'), 0);
+  assert.equal(left('$sites', '$sites:sites'), 0);
+  assert.equal(left('/understand how\nit works', '/understand-anything:understand how\nit works'), 0);
+  // Another command, other arguments, another sigil or a different full name are other prompts.
+  assert.equal(left('/ponytail full', '/ponytail:ponytail lite'), 1);
+  assert.equal(left('/ponytail full', '/ponytail:ponytail'), 1);
+  assert.equal(left('/tail', '/ponytail:ponytail'), 1);
+  assert.equal(left('/ponytail', '$ponytail:ponytail'), 1);
+  assert.equal(left('/a:ponytail', '/b:ponytail'), 1);
+  assert.equal(left('ponytail', 'x:ponytail'), 1);
+});
+
 test('sequence applies events in seq order and drops duplicates and old ones', () => {
   const ev = (seq) => ({ seq });
   let s = newSequence(1);

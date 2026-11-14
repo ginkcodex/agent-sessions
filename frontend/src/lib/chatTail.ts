@@ -307,7 +307,8 @@ const PROMPT_CLOCK_SLACK_MS = 60_000;
  *   they are complete (something follows them, or their turn ended);
  * - tool calls saved under the same ID, once they have a result or their
  *   turn ended;
- * - a prompt sent from this window, once a saved user message has its text;
+ * - a prompt sent from this window, once a saved user message has its text
+ *   (a plugin command may be saved under its full name);
  * - a question's outcome, once the tool call that asked is saved;
  * - every item of an ended turn whose last agent message is saved. This
  *   covers tool calls the agent saves under other IDs (Codex) and plans;
@@ -348,7 +349,7 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
           const text = it.text.trim();
           // A prompt of only files waits for its turn to be saved.
           if (!text) return false;
-          return prompts.some((p) => p.text === text && (Number.isNaN(p.time) || it.sentAt === undefined || p.time >= it.sentAt - PROMPT_CLOCK_SLACK_MS));
+          return prompts.some((p) => samePrompt(p.text, text) && (Number.isNaN(p.time) || it.sentAt === undefined || p.time >= it.sentAt - PROMPT_CLOCK_SLACK_MS));
         }
         if (!it.messageId || !complete(i)) return false;
         return hasPart(byId.get(savedMessageId(it.messageId)), 'text');
@@ -400,6 +401,21 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
 
   const items = tail.items.filter((it, i) => it.turn >= reached && !savedTurns.has(it.turn) && !covered(it, i) && !unsaved(it, i));
   return items.length === tail.items.length ? tail : { ...tail, items };
+}
+
+const COMMAND = /^([/$]\S+)([\s\S]*)$/;
+
+/**
+ * Whether a saved prompt is the one typed. Claude saves a plugin command
+ * typed by its short name under its full one: "/ponytail full" is saved as
+ * "/ponytail:ponytail full". The arguments must match exactly.
+ */
+function samePrompt(saved: string, typed: string): boolean {
+  if (saved === typed) return true;
+  const t = COMMAND.exec(typed);
+  const s = COMMAND.exec(saved);
+  if (!t || !s || t[1].includes(':') || t[2].trim() !== s[2].trim()) return false;
+  return s[1][0] === t[1][0] && s[1].endsWith(':' + t[1].slice(1));
 }
 
 // The adapters report a context compaction as a tool call of this title
