@@ -1,7 +1,7 @@
 # Review fixes — tasks
 
 - **Plan:** [review-fixes.md](../../plan/review-fixes.md)
-- **Progress:** 5/25 done
+- **Progress:** 6/25 done
 
 From the architecture and feature review of 2026-11-14. RF-01 to RF-10 are
 security and privacy; RF-11 to RF-23 are reliability; RF-24 and RF-25 are CI
@@ -20,7 +20,7 @@ and docs.
 | [RF-09](RF-09.md) | ⬜ Not started | Redact manifest fields; key/value pairs in JSON; Windows home paths | 3 h | None |
 | [RF-10](RF-10.md) | ⬜ Not started | `openURL` stops falling back after a refusal; `http://` refused for keyed endpoints | 1.5 h | None |
 | [RF-11](RF-11.md) | ✅ Done | Decode the reply ID as an integer, not `any` | 1 h | None |
-| [RF-12](RF-12.md) | ⬜ Not started | Anchor missing roots at their provider's base directory, non-recursively | 2.5 h | None |
+| [RF-12](RF-12.md) | ✅ Done | Watch a missing root's nearest directory only for the root's creation; no trees outside recursive roots | 2.5 h | None |
 | [RF-13](RF-13.md) | ⬜ Not started | Per-provider fallback, `ErrEventOverflow` rescan, retry re-installing watches | 3 h | RF-12 |
 | [RF-14](RF-14.md) | ⬜ Not started | One running scan plus a dirty flag per provider; `Close` waits for refreshes | 3.5 h | None |
 | [RF-15](RF-15.md) | ⬜ Not started | An unreadable source keeps its previous state; it neither blocks the provider nor drops sessions | 3 h | None |

@@ -117,13 +117,16 @@ type providerState struct {
 	nextPoll time.Time
 	fallback bool
 	watched  map[string]struct{}
-	roots    []watchRoot
+	// anchors are directories watched only for the creation of a missing
+	// root: the nearest one that exists, such as $HOME without ~/.codex.
+	// Nothing under them is watched or rescanned for.
+	anchors map[string]struct{}
+	roots   []watchRoot
 }
 
 type watchRoot struct {
 	path      string
 	recursive bool
-	anchor    string
 }
 
 type fsWatcher interface {
@@ -181,6 +184,7 @@ func New(providers provider.Set, onChange func(Change), opts ...Option) (*Watche
 			provider: p,
 			pending:  make(map[string]struct{}),
 			watched:  make(map[string]struct{}),
+			anchors:  make(map[string]struct{}),
 		}
 	}
 
@@ -317,10 +321,21 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 		if state == nil || state.fallback {
 			continue
 		}
+		if !w.watchesLocked(state, path) {
+			w.anchorEventLocked(state, path, event.Op, now)
+			continue
+		}
 
 		isDir := false
 		if event.Op&(fsnotify.Create|fsnotify.Rename) != 0 {
 			if info, err := os.Stat(path); err == nil && info.IsDir() {
+				// In a non-recursive root (the folder of Codex's or
+				// OpenCode's database) a new directory is no tree to watch;
+				// it matters only on the way to a missing root.
+				if !w.inRecursiveRootLocked(state, path) {
+					w.rootCreatedLocked(state, path, now)
+					continue
+				}
 				isDir = true
 				if err := w.addTreeLocked(state, path); err != nil {
 					w.setFallbackLocked(state, now)
@@ -335,6 +350,12 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 		if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
 			wasWatchedDir = w.isWatchedDirLocked(state, path)
 			w.forgetTreeLocked(state, path)
+			// A removed root, or a directory above one, leaves an anchor
+			// that sees the root come back.
+			if wasWatchedDir && !w.reinstallRootsUnderLocked(state, path) {
+				w.setFallbackLocked(state, now)
+				continue
+			}
 		}
 		if isDir || wasWatchedDir {
 			w.queueLocked(state, nil, true, now)
@@ -388,17 +409,98 @@ func (w *Watcher) installRootLocked(state *providerState, root watchRoot) error 
 	case err == nil:
 		return w.addDirLocked(state, filepath.Dir(root.path))
 	case errors.Is(err, fs.ErrNotExist):
-		anchor := root.anchor
-		if anchor == "" {
-			anchor = nearestExistingDir(root.path)
-		}
+		anchor := nearestExistingDir(root.path)
 		if anchor == "" {
 			return nil
 		}
-		return w.addDirLocked(state, anchor)
+		return w.addAnchorLocked(state, anchor)
 	default:
 		return err
 	}
+}
+
+// watchesLocked reports whether path is in or directly under a directory
+// state watches as part of a root, rather than only as an anchor.
+func (w *Watcher) watchesLocked(state *providerState, path string) bool {
+	_, self := state.watched[path]
+	_, parent := state.watched[filepath.Dir(path)]
+	return self || parent
+}
+
+// anchorEventLocked handles an event in an anchor directory. Only the
+// creation of a directory on the way to a missing root counts: that root is
+// installed again, which watches it (and rescans) once it exists, or watches
+// the deeper anchor. Anything else under an anchor, such as a new project
+// directory in $HOME, is ignored.
+func (w *Watcher) anchorEventLocked(state *providerState, path string, op fsnotify.Op, now time.Time) {
+	if op&(fsnotify.Create|fsnotify.Rename) == 0 {
+		return
+	}
+	if _, ok := state.anchors[filepath.Dir(path)]; !ok {
+		return
+	}
+	w.rootCreatedLocked(state, path, now)
+}
+
+// inRecursiveRootLocked reports whether path is a recursive root or inside
+// one.
+func (w *Watcher) inRecursiveRootLocked(state *providerState, path string) bool {
+	for _, root := range state.roots {
+		if root.recursive && (path == root.path || strings.HasPrefix(path, root.path+string(filepath.Separator))) {
+			return true
+		}
+	}
+	return false
+}
+
+// rootCreatedLocked installs each root at or below a directory that just
+// appeared, and rescans once one exists.
+func (w *Watcher) rootCreatedLocked(state *providerState, path string, now time.Time) {
+	prefix := path + string(filepath.Separator)
+	for _, root := range state.roots {
+		if root.path != path && !strings.HasPrefix(root.path, prefix) {
+			continue
+		}
+		if err := w.installRootLocked(state, root); err != nil {
+			w.setFallbackLocked(state, now)
+			return
+		}
+		if _, err := os.Stat(root.path); err == nil {
+			w.queueLocked(state, nil, true, now)
+		}
+	}
+}
+
+// reinstallRootsUnderLocked installs again each root at or below a removed
+// path, so a missing root gets its anchor. It reports false on a watch
+// error.
+func (w *Watcher) reinstallRootsUnderLocked(state *providerState, removed string) bool {
+	prefix := removed + string(filepath.Separator)
+	for _, root := range state.roots {
+		if root.path != removed && !strings.HasPrefix(root.path, prefix) {
+			continue
+		}
+		if err := w.installRootLocked(state, root); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// addAnchorLocked watches dir as an anchor for state.
+func (w *Watcher) addAnchorLocked(state *providerState, dir string) error {
+	dir, ok := absoluteClean(dir)
+	if !ok {
+		return nil
+	}
+	if _, exists := state.anchors[dir]; exists {
+		return nil
+	}
+	if err := w.watchPathLocked(state, dir); err != nil {
+		return err
+	}
+	state.anchors[dir] = struct{}{}
+	return nil
 }
 
 func (w *Watcher) addTreeLocked(state *providerState, root string) error {
@@ -421,13 +523,22 @@ func (w *Watcher) addDirLocked(state *providerState, path string) error {
 	if _, exists := state.watched[path]; exists {
 		return nil
 	}
+	if err := w.watchPathLocked(state, path); err != nil {
+		return err
+	}
+	state.watched[path] = struct{}{}
+	return nil
+}
+
+// watchPathLocked adds path to the filesystem watcher and records state as
+// one of its owners.
+func (w *Watcher) watchPathLocked(state *providerState, path string) error {
 	if w.fs == nil {
 		return errors.New("watch: filesystem watcher unavailable")
 	}
 	if err := w.fs.Add(path); err != nil {
 		return err
 	}
-	state.watched[path] = struct{}{}
 	owners := w.pathOwner[path]
 	if owners == nil {
 		owners = make(map[model.AgentID]struct{})
@@ -439,16 +550,29 @@ func (w *Watcher) addDirLocked(state *providerState, path string) error {
 
 func (w *Watcher) forgetTreeLocked(state *providerState, path string) {
 	prefix := path + string(filepath.Separator)
-	for watched := range state.watched {
-		if watched != path && !strings.HasPrefix(watched, prefix) {
-			continue
+	for _, set := range []map[string]struct{}{state.watched, state.anchors} {
+		for watched := range set {
+			if watched != path && !strings.HasPrefix(watched, prefix) {
+				continue
+			}
+			delete(set, watched)
+			w.disownLocked(state, watched)
 		}
-		delete(state.watched, watched)
-		owners := w.pathOwner[watched]
-		delete(owners, state.provider.ID())
-		if len(owners) == 0 {
-			delete(w.pathOwner, watched)
-		}
+	}
+}
+
+// disownLocked drops state as an owner of path, unless state still watches
+// it as a root directory or an anchor.
+func (w *Watcher) disownLocked(state *providerState, path string) {
+	_, watched := state.watched[path]
+	_, anchor := state.anchors[path]
+	if watched || anchor {
+		return
+	}
+	owners := w.pathOwner[path]
+	delete(owners, state.provider.ID())
+	if len(owners) == 0 {
+		delete(w.pathOwner, path)
 	}
 }
 
@@ -475,17 +599,20 @@ func (w *Watcher) setFallbackLocked(state *providerState, now time.Time) {
 	}
 	state.fallback = true
 	state.nextPoll = now.Add(w.options.fallbackPoll)
-	for path := range state.watched {
-		owners := w.pathOwner[path]
-		delete(owners, state.provider.ID())
-		if len(owners) == 0 {
-			delete(w.pathOwner, path)
-			if w.fs != nil {
-				_ = w.fs.Remove(path)
+	for _, set := range []map[string]struct{}{state.watched, state.anchors} {
+		for path := range set {
+			owners := w.pathOwner[path]
+			delete(owners, state.provider.ID())
+			if len(owners) == 0 {
+				delete(w.pathOwner, path)
+				if w.fs != nil {
+					_ = w.fs.Remove(path)
+				}
 			}
 		}
 	}
 	clear(state.watched)
+	clear(state.anchors)
 	w.signalWake()
 }
 
