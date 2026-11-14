@@ -1,7 +1,7 @@
 # Chat MCP and plugin commands — tasks
 
 - **Plan:** [chat-plugin-commands.md](../../plan/chat-plugin-commands.md)
-- **Progress:** 6/9 done
+- **Progress:** 7/10 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -9,8 +9,9 @@
 | [CPC-02](CPC-02.md) | ✅ Done | Validate provider inventory contracts and command/log shapes | 2 h | CPC-01 |
 | [CPC-03](CPC-03.md) | ✅ Done | Retain ACP command capabilities across setup, replay and reattach | 3 h | CPC-02 |
 | [CPC-04](CPC-04.md) | ✅ Done | Read-only agent/host MCP and plugin inventory backend | 4 h | CPC-02 |
-| [CPC-05](CPC-05.md) | ⬜ Not started | Inventory UI and plugin command selection in the composer | 4 h | CPC-03, CPC-04 |
+| [CPC-05](CPC-05.md) | ✅ Done | Command picker in the composer, with `/mcp` and plugin commands | 4 h | CPC-03, CPC-04 |
 | [CPC-06](CPC-06.md) | ✅ Done | Normalize explicit plugin invocations in saved Claude transcripts | 3 h | CPC-02 |
 | [CPC-07](CPC-07.md) | ✅ Done | Keep live invocations visible once across echo and saved reconciliation | 3 h | CPC-03, CPC-06 |
-| [CPC-08](CPC-08.md) | ⬜ Not started | Cross-provider, desktop and remote QA | 3 h | CPC-05, CPC-07 |
+| [CPC-08](CPC-08.md) | ⬜ Not started | Cross-provider, desktop and remote QA | 3 h | CPC-05, CPC-07, CPC-10 |
 | [CPC-09](CPC-09.md) | ⬜ Not started | O‍penCode MCP and plugin inventory once a machine-readable interface exists | 2 h | CPC-04 |
+| [CPC-10](CPC-10.md) | ⬜ Not started | `/plugin` inventory panel | 3 h | CPC-04, CPC-05 |

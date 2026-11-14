@@ -5,6 +5,7 @@ import {
   addAttachments,
   canSendPrompt,
   chatAgentAvailable,
+  commandChoices,
   endChatQuestion,
   MAX_CHAT_ATTACHMENTS,
   pendingChatMeta,
@@ -134,6 +135,30 @@ test('a permission request shows its command or diff, and its options by kind in
   assert.equal(argv.title, 'A tool call');
   assert.deepEqual(argv.choices, []);
   assert.equal(permissionView({ id: 'p3', toolCall: { toolCallId: 't3', rawInput: { command: 'make test' } } }).command, 'make test');
+});
+
+test('commandChoices lists the commands a / or $ word could name, by full or short name', () => {
+  const commands = [
+    { name: 'mcp', description: 'MCP status', input: { hint: '[reconnect|enable|disable]' } },
+    { name: 'ponytail:ponytail', description: '(ponytail) Lazy', input: { hint: '[lite|full]' } },
+    { name: 'understand-anything:understand-chat', input: { hint: '<question>' } },
+    { name: 'understand-anything:understand', input: null },
+    { name: 'other:understand' },
+    { name: '$sites:sites', description: 'Sites' },
+  ];
+  const texts = (t) => commandChoices(commands, t).map((c) => c.text);
+  assert.deepEqual(texts('/'), ['/mcp', '/ponytail:ponytail ', '/understand-anything:understand-chat ', '/understand-anything:understand', '/other:understand']);
+  // A short name two plugins share lists both; the exact full name comes first.
+  assert.deepEqual(texts('/understand'), ['/understand-anything:understand-chat ', '/understand-anything:understand', '/other:understand']);
+  assert.deepEqual(texts('/understand-anything:understand'), ['/understand-anything:understand', '/understand-anything:understand-chat ']);
+  assert.deepEqual(texts('/PONY'), ['/ponytail:ponytail ']);
+  assert.deepEqual(texts('$s'), ['$sites:sites']);
+  // Not one command word: no list.
+  for (const t of ['', 'hi /mcp', '/mcp ', '/ponytail full', ' /mcp', '/nope']) assert.deepEqual(texts(t), [], t);
+  // /mcp's mutating arguments are not offered; other hints and descriptions are.
+  assert.deepEqual(commandChoices(commands, '/mc'), [{ text: '/mcp', description: 'MCP status', hint: '' }]);
+  assert.deepEqual(commandChoices(commands, '/ponytail:'), [{ text: '/ponytail:ponytail ', description: '(ponytail) Lazy', hint: '[lite|full]' }]);
+  assert.deepEqual(commandChoices([], '/'), []);
 });
 
 // --- Components ------------------------------------------------------------

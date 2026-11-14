@@ -7,6 +7,7 @@ import type {
   ChatAgent,
   ChatAttachment,
   ChatAttachResult,
+  ChatCommand,
   ChatConfigOption,
   ChatPlugins,
   ChatDraft,
@@ -84,6 +85,21 @@ export function mockAttachImage(name: string, data: string): ChatAttachment {
   const format = sniffImageFormat(data);
   if (!format) throw new Error(`${label}: is not a PNG, JPEG, GIF or WebP image`);
   return { kind: 'image', name: label, mimeType: `image/${format}`, size: base64Size(data), data };
+}
+
+/** What the adapters advertise: Claude's plugin commands, Codex's skills with $, and /mcp. */
+function mockCommands(agent: AgentID): ChatCommand[] {
+  const mcp: ChatCommand = { name: 'mcp', description: 'Show MCP server status', input: { hint: '[reconnect|enable|disable [<server>|all]]' } };
+  if (agent === 'claude') {
+    return [
+      mcp,
+      { name: 'ponytail:ponytail', description: '(ponytail) Lazy senior developer mode', input: { hint: '[lite|full|ultra|off]' } },
+      { name: 'understand-anything:understand', description: '(understand-anything) Build a knowledge graph of the project', input: null },
+      { name: 'understand-anything:understand-chat', description: '(understand-anything) Ask about the knowledge graph', input: { hint: '<question>' } },
+    ];
+  }
+  if (agent === 'codex') return [mcp, { name: '$sites:sites', description: 'Build and publish a site', input: null }];
+  return [];
 }
 
 function base64Size(data: string): number {
@@ -214,6 +230,7 @@ export class MockChats {
           { id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'mock-large', options: [{ value: 'mock-large', name: 'Mock Large' }, { value: 'mock-small', name: 'Mock Small' }] },
         ],
         promptCapabilities: { image: true, embeddedContext: true },
+        commands: mockCommands(req.agent),
         working: false,
         canQueue: true,
         canSteer: !this.noSteer.has(req.agent),

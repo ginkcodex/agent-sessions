@@ -1,6 +1,6 @@
 // What the chat UI shows: the live tail as transcript messages, and which
 // agents can chat. Every function here is pure.
-import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatPermission, ChatQueuedPrompt, Message, Part, SessionMeta, SessionRef, ToolStatus } from './types';
+import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatCommand, ChatPermission, ChatQueuedPrompt, Message, Part, SessionMeta, SessionRef, ToolStatus } from './types';
 import { toolOutput, type ChatTail, type TailAnswer, type TailDiff, type TailItem, type TailTool } from './chatTail';
 
 /**
@@ -241,6 +241,38 @@ export function skippedToast(skipped: ChatAttachResult['skipped']): { title: str
  */
 export function canSendPrompt(phase: string, sending: boolean, text: string, attachments: number, queues = false): boolean {
   return (phase === 'idle' || (phase === 'working' && queues)) && !sending && (text.trim() !== '' || attachments > 0);
+}
+
+/** A command the composer's picker offers: the text it inserts, and what the agent says of it. */
+export interface CommandChoice {
+  text: string;
+  description: string;
+  hint: string;
+}
+
+/**
+ * The agent's advertised commands that the composer's text, while it is one
+ * word after / or $ (Codex's skills), could name. A name matches by its start
+ * or by the part after its plugin prefix (/understand finds
+ * /understand-anything:understand), and every match is listed, so a short
+ * name two plugins share is the user's choice. An exact name comes first.
+ * The text inserted is the advertised name, with a space when it takes
+ * arguments.
+ */
+export function commandChoices(commands: readonly ChatCommand[], text: string): CommandChoice[] {
+  if (!/^[/$]\S*$/.test(text)) return [];
+  const q = text.toLowerCase();
+  const out: (CommandChoice & { exact: boolean })[] = [];
+  for (const c of commands) {
+    const full = c.name.startsWith('$') ? c.name : `/${c.name}`;
+    const colon = full.lastIndexOf(':');
+    const short = colon < 0 ? full : full[0] + full.slice(colon + 1);
+    if (!full.toLowerCase().startsWith(q) && !short.toLowerCase().startsWith(q)) continue;
+    // /mcp's arguments reconnect or turn servers off: the picker offers the listing only.
+    const args = !!c.input && c.name !== 'mcp';
+    out.push({ text: args ? `${full} ` : full, description: c.description ?? '', hint: args ? (c.input?.hint ?? '') : '', exact: full.toLowerCase() === q });
+  }
+  return out.sort((a, b) => Number(b.exact) - Number(a.exact)).map(({ exact: _, ...c }) => c);
 }
 
 /** "2 queued messages", the end questions' and the queue's way to count them. */

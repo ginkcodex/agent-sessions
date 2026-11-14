@@ -2,7 +2,7 @@
 
 - **Status:** ⬜ Not started
 - **Estimate:** 3 h
-- **Depends on:** CPC-05, CPC-07
+- **Depends on:** CPC-05, CPC-07, CPC-10
 - **Plan:** [chat-plugin-commands.md](../../plan/chat-plugin-commands.md)
 
 ## Scope

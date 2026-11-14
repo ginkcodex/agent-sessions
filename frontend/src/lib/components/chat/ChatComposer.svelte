@@ -6,11 +6,13 @@
   // pickers and a round send (or, while a turn runs, stop) button. Files
   // dropped on the card and images pasted into it are attached too. While
   // the agent works a message is queued, and the queue shows above the card.
+  // A / (or Codex's $) word lists the agent's commands above the card: Enter
+  // or Tab puts the chosen one in the text, and only sending runs it.
   import { onMount } from 'svelte';
   import type { Chat } from '../../stores/chats.svelte';
   import type { ChatAttachment, ChatAttachResult, ChatDraft } from '../../types';
   import { api } from '../../api';
-  import { addAttachments, canSendPrompt, endChatQuestion, skippedToast, switchToTerminalQuestion } from '../../chat';
+  import { addAttachments, canSendPrompt, commandChoices, endChatQuestion, skippedToast, switchToTerminalQuestion } from '../../chat';
   import AttachmentChips from './AttachmentChips.svelte';
   import { chats } from '../../stores/chats.svelte';
   import { toast } from '../../stores/toast.svelte';
@@ -53,6 +55,10 @@
   let endMenuRoot: HTMLDivElement | undefined = $state();
   let input: HTMLTextAreaElement | undefined = $state();
   let form: HTMLFormElement | undefined = $state();
+  let commandList: HTMLDivElement | undefined = $state();
+  // The highlighted command, and the text whose list Escape closed.
+  let active = $state(0);
+  let dismissed = $state<string | null>(null);
 
   let agentName = $derived(ALL_AGENTS.find((a) => a.id === chat.agent)?.label ?? chat.agent);
   let closed = $derived(chat.phase === 'exited');
@@ -75,6 +81,9 @@
           : `Message ${agentName}…`,
   );
   let hintId = $derived(`chat-hint-${chat.key}`);
+  let choices = $derived(chat.phase === 'starting' || closed ? [] : commandChoices(chat.commands ?? [], text));
+  let picking = $derived(choices.length > 0 && dismissed !== text);
+  let listId = $derived(`chat-commands-${chat.key}`);
   // WebKit (macOS and Linux) reads autocorrect on a textarea; Svelte's types
   // list it for inputs only.
   const SAFARI_NO_AUTOCORRECT: Record<string, string> = { autocorrect: 'off' };
@@ -86,6 +95,10 @@
   let usageTitle = $derived(
     usage ? `Context: ${usage.used.toLocaleString('en-US')} of ${usage.size.toLocaleString('en-US')} tokens in use` : '',
   );
+
+  $effect(() => {
+    commandList?.children[active]?.scrollIntoView?.({ block: 'nearest' });
+  });
 
   $effect(() => {
     const want = focus?.focusRequest ?? 0;
@@ -183,8 +196,37 @@
     });
   }
 
+  /** Puts a listed command in the text; nothing is sent. */
+  function choose(i: number): void {
+    text = choices[i].text;
+    dismissed = text;
+    input?.focus();
+  }
+
   function onKeydown(e: KeyboardEvent): void {
-    if (e.key !== 'Enter' || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return;
+    if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (picking) {
+      const n = choices.length;
+      const i = Math.min(active, n - 1);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        active = (i + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        dismissed = text;
+        return;
+      }
+      // Enter sends a command already typed in full; else it, as Tab, picks.
+      if ((e.key === 'Tab' || e.key === 'Enter') && !e.shiftKey && !(e.key === 'Enter' && choices[i].text === text)) {
+        e.preventDefault();
+        choose(i);
+        return;
+      }
+    }
+    if (e.key !== 'Enter' || e.shiftKey) return;
     e.preventDefault();
     void send();
   }
@@ -251,6 +293,27 @@
     <QueuedMessages {chat} {agentName} composerEmpty={empty} onEdit={edit} />
   {/if}
   <div class="card" class:disabled={chat.phase === 'starting' || closed}>
+    {#if picking}
+      <div class="commands" role="listbox" id={listId} aria-label="{agentName}'s commands" bind:this={commandList}>
+        {#each choices as c, i (c.text)}
+          <!-- The keys stay in the text box, which points at the highlighted option. -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <div
+            id="{listId}-{i}"
+            class="command"
+            class:active={i === Math.min(active, choices.length - 1)}
+            role="option"
+            tabindex="-1"
+            aria-selected={i === Math.min(active, choices.length - 1)}
+            onpointerdown={(e) => e.preventDefault()}
+            onclick={() => choose(i)}
+          >
+            <span class="command-name">{c.text.trimEnd()}</span>{#if c.hint}<span class="command-hint">{c.hint}</span>{/if}
+            {#if c.description}<span class="command-description">{c.description}</span>{/if}
+          </div>
+        {/each}
+      </div>
+    {/if}
     {#if attachments.length > 0}
       <AttachmentChips {attachments} onRemove={remove} />
     {/if}
@@ -261,12 +324,16 @@
       {placeholder}
       aria-label="Message to {agentName}"
       aria-describedby={hintId}
+      aria-autocomplete="list"
+      aria-controls={picking ? listId : undefined}
+      aria-activedescendant={picking ? `${listId}-${Math.min(active, choices.length - 1)}` : undefined}
       spellcheck="false"
       autocomplete="off"
       {...SAFARI_NO_AUTOCORRECT}
       autocapitalize="off"
       disabled={chat.phase === 'starting' || closed}
       onkeydown={onKeydown}
+      oninput={() => (active = 0)}
       onpaste={onPaste}
     ></textarea>
     <span id={hintId} class="sr-only"
@@ -364,12 +431,62 @@
     background: var(--bg-secondary);
     box-shadow: var(--shadow-card);
     box-sizing: border-box;
+    position: relative;
     transition: border-color var(--dur-fast) var(--ease-out);
   }
 
   .card:focus-within:not(.disabled),
   .chat-composer:global(.file-drop-target-active) .card {
     border-color: color-mix(in srgb, var(--accent-color) 55%, var(--border-strong));
+  }
+
+  /* The command list opens upward, over the transcript, as the end menu. */
+  .commands {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 100;
+    max-height: min(320px, 40vh);
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    box-shadow: var(--shadow-popover);
+  }
+
+  .command {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .command.active,
+  .command:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+  }
+
+  .command-name {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+  }
+
+  .command-hint,
+  .command-description {
+    color: var(--text-muted);
+  }
+
+  .command-description {
+    flex-basis: 100%;
+    font-size: 0.74rem;
   }
 
   textarea {

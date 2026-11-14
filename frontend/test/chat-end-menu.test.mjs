@@ -2,7 +2,8 @@
 // always, and Switch to terminal, which stops the chat and continues the
 // session in a terminal tab. The queued messages above the composer, with
 // Send now, Edit and Remove. Plus the opener's switch sequences, either
-// direction: to a terminal, and from a terminal pane to a chat.
+// direction: to a terminal, and from a terminal pane to a chat. And the
+// command list a / word opens, which inserts and never sends by itself.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -53,6 +54,7 @@ globalThis.__endMenu = {
   chats: {
     close: async (chatId) => calls.push(['close', chatId]),
     dismiss: (key) => calls.push(['dismiss', key]),
+    prompt: async (chatId, text) => calls.push(['prompt', chatId, text]),
     sendNow: async (chatId, id) => calls.push(['sendNow', chatId, id]),
     unqueue: async (chatId, id) => {
       calls.push(['unqueue', chatId, id]);
@@ -440,4 +442,84 @@ test('a session Codex still holds offers Try again, which starts the chat', asyn
       ['start', { agent: 'codex', dir: '/wip', resume: { agent: 'codex', id: 's1' }, questions: true }],
     ], 'the retry continues the session in the chat');
   });
+});
+
+test('a / word lists the agent\'s commands; choosing one inserts it and only sending runs it', async () => {
+  const commands = [
+    { name: 'mcp', description: 'MCP status', input: { hint: '[reconnect]' } },
+    { name: 'ponytail:ponytail', description: '(ponytail) Lazy', input: { hint: '[lite|full]' } },
+    { name: 'understand-anything:understand', input: null },
+    { name: 'other:understand', input: null },
+  ];
+  const c = await openComposer({ phase: 'idle', agent: 'claude', commands });
+  const box = c.target.querySelector('textarea');
+  const type = (value) => {
+    box.value = value;
+    box.dispatchEvent(new window.Event('input', { bubbles: true }));
+    flushSync();
+  };
+  const key = (k, init = {}) => {
+    const e = new window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init });
+    box.dispatchEvent(e);
+    flushSync();
+    return e;
+  };
+  const options = () => [...c.target.querySelectorAll('[role="option"]')].map((o) => o.querySelector('.command-name').textContent);
+  const selected = () => c.target.querySelector('[role="option"][aria-selected="true"] .command-name')?.textContent;
+
+  type('hello');
+  assert.deepEqual(options(), [], 'no list for a message');
+
+  // An ambiguous short name lists both plugins; nothing is picked by itself.
+  type('/understand');
+  assert.deepEqual(options(), ['/understand-anything:understand', '/other:understand']);
+  assert.equal(selected(), '/understand-anything:understand');
+  assert.equal(box.getAttribute('aria-activedescendant'), c.target.querySelector('[aria-selected="true"]').id);
+  key('ArrowDown');
+  assert.equal(selected(), '/other:understand');
+  key('ArrowDown');
+  assert.equal(selected(), '/understand-anything:understand', 'wraps around');
+  key('ArrowUp');
+  key('Enter');
+  await settle();
+  assert.equal(box.value, '/other:understand', 'Enter inserts the highlighted command');
+  assert.deepEqual(options(), [], 'and closes the list');
+  assert.deepEqual(calls, [], 'nothing is sent');
+  key('Enter');
+  await settle();
+  assert.deepEqual(calls, [['prompt', 'c1', '/other:understand']], 'the next Enter sends it');
+  calls.length = 0;
+
+  // A short name is completed to the advertised name, with room for arguments.
+  type('/pony');
+  key('Tab');
+  assert.equal(box.value, '/ponytail:ponytail ');
+  assert.deepEqual(options(), []);
+
+  // A command typed in full is sent by Enter; /mcp is offered bare.
+  type('/mcp');
+  assert.deepEqual(options(), ['/mcp']);
+  assert.equal(c.target.querySelector('.command-hint'), null, 'no mutating arguments offered');
+  key('Enter');
+  await settle();
+  assert.deepEqual(calls, [['prompt', 'c1', '/mcp']]);
+  calls.length = 0;
+
+  // Escape closes the list and sends nothing; while an IME composes, keys are its own.
+  type('/u');
+  const esc = key('Escape');
+  assert.equal(esc.defaultPrevented, true);
+  assert.deepEqual(options(), []);
+  type('/un');
+  key('Enter', { isComposing: true });
+  assert.equal(box.value, '/un');
+  assert.equal(options().length, 2);
+
+  // A click inserts too.
+  c.target.querySelectorAll('[role="option"]')[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  flushSync();
+  await settle();
+  assert.equal(box.value, '/other:understand');
+  assert.deepEqual(calls, []);
+  c.close();
 });

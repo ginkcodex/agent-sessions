@@ -58,7 +58,7 @@ Done:
   binding, `api.ts` and the mock API expose `chatPlugins(chatId)`.
 - Installed/enabled come from the CLI (`enabled`, Claude's `scope`); what
   the session loaded is its command catalog from CPC-03. Combining the two
-  in the view is CPC-05.
+  in the view is CPC-10.
 
 Tests run:
 
