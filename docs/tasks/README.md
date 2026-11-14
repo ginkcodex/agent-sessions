@@ -100,6 +100,6 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Chat login environment | [chat-login-env](../plan/chat-login-env.md) | [chat-login-env/](chat-login-env/README.md) | 3/4 ✅ · 1 ⬜ |
 | Code block run | [code-block-run](../plan/code-block-run.md) | [code-block-run/](code-block-run/README.md) | 3/4 ✅ · 1 ⬜ |
 | Linux repositories | [linux-repos](../plan/linux-repos.md) | [linux-repos/](linux-repos/README.md) | 16/21 ✅ · 4 🟡 · 1 ⬜ |
-| Auto-update (macOS, Windows) | [auto-update](../plan/auto-update.md) | [auto-update/](auto-update/README.md) | 12/17 ✅ · 1 🟡 · 4 ⬜ |
+| Auto-update (macOS, Windows) | [auto-update](../plan/auto-update.md) | [auto-update/](auto-update/README.md) | 14/17 ✅ · 3 ⬜ |
 | Chat message queue | [chat-message-queue](../plan/chat-message-queue.md) | [chat-message-queue/](chat-message-queue/README.md) | 7/8 ✅ · 1 ⬜ |
 | Tool file links | [tool-file-links](../plan/tool-file-links.md) | [tool-file-links/](tool-file-links/README.md) | 1/2 ✅ · 1 ⬜ |
