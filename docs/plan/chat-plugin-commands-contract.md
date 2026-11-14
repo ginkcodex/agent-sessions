@@ -52,9 +52,14 @@ turn. The status is session state, which no CLI listing can give.
   http_headers_helper}`, which can carry secrets. `opencode mcp list`
   reports connection status as text only.
 
-**Result display:** the adapter's reply is a normal agent message in the
-live turn. It is labeled as the output of `/mcp` and is not written to any
-session store by us. After a reload it may be absent; that is expected.
+**Result display:** an exact `/mcp` is still sent as a prompt, but the app
+captures that turn's reply and shows it in the command result modal instead
+of the transcript (see the plan's "Command result modal"). Both adapters
+format the reply the same way: a `**MCP servers:** N (…)` summary,
+`**<Status>**` groups of ``- `name`: detail`` lines, a `**Disabled:**` line,
+and notes. Claude's groups are Failed, Needs authentication, Connecting and
+Connected. `/mcp` with arguments stays an ordinary agent turn. We write
+nothing about it to any session store.
 
 ## `/plugin`: app-side native listing
 

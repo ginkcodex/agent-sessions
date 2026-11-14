@@ -52,6 +52,35 @@ of this first release.
   not a client-side reimplementation of its skill prompt or hooks. Do not
   automatically run a plugin to test discovery.
 
+### Command result modal (added 2026-11-15)
+
+User feedback: the `/mcp` reply reads as an assistant message. Inventory
+results belong in a modal like VS Code's "MCP servers", not in the transcript.
+
+- An exact `/mcp` or `/plugin` opens one modal shell (title, filter box, close
+  button, Escape, focus trap via `modalFocus`). Neither result appears in the
+  transcript.
+- `/mcp` is still the adapter's own command, because only the session knows
+  server status. Claude's adapter has no extension method for it, and Codex's
+  runs inside the prompt handler. The chat sends `/mcp` as a prompt and marks
+  that turn as an inspection. Its user prompt and agent text go to the modal,
+  not the live tail. It is offered only while the chat is idle with an empty
+  queue, so no other turn's text can mix in.
+- Both pinned adapters write the same Markdown shape:
+  - a `**MCP servers:** N (…)` summary;
+  - `**<Status>**` groups of ``- `name`: detail`` lines;
+  - a `**Disabled:**` line;
+  - free notes and hints.
+
+  The modal parses it into server rows grouped by status, each with a status
+  badge and its detail. A reply it cannot parse is shown as rendered Markdown,
+  never as an empty list.
+- `/mcp` with arguments (`reconnect`, `enable`, `disable`) changes server
+  state. It stays an ordinary agent turn in the transcript. The modal has no
+  Add, Reconnect or Enable actions.
+- `/plugin` moves from the panel above the composer into the same modal, with
+  the same data and states (CPC-10).
+
 ### Transcript fidelity
 
 - Display a user-submitted command and its arguments once as a user message,
@@ -101,6 +130,9 @@ of this first release.
    QA: those can modify a workspace or spend tokens. Use fixtures by default
    and obtain approval for a real command run in a disposable workspace.
 
+6. Inventory results (`/mcp`, `/plugin`) show in a modal, not in the
+   transcript. `/mcp` stays the adapter's turn, captured for the modal.
+
 ## Risks
 
 - `/plugin` is terminal-bound in the inspected Claude session and absent from
@@ -110,6 +142,15 @@ of this first release.
 - Logs may persist command markers, expanded skill prompts, or both. A broad
   metadata filter change could leak internal context or create duplicates.
 - Short command aliases can collide. Never silently choose a plugin.
+- The modal depends on the adapters' `/mcp` Markdown shape. A change falls
+  back to showing the Markdown; parser tests pin today's shape from both
+  adapters.
+- Codex's `/mcp` reloads the MCP configuration and may try a server sign-in.
+  That is the adapter's behavior for any `/mcp`; the modal does not add to it.
+- A captured `/mcp` turn is hidden from the live tail. Claude's saved log
+  keeps local commands hidden (CPC-06), and Codex answers `/mcp` without a
+  model turn. CPC-08 must confirm that nothing about it reappears after a
+  reload.
 - A CLI inventory reports disk state; a running session can still have an older
   loaded plugin set. Label those states rather than promising hot reload.
 
