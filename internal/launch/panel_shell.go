@@ -78,15 +78,10 @@ set -T
 `
 		fallback = `exec "$__as_shell" -ilc ` + ShellEscape("exec "+run)
 		// csh and tcsh take -l only as their sole flag. -ic reads their rc
-		// files; the script then reads the login files, as a login shell
-		// would after them, returns to the project (Gentoo's and Alpine's
-		// csh.login end with cd), and runs a precmd alias (direnv's hook,
-		// say) before the agent, as the first prompt would. A one-line if
-		// would not expand the alias.
-		cshCase = "csh|tcsh) exec \"$__as_shell\" -ic " + ShellEscape("set __as_cwd = $cwd:q\n"+
-			"if ( -r /etc/csh.login ) source /etc/csh.login\n"+
-			"if ( -r ~/.login ) source ~/.login\n"+
-			"cd $__as_cwd:q\nunset __as_cwd\n"+
+		// files, then cshLoginFiles the login files. A precmd alias
+		// (direnv's hook, say) runs before the agent, as the first prompt
+		// would. A one-line if would not expand the alias.
+		cshCase = "csh|tcsh) exec \"$__as_shell\" -ic " + ShellEscape(cshLoginFiles+
 			"if ( `alias precmd | wc -c` ) then\nprecmd\nendif\n"+
 			"exec "+run) + " ;;\n"
 	}

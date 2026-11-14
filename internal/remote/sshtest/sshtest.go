@@ -54,8 +54,9 @@ var startup = map[string][2]string{
 	UserSh:   {".profile", `echo "` + Banner + `"; export ` + LoginEnv + `=` + UserSh},
 	UserZsh:  {".zprofile", `echo "` + Banner + `"; export ` + LoginEnv + `=` + UserZsh},
 	UserFish: {".config/fish/config.fish", `echo "` + Banner + `"; set -gx ` + LoginEnv + ` ` + UserFish},
-	// tcsh runs commands with -c, which reads .tcshrc but not .login.
-	UserTcsh: {".tcshrc", `echo "` + Banner + `"; setenv ` + LoginEnv + ` ` + UserTcsh},
+	// tcsh runs commands with -c, which reads .tcshrc; .login only when
+	// the command reads it.
+	UserTcsh: {".login", `echo "` + Banner + `"; setenv ` + LoginEnv + ` ` + UserTcsh},
 }
 
 const dockerfile = `FROM alpine:3.20

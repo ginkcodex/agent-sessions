@@ -91,7 +91,8 @@ func PosixBootstrapArgv(script string) []string {
 // shell (SHELL, else /bin/sh) and has it run a line that hands script, still
 // in OctalEscape form, to /bin/sh again, so the login shell parses only that
 // shell-neutral line. csh and tcsh take -l only as their sole flag: they run
-// the line with -c, after their rc file but without .login.
+// the line with -c, which reads their rc file, and read the login files
+// first (cshLoginFiles).
 func PosixLoginArgv(script string) []string {
 	return []string{"/bin/sh", "-c", octalDecoder, "sh", OctalEscape(loginWrapper), OctalEscape(script)}
 }
@@ -99,11 +100,27 @@ func PosixLoginArgv(script string) []string {
 // loginWrapper is the /bin/sh script PosixLoginArgv decodes and runs; $2 is
 // the script in OctalEscape form.
 var loginWrapper = `__as_shell=${SHELL:-/bin/sh}
-__as_run="/bin/sh -c '` + strings.NewReplacer(`"`, `\"`, `$`, `\$`).Replace(octalDecoder) + `' sh '$2'"
+__as_run="/bin/sh -c '` + shDoubleQuoted.Replace(octalDecoder) + `' sh '$2'"
 case "${__as_shell##*/}" in
-csh|tcsh) exec "$__as_shell" -c "$__as_run" ;;
+csh|tcsh) exec "$__as_shell" -c "` + shDoubleQuoted.Replace(cshLoginFiles) + `exec $__as_run" ;;
 *) exec "$__as_shell" -lc "$__as_run" ;;
 esac
+`
+
+// shDoubleQuoted escapes text for a /bin/sh double-quoted string that holds
+// no backquote.
+var shDoubleQuoted = strings.NewReplacer(`"`, `\"`, `$`, `\$`)
+
+// cshLoginFiles is the csh script that reads the login files a csh or tcsh
+// started with -c skips, in a login shell's order after the rc files, then
+// returns to where it started: Gentoo's and Alpine's csh.login end with cd.
+// A login file with an error ends the script, where a login shell would go
+// on to its prompt.
+const cshLoginFiles = `set __as_cwd = $cwd:q
+if ( -r /etc/csh.login ) source /etc/csh.login
+if ( -r ~/.login ) source ~/.login
+cd $__as_cwd:q
+unset __as_cwd
 `
 
 // WSLPanelArgv returns the wsl.exe argv that runs script with /bin/sh in

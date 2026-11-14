@@ -69,7 +69,7 @@ Share-safe bundles leave the manifest's `CWD`, `RepoRoot`, `GitBranch` and
 sees a JSON key next to its value, and the home-path rules miss Windows
 profiles.
 
-### Reliability (RF-11 to RF-23, RF-26, RF-27)
+### Reliability (RF-11 to RF-23, RF-26 to RF-28)
 
 | Task | Finding | Checked |
 |---|---|---|
@@ -88,6 +88,7 @@ profiles.
 | RF-23 | `configfile` values are not unescaped on read, so backslashes grow on every save; a line over 64 KiB truncates the rewrite | reviewer |
 | RF-26 | Agent panel tabs on a csh or tcsh host run `$SHELL -ilc`, which those shells reject (`internal/launch/panel_shell.go`) | ✅ (found in RF-21) |
 | RF-27 | The fish cases of the panel startup test run without a terminal, so fish never prompts and they fail wherever fish is installed | ✅ (found in RF-26) |
+| RF-28 | Remote connect under csh and tcsh reads the rc file but not `.login`, so PATH set there is missing; panel tabs read it | ✅ (found in RF-26) |
 
 ### CI and docs (RF-24, RF-25)
 

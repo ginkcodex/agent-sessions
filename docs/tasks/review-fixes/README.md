@@ -1,11 +1,11 @@
 # Review fixes — tasks
 
 - **Plan:** [review-fixes.md](../../plan/review-fixes.md)
-- **Progress:** 10/27 done
+- **Progress:** 11/28 done
 
 From the architecture and feature review of 2026-11-14. RF-01 to RF-10 are
 security and privacy; RF-11 to RF-23 are reliability; RF-24 and RF-25 are CI
-and docs. RF-26 and RF-27 were found during RF-21 and RF-26.
+and docs. RF-26 to RF-28 were found during RF-21 and RF-26.
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -36,3 +36,4 @@ and docs. RF-26 and RF-27 were found during RF-21 and RF-26.
 | [RF-25](RF-25.md) | ⬜ Not started | AUR-07, LR-19, M5-04, M5-06, M8-07 and the code-diagnostics count | 1 h | None |
 | [RF-26](RF-26.md) | ✅ Done | Run agent panel tabs under csh and tcsh, which reject `-ilc` | 2 h | None |
 | [RF-27](RF-27.md) | ⬜ Not started | Run the fish panel startup test in a pty; without one fish never prompts | 2 h | None |
+| [RF-28](RF-28.md) | ✅ Done | Read `/etc/csh.login` and `~/.login` in remote connect's csh and tcsh line | 1 h | RF-21 |

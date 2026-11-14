@@ -194,8 +194,10 @@ func TestBuildSSHArgs_LoginCommandUnderEveryShell(t *testing.T) {
 		"bash": {".bash_profile", "export AS_LOGIN=bash\n"},
 		"zsh":  {".zprofile", "export AS_LOGIN=zsh\n"},
 		"fish": {".config/fish/config.fish", "set -gx AS_LOGIN fish\n"},
-		"tcsh": {".tcshrc", "setenv AS_LOGIN tcsh\n"},
-		"csh":  {".cshrc", "setenv AS_LOGIN csh\n"},
+		// csh and tcsh run the line with -c, which skips .login unless
+		// the line reads it.
+		"tcsh": {".login", "setenv AS_LOGIN tcsh\n"},
+		"csh":  {".login", "setenv AS_LOGIN csh\n"},
 	}
 	ran := 0
 	for name, file := range startup {
@@ -213,13 +215,15 @@ func TestBuildSSHArgs_LoginCommandUnderEveryShell(t *testing.T) {
 			t.Fatal(err)
 		}
 		cmd := exec.Command(shell, "-c", line)
-		cmd.Env = append(os.Environ(), "SHELL="+shell, "HOME="+home, "ZDOTDIR=", "XDG_CONFIG_HOME=", "ENV=", "AS_LOGIN=")
+		cmd.Env = append(os.Environ(), "SHELL="+shell, "HOME="+home, "ZDOTDIR="+home, "XDG_CONFIG_HOME=", "ENV=", "AS_LOGIN=")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Errorf("%s: run %q: %v: %s", name, line, err, out)
 			continue
 		}
-		if got, want := string(out), "sh|"+name+`|$(whoami)|it's|100%|back\slash|ünï|`; got != want {
+		// A system login file may print first, as Alpine's csh.login prints
+		// the MOTD outside ssh.
+		if got, want := string(out), "sh|"+name+`|$(whoami)|it's|100%|back\slash|ünï|`; !strings.HasSuffix(got, want) {
 			t.Errorf("%s: output = %q, want %q", name, got, want)
 		}
 	}
