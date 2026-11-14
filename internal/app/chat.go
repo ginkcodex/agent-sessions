@@ -23,7 +23,9 @@ var errChatUnavailable = errors.New("chat is not available")
 type chatService interface {
 	ChatAgents(ctx context.Context) ([]engine.ChatAgent, error)
 	ChatStart(ctx context.Context, req engine.ChatStartRequest) (engine.ChatState, error)
-	ChatPrompt(ctx context.Context, chatID, text string, atts []chatattach.Attachment) error
+	ChatPrompt(ctx context.Context, chatID, text string, atts []chatattach.Attachment) (engine.ChatPromptResult, error)
+	ChatSendNow(ctx context.Context, chatID, queuedID string) error
+	ChatUnqueue(ctx context.Context, chatID, queuedID string) (engine.ChatDraft, error)
 	ChatCancel(ctx context.Context, chatID string) error
 	ChatRespond(ctx context.Context, chatID, permissionID, optionID string) error
 	ChatAnswer(ctx context.Context, chatID, questionID, action string, content map[string]any) error
@@ -43,8 +45,16 @@ func (l localChatService) ChatStart(ctx context.Context, req engine.ChatStartReq
 	return l.m.Start(ctx, req)
 }
 
-func (l localChatService) ChatPrompt(_ context.Context, chatID, text string, atts []chatattach.Attachment) error {
+func (l localChatService) ChatPrompt(_ context.Context, chatID, text string, atts []chatattach.Attachment) (engine.ChatPromptResult, error) {
 	return l.m.Prompt(chatID, text, atts)
+}
+
+func (l localChatService) ChatSendNow(ctx context.Context, chatID, queuedID string) error {
+	return l.m.SendNow(ctx, chatID, queuedID)
+}
+
+func (l localChatService) ChatUnqueue(_ context.Context, chatID, queuedID string) (engine.ChatDraft, error) {
+	return l.m.Unqueue(chatID, queuedID)
 }
 
 func (l localChatService) ChatCancel(_ context.Context, chatID string) error {
@@ -115,8 +125,18 @@ func (r remoteChats) ChatStart(ctx context.Context, req engine.ChatStartRequest)
 	return out, remoteErr(err)
 }
 
-func (r remoteChats) ChatPrompt(ctx context.Context, chatID, text string, atts []chatattach.Attachment) error {
-	return remoteErr(r.chatService.ChatPrompt(ctx, chatID, text, atts))
+func (r remoteChats) ChatPrompt(ctx context.Context, chatID, text string, atts []chatattach.Attachment) (engine.ChatPromptResult, error) {
+	out, err := r.chatService.ChatPrompt(ctx, chatID, text, atts)
+	return out, remoteErr(err)
+}
+
+func (r remoteChats) ChatSendNow(ctx context.Context, chatID, queuedID string) error {
+	return remoteErr(r.chatService.ChatSendNow(ctx, chatID, queuedID))
+}
+
+func (r remoteChats) ChatUnqueue(ctx context.Context, chatID, queuedID string) (engine.ChatDraft, error) {
+	out, err := r.chatService.ChatUnqueue(ctx, chatID, queuedID)
+	return out, remoteErr(err)
 }
 
 func (r remoteChats) ChatCancel(ctx context.Context, chatID string) error {
@@ -176,12 +196,33 @@ func (a *App) ChatStart(req engine.ChatStartRequest) (engine.ChatState, error) {
 
 // ChatPrompt sends text and attachments to the chat's agent. It returns
 // once the turn has started; the turn's end arrives as a turn_end update.
-func (a *App) ChatPrompt(chatID, text string, attachments []chatattach.Attachment) error {
+// While the agent works the message is queued, and the result names it.
+func (a *App) ChatPrompt(chatID, text string, attachments []chatattach.Attachment) (engine.ChatPromptResult, error) {
+	s, err := a.chats()
+	if err != nil {
+		return engine.ChatPromptResult{}, err
+	}
+	return s.ChatPrompt(a.appCtx(), chatID, text, attachments)
+}
+
+// ChatSendNow sends a queued message at once: it starts a turn when the
+// agent is idle, or joins the running turn when the agent steers.
+func (a *App) ChatSendNow(chatID, queuedID string) error {
 	s, err := a.chats()
 	if err != nil {
 		return err
 	}
-	return s.ChatPrompt(a.appCtx(), chatID, text, attachments)
+	return s.ChatSendNow(a.appCtx(), chatID, queuedID)
+}
+
+// ChatUnqueue removes a queued message and returns it with its
+// attachments, for the composer to edit.
+func (a *App) ChatUnqueue(chatID, queuedID string) (engine.ChatDraft, error) {
+	s, err := a.chats()
+	if err != nil {
+		return engine.ChatDraft{}, err
+	}
+	return s.ChatUnqueue(a.appCtx(), chatID, queuedID)
 }
 
 // ChatCancel cancels the chat's running turn and answers its pending

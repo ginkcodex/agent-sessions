@@ -1,6 +1,6 @@
 // What the chat UI shows: the live tail as transcript messages, and which
 // agents can chat. Every function here is pure.
-import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatPermission, Message, Part, SessionMeta, SessionRef, ToolStatus } from './types';
+import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatPermission, ChatQueuedPrompt, Message, Part, SessionMeta, SessionRef, ToolStatus } from './types';
 import { toolOutput, type ChatTail, type TailAnswer, type TailDiff, type TailItem, type TailTool } from './chatTail';
 
 /**
@@ -235,36 +235,63 @@ export function skippedToast(skipped: ChatAttachResult['skipped']): { title: str
   return { title: `Could not attach ${skipped.length} files`, body: skipped.map((s) => `${s.name}: ${s.reason}`).join('; ') };
 }
 
-/** Whether the composer can send: an idle chat, and text or a file. */
-export function canSendPrompt(phase: string, sending: boolean, text: string, attachments: number): boolean {
-  return phase === 'idle' && !sending && (text.trim() !== '' || attachments > 0);
+/**
+ * Whether the composer can send: text or a file, to an idle chat, or to a
+ * working one that queues it (queues).
+ */
+export function canSendPrompt(phase: string, sending: boolean, text: string, attachments: number, queues = false): boolean {
+  return (phase === 'idle' || (phase === 'working' && queues)) && !sending && (text.trim() !== '' || attachments > 0);
+}
+
+/** "2 queued messages", the end questions' and the queue's way to count them. */
+export function queuedCount(n: number): string {
+  return n === 1 ? '1 queued message' : `${n} queued messages`;
 }
 
 /**
- * What End chat asks while the agent works, or null when the chat may end
- * at once: an idle chat loses nothing, its session is saved.
+ * How the queue shows a message: its first line (or, without text, its
+ * files' names), the whole text for its tooltip, and a count of its files.
  */
-export function endChatQuestion(phase: string, agentName: string): { title: string; message: string; choices: { value: string; label: string; danger?: boolean }[] } | null {
-  if (phase !== 'working') return null;
+export function queuedLabel(q: ChatQueuedPrompt): { line: string; full: string; files: string } {
+  const text = (q.text ?? '').trim();
+  const names = (q.attachments ?? []).map((a) => a.name);
+  const n = names.length;
   return {
-    title: 'End the chat?',
-    message: `${agentName} is still working. Ending the chat stops its turn.`,
-    choices: [{ value: 'end', label: 'End chat', danger: true }],
+    line: text ? text.split('\n', 1)[0].trim() : names.join(', '),
+    full: text || names.join(', '),
+    files: text && n > 0 ? (n === 1 ? '1 file' : `${n} files`) : '',
   };
 }
 
+/** What ending the chat costs: the running turn, and the messages never sent. */
+function endLoss(phase: string, agentName: string, queued: number, stops: string): string | null {
+  const lost = queued > 0 ? `${queuedCount(queued).replace(/^./, (c) => c.toUpperCase())} will not be sent.` : '';
+  if (phase === 'working') return `${agentName} is still working. ${stops}${lost ? ` ${lost}` : ''}`;
+  return lost || null;
+}
+
 /**
- * What Switch to terminal asks while the agent works, or null when the chat
- * may stop at once: switching ends the chat, so it stops a running turn
- * just as End chat does.
+ * What End chat asks while the agent works or messages are queued, or null
+ * when the chat may end at once: an idle chat loses nothing, its session is
+ * saved.
  */
-export function switchToTerminalQuestion(phase: string, agentName: string): { title: string; message: string; choices: { value: string; label: string; danger?: boolean }[] } | null {
-  if (phase !== 'working') return null;
-  return {
-    title: 'Switch to terminal?',
-    message: `${agentName} is still working. Switching stops its turn.`,
-    choices: [{ value: 'switch', label: 'Switch', danger: true }],
-  };
+export function endChatQuestion(phase: string, agentName: string, queued = 0): { title: string; message: string; choices: { value: string; label: string; danger?: boolean }[] } | null {
+  if (phase !== 'working' && phase !== 'idle') return null;
+  const message = endLoss(phase, agentName, queued, 'Ending the chat stops its turn.');
+  if (!message) return null;
+  return { title: 'End the chat?', message, choices: [{ value: 'end', label: 'End chat', danger: true }] };
+}
+
+/**
+ * What Switch to terminal asks while the agent works or messages are
+ * queued, or null when the chat may stop at once: switching ends the chat,
+ * so it stops a running turn just as End chat does.
+ */
+export function switchToTerminalQuestion(phase: string, agentName: string, queued = 0): { title: string; message: string; choices: { value: string; label: string; danger?: boolean }[] } | null {
+  if (phase !== 'working' && phase !== 'idle') return null;
+  const message = endLoss(phase, agentName, queued, 'Switching stops its turn.');
+  if (!message) return null;
+  return { title: 'Switch to terminal?', message, choices: [{ value: 'switch', label: 'Switch', danger: true }] };
 }
 
 /**

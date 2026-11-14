@@ -47,6 +47,8 @@ const (
 	ErrCodeChatUnsupported    = "chat_unsupported"
 	ErrCodePermissionNotFound = "permission_not_found"
 	ErrCodeQuestionNotFound   = "question_not_found"
+	ErrCodeQueuedNotFound     = "queued_not_found"
+	ErrCodeSteerUnsupported   = "steer_unsupported"
 	ErrCodeSessionOwned       = "session_owned"
 	ErrCodeSessionInUse       = "session_in_use"
 	// ErrCodeGitSync carries files.GitSyncError's own code in ErrorData.Details.
@@ -163,6 +165,10 @@ func ToRPCError(err error) *ResponseError {
 		strCode = ErrCodePermissionNotFound
 	case errors.Is(err, engine.ErrQuestionNotFound):
 		strCode = ErrCodeQuestionNotFound
+	case errors.Is(err, engine.ErrQueuedNotFound):
+		strCode = ErrCodeQueuedNotFound
+	case errors.Is(err, engine.ErrSteerUnsupported):
+		strCode = ErrCodeSteerUnsupported
 	case errors.Is(err, engine.ErrSessionOwned):
 		strCode = ErrCodeSessionOwned
 	case errors.Is(err, engine.ErrSessionInUse):
@@ -245,6 +251,10 @@ func FromRPCError(respErr *ResponseError) error {
 		sentinel = engine.ErrPermissionNotFound
 	case ErrCodeQuestionNotFound:
 		sentinel = engine.ErrQuestionNotFound
+	case ErrCodeQueuedNotFound:
+		sentinel = engine.ErrQueuedNotFound
+	case ErrCodeSteerUnsupported:
+		sentinel = engine.ErrSteerUnsupported
 	case ErrCodeSessionOwned:
 		sentinel = engine.ErrSessionOwned
 	case ErrCodeSessionInUse:

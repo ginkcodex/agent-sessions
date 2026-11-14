@@ -120,7 +120,7 @@ func TestChatBindingsLocal(t *testing.T) {
 		t.Fatalf("ChatList = %+v", got)
 	}
 
-	if err := a.ChatPrompt(st.ChatID, "hello", nil); err != nil {
+	if _, err := a.ChatPrompt(st.ChatID, "hello", nil); err != nil {
 		t.Fatal(err)
 	}
 	if end := log.waitTurnEnd(t, st.ChatID); end.StopReason != "end_turn" {
@@ -133,7 +133,7 @@ func TestChatBindingsLocal(t *testing.T) {
 	}
 
 	// A permission request is answered through ChatRespond.
-	if err := a.ChatPrompt(st.ChatID, "permission", nil); err != nil {
+	if _, err := a.ChatPrompt(st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	var perm *engine.ChatPermission
@@ -159,7 +159,7 @@ func TestChatBindingsLocal(t *testing.T) {
 		return n == 2
 	})
 
-	if err := a.ChatPrompt(st.ChatID, "hang", nil); err != nil {
+	if _, err := a.ChatPrompt(st.ChatID, "hang", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.ChatCancel(st.ChatID); err != nil {
@@ -172,7 +172,7 @@ func TestChatBindingsLocal(t *testing.T) {
 	if got := a.ChatList(); len(got) != 0 {
 		t.Fatalf("ChatList after close = %+v", got)
 	}
-	if err := a.ChatPrompt(st.ChatID, "again", nil); !errors.Is(err, engine.ErrChatNotFound) {
+	if _, err := a.ChatPrompt(st.ChatID, "again", nil); !errors.Is(err, engine.ErrChatNotFound) {
 		t.Fatalf("prompt after close: %v", err)
 	}
 }
@@ -194,7 +194,7 @@ func TestChatAnswerBinding(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := a.ChatPrompt(st.ChatID, "question claude", nil); err != nil {
+			if _, err := a.ChatPrompt(st.ChatID, "question claude", nil); err != nil {
 				t.Fatal(err)
 			}
 			var asked *engine.ChatQuestion
@@ -292,7 +292,7 @@ func TestChatBindingsRemote(t *testing.T) {
 	if got := a.ChatList(); len(got) != 1 || got[0].ChatID != st.ChatID {
 		t.Fatalf("ChatList = %+v", got)
 	}
-	if err := a.ChatPrompt(st.ChatID, "hello", nil); err != nil {
+	if _, err := a.ChatPrompt(st.ChatID, "hello", nil); err != nil {
 		t.Fatal(err)
 	}
 	if end := log.waitTurnEnd(t, st.ChatID); end.StopReason != "end_turn" {
@@ -315,7 +315,7 @@ func TestChatBindingsRemote(t *testing.T) {
 	log.mu.Lock()
 	before := len(log.updates)
 	log.mu.Unlock()
-	if err := a.ChatPrompt(st.ChatID, "again", nil); err != nil {
+	if _, err := a.ChatPrompt(st.ChatID, "again", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.ChatClose(st.ChatID); err != nil {
@@ -343,7 +343,7 @@ func TestChatRefusedForHosts(t *testing.T) {
 		if _, err := a.ChatStart(engine.ChatStartRequest{Agent: model.AgentClaude, Dir: "/p"}); !errors.Is(err, want) {
 			t.Errorf("%s ChatStart: %v", name, err)
 		}
-		if err := a.ChatPrompt("chat-1", "hi", nil); !errors.Is(err, want) {
+		if _, err := a.ChatPrompt("chat-1", "hi", nil); !errors.Is(err, want) {
 			t.Errorf("%s ChatPrompt: %v", name, err)
 		}
 		if _, err := a.ChatSetOption("chat-1", "mode", "plan"); !errors.Is(err, want) {
@@ -392,7 +392,7 @@ func TestChatEndsWithWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.ChatPrompt(st.ChatID, "permission", nil); err != nil {
+	if _, err := a.ChatPrompt(st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	log.waitFor(t, "permission", func(u []engine.ChatUpdate, _ []engine.ChatExit) bool {

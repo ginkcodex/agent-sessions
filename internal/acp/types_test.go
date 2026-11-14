@@ -195,3 +195,38 @@ func TestPromptBlocks(t *testing.T) {
 		}
 	}
 }
+
+func TestCanSteer(t *testing.T) {
+	for meta, want := range map[string]bool{
+		``:                                 false,
+		`{"steering":{"supported":true}}`:  true,
+		`{"steering":{"supported":false}}`: false,
+		`{"claudeCode":{"x":1},"steering":{"supported":true}}`: true,
+		`{"steering":true}`: false,
+		`[]`:                false,
+	} {
+		var r InitializeResponse
+		body := `{"protocolVersion":1,"agentCapabilities":{}`
+		if meta != "" {
+			body += `,"_meta":` + meta
+		}
+		if err := json.Unmarshal([]byte(body+"}"), &r); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.CanSteer(); got != want {
+			t.Errorf("CanSteer(%s) = %v, want %v", meta, got, want)
+		}
+	}
+}
+
+func TestSteerRequestOptsOutOfNewTurns(t *testing.T) {
+	b, err := json.Marshal(SteerRequest{SessionID: "s", Prompt: []ContentBlock{TextBlock("hi")},
+		Meta: SteerMeta{Steering: SteerOptions{IdleBehavior: SteerIdlePromptRequired}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"sessionId":"s","prompt":[{"type":"text","text":"hi"}],"_meta":{"steering":{"idleBehavior":"promptRequired"}}}`
+	if string(b) != want {
+		t.Fatalf("got %s, want %s", b, want)
+	}
+}

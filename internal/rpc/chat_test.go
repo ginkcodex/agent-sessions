@@ -181,7 +181,7 @@ func TestChatRPCRoundTrip(t *testing.T) {
 		t.Fatalf("started = %+v", started)
 	}
 
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "stream 3", nil); err != nil {
+	if _, err := x.c.ChatPrompt(ctx, st.ChatID, "stream 3", nil); err != nil {
 		t.Fatal(err)
 	}
 	x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatTurnEnded))
@@ -205,15 +205,33 @@ func TestChatRPCRoundTrip(t *testing.T) {
 	}
 
 	// A permission request comes back as an event and is answered by ID.
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "permission", nil); err != nil {
+	if _, err := x.c.ChatPrompt(ctx, st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	perm := x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatPermissionAsked))
 	if perm.Permission == nil || len(perm.Permission.Options) != 3 {
 		t.Fatalf("permission = %+v", perm)
 	}
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "again", nil); !errors.Is(err, engine.ErrChatBusy) {
-		t.Fatalf("second prompt: %v", err)
+	// A message sent while the agent works is queued; this one is taken
+	// back.
+	if !x.c.Capabilities().ChatQueue {
+		t.Fatal("no chatQueue capability")
+	}
+	queued, err := x.c.ChatPrompt(ctx, st.ChatID, "again", nil)
+	if err != nil || queued.Queued == "" {
+		t.Fatalf("second prompt: %+v, %v", queued, err)
+	}
+	if q := x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatQueueChanged)).Queue; len(q) != 1 || q[0].ID != queued.Queued || q[0].Text != "again" {
+		t.Fatalf("queue = %+v", q)
+	}
+	if list, err := x.c.ChatList(ctx); err != nil || len(list[0].Queue) != 1 || !list[0].CanQueue || !list[0].CanSteer {
+		t.Fatal(list, err)
+	}
+	if draft, err := x.c.ChatUnqueue(ctx, st.ChatID, queued.Queued); err != nil || draft.Text != "again" {
+		t.Fatalf("unqueue = %+v, %v", draft, err)
+	}
+	if err := x.c.ChatSendNow(ctx, st.ChatID, queued.Queued); !errors.Is(err, engine.ErrQueuedNotFound) {
+		t.Fatalf("send now after unqueue: %v", err)
 	}
 	if err := x.c.ChatRespond(ctx, st.ChatID, "nope", "allow-once"); !errors.Is(err, engine.ErrPermissionNotFound) {
 		t.Fatalf("unknown permission: %v", err)
@@ -223,7 +241,7 @@ func TestChatRPCRoundTrip(t *testing.T) {
 	}
 	x.events.waitUpdate(t, st.ChatID, func(u engine.ChatUpdate) bool { return chunkText(u) == "allowed:allow-once" })
 
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "hang", nil); err != nil {
+	if _, err := x.c.ChatPrompt(ctx, st.ChatID, "hang", nil); err != nil {
 		t.Fatal(err)
 	}
 	// The cancel may reach the agent before the prompt; repeat until it ends.
@@ -263,7 +281,7 @@ func TestChatRPCRoundTrip(t *testing.T) {
 	x.events.mu.Unlock()
 
 	// A closed chat is forgotten: the connection no longer reaches it.
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "hi", nil); !errors.Is(err, engine.ErrChatNotFound) {
+	if _, err := x.c.ChatPrompt(ctx, st.ChatID, "hi", nil); !errors.Is(err, engine.ErrChatNotFound) {
 		t.Fatalf("prompt after close: %v", err)
 	}
 	if list, err := x.c.ChatList(ctx); err != nil || len(list) != 0 {
@@ -284,13 +302,21 @@ func TestChatRPCOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.c.ChatPrompt(ctx, st.ChatID, "permission", nil); err != nil {
+	if _, err := a.c.ChatPrompt(ctx, st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	perm := a.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatPermissionAsked))
 
 	for name, call := range map[string]func() error{
-		"prompt":  func() error { return other.c.ChatPrompt(ctx, st.ChatID, "hi", nil) },
+		"prompt": func() error {
+			_, err := other.c.ChatPrompt(ctx, st.ChatID, "hi", nil)
+			return err
+		},
+		"send now": func() error { return other.c.ChatSendNow(ctx, st.ChatID, "queued-1") },
+		"unqueue": func() error {
+			_, err := other.c.ChatUnqueue(ctx, st.ChatID, "queued-1")
+			return err
+		},
 		"cancel":  func() error { return other.c.ChatCancel(ctx, st.ChatID) },
 		"respond": func() error { return other.c.ChatRespond(ctx, st.ChatID, perm.Permission.ID, "allow-once") },
 		"option": func() error {
@@ -345,7 +371,7 @@ func TestChatRPCDisconnectClosesChats(t *testing.T) {
 		}
 		chats = append(chats, st)
 		pids = append(pids, agentPID(t, st))
-		if err := x.c.ChatPrompt(ctx, st.ChatID, "spawn", nil); err != nil {
+		if _, err := x.c.ChatPrompt(ctx, st.ChatID, "spawn", nil); err != nil {
 			t.Fatal(err)
 		}
 		u := x.events.waitUpdate(t, st.ChatID, func(u engine.ChatUpdate) bool { return strings.HasPrefix(chunkText(u), "child ") })
@@ -357,7 +383,7 @@ func TestChatRPCDisconnectClosesChats(t *testing.T) {
 		x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatTurnEnded))
 	}
 	// One chat waits on a permission request when the connection goes.
-	if err := x.c.ChatPrompt(ctx, chats[0].ChatID, "permission", nil); err != nil {
+	if _, err := x.c.ChatPrompt(ctx, chats[0].ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	x.events.waitUpdate(t, chats[0].ChatID, kindIs(engine.ChatPermissionAsked))
@@ -426,7 +452,7 @@ func TestChatRPCAttachments(t *testing.T) {
 		t.Fatalf("prompt capabilities = %+v", st.PromptCapabilities)
 	}
 	txt := chatattach.Attachment{Kind: chatattach.KindText, Name: "a.txt", MimeType: "text/plain", Text: "hi", URI: "file:///c/a.txt"}
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "blocks", []chatattach.Attachment{txt}); err != nil {
+	if _, err := x.c.ChatPrompt(ctx, st.ChatID, "blocks", []chatattach.Attachment{txt}); err != nil {
 		t.Fatal(err)
 	}
 	x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatTurnEnded))
@@ -442,7 +468,7 @@ func TestChatRPCAttachments(t *testing.T) {
 	// The server checks what a peer sends.
 	bad := txt
 	bad.Text = "a\x00b"
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "x", []chatattach.Attachment{bad}); err == nil || !strings.Contains(err.Error(), "a.txt") {
+	if _, err := x.c.ChatPrompt(ctx, st.ChatID, "x", []chatattach.Attachment{bad}); err == nil || !strings.Contains(err.Error(), "a.txt") {
 		t.Fatalf("bad attachment: %v", err)
 	}
 
@@ -450,10 +476,10 @@ func TestChatRPCAttachments(t *testing.T) {
 	x.c.mu.Lock()
 	x.c.caps.ChatAttachments = false
 	x.c.mu.Unlock()
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "x", []chatattach.Attachment{txt}); !errors.Is(err, ErrNoChatAttachments) {
+	if _, err := x.c.ChatPrompt(ctx, st.ChatID, "x", []chatattach.Attachment{txt}); !errors.Is(err, ErrNoChatAttachments) {
 		t.Fatalf("old host: %v", err)
 	}
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "stream 1", nil); err != nil {
+	if _, err := x.c.ChatPrompt(ctx, st.ChatID, "stream 1", nil); err != nil {
 		t.Fatalf("old host, text only: %v", err)
 	}
 }
@@ -472,7 +498,7 @@ func TestChatRPCQuestions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := x.c.ChatPrompt(ctx, st.ChatID, "question claude", nil); err != nil {
+	if _, err := x.c.ChatPrompt(ctx, st.ChatID, "question claude", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatQuestionAsked)).Question
@@ -515,7 +541,7 @@ func TestChatRPCQuestions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := x.c.ChatPrompt(ctx, old.ChatID, "question claude", nil); err != nil {
+	if _, err := x.c.ChatPrompt(ctx, old.ChatID, "question claude", nil); err != nil {
 		t.Fatal(err)
 	}
 	x.events.waitUpdate(t, old.ChatID, kindIs(engine.ChatTurnEnded))
@@ -531,13 +557,16 @@ func TestChatRPCCapability(t *testing.T) {
 		_, start := c.ChatStart(ctx, engine.ChatStartRequest{Agent: model.AgentClaude, Dir: "/"})
 		_, option := c.ChatSetOption(ctx, "c", "mode", "auto")
 		_, list := c.ChatList(ctx)
+		_, prompt := c.ChatPrompt(ctx, "c", "hi", nil)
+		_, unqueue := c.ChatUnqueue(ctx, "c", "q")
 		return map[string]error{
 			"agents": agents, "start": start, "option": option, "list": list,
-			"prompt":  c.ChatPrompt(ctx, "c", "hi", nil),
-			"cancel":  c.ChatCancel(ctx, "c"),
-			"respond": c.ChatRespond(ctx, "c", "p", "o"),
-			"answer":  c.ChatAnswer(ctx, "c", "q", acp.ElicitationDecline, nil),
-			"close":   c.ChatClose(ctx, "c"),
+			"prompt": prompt, "unqueue": unqueue,
+			"send now": c.ChatSendNow(ctx, "c", "q"),
+			"cancel":   c.ChatCancel(ctx, "c"),
+			"respond":  c.ChatRespond(ctx, "c", "p", "o"),
+			"answer":   c.ChatAnswer(ctx, "c", "q", acp.ElicitationDecline, nil),
+			"close":    c.ChatClose(ctx, "c"),
 		}
 	}
 	for _, tc := range []struct {
@@ -560,6 +589,7 @@ func TestChatRPCCapability(t *testing.T) {
 				x.c.mu.Lock()
 				x.c.caps.ACPChat = true
 				x.c.caps.ChatQuestions = true
+				x.c.caps.ChatQueue = true
 				x.c.mu.Unlock()
 			}
 			for name, err := range calls(x.c) {
@@ -585,10 +615,63 @@ func TestChatRPCCapability(t *testing.T) {
 	})
 	// An absent capability is omitted, so old peers see the same JSON.
 	raw, err := json.Marshal(Capabilities{})
-	if err != nil || strings.Contains(string(raw), "acpChat") || strings.Contains(string(raw), "chatQuestions") {
+	if err != nil || strings.Contains(string(raw), "acpChat") || strings.Contains(string(raw), "chatQuestions") ||
+		strings.Contains(string(raw), "chatQueue") {
 		t.Fatal(string(raw), err)
 	}
 	if _, err := (&Client{}).ChatStart(ctx, engine.ChatStartRequest{}); !errors.Is(err, engine.ErrUnsupportedAction) {
 		t.Fatal(err)
+	}
+}
+
+func TestChatRPCSendNow(t *testing.T) {
+	b, dir := newChatBackend(t)
+	x := connectChat(t, b)
+	initChat(t, x)
+	ctx := t.Context()
+	st, err := x.c.ChatStart(ctx, engine.ChatStartRequest{Agent: model.AgentClaude, Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.c.ChatPrompt(ctx, st.ChatID, "hold", nil); err != nil {
+		t.Fatal(err)
+	}
+	queued, err := x.c.ChatPrompt(ctx, st.ChatID, "look at b.txt", nil)
+	if err != nil || queued.Queued == "" {
+		t.Fatalf("queued = %+v, %v", queued, err)
+	}
+	// The steer may reach the agent before the prompt and go back to the
+	// queue; repeat until it joins the turn.
+	eventually(t, "steered", func() bool {
+		err := x.c.ChatSendNow(ctx, st.ChatID, queued.Queued)
+		if errors.Is(err, engine.ErrQueuedNotFound) {
+			return true // steered; its event is on its way
+		}
+		if err != nil {
+			t.Error(err)
+			return true
+		}
+		x.events.mu.Lock()
+		defer x.events.mu.Unlock()
+		return slices.ContainsFunc(x.events.updates, kindIs(engine.ChatSteered))
+	})
+	end := x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatTurnEnded))
+	if end.StopReason != acp.StopEndTurn {
+		t.Fatalf("turn end = %+v", end)
+	}
+	steered := x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatSteered))
+	if steered.Prompt == nil || steered.Prompt.ID != queued.Queued || steered.Seq > end.Seq {
+		t.Fatalf("steered = %+v, end = %+v", steered, end)
+	}
+
+	// A host before the queue: Send now and Unqueue are refused here.
+	x.c.mu.Lock()
+	x.c.caps.ChatQueue = false
+	x.c.mu.Unlock()
+	if err := x.c.ChatSendNow(ctx, st.ChatID, "queued-1"); !errors.Is(err, ErrNoChatQueue) {
+		t.Fatalf("old host send now: %v", err)
+	}
+	if _, err := x.c.ChatUnqueue(ctx, st.ChatID, "queued-1"); !errors.Is(err, ErrNoChatQueue) {
+		t.Fatalf("old host unqueue: %v", err)
 	}
 }

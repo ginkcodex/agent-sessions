@@ -80,7 +80,7 @@ func TestChatPickAttachments(t *testing.T) {
 	}
 
 	// The picked files reach the agent after the text, in order.
-	if err := a.ChatPrompt(st.ChatID, "blocks", res.Attachments); err != nil {
+	if _, err := a.ChatPrompt(st.ChatID, "blocks", res.Attachments); err != nil {
 		t.Fatal(err)
 	}
 	log.waitTurnEnd(t, st.ChatID)

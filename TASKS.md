@@ -127,3 +127,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Code block run | [code-block-run](docs/plan/code-block-run.md) | [code-block-run/](docs/tasks/code-block-run/README.md) | 3/4 ✅ · 1 ⬜ |
 | Linux repositories | [linux-repos](docs/plan/linux-repos.md) | [linux-repos/](docs/tasks/linux-repos/README.md) | 16/21 ✅ · 4 🟡 · 1 ⬜ |
 | Auto-update (macOS, Windows) | [auto-update](docs/plan/auto-update.md) | [auto-update/](docs/tasks/auto-update/README.md) | 12/17 ✅ · 1 🟡 · 4 ⬜ |
+| Chat message queue | [chat-message-queue](docs/plan/chat-message-queue.md) | [chat-message-queue/](docs/tasks/chat-message-queue/README.md) | 7/8 ✅ · 1 ⬜ |

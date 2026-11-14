@@ -1,6 +1,7 @@
 // The composer's End chat menu in a DOM: the two items, End the chat as
 // always, and Switch to terminal, which stops the chat and continues the
-// session in a terminal tab. Plus the opener's switch sequences, either
+// session in a terminal tab. The queued messages above the composer, with
+// Send now, Edit and Remove. Plus the opener's switch sequences, either
 // direction: to a terminal, and from a terminal pane to a chat.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,8 +23,8 @@ const { mount, unmount, flushSync } = await import(new URL('../node_modules/svel
 const { proxy } = await import(new URL('../node_modules/svelte/src/internal/client/index.js', import.meta.url).href);
 const lib = (rel, base) => JSON.stringify(new URL(rel, base).href);
 
-async function loadComposer() {
-  const url = new URL('../src/lib/components/chat/ChatComposer.svelte', import.meta.url);
+async function loadComponent(name) {
+  const url = new URL(`../src/lib/components/chat/${name}.svelte`, import.meta.url);
   const filename = fileURLToPath(url);
   let code = compile(readFileSync(filename, 'utf8'), { generate: 'client', filename, css: 'external' }).js.code;
   code = code
@@ -35,6 +36,7 @@ async function loadComposer() {
     .replace("'../../chat'", lib('../../chat.ts', url))
     .replace("import AttachmentChips from './AttachmentChips.svelte';", 'const AttachmentChips = () => {};')
     .replace("import ChatOptions from './ChatOptions.svelte';", 'const ChatOptions = () => {};')
+    .replace("import QueuedMessages from './QueuedMessages.svelte';", 'const QueuedMessages = globalThis.__endMenu.QueuedMessages;')
     .replace("import Icon from '../common/Icon.svelte';", 'const Icon = () => {};')
     .replace("import { chats } from '../../stores/chats.svelte';", 'const chats = globalThis.__endMenu.chats;')
     .replace("import { toast } from '../../stores/toast.svelte';", 'const toast = globalThis.__endMenu.toast;')
@@ -51,6 +53,11 @@ globalThis.__endMenu = {
   chats: {
     close: async (chatId) => calls.push(['close', chatId]),
     dismiss: (key) => calls.push(['dismiss', key]),
+    sendNow: async (chatId, id) => calls.push(['sendNow', chatId, id]),
+    unqueue: async (chatId, id) => {
+      calls.push(['unqueue', chatId, id]);
+      return { text: `the text of ${id}`, attachments: [{ kind: 'text', name: 'plan.md', mimeType: 'text/plain', size: 4, text: 'plan' }] };
+    },
   },
   toast: { show: (t) => calls.push(['toast', t.title]) },
   filePrompt: {
@@ -60,14 +67,15 @@ globalThis.__endMenu = {
     },
   },
 };
-const Composer = await loadComposer();
+globalThis.__endMenu.QueuedMessages = await loadComponent('QueuedMessages');
+const Composer = await loadComponent('ChatComposer');
 
 // Lets every pending promise chain run before an assertion.
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 const chat = (fields = {}) => ({
   key: 'chat-1', chatId: 'c1', agent: 'codex', dir: '/p', session: { agent: 'codex', id: 's1' },
-  configOptions: [], phase: 'idle', tail: { items: [], usage: null }, permissions: [], questions: [], epoch: 0,
+  configOptions: [], phase: 'idle', tail: { items: [], usage: null }, permissions: [], questions: [], queue: [], epoch: 0,
   promptCapabilities: { image: true }, ...fields,
 });
 
@@ -209,6 +217,80 @@ test('Switch to terminal asks while working and switches at once when idle', asy
   await settle();
   assert.deepEqual(calls, [['ask', 'Switch to terminal?', ['Switch']], ['switch']]);
   done.close();
+});
+
+test('End the chat asks when messages are queued, even while idle', async () => {
+  const idle = await openComposer({ phase: 'idle', queue: [{ id: 'queued-1', text: 'next' }] });
+  idle.openMenu();
+  idle.clickItem('End the chat');
+  await settle();
+  assert.deepEqual(calls, [['ask', 'End the chat?', ['End chat']]]);
+  idle.close();
+});
+
+const queueButtons = (target) =>
+  [...target.querySelectorAll('[data-queued]')].map((li) => [
+    li.querySelector('.line').textContent,
+    ...[...li.querySelectorAll('button')].map((b) => `${b.textContent.trim()}${b.disabled ? ' (disabled)' : ''}`),
+  ]);
+
+test('the queue shows Send now only where it can work: idle, or an agent that steers', async () => {
+  const queue = [{ id: 'queued-1', text: 'first line\nsecond', attachments: [{ kind: 'image', name: 'a.png' }] }, { id: 'queued-2', text: 'after' }];
+  const steers = await openComposer({ phase: 'working', canQueue: true, canSteer: true, queue });
+  assert.deepEqual(queueButtons(steers.target), [
+    ['first line', 'Send now', 'Edit', 'Remove'],
+    ['after', 'Send now', 'Edit', 'Remove'],
+  ]);
+  assert.equal(steers.target.querySelector('[data-queued="queued-1"] .files').textContent, '1 file');
+  assert.equal(steers.target.querySelector('[data-chat-queue-paused]'), null, 'a working queue is not paused');
+  assert.match(steers.target.querySelector('[data-queued] button').title, /into its running turn/);
+  steers.target.querySelector('[data-queued="queued-2"] button').click();
+  await settle();
+  assert.deepEqual(calls, [['sendNow', 'c1', 'queued-2']]);
+  steers.close();
+
+  const waits = await openComposer({ phase: 'working', canQueue: true, queue });
+  assert.deepEqual(queueButtons(waits.target)[0], ['first line', 'Edit', 'Remove'], 'the agent takes it at the turn end');
+  waits.close();
+
+  const paused = await openComposer({ phase: 'idle', canQueue: true, queue });
+  assert.equal(paused.target.querySelector('[data-chat-queue-paused]').textContent, 'Paused. Send now or send a new message to go on.');
+  assert.deepEqual(queueButtons(paused.target)[0], ['first line', 'Send now', 'Edit', 'Remove']);
+  paused.close();
+});
+
+test('Edit moves a queued message into the empty composer; Remove drops it; a typed message queues', async () => {
+  const c = await openComposer({ phase: 'working', canQueue: true, queue: [{ id: 'queued-1', text: 'next' }, { id: 'queued-2', text: 'after' }] });
+  const box = c.target.querySelector('textarea');
+  const type = (value) => {
+    box.value = value;
+    box.dispatchEvent(new window.Event('input', { bubbles: true }));
+    flushSync();
+  };
+  const button = (id, name) => [...c.target.querySelectorAll(`[data-queued="${id}"] button`)].find((b) => b.textContent.trim() === name);
+
+  type('half written');
+  assert.equal(button('queued-1', 'Edit').disabled, true, 'Edit needs an empty composer');
+  assert.deepEqual(
+    [...c.target.querySelectorAll('.toolbar button')].map((b) => b.textContent.trim()),
+    ['Attach images or files', 'End chat', 'Queue', 'Cancel'],
+    'a message to queue shows the queue button beside Stop',
+  );
+  type('');
+  button('queued-1', 'Edit').click();
+  await settle();
+  flushSync();
+  assert.deepEqual(calls, [['unqueue', 'c1', 'queued-1']]);
+  assert.equal(box.value, 'the text of queued-1');
+  assert.equal(document.activeElement, box);
+
+  calls.length = 0;
+  button('queued-2', 'Remove').click();
+  await settle();
+  flushSync();
+  assert.deepEqual(calls, [['unqueue', 'c1', 'queued-2']]);
+  assert.equal(box.value, 'the text of queued-1', 'Remove leaves the composer alone');
+  c.close();
 });
 
 // --- The switch sequence in the opener --------------------------------------

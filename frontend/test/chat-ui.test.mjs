@@ -10,6 +10,7 @@ import {
   pendingChatMeta,
   permissionView,
   planMarkdown,
+  queuedLabel,
   skippedToast,
   switchToChatQuestion,
   switchToTerminalQuestion,
@@ -147,7 +148,7 @@ let liveTailModule;
 function chat(fields = {}) {
   return {
     key: 'chat-1', chatId: 'c1', agent: 'codex', dir: '/p', session: { agent: 'codex', id: 's1' },
-    configOptions: [], phase: 'idle', tail: emptyTail(), permissions: [], questions: [], epoch: 0, ...fields,
+    configOptions: [], phase: 'idle', tail: emptyTail(), permissions: [], questions: [], queue: [], epoch: 0, ...fields,
   };
 }
 
@@ -164,6 +165,10 @@ async function renderComposer(c, props = {}) {
     ["import { api } from '../../api';", 'const api = {};'],
     ["'../../chat'", lib('../../chat.ts', COMPOSER_URL)],
     ["import AttachmentChips from './AttachmentChips.svelte';", 'const AttachmentChips = () => {};'],
+    [
+      "import QueuedMessages from './QueuedMessages.svelte';",
+      'const QueuedMessages = ($$renderer, p) => $$renderer.push(`<div data-stub-queue="${p.chat.queue.length}" data-empty="${p.composerEmpty}"></div>`);',
+    ],
     ["import { chats } from '../../stores/chats.svelte';", fixtureStore('chats')],
     ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
     ["import { filePrompt } from '../../stores/filePrompt.svelte';", 'const filePrompt = {};'],
@@ -249,6 +254,25 @@ test('the composer sends only when idle, stops a running turn and dismisses once
   const restart = await renderComposer(chat({ phase: 'exited', exit: { chatId: 'c1', seq: 9, reason: 'crashed' } }), { onRestart() {} });
   assert.deepEqual(composerButtons(restart), ['Dismiss', 'Restart']);
   assert.match(exited.html, /<textarea[^>]*\sdisabled/);
+});
+
+test('while the agent works a chat that queues takes a message for later, and shows its queue', async () => {
+  const working = unescapeHTML(await renderComposer(chat({ phase: 'working', canQueue: true })));
+  assert.match(working, /placeholder="Queue a message for Codex…"/);
+  assert.doesNotMatch(working, /<textarea[^>]*\sdisabled/);
+  assert.match(working, /id="chat-hint-chat-1" class="sr-only[^"]*">Enter queues the message until Codex finishes/);
+  assert.deepEqual(composerButtons(working), ['End chat', 'Cancel'], 'nothing to queue yet: only Stop');
+  assert.doesNotMatch(working, /data-stub-queue/, 'no queue to show');
+
+  // An older host does not queue: the composer waits for the turn's end.
+  const older = unescapeHTML(await renderComposer(chat({ phase: 'working' })));
+  assert.match(older, /placeholder="Message Codex…"/);
+
+  const queued = chat({ phase: 'working', canQueue: true, queue: [{ id: 'queued-1', text: 'next' }, { id: 'queued-2', text: 'after' }] });
+  assert.match(await renderComposer(queued), /<div data-stub-queue="2" data-empty="true"><\/div>/);
+  // A paused queue shows while idle; an ended chat drops it.
+  assert.match(await renderComposer({ ...queued, phase: 'idle' }), /data-stub-queue="2"/);
+  assert.doesNotMatch(await renderComposer({ ...queued, phase: 'exited', exit: { chatId: 'c1', seq: 9, reason: 'closed' } }), /data-stub-queue/);
 });
 
 test('the composer shows the context in use once the agent reports it', async () => {
@@ -721,6 +745,21 @@ test('a prompt of only files can be sent; nothing at all cannot', () => {
   assert.equal(canSendPrompt('idle', false, 'hi', 0), true);
   assert.equal(canSendPrompt('working', false, 'hi', 1), false);
   assert.equal(canSendPrompt('idle', true, 'hi', 1), false);
+  // A chat that queues takes a message while it works, not while it starts.
+  assert.equal(canSendPrompt('working', false, 'hi', 0, true), true);
+  assert.equal(canSendPrompt('working', false, ' ', 0, true), false);
+  assert.equal(canSendPrompt('working', true, 'hi', 0, true), false);
+  assert.equal(canSendPrompt('starting', false, 'hi', 0, true), false);
+});
+
+test('a queued message shows as its first line, or its files, with a count of its files', () => {
+  assert.deepEqual(queuedLabel({ id: 'q', text: '  fix the build\nthen the tests', attachments: [{ kind: 'image', name: 'a.png' }, { kind: 'text', name: 'b.md' }] }), {
+    line: 'fix the build',
+    full: 'fix the build\nthen the tests',
+    files: '2 files',
+  });
+  assert.deepEqual(queuedLabel({ id: 'q', text: 'hi', attachments: [{ kind: 'text', name: 'b.md' }] }).files, '1 file');
+  assert.deepEqual(queuedLabel({ id: 'q', attachments: [{ kind: 'image', name: 'a.png' }, { kind: 'text', name: 'b.md' }] }), { line: 'a.png, b.md', full: 'a.png, b.md', files: '' });
 });
 
 test('the attach button shows when the agent says what a prompt may carry, and the card takes dropped files', async () => {
@@ -764,6 +803,19 @@ test('End chat asks while the agent works, and ends an idle chat at once', () =>
     message: 'Codex is still working. Ending the chat stops its turn.',
     choices: [{ value: 'end', label: 'End chat', danger: true }],
   });
+});
+
+test('End chat and Switch to terminal ask when messages are queued, and say they will not be sent', () => {
+  assert.deepEqual(endChatQuestion('idle', 'Codex', 1), {
+    title: 'End the chat?',
+    message: '1 queued message will not be sent.',
+    choices: [{ value: 'end', label: 'End chat', danger: true }],
+  });
+  assert.equal(endChatQuestion('working', 'Codex', 2).message, 'Codex is still working. Ending the chat stops its turn. 2 queued messages will not be sent.');
+  assert.equal(switchToTerminalQuestion('idle', 'Codex', 2).message, '2 queued messages will not be sent.');
+  assert.equal(switchToTerminalQuestion('working', 'Codex', 1).message, 'Codex is still working. Switching stops its turn. 1 queued message will not be sent.');
+  assert.equal(endChatQuestion('exited', 'Codex', 2), null);
+  assert.equal(endChatQuestion('idle', 'Codex', 0), null);
 });
 
 test('Switch to terminal asks while the agent works, worded for switching', () => {

@@ -90,6 +90,8 @@ import type {
   ChatState,
   ChatAttachment,
   ChatAttachResult,
+  ChatDraft,
+  ChatPromptResult,
   ChatUpdateEvent,
   ChatExitEvent,
 } from './types';
@@ -185,8 +187,16 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    * can arrive before this returns.
    */
   chatStart(req: ChatStartRequest): Promise<ChatState>;
-  /** Sends a prompt, its text and attached files; returns once the turn has started. */
-  chatPrompt(chatId: string, text: string, attachments?: ChatAttachment[]): Promise<void>;
+  /**
+   * Sends a prompt, its text and attached files; returns once the turn has
+   * started. While the agent works the message is queued, and the result
+   * names it.
+   */
+  chatPrompt(chatId: string, text: string, attachments?: ChatAttachment[]): Promise<ChatPromptResult>;
+  /** Sends a queued message now: starts a turn, or joins the running one when the agent steers. */
+  chatSendNow(chatId: string, queuedId: string): Promise<void>;
+  /** Takes a message out of the queue and returns it, for Edit and Remove. */
+  chatUnqueue(chatId: string, queuedId: string): Promise<ChatDraft>;
   /** Opens the file picker for several files and prepares the picked ones to send; cancelling attaches nothing. */
   chatPickAttachments(chatId: string): Promise<ChatAttachResult>;
   /** Prepares files dropped on a chat to send. */
@@ -422,7 +432,9 @@ export interface WailsAppBinding {
   /** Chat bindings; absent on older App bindings. */
   ChatAgents?(): Promise<ChatAgent[]>;
   ChatStart?(req: ChatStartRequest): Promise<ChatState>;
-  ChatPrompt?(chatId: string, text: string, attachments: ChatAttachment[]): Promise<void>;
+  ChatPrompt?(chatId: string, text: string, attachments: ChatAttachment[]): Promise<ChatPromptResult | null>;
+  ChatSendNow?(chatId: string, queuedId: string): Promise<void>;
+  ChatUnqueue?(chatId: string, queuedId: string): Promise<ChatDraft>;
   ChatPickAttachments?(chatId: string): Promise<ChatAttachResult>;
   ChatAttachFiles?(paths: string[]): Promise<ChatAttachResult>;
   ChatAttachImage?(name: string, data: string): Promise<ChatAttachment>;
@@ -552,6 +564,8 @@ type ChatBindingName =
   | 'ChatAgents'
   | 'ChatStart'
   | 'ChatPrompt'
+  | 'ChatSendNow'
+  | 'ChatUnqueue'
   | 'ChatPickAttachments'
   | 'ChatAttachFiles'
   | 'ChatAttachImage'
@@ -1033,8 +1047,19 @@ class WailsBackendAPI implements BackendAPI {
     catch (e) { throw normalizeError(e); }
   }
 
-  async chatPrompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<void> {
-    try { await this.chatBinding('ChatPrompt')(chatId, text, attachments); }
+  async chatPrompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<ChatPromptResult> {
+    // An older backend returned nothing: the turn started.
+    try { return (await this.chatBinding('ChatPrompt')(chatId, text, attachments)) ?? {}; }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatSendNow(chatId: string, queuedId: string): Promise<void> {
+    try { await this.chatBinding('ChatSendNow')(chatId, queuedId); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatUnqueue(chatId: string, queuedId: string): Promise<ChatDraft> {
+    try { return (await this.chatBinding('ChatUnqueue')(chatId, queuedId)) ?? {}; }
     catch (e) { throw normalizeError(e); }
   }
 

@@ -692,3 +692,59 @@ func TestWithdrawnQuestion(t *testing.T) {
 		t.Fatalf("chunks = %q", texts)
 	}
 }
+
+func TestSteer(t *testing.T) {
+	c, rec := start(t, acp.ClientOptions{})
+	if !c.CanSteer() {
+		t.Fatal("CanSteer = false")
+	}
+	id := newSession(t, c)
+	steer := []acp.ContentBlock{acp.TextBlock("look at b.txt too")}
+	if out, err := c.Steer(ctx(t), id, steer); err != nil || out != acp.SteerPromptRequired {
+		t.Fatalf("idle steer = %q, %v", out, err)
+	}
+
+	result := make(chan string, 1)
+	go func() {
+		stop, _ := prompt(t, c, id, "hold")
+		result <- stop
+	}()
+	// The steer may reach the agent before the prompt; retry until it joins.
+	for {
+		out, err := c.Steer(ctx(t), id, steer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out == acp.SteerInjected {
+			break
+		}
+		if out != acp.SteerPromptRequired {
+			t.Fatalf("outcome = %q", out)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	select {
+	case stop := <-result:
+		if stop != acp.StopEndTurn {
+			t.Fatalf("stop = %q", stop)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the hold turn did not end")
+	}
+	if got := rec.texts(t); len(got) != 1 || got[0] != "steered:look at b.txt too" {
+		t.Fatalf("chunks = %q", got)
+	}
+}
+
+func TestSteerUnsupported(t *testing.T) {
+	c, _ := start(t, acp.ClientOptions{}, "ACPTEST_NO_STEER=1")
+	if c.CanSteer() {
+		t.Fatal("CanSteer = true")
+	}
+	id := newSession(t, c)
+	_, err := c.Steer(ctx(t), id, []acp.ContentBlock{acp.TextBlock("x")})
+	var e *acp.Error
+	if !errors.As(err, &e) || e.Code != acp.CodeMethodNotFound {
+		t.Fatalf("err = %v", err)
+	}
+}

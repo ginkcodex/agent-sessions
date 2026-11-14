@@ -21,6 +21,10 @@ var ErrNoChatAttachments = errors.New("this host's agent-sessions cannot send at
 // ask.
 var ErrNoChatQuestions = errors.New("this host's agent-sessions cannot pass on agents' questions; reconnect to update it")
 
+// ErrNoChatQueue means the host's agent-sessions is too old to queue
+// messages: it takes a message only while its agent is idle.
+var ErrNoChatQueue = errors.New("this host's agent-sessions cannot queue messages; reconnect to update it")
+
 // maxChatPromptBytes bounds a prompt's text. Prompts are typed by a person;
 // this only keeps a peer from handing the agent a frame-sized one.
 const maxChatPromptBytes = 1 << 20
@@ -46,6 +50,12 @@ type ChatPromptParams struct {
 // ChatParams names a chat.
 type ChatParams struct {
 	ChatID string `json:"chatId"`
+}
+
+// ChatQueuedParams names a queued message of a chat.
+type ChatQueuedParams struct {
+	ChatID   string `json:"chatId"`
+	QueuedID string `json:"queuedId"`
 }
 
 // ChatRespondParams answers a permission request; an empty OptionID answers
@@ -129,6 +139,7 @@ func (s *Server) dispatchChat(ctx context.Context, backend engine.Backend, req R
 		PermissionID string                  `json:"permissionId"`
 		OptionID     string                  `json:"optionId"`
 		QuestionID   string                  `json:"questionId"`
+		QueuedID     string                  `json:"queuedId"`
 		Action       string                  `json:"action"`
 		Content      map[string]any          `json:"content"`
 		ConfigID     string                  `json:"configId"`
@@ -146,7 +157,11 @@ func (s *Server) dispatchChat(ctx context.Context, backend engine.Backend, req R
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: "the prompt is too long"}
 		}
 		// The engine checks the attachments' number and sizes.
-		return nil, m.Prompt(p.ChatID, p.Text, p.Attachments)
+		return m.Prompt(p.ChatID, p.Text, p.Attachments)
+	case "chatSendNow":
+		return nil, m.SendNow(ctx, p.ChatID, p.QueuedID)
+	case "chatUnqueue":
+		return m.Unqueue(p.ChatID, p.QueuedID)
 	case "chatCancel":
 		return nil, m.Cancel(p.ChatID)
 	case "chatRespond":
@@ -248,17 +263,46 @@ func (c *Client) ChatStart(ctx context.Context, req engine.ChatStartRequest) (en
 	return out, c.chatCall(ctx, "chatStart", req, &out)
 }
 
-// ChatPrompt sends text and attachments to the chat's agent. A host that
-// would drop the attachments refuses them with ErrNoChatAttachments.
-func (c *Client) ChatPrompt(ctx context.Context, chatID, text string, atts []chatattach.Attachment) error {
+// ChatPrompt sends text and attachments to the chat's agent, or queues
+// them while it works. A host that would drop the attachments refuses them
+// with ErrNoChatAttachments; one without Capabilities.ChatQueue refuses a
+// message while its agent works (engine.ErrChatBusy).
+func (c *Client) ChatPrompt(ctx context.Context, chatID, text string, atts []chatattach.Attachment) (engine.ChatPromptResult, error) {
+	var out engine.ChatPromptResult
+	caps := c.Capabilities()
+	if !caps.ACPChat {
+		return out, engine.ErrUnsupportedAction
+	}
+	if len(atts) > 0 && !caps.ChatAttachments {
+		return out, ErrNoChatAttachments
+	}
+	return out, c.chatCall(ctx, "chatPrompt", ChatPromptParams{ChatID: chatID, Text: text, Attachments: atts}, &out)
+}
+
+// ChatSendNow sends a queued message at once: it starts a turn, or joins
+// the running one when the agent steers.
+func (c *Client) ChatSendNow(ctx context.Context, chatID, queuedID string) error {
 	caps := c.Capabilities()
 	if !caps.ACPChat {
 		return engine.ErrUnsupportedAction
 	}
-	if len(atts) > 0 && !caps.ChatAttachments {
-		return ErrNoChatAttachments
+	if !caps.ChatQueue {
+		return ErrNoChatQueue
 	}
-	return c.chatCall(ctx, "chatPrompt", ChatPromptParams{ChatID: chatID, Text: text, Attachments: atts}, nil)
+	return c.chatCall(ctx, "chatSendNow", ChatQueuedParams{ChatID: chatID, QueuedID: queuedID}, nil)
+}
+
+// ChatUnqueue removes a queued message and returns it.
+func (c *Client) ChatUnqueue(ctx context.Context, chatID, queuedID string) (engine.ChatDraft, error) {
+	var out engine.ChatDraft
+	caps := c.Capabilities()
+	if !caps.ACPChat {
+		return out, engine.ErrUnsupportedAction
+	}
+	if !caps.ChatQueue {
+		return out, ErrNoChatQueue
+	}
+	return out, c.chatCall(ctx, "chatUnqueue", ChatQueuedParams{ChatID: chatID, QueuedID: queuedID}, &out)
 }
 
 // ChatCancel cancels the chat's running turn.

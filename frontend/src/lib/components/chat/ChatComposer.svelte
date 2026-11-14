@@ -4,10 +4,11 @@
   // One card: the attached files, the text box, then a toolbar with Attach
   // and the end menu on the left and, on the right, the context in use, the
   // pickers and a round send (or, while a turn runs, stop) button. Files
-  // dropped on the card and images pasted into it are attached too.
+  // dropped on the card and images pasted into it are attached too. While
+  // the agent works a message is queued, and the queue shows above the card.
   import { onMount } from 'svelte';
   import type { Chat } from '../../stores/chats.svelte';
-  import type { ChatAttachment, ChatAttachResult } from '../../types';
+  import type { ChatAttachment, ChatAttachResult, ChatDraft } from '../../types';
   import { api } from '../../api';
   import { addAttachments, canSendPrompt, endChatQuestion, skippedToast, switchToTerminalQuestion } from '../../chat';
   import AttachmentChips from './AttachmentChips.svelte';
@@ -18,6 +19,7 @@
   import { errorText } from '../../manage';
   import { ALL_AGENTS } from '../../portable';
   import ChatOptions from './ChatOptions.svelte';
+  import QueuedMessages from './QueuedMessages.svelte';
   import Icon from '../common/Icon.svelte';
 
   interface Props {
@@ -59,13 +61,18 @@
   // text only.
   let caps = $derived(chat.promptCapabilities);
   let canAttach = $derived(!!caps && !closed && chat.phase !== 'starting');
-  let canSend = $derived(canSendPrompt(chat.phase, sending, text, attachments.length));
+  // While the agent works, a message waits in the queue for the turn's end.
+  let queues = $derived(chat.phase === 'working' && !!chat.canQueue);
+  let canSend = $derived(canSendPrompt(chat.phase, sending, text, attachments.length, queues));
+  let empty = $derived(text.trim() === '' && attachments.length === 0);
   let placeholder = $derived(
     chat.phase === 'starting'
       ? `Starting ${agentName}…`
       : closed
         ? 'The chat ended.'
-        : `Message ${agentName}…`,
+        : queues
+          ? `Queue a message for ${agentName}…`
+          : `Message ${agentName}…`,
   );
   let hintId = $derived(`chat-hint-${chat.key}`);
   // WebKit (macOS and Linux) reads autocorrect on a textarea; Svelte's types
@@ -107,6 +114,13 @@
     } finally {
       sending = false;
     }
+  }
+
+  /** Edit: a queued message comes back into the empty composer. */
+  function edit(draft: ChatDraft): void {
+    text = draft.text ?? '';
+    attachments = draft.attachments ?? [];
+    input?.focus();
   }
 
   /** Adds prepared files, and says which could not be attached and why. */
@@ -183,9 +197,10 @@
     }
   }
 
-  // Ending a chat whose agent works stops its turn: ask first.
+  // Ending a chat whose agent works stops its turn, and queued messages are
+  // never sent: ask first.
   async function endChat(): Promise<void> {
-    const question = endChatQuestion(chat.phase, agentName);
+    const question = endChatQuestion(chat.phase, agentName, chat.queue.length);
     if (question && (await filePrompt.ask(question.title, question.message, question.choices)) !== 'end') return;
     await act('end the chat', () => chats.close(chat.chatId));
   }
@@ -193,7 +208,7 @@
   // Switching stops the chat as End chat does — a working turn with it —
   // and the session continues in a terminal tab: ask first while it works.
   async function switchToTerminal(): Promise<void> {
-    const question = switchToTerminalQuestion(chat.phase, agentName);
+    const question = switchToTerminalQuestion(chat.phase, agentName, chat.queue.length);
     if (question && (await filePrompt.ask(question.title, question.message, question.choices)) !== 'switch') return;
     await onSwitchToTerminal?.();
   }
@@ -232,6 +247,9 @@
     void send();
   }}
 >
+  {#if chat.queue.length > 0 && !closed}
+    <QueuedMessages {chat} {agentName} composerEmpty={empty} onEdit={edit} />
+  {/if}
   <div class="card" class:disabled={chat.phase === 'starting' || closed}>
     {#if attachments.length > 0}
       <AttachmentChips {attachments} onRemove={remove} />
@@ -251,7 +269,9 @@
       onkeydown={onKeydown}
       onpaste={onPaste}
     ></textarea>
-    <span id={hintId} class="sr-only">Enter sends, Shift+Enter starts a new line.</span>
+    <span id={hintId} class="sr-only"
+      >{queues ? `Enter queues the message until ${agentName} finishes, Shift+Enter starts a new line.` : 'Enter sends, Shift+Enter starts a new line.'}</span
+    >
     <div class="toolbar">
       {#if closed}
         <button type="button" class="text" onclick={() => chats.dismiss(chat.key)}>Dismiss</button>
@@ -305,6 +325,11 @@
         {/if}
         {#if onOption}
           <ChatOptions {chat} onChange={onOption} />
+        {/if}
+        {#if queues && !empty}
+          <button type="submit" class="round send" title="Queue the message until {agentName} finishes (Enter)" disabled={!canSend}
+            ><Icon name="arrow-up" size={16} strokeWidth={2.5} /><span class="sr-only">Queue</span></button
+          >
         {/if}
         {#if chat.phase === 'working'}
           <button type="button" class="round stop" title="Stop {agentName}'s turn" onclick={() => void act('cancel the turn', () => chats.cancel(chat.chatId))}

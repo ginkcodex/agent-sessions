@@ -669,6 +669,30 @@ export interface ChatState {
   permissions?: ChatPermission[];
   /** The agent's questions waiting for an answer, oldest first. */
   questions?: ChatQuestion[];
+  /** The messages waiting for the next turn, in sending order. */
+  queue?: ChatQueuedPrompt[];
+  /** A message sent while the agent works is queued; false from an older server. */
+  canQueue?: boolean;
+  /** Send now can put a queued message into the running turn. */
+  canSteer?: boolean;
+}
+
+/** A queued message as the engine shows it: its attachments without their content. */
+export interface ChatQueuedPrompt {
+  id: string;
+  text?: string;
+  attachments?: { kind: 'image' | 'text' | string; name: string; mimeType?: string; size?: number }[];
+}
+
+/** What chatPrompt did: queued names the queued message; absent when the turn started. */
+export interface ChatPromptResult {
+  queued?: string;
+}
+
+/** A message taken back from the queue, with its attachments. */
+export interface ChatDraft {
+  text?: string;
+  attachments?: ChatAttachment[];
 }
 
 /** A file prepared to send with a chat message (Go chatattach.Attachment). */
@@ -816,7 +840,9 @@ export type ChatUpdateKind =
   | 'question_resolved'
   | 'turn_start'
   | 'turn_end'
-  | 'config_options';
+  | 'config_options'
+  | 'queue'
+  | 'steered';
 
 /** The payload of chat:update. seq counts a chat's events from 1, chat:exit included. */
 export interface ChatUpdateEvent {
@@ -831,6 +857,10 @@ export interface ChatUpdateEvent {
   error?: string;
   authMethods?: ChatAuthMethod[];
   configOptions?: ChatConfigOption[];
+  /** queue: the whole queue after it changed; absent when it is empty. */
+  queue?: ChatQueuedPrompt[];
+  /** steered: the message that joined the turn; turn_start: the queued message it sends. */
+  prompt?: ChatQueuedPrompt;
 }
 
 /** The payload of chat:exit, a chat's last event. */

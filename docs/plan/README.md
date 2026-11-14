@@ -94,6 +94,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [code-block-run.md](code-block-run.md) | [code-block-run](../tasks/code-block-run/README.md) | A Run button on an agent's shell code blocks opens a terminal tab in the session's directory and runs the command there |
 | [linux-repos.md](linux-repos.md) | [linux-repos](../tasks/linux-repos/README.md) | Signed apt and dnf repositories on the website Worker (releases recorded in Postgres) that list every stable release, with package downloads redirected to GitHub |
 | [auto-update.md](auto-update.md) | [auto-update](../tasks/auto-update/README.md) | macOS and Windows read GitHub's latest release, download and check it in the background, and install it on restart or quit |
+| [chat-message-queue.md](chat-message-queue.md) | [chat-message-queue](../tasks/chat-message-queue/README.md) | While a chat's agent works, Enter queues the message for the next turn; Send now puts a queued message into the running turn (ACP steering) |
 
 ## Supporting documents
 

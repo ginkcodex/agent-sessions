@@ -124,12 +124,18 @@ export function emptyTail(): ChatTail {
 
 /** Starts a turn; prompt is what was sent from this window, if anything. */
 export function beginTurn(tail: ChatTail, prompt?: TailPrompt): ChatTail {
-  const turn = tail.turn + 1;
-  const next: ChatTail = { ...tail, turn, turnOpen: true };
+  return addPrompt({ ...tail, turn: tail.turn + 1, turnOpen: true }, prompt);
+}
+
+/**
+ * Adds a message the user sent to the latest turn: its prompt, or one Send
+ * now steered into it while it ran.
+ */
+export function addPrompt(tail: ChatTail, prompt?: TailPrompt): ChatTail {
   const attachments = prompt?.attachments?.length ? prompt.attachments : undefined;
-  if (!prompt || (!prompt.text && !attachments)) return next;
-  const item: TailText = { type: 'text', key: `i${tail.nextKey}`, turn, role: 'user', text: prompt.text, sentAt: prompt.sentAt, ...(attachments && { attachments }) };
-  return { ...next, items: [...tail.items, item], nextKey: tail.nextKey + 1 };
+  if (!prompt || (!prompt.text && !attachments)) return tail;
+  const item: TailText = { type: 'text', key: `i${tail.nextKey}`, turn: tail.turn, role: 'user', text: prompt.text, sentAt: prompt.sentAt, ...(attachments && { attachments }) };
+  return { ...tail, items: [...tail.items, item], nextKey: tail.nextKey + 1 };
 }
 
 export function endTurn(tail: ChatTail): ChatTail {

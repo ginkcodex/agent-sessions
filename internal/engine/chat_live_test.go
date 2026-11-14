@@ -155,7 +155,7 @@ func testEngineChatLiveLifecycleNotifications(t *testing.T, agent model.AgentID)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := e.chats.Prompt(st.ChatID, "crash", nil); err != nil {
+				if _, err := e.chats.Prompt(st.ChatID, "crash", nil); err != nil {
 					t.Fatal(err)
 				}
 				// Join the watcher without sending a second request to the adapter.

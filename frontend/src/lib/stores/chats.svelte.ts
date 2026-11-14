@@ -5,9 +5,11 @@ import type {
   ChatAttachment,
   ChatAuthMethod,
   ChatConfigOption,
+  ChatDraft,
   ChatExitEvent,
   ChatPermission,
   ChatQuestion,
+  ChatQueuedPrompt,
   ChatStartRequest,
   ChatState,
   ChatUpdateEvent,
@@ -17,6 +19,7 @@ import type {
 import { epoch, isStaleReply } from '../link';
 import {
   addAnswer,
+  addPrompt,
   applySessionUpdate,
   beginTurn,
   emptyTail,
@@ -66,6 +69,16 @@ export interface Chat {
    * ones it went on without, whose answers can still go as a message.
    */
   questions: ChatPendingQuestion[];
+  /**
+   * The messages sent while the agent worked, waiting for their turn in
+   * sending order. They go after a turn that ends normally; after any other
+   * end they wait, paused, until Send now or a new message.
+   */
+  queue: ChatQueuedPrompt[];
+  /** A message sent while the agent works is queued; false from an older host. */
+  canQueue?: boolean;
+  /** Send now can put a queued message into the running turn. */
+  canSteer?: boolean;
   /** How the last turn ended: end_turn, cancelled, max_tokens… */
   stopReason?: string;
   /** Why the start or the last turn failed. */
@@ -82,6 +95,8 @@ interface Internal {
   seq: ChatSequence<ChatEvent>;
   /** The prompt sent and waiting for its turn_start. */
   prompt?: TailPrompt;
+  /** The messages this window queued, by queued ID: they keep an image's bytes to show. */
+  queued: Map<string, TailPrompt>;
   /** The questions asked and not yet resolved, by ID: the resolution reads its answer through the form. */
   asked: Map<string, ChatQuestion>;
 }
@@ -152,7 +167,7 @@ export class ChatsStore {
   reset(sameHost = false): void {
     // A chat still starting is refused when its start answers.
     const ended = (c: Chat): Chat =>
-      c.phase === 'exited' ? c : { ...c, phase: 'exited', exit: { chatId: c.chatId, seq: 0, reason: 'disconnected' }, permissions: [], questions: [], tail: endTurn(c.tail) };
+      c.phase === 'exited' ? c : { ...c, phase: 'exited', exit: { chatId: c.chatId, seq: 0, reason: 'disconnected' }, permissions: [], questions: [], queue: [], tail: endTurn(c.tail) };
     this.chats = sameHost ? this.chats.filter((c) => c.phase !== 'starting').map((c) => ({ ...ended(c), epoch: epoch() })) : [];
     this.internal.clear();
     this.early.clear();
@@ -242,9 +257,11 @@ export class ChatsStore {
   /**
    * Sends a prompt, its text and attached files. The chat shows as working
    * until the turn ends; the live tail shows the files, an image from its
-   * bytes, until the saved message does.
+   * bytes, until the saved message does. While a turn runs the backend
+   * queues it instead: the reply names it, and it shows in the chat's queue
+   * until its own turn starts. Returns the queued ID, if it was queued.
    */
-  async prompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<void> {
+  async prompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<string | undefined> {
     const chat = this.byChatId(chatId);
     const state = this.internal.get(chat?.key ?? '');
     if (!chat || !state) throw new Error('The chat is not open.');
@@ -253,16 +270,44 @@ export class ChatsStore {
       sentAt: Date.now(),
       ...(attachments.length > 0 && { attachments: attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, size: a.size, ...(a.kind === 'image' && a.data && { data: a.data }) })) }),
     };
+    // A message sent during a turn starts its own when the turn ended first.
     state.prompt = prompt;
     this.update(chat.key, (c) => ({ ...c, phase: c.phase === 'idle' ? 'working' : c.phase, error: undefined, authMethods: undefined }));
+    let queued: string | undefined;
     try {
-      await api.chatPrompt(chatId, text, attachments);
+      queued = (await api.chatPrompt(chatId, text, attachments)).queued || undefined;
     } catch (e) {
       // The turn did not start: no turn_start came for this prompt.
       if (state.prompt === prompt) state.prompt = undefined;
       this.update(chat.key, (c) => (c.phase === 'working' && !c.tail.turnOpen ? { ...c, phase: 'idle' } : c));
       throw e;
     }
+    if (queued) {
+      if (state.prompt === prompt) state.prompt = undefined;
+      // Unless its turn already started, or Remove took it back.
+      if (this.byKey(chat.key)?.queue.some((q) => q.id === queued)) state.queued.set(queued, prompt);
+    }
+    return queued;
+  }
+
+  /**
+   * Sends a queued message now: it joins the running turn when the agent
+   * can take it, or starts a turn when none runs (a paused queue).
+   */
+  sendNow(chatId: string, queuedId: string): Promise<void> {
+    return api.chatSendNow(chatId, queuedId);
+  }
+
+  /** Takes a message back from the queue, with its attachments, to edit it. */
+  async unqueue(chatId: string, queuedId: string): Promise<ChatDraft> {
+    const draft = await api.chatUnqueue(chatId, queuedId);
+    const chat = this.byChatId(chatId);
+    if (chat) {
+      this.internal.get(chat.key)?.queued.delete(queuedId);
+      // The queue event follows; drop it now.
+      this.update(chat.key, (c) => ({ ...c, queue: c.queue.filter((q) => q.id !== queuedId) }));
+    }
+    return draft;
   }
 
   cancel(chatId: string): Promise<void> {
@@ -331,9 +376,9 @@ export class ChatsStore {
 
   private add(agent: Chat['agent'], dir: string, fields: Pick<Chat, 'chatId' | 'phase'> & Partial<Chat>, seq: ChatSequence<ChatEvent>, st?: ChatState): string {
     const key = `chat-${this.nextKey++}`;
-    let chat: Chat = { key, agent, dir, configOptions: [], tail: emptyTail(), permissions: [], questions: [], epoch: epoch(), ...fields };
+    let chat: Chat = { key, agent, dir, configOptions: [], tail: emptyTail(), permissions: [], questions: [], queue: [], epoch: epoch(), ...fields };
     if (st) chat = this.withState(chat, st);
-    this.internal.set(key, { seq, asked: new Map() });
+    this.internal.set(key, { seq, asked: new Map(), queued: new Map() });
     this.chats = [...this.chats, chat];
     return key;
   }
@@ -357,6 +402,9 @@ export class ChatsStore {
       agentInfo: st.agentInfo,
       configOptions: st.configOptions ?? [],
       promptCapabilities: st.promptCapabilities,
+      queue: st.queue ?? [],
+      canQueue: st.canQueue,
+      canSteer: st.canSteer,
     };
   }
 
@@ -396,7 +444,8 @@ export class ChatsStore {
       const exit = e.exit;
       state.prompt = undefined;
       state.asked.clear();
-      this.update(key, (c) => ({ ...c, phase: 'exited', exit, permissions: [], questions: [], tail: endTurn(c.tail) }));
+      state.queued.clear();
+      this.update(key, (c) => ({ ...c, phase: 'exited', exit, permissions: [], questions: [], queue: [], tail: endTurn(c.tail) }));
       return;
     }
     switch (e.kind) {
@@ -452,8 +501,15 @@ export class ChatsStore {
         return;
       }
       case 'turn_start': {
-        const prompt = state.prompt;
-        state.prompt = undefined;
+        // A turn for a queued message names it; any other sends the prompt
+        // this window sent, if it did.
+        let prompt: TailPrompt | undefined;
+        if (e.prompt) {
+          prompt = this.takeQueued(state, e.prompt);
+        } else {
+          prompt = state.prompt;
+          state.prompt = undefined;
+        }
         this.update(key, (c) => ({
           ...c,
           phase: c.phase === 'exited' ? c.phase : 'working',
@@ -464,7 +520,11 @@ export class ChatsStore {
         }));
         return;
       }
-      case 'turn_end':
+      case 'turn_end': {
+        // The copies of messages no longer queued (another window removed
+        // them) are not needed.
+        const queue = this.byKey(key)?.queue ?? [];
+        for (const id of state.queued.keys()) if (!queue.some((q) => q.id === id)) state.queued.delete(id);
         // Permission requests end with their turn; the backend has answered
         // them. A question goes only with its question_resolved: the agent
         // may still wait for it (Codex's async questions outlive the prompt
@@ -479,6 +539,20 @@ export class ChatsStore {
           authMethods: e.authMethods?.length ? e.authMethods : undefined,
         }));
         return;
+      }
+      case 'queue': {
+        // The local copies stay: a message's turn_start follows the queue
+        // event that took it out.
+        const queue = e.queue ?? [];
+        this.update(key, (c) => ({ ...c, queue }));
+        return;
+      }
+      case 'steered': {
+        if (!e.prompt) return;
+        const prompt = this.takeQueued(state, e.prompt);
+        this.update(key, (c) => ({ ...c, tail: c.tail.turnOpen ? addPrompt(c.tail, prompt) : c.tail }));
+        return;
+      }
       case 'config_options':
         if (e.configOptions) {
           const options = e.configOptions;
@@ -489,6 +563,18 @@ export class ChatsStore {
         // A kind from a newer backend.
         return;
     }
+  }
+
+  /**
+   * The queued message as the tail shows it, sent now: this window's copy,
+   * with an image's bytes, or else what the queue tells of it.
+   */
+  private takeQueued(state: Internal, q: ChatQueuedPrompt): TailPrompt {
+    const local = state.queued.get(q.id);
+    state.queued.delete(q.id);
+    if (local) return { ...local, sentAt: Date.now() };
+    const attachments = (q.attachments ?? []).map((a) => ({ name: a.name, mimeType: a.mimeType ?? '', size: a.size ?? 0 }));
+    return { text: q.text ?? '', sentAt: Date.now(), ...(attachments.length > 0 && { attachments }) };
   }
 }
 
