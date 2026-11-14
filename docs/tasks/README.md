@@ -103,4 +103,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Auto-update (macOS, Windows) | [auto-update](../plan/auto-update.md) | [auto-update/](auto-update/README.md) | 14/17 ✅ · 3 ⬜ |
 | Chat message queue | [chat-message-queue](../plan/chat-message-queue.md) | [chat-message-queue/](chat-message-queue/README.md) | 7/8 ✅ · 1 ⬜ |
 | Tool file links | [tool-file-links](../plan/tool-file-links.md) | [tool-file-links/](tool-file-links/README.md) | 1/2 ✅ · 1 ⬜ |
-| Review fixes (2026-11-14 review) | [review-fixes](../plan/review-fixes.md) | [review-fixes/](review-fixes/README.md) | 6/25 ✅ · 19 ⬜ |
+| Review fixes (2026-11-14 review) | [review-fixes](../plan/review-fixes.md) | [review-fixes/](review-fixes/README.md) | 7/25 ✅ · 18 ⬜ |

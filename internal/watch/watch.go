@@ -28,6 +28,10 @@ const (
 	filePollInterval     = 30 * time.Second
 	openCodePollInterval = 60 * time.Second
 	fallbackPollInterval = 10 * time.Second
+	// A provider in fallback tries its watches again after the fallback poll
+	// interval, doubling up to this many times that; a watch limit (ENOSPC,
+	// EMFILE) waits the longest at once.
+	retryBackoffLimit = 32
 )
 
 // Change identifies one provider's changed sources. Paths is nil when a full
@@ -96,6 +100,9 @@ type Watcher struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	fs     fsWatcher
+	// fsBroken is set when the filesystem watcher is gone (it could not be
+	// created, or its event channel closed): watches are not retried.
+	fsBroken bool
 
 	mu        sync.Mutex
 	started   bool
@@ -116,7 +123,12 @@ type providerState struct {
 	last     time.Time
 	nextPoll time.Time
 	fallback bool
-	watched  map[string]struct{}
+	// retryAt is when a provider in fallback next tries its watches, after
+	// retryDelay; healthySince is when it last had them back.
+	retryAt      time.Time
+	retryDelay   time.Duration
+	healthySince time.Time
+	watched      map[string]struct{}
 	// anchors are directories watched only for the creation of a missing
 	// root: the nearest one that exists, such as $HOME without ~/.codex.
 	// Nothing under them is watched or rescanned for.
@@ -217,8 +229,9 @@ func (w *Watcher) Start(parent context.Context) {
 
 	watcher, err := w.options.newFSWatcher()
 	if err != nil {
+		w.fsBroken = true
 		for _, state := range w.states {
-			w.setFallbackLocked(state, now)
+			w.setFallbackLocked(state, now, err)
 		}
 	} else {
 		w.fs = watcher
@@ -286,17 +299,17 @@ func (w *Watcher) run() {
 		case event, ok := <-events:
 			if !ok {
 				events = nil
-				w.failAll()
+				w.failAll(errWatcherClosed, true)
 				continue
 			}
 			w.handleEvent(event)
-		case _, ok := <-watchErrors:
+		case err, ok := <-watchErrors:
 			if !ok {
 				watchErrors = nil
-				w.failAll()
+				w.failAll(errWatcherClosed, true)
 				continue
 			}
-			w.failAll()
+			w.handleError(err)
 		case <-w.wake:
 		case <-timer.C:
 		}
@@ -338,7 +351,7 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 				}
 				isDir = true
 				if err := w.addTreeLocked(state, path); err != nil {
-					w.setFallbackLocked(state, now)
+					w.setFallbackLocked(state, now, err)
 					continue
 				}
 			}
@@ -352,9 +365,11 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 			w.forgetTreeLocked(state, path)
 			// A removed root, or a directory above one, leaves an anchor
 			// that sees the root come back.
-			if wasWatchedDir && !w.reinstallRootsUnderLocked(state, path) {
-				w.setFallbackLocked(state, now)
-				continue
+			if wasWatchedDir {
+				if err := w.reinstallRootsUnderLocked(state, path); err != nil {
+					w.setFallbackLocked(state, now, err)
+					continue
+				}
 			}
 		}
 		if isDir || wasWatchedDir {
@@ -377,22 +392,85 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 	}
 }
 
-func (w *Watcher) failAll() {
+var errWatcherClosed = errors.New("watch: filesystem watcher closed")
+
+// handleError handles an error from the filesystem watcher. An overflow lost
+// events but kept every watch: each provider is rescanned in full. Any other
+// error names no path, so every provider falls back to polling and tries its
+// watches again later.
+func (w *Watcher) handleError(err error) {
+	if errors.Is(err, fsnotify.ErrEventOverflow) {
+		now := w.options.now()
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		for _, state := range w.states {
+			if !state.fallback {
+				w.queueLocked(state, nil, true, now)
+			}
+		}
+		return
+	}
+	w.failAll(err, false)
+}
+
+// failAll moves every provider to polling. broken means the filesystem
+// watcher itself is gone, so watches are not tried again.
+func (w *Watcher) failAll(err error, broken bool) {
 	now := w.options.now()
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if broken {
+		w.fsBroken = true
+	}
 	for _, state := range w.states {
-		w.setFallbackLocked(state, now)
+		w.setFallbackLocked(state, now, err)
 	}
 }
 
-func (w *Watcher) installProviderLocked(state *providerState, now time.Time) {
+// installProviderLocked watches each of state's roots; on an error the
+// provider falls back to polling.
+func (w *Watcher) installProviderLocked(state *providerState, now time.Time) bool {
 	for _, root := range state.roots {
 		if err := w.installRootLocked(state, root); err != nil {
-			w.setFallbackLocked(state, now)
-			return
+			w.setFallbackLocked(state, now, err)
+			return false
 		}
 	}
+	return true
+}
+
+// retryWatchesLocked tries the watches of a provider in fallback again. On
+// success it leaves fallback, with a full rescan for what changed meanwhile;
+// on failure setFallbackLocked schedules the next try, later.
+func (w *Watcher) retryWatchesLocked(state *providerState, now time.Time) {
+	state.fallback = false
+	state.retryAt = time.Time{}
+	if !w.installProviderLocked(state, now) {
+		return
+	}
+	state.healthySince = now
+	state.nextPoll = now.Add(w.pollInterval(state))
+	w.queueLocked(state, nil, true, now)
+}
+
+// nextRetryDelay is how long a provider that just fell back waits before
+// trying its watches again: the fallback poll interval, doubled on each
+// failure in a row up to retryBackoffLimit times it. A watch limit waits the
+// longest at once, since more watches won't fit until something else frees
+// them. A provider that kept its watches that long starts again from the
+// shortest delay.
+func (w *Watcher) nextRetryDelay(state *providerState, now time.Time, err error) time.Duration {
+	base := w.options.fallbackPoll
+	limit := base * retryBackoffLimit
+	switch {
+	case isWatchLimit(err):
+		state.retryDelay = limit
+	case state.retryDelay == 0 || (!state.healthySince.IsZero() && now.Sub(state.healthySince) >= limit):
+		state.retryDelay = base
+	default:
+		state.retryDelay = min(state.retryDelay*2, limit)
+	}
+	return state.retryDelay
 }
 
 func (w *Watcher) installRootLocked(state *providerState, root watchRoot) error {
@@ -462,7 +540,7 @@ func (w *Watcher) rootCreatedLocked(state *providerState, path string, now time.
 			continue
 		}
 		if err := w.installRootLocked(state, root); err != nil {
-			w.setFallbackLocked(state, now)
+			w.setFallbackLocked(state, now, err)
 			return
 		}
 		if _, err := os.Stat(root.path); err == nil {
@@ -472,19 +550,18 @@ func (w *Watcher) rootCreatedLocked(state *providerState, path string, now time.
 }
 
 // reinstallRootsUnderLocked installs again each root at or below a removed
-// path, so a missing root gets its anchor. It reports false on a watch
-// error.
-func (w *Watcher) reinstallRootsUnderLocked(state *providerState, removed string) bool {
+// path, so a missing root gets its anchor.
+func (w *Watcher) reinstallRootsUnderLocked(state *providerState, removed string) error {
 	prefix := removed + string(filepath.Separator)
 	for _, root := range state.roots {
 		if root.path != removed && !strings.HasPrefix(root.path, prefix) {
 			continue
 		}
 		if err := w.installRootLocked(state, root); err != nil {
-			return false
+			return err
 		}
 	}
-	return true
+	return nil
 }
 
 // addAnchorLocked watches dir as an anchor for state.
@@ -593,12 +670,19 @@ func (w *Watcher) ownersLocked(path string) map[model.AgentID]struct{} {
 	return owners
 }
 
-func (w *Watcher) setFallbackLocked(state *providerState, now time.Time) {
+// setFallbackLocked moves state to polling after err, drops its watches and,
+// while the filesystem watcher works, schedules a try to watch again.
+func (w *Watcher) setFallbackLocked(state *providerState, now time.Time, err error) {
 	if state.fallback {
 		return
 	}
 	state.fallback = true
 	state.nextPoll = now.Add(w.options.fallbackPoll)
+	state.retryAt = time.Time{}
+	if !w.fsBroken && w.fs != nil {
+		state.retryAt = now.Add(w.nextRetryDelay(state, now, err))
+	}
+	state.healthySince = time.Time{}
 	for _, set := range []map[string]struct{}{state.watched, state.anchors} {
 		for path := range set {
 			owners := w.pathOwner[path]
@@ -648,6 +732,9 @@ func (w *Watcher) dispatchDue() {
 	w.mu.Lock()
 	for _, p := range w.providers {
 		state := w.states[p.ID()]
+		if state.fallback && !state.retryAt.IsZero() && !state.retryAt.After(now) {
+			w.retryWatchesLocked(state, now)
+		}
 		if !state.nextPoll.After(now) {
 			w.queueLocked(state, nil, true, now)
 			state.nextPoll = now.Add(w.pollInterval(state))
@@ -693,6 +780,11 @@ func (w *Watcher) nextDelay() time.Duration {
 	for _, state := range w.states {
 		if until := state.nextPoll.Sub(now); until < delay {
 			delay = until
+		}
+		if state.fallback && !state.retryAt.IsZero() {
+			if until := state.retryAt.Sub(now); until < delay {
+				delay = until
+			}
 		}
 		if !state.first.IsZero() {
 			due := state.last.Add(w.options.debounce)
