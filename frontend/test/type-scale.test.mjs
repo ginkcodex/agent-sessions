@@ -77,6 +77,8 @@ const SESSION_PX = {
     '.model-tag': 10.88,
     '.sidechain-tag': 10.4,
     '.translation-tag': 10.4,
+    // CPC-14: new, on the same tag token as its neighbours.
+    '.command-tag': 10.4,
     '.file-attachment-pill': 12,
   },
   'parts/ToolPart.svelte': {

@@ -141,6 +141,14 @@ test('real MessageBubble dispatches only dedicated Claude user records to the Ba
       assert.match(html, /ORDINARY_TEXT/);
       assert.doesNotMatch(html, /Manually run Bash command/);
     }
+    const tagged = render(Bubble, { props: { message: message('/ponytail:ponytail full'), sessionRef: ref } }).body;
+    assert.match(tagged, /slash-command/);
+    assert.match(tagged, /class="command-tag[^"]*"[^>]*>cmd</);
+    for (const props of [
+      { message: message('/home/haith/x is odd'), sessionRef: ref },
+      { message: { ...message('/review'), role: 'assistant' }, sessionRef: ref },
+      { message: message(command), sessionRef: ref },
+    ]) assert.doesNotMatch(render(Bubble, { props }).body, /command-tag|slash-command/);
   } finally { delete globalThis.__bashCard; }
 });
 

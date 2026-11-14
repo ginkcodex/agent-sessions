@@ -61,6 +61,11 @@ export function messageText(message: Message): string {
     .join('\n\n');
 }
 
+/** Whether a user message's text is a slash command such as `/plugin:cmd args`; `/home/x` is a path, not one. */
+export function isSlashCommand(text: string): boolean {
+  return /^\/[\w.-]+(?::[\w.-]+)*(?:\s|$)/.test(text.trim());
+}
+
 /** parts with their text parts replaced by one holding a translation, where the first was. */
 export function withTranslation(parts: Part[], translation: string): Part[] {
   const out: Part[] = [];

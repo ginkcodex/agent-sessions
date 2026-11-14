@@ -96,6 +96,12 @@ results belong in a modal like VS Code's "MCP servers", not in the transcript.
   or duplicate when the agent saves, on reload, or during incremental loading.
   If the native log never records the invocation, document the limitation;
   do not fabricate a saved user message or edit the native session store.
+- A user message whose text starts with a slash command (`/name` or
+  `/plugin:command`, then whitespace or the end) carries a `cmd` tag beside
+  "You" and is set in the mono font, in saved transcripts and the live tail
+  alike. It is a text rule, so a prose message such as `/etc is odd` gets the
+  tag too; a path such as `/home/x` does not. It is not offered for
+  translation (CPC-14).
 
 ## Investigation evidence (2026-11-14)
 

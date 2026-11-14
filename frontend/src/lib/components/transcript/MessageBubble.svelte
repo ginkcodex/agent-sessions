@@ -9,7 +9,7 @@
   import { copyToClipboard } from '../../portable';
   import { copyFailed } from '../../guidance';
   import { appState } from '../../stores/appState.svelte';
-  import { messageMarkdown, messageText, visibleTranscriptParts, withTranslation, type TranscriptMode } from '../../transcript';
+  import { isSlashCommand, messageMarkdown, messageText, visibleTranscriptParts, withTranslation, type TranscriptMode } from '../../transcript';
   import { printMessage } from '../../print';
   import ContextMenu, { type ContextMenuItem } from '../common/ContextMenu.svelte';
   import Icon from '../common/Icon.svelte';
@@ -76,8 +76,9 @@
   // messages; other messages keep the default context menu.
   let manualBash = $derived(manualBashMessage(message, sessionRef));
   let markdown = $derived(manualBash ? manualBashMarkdown(manualBash) : isUser || isAssistant ? messageMarkdown(message) : '');
+  let slashCommand = $derived(isUser && !manualBash && isSlashCommand(messageText(message)));
   // Commands/output are code, not prose to translate.
-  let text = $derived(!manualBash && markdown ? messageText(message) : '');
+  let text = $derived(!manualBash && !slashCommand && markdown ? messageText(message) : '');
   let key = $derived(translationKey(sessionRef, message, index, translateSettings.language));
   let translation = $derived(translations.get(key));
   let translated = $derived(translation?.status === 'done' && !translation.showOriginal);
@@ -200,6 +201,7 @@
     class:role-system={isSystem}
     class:is-meta={message.isMeta}
     class:manual-bash={!!manualBash}
+    class:slash-command={slashCommand}
     oncontextmenu={openMenu}
   >
     <!-- The role, model and time sit above the message rather than in a card
@@ -210,6 +212,9 @@
         {#if isUser}
           <span class="role-icon user"><Icon name="user" size={12} /></span>
           <span class="role-label">You</span>
+          {#if slashCommand}
+            <span class="command-tag" title="A slash command for the agent">cmd</span>
+          {/if}
         {:else if isAssistant}
           <span class="role-icon assistant"><AgentIcon agent={sessionRef?.agent} size={11} /></span>
           <span class="role-label">Assistant</span>
@@ -410,6 +415,19 @@
     font-family: var(--font-mono);
     color: var(--text-muted);
     font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
+  }
+
+  .command-tag {
+    padding: 0 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
+    color: var(--text-muted);
+  }
+
+  .role-user.slash-command .message-parts-body {
+    font-family: var(--font-mono);
   }
 
   .sidechain-tag {
