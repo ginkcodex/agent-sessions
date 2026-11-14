@@ -25,7 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
-| [large-file-view.md](large-file-view.md) | [large-file-view](../tasks/large-file-view/README.md) | Large files in Go to File open in the read-only editor, which renders only the lines in view |
+| [large-file-view.md](large-file-view.md) | [large-file-view](../tasks/large-file-view/README.md) | Large files in Go to File open in the editor, which renders only the lines in view, and can be edited up to the 5 MiB read limit |
 | [chat-plugin-commands.md](chat-plugin-commands.md) | [chat-plugin-commands](../tasks/chat-plugin-commands/README.md) | Read-only MCP/plugin inventories, installed plugin command invocation and visible user command messages live and after reopen |
 | [layout-memory.md](layout-memory.md) | [layout-memory](../tasks/layout-memory/README.md) | Content-fit pane sizing and remembered window and pane geometry across launches |
 | [transcript-tool-readability.md](transcript-tool-readability.md) | [transcript-tool-readability](../tasks/transcript-tool-readability/README.md) | Readable tool summaries, decoded text envelopes and expandable output previews at Activity and All levels |
