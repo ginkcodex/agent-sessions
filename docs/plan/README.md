@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [chat-plugin-commands.md](chat-plugin-commands.md) | [chat-plugin-commands](../tasks/chat-plugin-commands/README.md) | Read-only MCP/plugin inventories, installed plugin command invocation and visible user command messages live and after reopen |
 | [layout-memory.md](layout-memory.md) | [layout-memory](../tasks/layout-memory/README.md) | Content-fit pane sizing and remembered window and pane geometry across launches |
 | [transcript-tool-readability.md](transcript-tool-readability.md) | [transcript-tool-readability](../tasks/transcript-tool-readability/README.md) | Readable tool summaries, decoded text envelopes and expandable output previews at Activity and All levels |
 | [message-file-single-match.md](message-file-single-match.md) | [message-file-single-match](../tasks/message-file-single-match/README.md) | A file name or partial path in a message or terminal that matches one project file opens it directly; several matches still offer a toast |
