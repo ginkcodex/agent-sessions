@@ -1,4 +1,4 @@
-import { Annotation, Compartment, EditorState, RangeSet, StateField, type Extension, type SelectionRange, type TransactionSpec } from '@codemirror/state';
+import { Annotation, Compartment, EditorState, RangeSet, StateField, type Extension, type SelectionRange, type Text, type TransactionSpec } from '@codemirror/state';
 import { forEachDiagnostic, lintKeymap, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import { projectSourceDiagnostics } from './sourceDiagnostics';
 import type { AttributedCodeDiagnostic, LiveDocumentBasis } from './codeDiagnostics';
@@ -158,7 +158,7 @@ function fileHighlight(hljs: HLJSApi, path: string): Extension {
   const language = fileLanguage(path);
   function decorate(state: EditorState): DecorationSet {
     if (state.doc.length > HIGHLIGHT_LIMIT) return Decoration.none;
-    const html = highlightFileWith(hljs, state.doc.toString(), language ?? '');
+    const html = highlightFileWith(hljs, docText(state.doc), language ?? '');
     const marks = [];
     const open: { from: number; class: string }[] = [];
     let offset = 0;
@@ -226,12 +226,14 @@ function lineSelection(text: string, selection: FileLineSelection) {
  * source viewer's provider fallback, freshness and strict UTF-16 validation. */
 export function editorDiagnostics(state: EditorState, options: FileEditorOptions): Diagnostic[] {
   const input = options.diagnostics;
-  if (!input || input.tab !== options.id || input.path !== options.path || !input.context || options.text.replace(/\r\n/g, '\n') !== state.doc.toString()) return [];
-  return projectSourceDiagnostics(state.doc.toString(), input.findings.filter(f => f.diagnostic.path === options.path), input, input.current)
+  if (!input || input.tab !== options.id || input.path !== options.path || !input.context
+    || !showsText(state.doc, options.text, text => text.replace(/\r\n/g, '\n'))) return [];
+  const text = docText(state.doc);
+  return projectSourceDiagnostics(text, input.findings.filter(f => f.diagnostic.path === options.path), input, input.current)
     .messages.flatMap(({ finding, notice }) => {
       if (notice) return [];
       const d = finding.diagnostic;
-      const offsets = rangeOffsets(state.doc.toString(), d.range!);
+      const offsets = rangeOffsets(text, d.range!);
       return offsets ? [{ from: offsets.anchor, to: offsets.head,
         severity: d.severity === 'information' ? 'info' as const : d.severity,
         source: [d.source || finding.entries.map(e => e.providerId).join(', '), d.code].filter(Boolean).join(' '),
@@ -337,7 +339,7 @@ function askedText(view: EditorView): () => boolean {
   return () => {
     const now = owners.get(view);
     return Boolean(owner && now && now.id === owner.id && now.path === owner.path && now.version === owner.version
-      && view.state.doc.eq(doc) && lf(now.text) === doc.toString());
+      && view.state.doc.eq(doc) && showsText(doc, now.text));
   };
 }
 
@@ -513,7 +515,7 @@ function freshState(options: FileEditorOptions): EditorState {
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...editorLintKeymap]),
       EditorView.updateListener.of(update => {
         if (update.docChanged && !update.transactions.every(tr => tr.annotation(external)))
-          owners.get(update.view)?.onchange(update.state.doc.toString());
+          owners.get(update.view)?.onchange(docText(update.state.doc));
         if (update.docChanged || update.transactions.some(tr => tr.effects.some(e => e.is(setDiagnosticsEffect)))) reportProblems(update.view);
       }),
     ],
@@ -526,15 +528,31 @@ function freshState(options: FileEditorOptions): EditorState {
  * back exactly the replace.
  */
 function adoption(state: EditorState, text: string): TransactionSpec {
-  return { changes: textChanges(state.doc.toString(), lf(text)), annotations: [external.of(true), isolateHistory.of('full')] };
+  return { changes: textChanges(docText(state.doc), lf(text)), annotations: [external.of(true), isolateHistory.of('full')] };
 }
 
 function adopt(state: EditorState, text: string): EditorState {
-  return state.doc.toString() === lf(text) ? state : state.update(adoption(state, text)).state;
+  return showsText(state.doc, text) ? state : state.update(adoption(state, text)).state;
 }
 
 // The document as CodeMirror holds it: every line break is \n.
 const lf = (text: string) => text.replace(/\r\n?/g, '\n');
+
+// Documents are immutable: build each one's string once. On a large file each
+// build or compare costs milliseconds, and a keystroke asked for several.
+const docStrings = new WeakMap<Text, string>();
+function docText(doc: Text): string {
+  let text = docStrings.get(doc);
+  if (text === undefined) docStrings.set(doc, text = doc.toString());
+  return text;
+}
+
+/** Whether text is the document, with its line breaks as CodeMirror holds them. */
+function showsText(doc: Text, text: string, normalize = lf): boolean {
+  const own = docText(doc);
+  // The draft is usually the very string the editor reported: no scan then.
+  return text === own || normalize(text) === own;
+}
 
 function handleKey(view: EditorView, event: KeyboardEvent): boolean {
   // A parent window handler can see an already-consumed event.
@@ -672,7 +690,7 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
       if (destroyed) return;
       const changedTab = next.id !== options.id;
       const reset = changedTab || next.version !== options.version;
-      const adopted = !reset && lf(next.text) !== view.state.doc.toString();
+      const adopted = !reset && !showsText(view.state.doc, next.text);
       const changedPath = next.path !== options.path;
       if (changedTab) remember();
       options = next;
@@ -698,7 +716,7 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
     },
     revealRange(range: CodeDiagnosticRange): boolean {
       if (destroyed) return false;
-      const selection = rangeOffsets(view.state.doc.toString(), range);
+      const selection = rangeOffsets(docText(view.state.doc), range);
       if (!selection) return false;
       ++scrollRequest; // Supersede pending scroll restoration, not document/history.
       view.dispatch({ selection, effects: EditorView.scrollIntoView(selection.anchor, { y: 'center' }) });

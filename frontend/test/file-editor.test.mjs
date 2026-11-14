@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { compile } from 'svelte/compiler';
 import ts from 'typescript';
-import { EditorState } from '@codemirror/state';
+import { EditorState, Text } from '@codemirror/state';
 import { forEachDiagnostic, diagnosticCount } from '@codemirror/lint';
 import { EditorView, keymap, lineNumberMarkers } from '@codemirror/view';
 import { undo, redo, undoDepth, indentMore, insertNewlineAndIndent } from '@codemirror/commands';
@@ -486,6 +486,28 @@ test('editor starts from the given text and reports every edit as a full snapsho
   type(view, 'two\n');
   type(view, 'three\n');
   assert.deepEqual(calls.changes, ['one\ntwo\n', 'one\ntwo\nthree\n']);
+});
+
+test('a keystroke builds the document string once; the draft coming back is not compared again', () => {
+  const { editor, view, options, calls } = mount({ text: 'a\n'.repeat(1000), diagnostics: lintInput(undefined) });
+  const toString = Text.prototype.toString;
+  let built = 0;
+  Text.prototype.toString = function () { built++; return toString.call(this); };
+  try {
+    type(view, 'x');
+    const draft = calls.changes.at(-1);
+    assert.equal(built, 1, 'one string for the reported draft');
+    editor.update({ ...options, text: draft, diagnostics: lintInput(options.id) });
+    assert.equal(built, 1, 'the reported draft is the document: no rebuild, no scan');
+    const depth = undoDepth(view.state);
+    // Equal text in another string, or with CRLF line breaks, is still the document.
+    editor.update({ ...options, text: draft.replace(/\n/g, '\r\n'), diagnostics: lintInput(options.id) });
+    assert.equal(built, 1);
+    assert.equal(undoDepth(view.state), depth, 'no adoption for the same text');
+    assert.equal(view.state.doc.toString(), draft);
+  } finally {
+    Text.prototype.toString = toString;
+  }
 });
 
 test('history: undo/redo work and also report the restored text', () => {

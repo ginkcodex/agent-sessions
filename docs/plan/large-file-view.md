@@ -70,6 +70,10 @@ so editing a large file needs three more things:
 - The edit limit equals the read limit. A separate, lower edit limit existed
   because the editor's cost near it was unknown (`file-editing` plan). The
   editor renders only the lines in view; the per-keystroke cost is LFV-06.
+- The draft is still reported on every key. With the repeated compares gone,
+  a key on the 2.5 MB file costs about 4 ms in Chromium (from 14 ms), mostly
+  building the draft's string. A draft reported after a pause would make every
+  reader of the draft flush first; not worth it at that cost.
 
 ## Risks
 
