@@ -11,15 +11,15 @@ require (
 	aead.dev/minisign v0.3.0
 	github.com/BurntSushi/toml v1.6.0
 	github.com/aymanbagabas/go-pty v0.2.3
-	github.com/coder/websocket v1.8.14
+	github.com/coder/websocket v1.8.15
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/hexops/gotextdiff v1.0.3
-	github.com/tidwall/gjson v1.20.0
+	github.com/tidwall/gjson v1.20.3
 	github.com/wailsapp/wails/v3 v3.1.0
-	golang.org/x/mod v0.42.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/mod v0.43.0
+	golang.org/x/sys v0.50.0
 	google.golang.org/protobuf v1.36.12
-	modernc.org/sqlite v1.61.0
+	modernc.org/sqlite v1.62.0
 )
 
 require (
@@ -209,7 +209,7 @@ require (
 	github.com/subosito/gotenv v1.4.1 // indirect
 	github.com/tetafro/godot v1.5.6 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
-	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/pretty v1.3.0 // indirect
 	github.com/timakin/bodyclose v0.0.0-20260723120731-857993a2939c // indirect
 	github.com/timonwong/loggercheck v0.13.0 // indirect
 	github.com/tomarrell/wrapcheck/v2 v2.13.0 // indirect
@@ -243,7 +243,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/tools v0.8.2 // indirect
-	modernc.org/libc v1.79.0 // indirect
+	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 	mvdan.cc/gofumpt v0.12.0 // indirect
