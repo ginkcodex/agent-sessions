@@ -4,6 +4,7 @@ import type {
   ChatAnswerAction,
   ChatAttachment,
   ChatAuthMethod,
+  ChatCommand,
   ChatConfigOption,
   ChatDraft,
   ChatExitEvent,
@@ -58,6 +59,8 @@ export interface Chat {
   session?: SessionRef;
   agentInfo?: ChatState['agentInfo'];
   configOptions: ChatConfigOption[];
+  /** The agent's latest command catalog, in the order it sent them. */
+  commands: ChatCommand[];
   /** What a prompt may carry besides text; unknown while starting and from an older host. */
   promptCapabilities?: ChatState['promptCapabilities'];
   phase: ChatPhase;
@@ -376,7 +379,7 @@ export class ChatsStore {
 
   private add(agent: Chat['agent'], dir: string, fields: Pick<Chat, 'chatId' | 'phase'> & Partial<Chat>, seq: ChatSequence<ChatEvent>, st?: ChatState): string {
     const key = `chat-${this.nextKey++}`;
-    let chat: Chat = { key, agent, dir, configOptions: [], tail: emptyTail(), permissions: [], questions: [], queue: [], epoch: epoch(), ...fields };
+    let chat: Chat = { key, agent, dir, configOptions: [], commands: [], tail: emptyTail(), permissions: [], questions: [], queue: [], epoch: epoch(), ...fields };
     if (st) chat = this.withState(chat, st);
     this.internal.set(key, { seq, asked: new Map(), queued: new Map() });
     this.chats = [...this.chats, chat];
@@ -401,6 +404,7 @@ export class ChatsStore {
       session: st.session,
       agentInfo: st.agentInfo,
       configOptions: st.configOptions ?? [],
+      commands: st.commands ?? [],
       promptCapabilities: st.promptCapabilities,
       queue: st.queue ?? [],
       canQueue: st.canQueue,
@@ -559,6 +563,11 @@ export class ChatsStore {
           this.update(key, (c) => ({ ...c, configOptions: options }));
         }
         return;
+      case 'commands': {
+        const commands = e.commands ?? [];
+        this.update(key, (c) => ({ ...c, commands }));
+        return;
+      }
       default:
         // A kind from a newer backend.
         return;

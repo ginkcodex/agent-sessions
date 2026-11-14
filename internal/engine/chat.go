@@ -50,6 +50,9 @@ const (
 	ChatTurnEnded = "turn_end"
 	// ChatConfigOptions carries the session options after they changed.
 	ChatConfigOptions = "config_options"
+	// ChatCommands carries the agent's command catalog after it changed;
+	// it replaces the last one, and no commands clears it.
+	ChatCommands = "commands"
 	// ChatQueueChanged carries the whole Queue after it changed.
 	ChatQueueChanged = "queue"
 	// ChatSteered carries the queued Prompt that joined the running turn.
@@ -165,6 +168,8 @@ type ChatState struct {
 	Session       model.SessionRef    `json:"session"`
 	AgentInfo     *acp.Implementation `json:"agentInfo,omitempty"`
 	ConfigOptions []acp.ConfigOption  `json:"configOptions"`
+	// Commands is the agent's latest command catalog.
+	Commands []acp.AvailableCommand `json:"commands,omitempty"`
 	// PromptCapabilities says what a prompt may carry besides text. A
 	// server too old for attachments leaves it out.
 	PromptCapabilities *acp.PromptCapabilities `json:"promptCapabilities,omitempty"`
@@ -266,19 +271,20 @@ type ChatPermission struct {
 // ChatUpdate is the payload of chat:update. Seq counts a chat's events from
 // 1, chat:exit included, in the order they were emitted.
 type ChatUpdate struct {
-	ChatID        string             `json:"chatId"`
-	Seq           uint64             `json:"seq"`
-	Kind          string             `json:"kind"`
-	State         *ChatState         `json:"state,omitempty"`
-	Update        *acp.SessionUpdate `json:"update,omitempty"`
-	Permission    *ChatPermission    `json:"permission,omitempty"`
-	Question      *ChatQuestion      `json:"question,omitempty"`
-	StopReason    string             `json:"stopReason,omitempty"`
-	Error         string             `json:"error,omitempty"`
-	AuthMethods   []acp.AuthMethod   `json:"authMethods,omitempty"`
-	ConfigOptions []acp.ConfigOption `json:"configOptions,omitempty"`
-	Queue         []ChatQueuedPrompt `json:"queue,omitempty"`
-	Prompt        *ChatQueuedPrompt  `json:"prompt,omitempty"`
+	ChatID        string                 `json:"chatId"`
+	Seq           uint64                 `json:"seq"`
+	Kind          string                 `json:"kind"`
+	State         *ChatState             `json:"state,omitempty"`
+	Update        *acp.SessionUpdate     `json:"update,omitempty"`
+	Permission    *ChatPermission        `json:"permission,omitempty"`
+	Question      *ChatQuestion          `json:"question,omitempty"`
+	StopReason    string                 `json:"stopReason,omitempty"`
+	Error         string                 `json:"error,omitempty"`
+	AuthMethods   []acp.AuthMethod       `json:"authMethods,omitempty"`
+	ConfigOptions []acp.ConfigOption     `json:"configOptions,omitempty"`
+	Commands      []acp.AvailableCommand `json:"commands,omitempty"`
+	Queue         []ChatQueuedPrompt     `json:"queue,omitempty"`
+	Prompt        *ChatQueuedPrompt      `json:"prompt,omitempty"`
 }
 
 // ChatExit is the payload of chat:exit.
@@ -908,6 +914,7 @@ type chat struct {
 	startCancel context.CancelFunc
 	ref         model.SessionRef
 	options     []acp.ConfigOption
+	commands    []acp.AvailableCommand
 	started     bool
 	working     bool
 	closing     bool
@@ -1036,7 +1043,7 @@ func (ch *chat) state() (ChatState, bool) {
 	}
 	st := ChatState{
 		ChatID: ch.id, Agent: ch.agent, Dir: ch.dir, Session: ch.ref,
-		ConfigOptions: slices.Clone(ch.options), Working: ch.working,
+		ConfigOptions: slices.Clone(ch.options), Commands: slices.Clone(ch.commands), Working: ch.working,
 		CanQueue: true, CanSteer: ch.client.CanSteer(),
 	}
 	if len(ch.queue) > 0 {
@@ -1140,6 +1147,19 @@ func (ch *chat) setOptions(opts []acp.ConfigOption) {
 // onUpdate runs on the connection's read loop, so updates are emitted in
 // the order the agent sent them.
 func (ch *chat) onUpdate(n acp.SessionNotification) {
+	if n.Update.Kind == acp.UpdateAvailableCommands {
+		// A capability, not history: kept during a load's replay too. A
+		// malformed update keeps the last catalog.
+		u, err := n.Update.AsAvailableCommands()
+		if err != nil {
+			return
+		}
+		ch.mu.Lock()
+		ch.commands = slices.Clone(u.AvailableCommands)
+		ch.mu.Unlock()
+		ch.emit(ChatUpdate{Kind: ChatCommands, Commands: u.AvailableCommands})
+		return
+	}
 	ch.mu.Lock()
 	if ch.replaying {
 		ch.mu.Unlock()

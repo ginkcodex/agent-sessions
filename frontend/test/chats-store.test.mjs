@@ -314,6 +314,18 @@ test('options change through setOption and config_options events', async () => {
   });
 });
 
+test('a commands event replaces the catalog, and an empty one clears it', async () => {
+  await withChats(async ({ store, mock }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR }); // seq 1 was "started"
+    assert.deepEqual(chat.commands, []);
+    const catalog = [{ name: 'ponytail:ponytail', description: '(plugin) Lazy mode', input: { hint: '[level]' } }, { name: 'mcp' }];
+    mock.emit('chat:update', { chatId: chat.chatId, seq: 2, kind: 'commands', commands: catalog });
+    assert.deepEqual(store.byChatId(chat.chatId).commands, catalog);
+    mock.emit('chat:update', { chatId: chat.chatId, seq: 3, kind: 'commands' });
+    assert.deepEqual(store.byChatId(chat.chatId).commands, []);
+  });
+});
+
 test('a model set before the first prompt is the one the turn runs on', async () => {
   await withChats(async ({ store, mock }) => {
     const chat = await store.start({ agent: 'opencode', dir: DIR });

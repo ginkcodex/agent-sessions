@@ -652,6 +652,13 @@ export interface ChatConfigOption {
   options?: ChatConfigSelectOption[];
 }
 
+/** A command the agent accepts as "/name args" prompt text (ACP available_commands_update). */
+export interface ChatCommand {
+  name: string;
+  description?: string;
+  input?: { hint?: string } | null;
+}
+
 /** An open chat. */
 export interface ChatState {
   chatId: string;
@@ -661,6 +668,8 @@ export interface ChatState {
   session: SessionRef;
   agentInfo?: { name: string; title?: string; version?: string };
   configOptions: ChatConfigOption[];
+  /** The agent's latest command catalog; absent when empty or from an older server. */
+  commands?: ChatCommand[];
   /** What a prompt may carry besides text; absent from a server too old for attachments. */
   promptCapabilities?: { image?: boolean; audio?: boolean; embeddedContext?: boolean };
   /** True while a prompt turn runs. */
@@ -841,6 +850,7 @@ export type ChatUpdateKind =
   | 'turn_start'
   | 'turn_end'
   | 'config_options'
+  | 'commands'
   | 'queue'
   | 'steered';
 
@@ -857,6 +867,8 @@ export interface ChatUpdateEvent {
   error?: string;
   authMethods?: ChatAuthMethod[];
   configOptions?: ChatConfigOption[];
+  /** commands: the catalog that replaces the last one; absent when it is empty. */
+  commands?: ChatCommand[];
   /** queue: the whole queue after it changed; absent when it is empty. */
   queue?: ChatQueuedPrompt[];
   /** steered: the message that joined the turn; turn_start: the queued message it sends. */

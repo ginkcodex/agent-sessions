@@ -445,6 +445,29 @@ func (u SessionUpdate) AsCurrentMode() (CurrentModeUpdate, error) {
 	return c, err
 }
 
+// AvailableCommand is a command the agent accepts as "/name args" prompt
+// text. _meta is left out: no adapter sends it.
+type AvailableCommand struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	Input       *AvailableCommandInput `json:"input,omitempty"`
+}
+
+type AvailableCommandInput struct {
+	Hint string `json:"hint,omitempty"`
+}
+
+type AvailableCommandsUpdate struct {
+	AvailableCommands []AvailableCommand `json:"availableCommands"`
+}
+
+// AsAvailableCommands decodes an available_commands_update.
+func (u SessionUpdate) AsAvailableCommands() (AvailableCommandsUpdate, error) {
+	var c AvailableCommandsUpdate
+	err := u.decode(&c, UpdateAvailableCommands)
+	return c, err
+}
+
 func (u SessionUpdate) decode(v any, kinds ...string) error {
 	for _, k := range kinds {
 		if u.Kind == k {

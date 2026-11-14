@@ -177,7 +177,8 @@ func TestChatRPCRoundTrip(t *testing.T) {
 		t.Fatal(st, err)
 	}
 	started := x.events.waitUpdate(t, st.ChatID, kindIs(engine.ChatStarted))
-	if started.Seq != 1 || started.State == nil || started.State.Session != st.Session {
+	// The catalog the agent sent during setup comes first, and is in the state.
+	if started.Seq != 2 || started.State == nil || started.State.Session != st.Session || len(started.State.Commands) != 2 {
 		t.Fatalf("started = %+v", started)
 	}
 
