@@ -6,7 +6,7 @@ import { EditorView, GutterMarker, closeHoverTooltips, drawSelection, hasHoverTo
 import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from '@codemirror/commands';
 import { LanguageDescription, indentOnInput, indentUnit } from '@codemirror/language';
 import { Decoration, type DecorationSet } from '@codemirror/view';
-import { loadFileHighlighter, highlightFileWith } from './codeHighlight';
+import { HIGHLIGHT_LIMIT, loadFileHighlighter, highlightFileWith } from './codeHighlight';
 import type { HLJSApi } from 'highlight.js';
 import { keyHandled } from './fullscreen';
 import type { FilePosition } from './filePosition';
@@ -157,6 +157,7 @@ const fitTooltips = tooltips({ tooltipSpace: view => view.scrollDOM.getBoundingC
 function fileHighlight(hljs: HLJSApi, path: string): Extension {
   const language = fileLanguage(path);
   function decorate(state: EditorState): DecorationSet {
+    if (state.doc.length > HIGHLIGHT_LIMIT) return Decoration.none;
     const html = highlightFileWith(hljs, state.doc.toString(), language ?? '');
     const marks = [];
     const open: { from: number; class: string }[] = [];

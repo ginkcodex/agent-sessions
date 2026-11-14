@@ -635,6 +635,16 @@ test('editor uses viewer tokens for builtins, properties, entities and live edit
   }
 });
 
+test('editor leaves text past the highlight limit plain', async () => {
+  const { editor, view } = mount({ path: 'a.json', text: '{"key": true}\n'.repeat(40_000) });
+  const start = view.dispatches;
+  // Both lazy loads, the highlighter and the language, have reported back.
+  await settle(() => view.dispatches >= start + 2);
+  const marks = view.state.facet(EditorView.decorations).filter(x => typeof x !== 'function').reduce((n, set) => n + set.size, 0);
+  assert.equal(marks, 0);
+  editor.destroy();
+});
+
 test('renaming the path swaps the language; the latest request wins over slower earlier ones', async () => {
   const { editor, view, options } = mount({ path: 'a.ts' });
   assert.equal(await languageOf(view, 'a.ts'), typescriptLanguage);

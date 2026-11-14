@@ -29,7 +29,7 @@ test('the prompt keeps focus and owns find/save/close shortcuts while it decides
   assert.match(prompt, /document\.removeEventListener\('focusin', contain\)/);
   assert.match(prompt, /\['f', 's', 'w'\]\.includes\(e\.key\.toLowerCase\(\)\)\) e\.preventDefault\(\)/);
   const editor = readFileSync(new URL('../src/lib/components/common/go-to-file/FileEditor.svelte', import.meta.url), 'utf8');
-  assert.match(editor, /if \(!filePrompt\.request\) editor\.focus\(\)/, 'a lazily loaded editor must not take focus from an open prompt');
+  assert.match(editor, /if \(autofocus && !filePrompt\.request\) editor\.focus\(\)/, 'a lazily loaded editor must not take focus from an open prompt');
 });
 
 test('the prompt shows item groups as counted cards, and none without items', async () => {

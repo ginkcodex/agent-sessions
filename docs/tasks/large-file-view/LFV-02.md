@@ -1,6 +1,6 @@
 # LFV-02 — Show large files in the read-only editor
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 3 h
 - **Depends on:** LFV-01
 - **Plan:** [large-file-view.md](../../plan/large-file-view.md)
@@ -22,3 +22,19 @@
 - The editor adds no highlight marks to text past the limit.
 - Existing viewer, editor, prompt and navigation tests still pass.
 
+## Evidence
+
+- `frontend/test/file-viewer-edit.test.mjs`: new test, 5,001-line and
+  500,001-character files render the disabled editor with `autofocus=false`
+  and no source view; a small file and a large file's diff keep the source
+  view.
+- `frontend/test/file-editor.test.mjs`: new test, a 560,000-character JSON
+  document gets no decorations once both lazy loads report back. It fails with
+  the limit check removed and passes with it.
+- Harness updates: the viewer stub records `autofocus`; the navigation harness
+  in `problems.test.mjs` provides `largeView`; `file-prompt.test.mjs` matches
+  the new focus condition.
+- `npm test`: 1,477 tests, 1,476 pass, 0 fail, 1 skipped. `npm run check`:
+  0 errors, 0 warnings.
+- Not checked: the desktop app with the reported file (LFV-03), and how the
+  read-only editor feels for a 5,000–10,000-line file next to the old view.
