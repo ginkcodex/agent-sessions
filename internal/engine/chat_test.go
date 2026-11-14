@@ -205,7 +205,7 @@ func TestChatNewSessionStreams(t *testing.T) {
 	for _, e := range u {
 		kinds = append(kinds, e.Kind)
 	}
-	want := "started,turn_start,session_update,session_update,session_update,session_update,session_update,turn_end"
+	want := "commands,started,turn_start,session_update,session_update,session_update,session_update,session_update,turn_end"
 	if got := strings.Join(kinds, ","); got != want {
 		t.Fatalf("kinds = %s", got)
 	}
@@ -848,6 +848,76 @@ func TestChatLoadDropsReplay(t *testing.T) {
 	if got := chunks(u); strings.Join(got, "|") != "hello there|session/load" {
 		t.Fatalf("chunks = %q", got)
 	}
+}
+
+// The command catalog sent during setup, or among a load's dropped replay,
+// is in the state; each update replaces it, an empty one clears it, and none
+// shows as a session update.
+func TestChatCommands(t *testing.T) {
+	names := func(cs []acp.AvailableCommand) string {
+		var out []string
+		for _, c := range cs {
+			out = append(out, c.Name)
+		}
+		return strings.Join(out, "|")
+	}
+	stateOf := func(f *chatFixture, id string) ChatState {
+		for _, st := range f.m.Chats() {
+			if st.ChatID == id {
+				return st
+			}
+		}
+		t.Fatalf("no chat %s", id)
+		return ChatState{}
+	}
+	for _, tc := range []struct {
+		name   string
+		env    []string
+		resume *model.SessionRef
+	}{
+		{"new", nil, nil},
+		{"load", []string{"ACPTEST_NO_RESUME=1"}, &model.SessionRef{Agent: model.AgentClaude, ID: "old-cmd"}},
+	} {
+		f := newChatFixture(t, tc.env...)
+		st := f.start(t, tc.resume)
+		if got := names(st.Commands); got != "plugin:cmd1|cmd2" {
+			t.Fatalf("%s: commands = %q", tc.name, got)
+		}
+		if c := st.Commands[0]; c.Description != "Command 1" || c.Input == nil || c.Input.Hint != "[args]" {
+			t.Fatalf("%s: command = %+v", tc.name, c)
+		}
+		if tc.resume != nil {
+			f.turn(t, st.ChatID, "opened")
+			if u, _ := f.events.of(st.ChatID); strings.Join(chunks(u), "|") != "session/load" {
+				t.Fatalf("replayed history leaked: %q", chunks(u))
+			}
+		}
+	}
+
+	f := newChatFixture(t)
+	st := f.start(t, nil)
+	f.turn(t, st.ChatID, "commands 3")
+	if got := names(stateOf(f, st.ChatID).Commands); got != "plugin:cmd1|cmd2|cmd3" {
+		t.Fatalf("after update: %q", got)
+	}
+	f.turn(t, st.ChatID, "commands 0")
+	if got := stateOf(f, st.ChatID).Commands; len(got) != 0 {
+		t.Fatalf("an empty update kept %+v", got)
+	}
+	u, _ := f.events.of(st.ChatID)
+	var sizes []int
+	for _, e := range u {
+		if e.Kind == ChatCommands {
+			sizes = append(sizes, len(e.Commands))
+		}
+		if e.Kind == ChatSessionUpdate && e.Update.Kind == acp.UpdateAvailableCommands {
+			t.Fatalf("catalog sent as a session update: %+v", e)
+		}
+	}
+	if !slices.Equal(sizes, []int{2, 3, 0}) {
+		t.Fatalf("commands events = %v", sizes)
+	}
+	f.events.checkSeq(t, st.ChatID)
 }
 
 // A saved session continues with session/resume when the agent offers it,

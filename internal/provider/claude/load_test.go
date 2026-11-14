@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -39,7 +40,7 @@ func normalizeTranscript(tx *model.Transcript) *model.Transcript {
 
 func TestLoadGolden(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"basic", "split_assistant", "compaction", "meta"} {
+	for _, name := range []string{"basic", "split_assistant", "compaction", "meta", "plugin_command"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			tx := loadFixture(t, name)
@@ -160,6 +161,27 @@ func TestLoadCompactionAndMeta(t *testing.T) {
 	}
 	if tx.Messages[4].IsMeta {
 		t.Errorf("conversational user record marked meta: %+v", tx.Messages[4])
+	}
+}
+
+// A typed plugin command shows once as "/name args"; its expanded skill, a
+// duplicate meta marker record, /model and local output stay hidden.
+func TestLoadPluginCommand(t *testing.T) {
+	t.Parallel()
+	tx := loadFixture(t, "plugin_command")
+	var users []string
+	for _, m := range tx.Messages {
+		if m.Role == model.RoleUser && !m.IsMeta {
+			users = append(users, m.Parts[0].Text)
+		}
+	}
+	want := []string{
+		"/ponytail:ponytail",
+		"/understand-anything:understand-chat how does\nauth work?",
+		"Why does <command-name>/x</command-name> appear in logs?",
+	}
+	if !slices.Equal(users, want) {
+		t.Errorf("visible user messages = %q, want %q", users, want)
 	}
 }
 

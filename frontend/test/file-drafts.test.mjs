@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixtureStore, loadServerModule } from './helpers.mjs';
 import { bumpEpoch, StaleReplyError } from '../src/lib/link.ts';
-import { editorText, serializedEditSize } from '../src/lib/fileEditing.ts';
+import { MAX_EDIT_BYTES, editorText, serializedEditSize } from '../src/lib/fileEditing.ts';
 
 const url = new URL('../src/lib/stores/files.svelte.ts', import.meta.url);
 const lib = (rel) => JSON.stringify(new URL(rel, url).href);
@@ -515,12 +515,13 @@ test('editor text preserves intended newline/BOM and serialized limits include d
   assert.equal(editorText(content('\uFEFFone\r\n\uFEFFtwo\r\n', 'r', { bom: true, newline: 'crlf' })), 'one\n\uFEFFtwo\n');
   assert.equal(editorText(content('\uFEFFx', 'r', { bom: false })), '\uFEFFx');
   assert.equal(serializedEditSize('é\n', { eligible: true, bom: true, newline: 'crlf' }), 7);
-  assert.equal(serializedEditSize('x'.repeat(499_997), { eligible: true, bom: true, newline: 'lf' }), 500_000);
-  for (const text of ['x'.repeat(499_998), '\0', '\r', '\ud800', '\udc00']) {
+  assert.equal(serializedEditSize('x'.repeat(MAX_EDIT_BYTES - 3), { eligible: true, bom: true, newline: 'lf' }), MAX_EDIT_BYTES);
+  assert.equal(MAX_EDIT_BYTES, 5 * 1024 * 1024, 'the read limit, MaxReadBytes');
+  for (const text of ['x'.repeat(MAX_EDIT_BYTES - 2), '\0', '\r', '\ud800', '\udc00']) {
     assert.throws(() => serializedEditSize(text, { eligible: true, bom: true, newline: 'lf' }));
   }
   assert.equal(serializedEditSize('😀', { eligible: true, newline: 'none' }), 4);
-  assert.throws(() => serializedEditSize('\n'.repeat(250_001), { eligible: true, newline: 'crlf' }));
+  assert.throws(() => serializedEditSize('\n'.repeat(MAX_EDIT_BYTES / 2 + 1), { eligible: true, newline: 'crlf' }));
 });
 
 test('editing promotes preview, invalidates pending reads, retains clean history on refresh/reopen', async () => {
@@ -729,7 +730,7 @@ test('ineligible/old-server reads cannot edit; invalid snapshots never reach tra
   const { store, fixture, tab } = await setup(content('', 'r'));
   assert.equal(store.startEditing(tab.path), true);
   fixture.api.saveFile = async () => { assert.fail('invalid snapshot sent'); };
-  store.updateDraft(tab, 'x'.repeat(500_001));
+  store.updateDraft(tab, 'x'.repeat(MAX_EDIT_BYTES + 1));
   assert.equal(await store.saveEdited(tab), false);
   assert.match(tab.edit.saveError, /too large/);
   assert.equal(store.closeTab(tab.path), false);

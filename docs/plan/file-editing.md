@@ -101,6 +101,8 @@ saveFile(dir, path, text, expectedRevision)
   frontend controls. Account for JSON expansion and RPC frame limits.
 - Initial edit limit: 500,000 UTF-8 bytes, below the viewer's 5 MiB read limit.
   Viewing larger text still works. Enforce the same edit limit in backend and UI.
+  Later raised to the read limit, 5 MiB ([large-file-view](large-file-view.md),
+  LFV-05).
 - Preserve executable permissions, UTF-8 BOM, uniform LF/CRLF style, and the
   intended final newline. Do not normalize bytes merely by entering edit mode.
   Mixed line endings and unsupported newline conventions stay read-only in v1.

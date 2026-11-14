@@ -165,8 +165,11 @@ func NewEngine(opts ...Option) *Engine {
 		launch = e.ChatLaunch
 	}
 	e.chats = NewChatManager(ChatManagerOptions{
-		Launch:           launch,
-		Agents:           e.ChatAgents,
+		Launch: launch,
+		Agents: e.ChatAgents,
+		Plugins: func(ctx context.Context, agent model.AgentID, launch acp.Command) (ChatPlugins, error) {
+			return e.svc.ChatPlugins(ctx, agent, launch)
+		},
 		Refresh:          e.refreshAgent,
 		OwnershipChanged: func() { e.Events().NotifyFullRefresh() },
 		Emitter:          e.emitter,

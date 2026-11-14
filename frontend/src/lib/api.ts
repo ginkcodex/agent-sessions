@@ -86,6 +86,7 @@ import type {
   ChatAgent,
   ChatAnswerAction,
   ChatConfigOption,
+  ChatPlugins,
   ChatStartRequest,
   ChatState,
   ChatAttachment,
@@ -214,6 +215,8 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   chatAnswer(chatId: string, questionId: string, action: ChatAnswerAction, content?: Record<string, unknown>): Promise<void>;
   /** Sets a session option (mode, model, effort) and returns them all. */
   chatSetOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]>;
+  /** The plugins installed for the chat's agent (/plugin). Codex's listing can take a minute or two. */
+  chatPlugins(chatId: string): Promise<ChatPlugins>;
   /** Ends the chat and its agent. */
   chatClose(chatId: string): Promise<void>;
   /** The window's open chats, for a reloaded page. */
@@ -442,6 +445,7 @@ export interface WailsAppBinding {
   ChatRespond?(chatId: string, permissionId: string, optionId: string): Promise<void>;
   ChatAnswer?(chatId: string, questionId: string, action: string, content: Record<string, unknown> | null): Promise<void>;
   ChatSetOption?(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]>;
+  ChatPlugins?(chatId: string): Promise<ChatPlugins>;
   ChatClose?(chatId: string): Promise<void>;
   ChatList?(): Promise<ChatState[]>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
@@ -573,6 +577,7 @@ type ChatBindingName =
   | 'ChatRespond'
   | 'ChatAnswer'
   | 'ChatSetOption'
+  | 'ChatPlugins'
   | 'ChatClose'
   | 'ChatList';
 
@@ -1096,6 +1101,13 @@ class WailsBackendAPI implements BackendAPI {
   async chatSetOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]> {
     try { return (await this.chatBinding('ChatSetOption')(chatId, configId, value)) ?? []; }
     catch (e) { throw normalizeError(e); }
+  }
+
+  async chatPlugins(chatId: string): Promise<ChatPlugins> {
+    try {
+      const r = await this.chatBinding('ChatPlugins')(chatId);
+      return { supported: !!r?.supported, plugins: r?.plugins ?? [] };
+    } catch (e) { throw normalizeError(e); }
   }
 
   async chatClose(chatId: string): Promise<void> {

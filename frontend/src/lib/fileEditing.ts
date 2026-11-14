@@ -1,6 +1,7 @@
 import type { FileContent, FileEditInfo, FileEditReason } from './types';
 
-export const MAX_EDIT_BYTES = 500_000;
+// The backend's MaxEditBytes: its read limit, MaxReadBytes (5 MiB).
+export const MAX_EDIT_BYTES = 5 << 20;
 
 /** Remove only the original BOM, and normalize the supported disk newlines. */
 export function editorText(content: FileContent): string {

@@ -164,7 +164,7 @@ func TestToolCallAndPlanUpdates(t *testing.T) {
 	for _, n := range rec.take() {
 		kinds = append(kinds, n.Update.Kind)
 	}
-	if got := strings.Join(kinds, ","); got != "tool_call,tool_call_update,plan" {
+	if got := strings.Join(kinds, ","); got != "available_commands_update,tool_call,tool_call_update,plan" {
 		t.Fatalf("kinds = %s", got)
 	}
 }
@@ -178,8 +178,14 @@ func TestLoadAndResume(t *testing.T) {
 	var kinds []string
 	for _, n := range rec.take() {
 		kinds = append(kinds, n.Update.Kind)
+		if n.Update.Kind == acp.UpdateAvailableCommands {
+			u, err := n.Update.AsAvailableCommands()
+			if err != nil || len(u.AvailableCommands) != 2 || u.AvailableCommands[0].Input == nil || u.AvailableCommands[0].Input.Hint != "[args]" {
+				t.Fatalf("commands = %+v, %v", u, err)
+			}
+		}
 	}
-	if got := strings.Join(kinds, ","); got != "user_message_chunk,agent_message_chunk" {
+	if got := strings.Join(kinds, ","); got != "user_message_chunk,available_commands_update,agent_message_chunk" {
 		t.Fatalf("replay kinds = %s", got)
 	}
 

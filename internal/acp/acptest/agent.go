@@ -34,7 +34,12 @@
 //	             "withdrawn"
 //	askexit      asks the "claude" form, then exits with status 3 without
 //	             waiting for the answer
+//	commands N   an available_commands_update with N commands (0 clears),
+//	             then end_turn
 //	anything     echoed back as one chunk
+//
+// session/new and session/load send a two-command catalog before replying;
+// a load sends it among its replayed history.
 //
 // _session/steering during a turn reports the message as a chunk
 // "steered:<text>", sent before the reply, and answers injected; with no
@@ -240,6 +245,7 @@ func (a *agent) request(ctx context.Context, method string, params json.RawMessa
 		id := fmt.Sprintf("fake-%d-%d", os.Getpid(), a.next)
 		a.opened[id] = method
 		a.mu.Unlock()
+		a.commands(id, 2)
 		return acp.SessionSetup{SessionID: id, ConfigOptions: a.configOptions()}, nil
 	case acp.MethodSessionLoad, acp.MethodSessionResume:
 		var p acp.LoadSessionRequest
@@ -255,6 +261,7 @@ func (a *agent) request(ctx context.Context, method string, params json.RawMessa
 		a.mu.Unlock()
 		if method == acp.MethodSessionLoad {
 			a.update(p.SessionID, map[string]any{"sessionUpdate": acp.UpdateUserMessageChunk, "content": acp.TextBlock("earlier prompt")})
+			a.commands(p.SessionID, 2)
 			a.update(p.SessionID, map[string]any{"sessionUpdate": acp.UpdateAgentMessageChunk, "messageId": "msg_old", "content": acp.TextBlock("earlier reply")})
 		}
 		return acp.SessionSetup{ConfigOptions: a.configOptions()}, nil
@@ -341,6 +348,19 @@ func (a *agent) update(sessionID string, update map[string]any) {
 	_ = a.c().Notify(acp.MethodSessionUpdate, map[string]any{"sessionId": sessionID, "update": update})
 }
 
+// commands sends a catalog of n commands: plugin:cmd1 (with a hint), cmd2…
+func (a *agent) commands(sessionID string, n int) {
+	list := []acp.AvailableCommand{}
+	for i := 1; i <= n; i++ {
+		c := acp.AvailableCommand{Name: fmt.Sprintf("cmd%d", i), Description: fmt.Sprintf("Command %d", i)}
+		if i == 1 {
+			c.Name, c.Input = "plugin:cmd1", &acp.AvailableCommandInput{Hint: "[args]"}
+		}
+		list = append(list, c)
+	}
+	a.update(sessionID, map[string]any{"sessionUpdate": acp.UpdateAvailableCommands, "availableCommands": list})
+}
+
 func (a *agent) chunk(sessionID, messageID, text string) {
 	a.update(sessionID, map[string]any{"sessionUpdate": acp.UpdateAgentMessageChunk, "messageId": messageID, "content": acp.TextBlock(text)})
 }
@@ -384,6 +404,13 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 
 	end := func(reason string) (any, error) { return acp.PromptResponse{StopReason: reason}, nil }
 	switch word {
+	case "commands":
+		n := 0
+		if len(fields) > 1 {
+			n, _ = strconv.Atoi(fields[1])
+		}
+		a.commands(p.SessionID, n)
+		return end(acp.StopEndTurn)
 	case "stream":
 		n := 3
 		if len(fields) > 1 {

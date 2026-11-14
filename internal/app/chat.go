@@ -30,6 +30,7 @@ type chatService interface {
 	ChatRespond(ctx context.Context, chatID, permissionID, optionID string) error
 	ChatAnswer(ctx context.Context, chatID, questionID, action string, content map[string]any) error
 	ChatSetOption(ctx context.Context, chatID, configID string, value any) ([]acp.ConfigOption, error)
+	ChatPlugins(ctx context.Context, chatID string) (engine.ChatPlugins, error)
 	ChatClose(ctx context.Context, chatID string) error
 	ChatList(ctx context.Context) ([]engine.ChatState, error)
 }
@@ -71,6 +72,10 @@ func (l localChatService) ChatAnswer(_ context.Context, chatID, questionID, acti
 
 func (l localChatService) ChatSetOption(ctx context.Context, chatID, configID string, value any) ([]acp.ConfigOption, error) {
 	return l.m.SetOption(ctx, chatID, configID, value)
+}
+
+func (l localChatService) ChatPlugins(ctx context.Context, chatID string) (engine.ChatPlugins, error) {
+	return l.m.Plugins(ctx, chatID)
 }
 
 func (l localChatService) ChatClose(_ context.Context, chatID string) error {
@@ -153,6 +158,11 @@ func (r remoteChats) ChatAnswer(ctx context.Context, chatID, questionID, action 
 
 func (r remoteChats) ChatSetOption(ctx context.Context, chatID, configID string, value any) ([]acp.ConfigOption, error) {
 	out, err := r.chatService.ChatSetOption(ctx, chatID, configID, value)
+	return out, remoteErr(err)
+}
+
+func (r remoteChats) ChatPlugins(ctx context.Context, chatID string) (engine.ChatPlugins, error) {
+	out, err := r.chatService.ChatPlugins(ctx, chatID)
 	return out, remoteErr(err)
 }
 
@@ -264,6 +274,16 @@ func (a *App) ChatSetOption(chatID, configID string, value any) ([]acp.ConfigOpt
 		return nil, err
 	}
 	return s.ChatSetOption(a.appCtx(), chatID, configID, value)
+}
+
+// ChatPlugins lists the plugins installed for the chat's agent on the host
+// the window shows (/plugin). Codex's listing can take a minute or two.
+func (a *App) ChatPlugins(chatID string) (engine.ChatPlugins, error) {
+	s, err := a.chats()
+	if err != nil {
+		return engine.ChatPlugins{}, err
+	}
+	return s.ChatPlugins(a.appCtx(), chatID)
 }
 
 // ChatClose ends the chat and its agent. Pending permission requests are

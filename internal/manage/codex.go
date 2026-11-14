@@ -239,6 +239,13 @@ func runCapture(ctx context.Context, argv []string, dir string, env []string) ([
 	return stdout.Bytes(), nil
 }
 
+// CaptureCLI runs a provider CLI the way this package does: no shell,
+// argv[0] resolved with resolveCLI, no console window, stdout kept up to
+// 64 MiB, and a failure reduced to one redacted stderr line.
+func CaptureCLI(ctx context.Context, argv []string, dir string, env []string) ([]byte, error) {
+	return runCapture(ctx, argv, dir, env)
+}
+
 type limitWriter struct {
 	w      io.Writer
 	limit  int64

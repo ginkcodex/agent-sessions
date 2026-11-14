@@ -99,7 +99,7 @@ function viewerHarness(files) {
   const js = ts.transpileModule(block.replaceAll('export function', 'function').replace('let previewOn = $state(false)', 'let previewOn = $state(true)'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   const ticks = [], reveals = [];
   let effect;
-  const ctx = { ...navigation, files, codeDiagnostics: { directory: files.dir, liveBasis: () => undefined, status: 'ready', snapshot: { context: { generation: '1' } } }, link: { dataHost: undefined }, frozen: false, blocked: false, highlightPending: false,
+  const ctx = { ...navigation, files, codeDiagnostics: { directory: files.dir, liveBasis: () => undefined, status: 'ready', snapshot: { context: { generation: '1' } } }, link: { dataHost: undefined }, frozen: false, blocked: false, highlightPending: false, largeView: false,
     fileStatus: p => files.listing?.status?.[p], pendingAnchor: null, presentation: true,
     get text() { return files.content?.text ?? ''; }, get editing() { return !!files.activeTab?.edit?.editing; },
     get showPreview() { return control.preview(); }, get showDiff() { return files.diff; },

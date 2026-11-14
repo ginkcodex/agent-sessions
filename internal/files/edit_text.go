@@ -6,11 +6,11 @@ import (
 	"encoding/hex"
 )
 
-// MaxEditBytes is the largest text file the viewer may offer to edit. It is
-// well below MaxReadBytes: an editor keeps the original, the draft and its
-// undo history in memory, and a save sends the whole text back over RPC.
-// Larger text files are still read, with a revision, but stay read-only.
-const MaxEditBytes = 500000
+// MaxEditBytes is the largest text file the viewer may offer to edit: every
+// file it reads. The editor renders only the lines in view; a save sends the
+// whole text back, at most 6 times larger once JSON-escaped, which stays under
+// the RPC frame limit (see MaxReadBytes).
+const MaxEditBytes = MaxReadBytes
 
 // Reasons a text file cannot be edited, in EditInfo.Reason.
 const (

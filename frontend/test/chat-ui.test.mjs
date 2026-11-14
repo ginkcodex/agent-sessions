@@ -5,7 +5,13 @@ import {
   addAttachments,
   canSendPrompt,
   chatAgentAvailable,
+  commandChoices,
   endChatQuestion,
+  isMcpListing,
+  parseMcpStatus,
+  isPluginListing,
+  PLUGIN_COMMAND,
+  pluginRows,
   MAX_CHAT_ATTACHMENTS,
   pendingChatMeta,
   permissionView,
@@ -136,6 +142,115 @@ test('a permission request shows its command or diff, and its options by kind in
   assert.equal(permissionView({ id: 'p3', toolCall: { toolCallId: 't3', rawInput: { command: 'make test' } } }).command, 'make test');
 });
 
+test('commandChoices lists the commands a / or $ word could name, by full or short name', () => {
+  const commands = [
+    { name: 'mcp', description: 'MCP status', input: { hint: '[reconnect|enable|disable]' } },
+    { name: 'ponytail:ponytail', description: '(ponytail) Lazy', input: { hint: '[lite|full]' } },
+    { name: 'understand-anything:understand-chat', input: { hint: '<question>' } },
+    { name: 'understand-anything:understand', input: null },
+    { name: 'other:understand' },
+    { name: '$sites:sites', description: 'Sites' },
+  ];
+  const texts = (t) => commandChoices(commands, t).map((c) => c.text);
+  assert.deepEqual(texts('/'), ['/mcp', '/ponytail:ponytail ', '/understand-anything:understand-chat ', '/understand-anything:understand', '/other:understand']);
+  // A short name two plugins share lists both; the exact full name comes first.
+  assert.deepEqual(texts('/understand'), ['/understand-anything:understand-chat ', '/understand-anything:understand', '/other:understand']);
+  assert.deepEqual(texts('/understand-anything:understand'), ['/understand-anything:understand', '/understand-anything:understand-chat ']);
+  assert.deepEqual(texts('/PONY'), ['/ponytail:ponytail ']);
+  assert.deepEqual(texts('$s'), ['$sites:sites']);
+  // Not one command word: no list.
+  for (const t of ['', 'hi /mcp', '/mcp ', '/ponytail full', ' /mcp', '/nope']) assert.deepEqual(texts(t), [], t);
+  // /mcp's mutating arguments are not offered; other hints and descriptions are.
+  assert.deepEqual(commandChoices(commands, '/mc'), [{ text: '/mcp', description: 'MCP status', hint: '' }]);
+  assert.deepEqual(commandChoices(commands, '/ponytail:'), [{ text: '/ponytail:ponytail ', description: '(ponytail) Lazy', hint: '[lite|full]' }]);
+  assert.deepEqual(commandChoices([], '/'), []);
+});
+
+test('only a bare /mcp the agent advertises is the captured listing', () => {
+  const mcp = [{ name: 'mcp', input: { hint: '[reconnect|enable|disable [<server>|all]]' } }];
+  assert.equal(isMcpListing('/mcp', mcp), true);
+  assert.equal(isMcpListing(' /mcp\n', mcp), true);
+  assert.equal(isMcpListing('/mcp reconnect docs', mcp), false, 'arguments change servers: an ordinary turn');
+  assert.equal(isMcpListing('/mcp', []), false, 'an agent without /mcp gets the text as a prompt');
+});
+
+test("parseMcpStatus reads Claude's /mcp reply, scopes, escapes and code spans", () => {
+  const claude = [
+    '**MCP servers:** 5 (1 failed, 1 needs authentication, 2 connected, 1 disabled)',
+    '**Failed**\n- `docs`: connect ECONNREFUSED 127.0.0.1:3000; 0 tools',
+    '**Needs authentication**\n- `git``hub`',
+    '**Connected**\n- `fetch` (user): 1 tool\n- `fetch` (project): a\\_b \\*c\\* \\<x\\> \\| y; 3 tools',
+    '**Disabled:** `old`, `` `tick` ``',
+    'Run `/mcp reconnect <server>` to reconnect one server, or `/mcp reconnect` to reconnect every server that is not connected and not disabled.',
+  ].join('\n\n');
+  assert.deepEqual(parseMcpStatus(claude), {
+    summary: '5 (1 failed, 1 needs authentication, 2 connected, 1 disabled)',
+    groups: [
+      { title: 'Failed', servers: [{ name: 'docs', detail: 'connect ECONNREFUSED 127.0.0.1:3000; 0 tools' }] },
+      { title: 'Needs authentication', servers: [{ name: 'git``hub', detail: '' }] },
+      { title: 'Connected', servers: [{ name: 'fetch', scope: 'user', detail: '1 tool' }, { name: 'fetch', scope: 'project', detail: 'a_b *c* <x> | y; 3 tools' }] },
+      { title: 'Disabled', servers: [{ name: 'old', detail: '' }, { name: '`tick`', detail: '' }] },
+    ],
+    notes: ['Run `/mcp reconnect <server>` to reconnect one server, or `/mcp reconnect` to reconnect every server that is not connected and not disabled.'],
+  });
+  assert.deepEqual(parseMcpStatus('No MCP servers are configured.'), { summary: 'No MCP servers are configured.', groups: [], notes: [] });
+});
+
+test("parseMcpStatus reads Codex's statuses and notes, and refuses other shapes", () => {
+  const codex = [
+    'Reloaded the MCP configuration.\nSome MCP servers are still starting. Run `/mcp` again later to see their status.',
+    '',
+    '**MCP servers:** 4 (1 cancelled, 1 not started, 1 unknown, 1 connected)',
+    '',
+    '**Cancelled**\n- `a`',
+    '',
+    '**Not started**\n- (unnamed): not signed in',
+    '',
+    '**Connected**\n- `b`: 2 tools; tool \\~list\\~ failed',
+    '',
+    '**Unknown**\n- `c`',
+    '',
+    'Run `/mcp reconnect` to restart the servers that are not connected.',
+  ].join('\n');
+  const st = parseMcpStatus(codex);
+  assert.equal(st.summary, '4 (1 cancelled, 1 not started, 1 unknown, 1 connected)');
+  assert.deepEqual(st.groups.map((g) => [g.title, g.servers.map((s) => `${s.name}|${s.detail}`)]), [
+    ['Cancelled', ['a|']],
+    ['Not started', ['(unnamed)|not signed in']],
+    ['Connected', ['b|2 tools; tool ~list~ failed']],
+    ['Unknown', ['c|']],
+  ]);
+  assert.equal(st.notes.length, 2);
+  assert.match(st.notes[0], /^Reloaded/);
+
+  for (const text of ['', 'Done. You said "/mcp"', '**Connected**\n- `a`', '**MCP servers:** 1 (1 connected)\n\n**Connected**\n- a', '**MCP servers:** 1\n\n**Disabled:** `a` `b`', '**MCP servers:** 1\n\n**MCP servers:** 2']) {
+    assert.equal(parseMcpStatus(text), null, text);
+  }
+});
+
+test('/plugin is the app\'s listing unless the agent has its own, and a plugin is loaded only by its commands', () => {
+  assert.equal(isPluginListing('/plugin', []), true);
+  assert.equal(isPluginListing(' /plugin\n', [{ name: 'mcp' }]), true);
+  assert.equal(isPluginListing('/plugin list', []), false);
+  assert.equal(isPluginListing('/plugins', []), false);
+  assert.equal(isPluginListing('/plugin', [{ name: 'plugin' }]), false, 'the agent answers its own');
+  assert.deepEqual(commandChoices([PLUGIN_COMMAND], '/plug').map((c) => c.text), ['/plugin']);
+
+  const plugins = [
+    { id: 'ponytail@ponytail', name: 'ponytail', enabled: true },
+    { id: 'sites@m', name: 'sites', enabled: true },
+    { id: 'gopls-lsp@m', name: 'gopls-lsp', enabled: false },
+    { id: 'mcp@m', name: 'mcp', enabled: true },
+    { id: 'pony@m', name: 'pony', enabled: true },
+  ];
+  const commands = [{ name: 'ponytail:ponytail' }, { name: '$sites:sites' }, { name: 'mcp:server:prompt' }, { name: 'gopls-lsp' }];
+  assert.deepEqual(
+    pluginRows(plugins, commands).map((p) => [p.name, p.loaded]),
+    [['ponytail', true], ['sites', true], ['gopls-lsp', false], ['mcp', false], ['pony', false]],
+  );
+  assert.deepEqual(pluginRows([], commands), []);
+});
+
 // --- Components ------------------------------------------------------------
 
 const COMPOSER_URL = new URL('../src/lib/components/chat/ChatComposer.svelte', import.meta.url);
@@ -165,6 +280,8 @@ async function renderComposer(c, props = {}) {
     ["import { api } from '../../api';", 'const api = {};'],
     ["'../../chat'", lib('../../chat.ts', COMPOSER_URL)],
     ["import AttachmentChips from './AttachmentChips.svelte';", 'const AttachmentChips = () => {};'],
+    ["import PluginInventory from './PluginInventory.svelte';", 'const PluginInventory = () => {};'],
+    ["import McpServersDialog from './McpServersDialog.svelte';", 'const McpServersDialog = () => {};'],
     [
       "import QueuedMessages from './QueuedMessages.svelte';",
       'const QueuedMessages = ($$renderer, p) => $$renderer.push(`<div data-stub-queue="${p.chat.queue.length}" data-empty="${p.composerEmpty}"></div>`);',

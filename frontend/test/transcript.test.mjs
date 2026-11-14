@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  isSlashCommand,
   isTranscriptMode,
   messageMarkdown,
   messageText,
@@ -286,4 +287,11 @@ test('print blocks split the Markdown at attachment lines outside code', () => {
   ]);
   assert.deepEqual(printBlocks('Inline ![a](attachment:1) stays'), [{ kind: 'markdown', text: 'Inline ![a](attachment:1) stays' }]);
   assert.deepEqual(printBlocks(''), []);
+});
+
+test('isSlashCommand matches slash commands, not paths or prose', () => {
+  for (const text of ['/ponytail:ponytail full', ' /understand-anything:understand\n', '/review', '/mcp:docs:search q', '/code-review high'])
+    assert.equal(isSlashCommand(text), true, text);
+  for (const text of ['/home/haith/x', 'hello /review', '/', '/ ponytail', '//x', 'ponytail:ponytail', '$sites:sites'])
+    assert.equal(isSlashCommand(text), false, text);
 });

@@ -69,7 +69,9 @@ type Capabilities struct {
 	ChatQuestions bool `json:"chatQuestions,omitempty"`
 	// ChatQueue: chatPrompt queues while the agent works and returns
 	// ChatPromptResult; chatSendNow and chatUnqueue work on the queue.
-	ChatQueue       bool `json:"chatQueue,omitempty"`
+	ChatQueue bool `json:"chatQueue,omitempty"`
+	// ChatPlugins: chatPlugins lists the plugins of a chat's agent.
+	ChatPlugins     bool `json:"chatPlugins,omitempty"`
 	AgentSettings   bool `json:"agentSettings,omitempty"`
 	DiscoveryStatus bool `json:"discoveryStatus,omitempty"`
 	GitDiff         bool `json:"gitDiff,omitempty"`

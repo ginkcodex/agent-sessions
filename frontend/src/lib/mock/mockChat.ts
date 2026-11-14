@@ -7,7 +7,9 @@ import type {
   ChatAgent,
   ChatAttachment,
   ChatAttachResult,
+  ChatCommand,
   ChatConfigOption,
+  ChatPlugins,
   ChatDraft,
   ChatPermission,
   ChatPromptResult,
@@ -83,6 +85,30 @@ export function mockAttachImage(name: string, data: string): ChatAttachment {
   const format = sniffImageFormat(data);
   if (!format) throw new Error(`${label}: is not a PNG, JPEG, GIF or WebP image`);
   return { kind: 'image', name: label, mimeType: `image/${format}`, size: base64Size(data), data };
+}
+
+/** A /mcp reply in the shape both adapters format it. */
+export const MOCK_MCP_STATUS = [
+  '**MCP servers:** 3 (1 failed, 1 connected, 1 disabled)',
+  '**Failed**\n- `docs`: connection refused',
+  '**Connected**\n- `super-fetch`: 2 tools',
+  '**Disabled:** `old-search`',
+  'Run `/mcp reconnect <server>` to reconnect one server, or `/mcp reconnect` to reconnect every server that is not connected and not disabled.',
+].join('\n\n');
+
+/** What the adapters advertise: Claude's plugin commands, Codex's skills with $, and /mcp. */
+function mockCommands(agent: AgentID): ChatCommand[] {
+  const mcp: ChatCommand = { name: 'mcp', description: 'Show MCP server status', input: { hint: '[reconnect|enable|disable [<server>|all]]' } };
+  if (agent === 'claude-code') {
+    return [
+      mcp,
+      { name: 'ponytail:ponytail', description: '(ponytail) Lazy senior developer mode', input: { hint: '[lite|full|ultra|off]' } },
+      { name: 'understand-anything:understand', description: '(understand-anything) Build a knowledge graph of the project', input: null },
+      { name: 'understand-anything:understand-chat', description: '(understand-anything) Ask about the knowledge graph', input: { hint: '<question>' } },
+    ];
+  }
+  if (agent === 'codex') return [mcp, { name: '$sites:sites', description: 'Build and publish a site', input: null }];
+  return [];
 }
 
 function base64Size(data: string): number {
@@ -213,6 +239,7 @@ export class MockChats {
           { id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'mock-large', options: [{ value: 'mock-large', name: 'Mock Large' }, { value: 'mock-small', name: 'Mock Small' }] },
         ],
         promptCapabilities: { image: true, embeddedContext: true },
+        commands: mockCommands(req.agent),
         working: false,
         canQueue: true,
         canSteer: !this.noSteer.has(req.agent),
@@ -317,6 +344,20 @@ export class MockChats {
     opt.currentValue = value;
     this.update(chat, { kind: 'config_options', configOptions: structuredClone(chat.state.configOptions) });
     return structuredClone(chat.state.configOptions);
+  }
+
+  /** Claude's and Codex's CLIs list their plugins; OpenCode's cannot. */
+  async plugins(chatId: string): Promise<ChatPlugins> {
+    this.requireAvailable();
+    const chat = this.get(chatId);
+    if (chat.state.agent === 'opencode') return { supported: false, plugins: [] };
+    return {
+      supported: true,
+      plugins: [
+        { id: 'ponytail@ponytail', name: 'ponytail', marketplace: 'ponytail', version: '5.3.3', scope: 'user', enabled: true },
+        { id: 'gopls-lsp@claude-plugins-official', name: 'gopls-lsp', marketplace: 'claude-plugins-official', version: '1.0.0', scope: 'user', enabled: false },
+      ],
+    };
   }
 
   async close(chatId: string): Promise<void> {
@@ -459,6 +500,7 @@ export class MockChats {
     let stopReason = 'end_turn';
     let error: string | undefined;
     let authMethods: ChatUpdateEvent['authMethods'];
+    let local = false;
     try {
       await this.pause();
       if (/crash/i.test(text)) {
@@ -468,6 +510,12 @@ export class MockChats {
       if (/login/i.test(text)) {
         error = 'Authentication required: provider authentication required';
         authMethods = [{ id: 'mock-login', name: 'Log in', description: 'Run `mock auth login` in the terminal' }];
+        return;
+      }
+      if (text.trim() === '/mcp') {
+        // The adapters answer /mcp themselves and save nothing.
+        local = true;
+        await this.stream(chat, turn, 'agent_message_chunk', msg, MOCK_MCP_STATUS);
         return;
       }
       if (/fail/i.test(text)) {
@@ -598,7 +646,7 @@ export class MockChats {
           saved.push({ id: `user_mock_${chat.state.chatId}_${n}_steered_${i + 1}`, role: 'user', time: new Date().toISOString(), parts: userParts(q.text, q.attachments) });
         }
         if (reply.parts.length > 0) saved.push(reply);
-        if (!error) this.host.save(chat.state.session, chat.state.dir, saved);
+        if (!error && !local) this.host.save(chat.state.session, chat.state.dir, saved);
         this.update(chat, error ? { kind: 'turn_end', error, ...(authMethods && { authMethods }) } : { kind: 'turn_end', stopReason });
         // The queue goes on after a normal end, and pauses after any other.
         const next = !error && stopReason === 'end_turn' ? chat.queue.shift() : undefined;

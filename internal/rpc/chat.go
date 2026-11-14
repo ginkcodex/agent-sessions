@@ -25,6 +25,10 @@ var ErrNoChatQuestions = errors.New("this host's agent-sessions cannot pass on a
 // messages: it takes a message only while its agent is idle.
 var ErrNoChatQueue = errors.New("this host's agent-sessions cannot queue messages; reconnect to update it")
 
+// ErrNoChatPlugins means the host's agent-sessions is too old to list its
+// agents' plugins.
+var ErrNoChatPlugins = errors.New("this host's agent-sessions cannot list plugins; reconnect to update it")
+
 // maxChatPromptBytes bounds a prompt's text. Prompts are typed by a person;
 // this only keeps a peer from handing the agent a frame-sized one.
 const maxChatPromptBytes = 1 << 20
@@ -170,6 +174,8 @@ func (s *Server) dispatchChat(ctx context.Context, backend engine.Backend, req R
 		return nil, m.Answer(p.ChatID, p.QuestionID, p.Action, p.Content)
 	case "chatSetOption":
 		return m.SetOption(ctx, p.ChatID, p.ConfigID, p.Value)
+	case "chatPlugins":
+		return m.Plugins(ctx, p.ChatID)
 	default: // chatClose
 		return nil, m.Close(p.ChatID)
 	}
@@ -340,6 +346,19 @@ func (c *Client) ChatSetOption(ctx context.Context, chatID, configID string, val
 	}
 	var out []acp.ConfigOption
 	return out, c.chatCall(ctx, "chatSetOption", ChatSetOptionParams{ChatID: chatID, ConfigID: configID, Value: value}, &out)
+}
+
+// ChatPlugins lists the plugins of the chat's agent on the host.
+func (c *Client) ChatPlugins(ctx context.Context, chatID string) (engine.ChatPlugins, error) {
+	var out engine.ChatPlugins
+	caps := c.Capabilities()
+	if !caps.ACPChat {
+		return out, engine.ErrUnsupportedAction
+	}
+	if !caps.ChatPlugins {
+		return out, ErrNoChatPlugins
+	}
+	return out, c.chatCall(ctx, "chatPlugins", ChatParams{ChatID: chatID}, &out)
 }
 
 // ChatClose ends the chat and its agent.

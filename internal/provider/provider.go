@@ -86,6 +86,37 @@ type ACPLauncher interface {
 	ACPAdapter() ACPAdapter
 }
 
+// Plugin is one plugin the agent's CLI reports installed. Only fields that
+// are safe to show are kept: no install paths, sources, policies or config.
+type Plugin struct {
+	// ID is the CLI's own ID, such as "ponytail@ponytail".
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Marketplace string `json:"marketplace,omitempty"`
+	Version     string `json:"version,omitempty"`
+	// Scope is where it is installed (Claude: user, project, local).
+	Scope   string `json:"scope,omitempty"`
+	Enabled bool   `json:"enabled"`
+	// ProjectEnabled is the enabled state for the listing's directory, when
+	// the CLI reports one apart from Enabled.
+	ProjectEnabled *bool `json:"projectEnabled,omitempty"`
+}
+
+// PluginList is how an agent's CLI lists its installed plugins: the
+// arguments after the CLI, how long it may take, and how its standard
+// output reads. Parse fails on output it does not know.
+type PluginList struct {
+	Args    []string
+	Timeout time.Duration
+	Parse   func(stdout []byte) ([]Plugin, error)
+}
+
+// PluginLister is implemented by providers whose CLI lists its plugins in a
+// machine-readable form.
+type PluginLister interface {
+	PluginList() PluginList
+}
+
 // SourceLoader optionally loads using canonical scan metadata as an untrusted hint.
 // See LoadWithSource for validation, fallback and metadata ownership rules.
 // Implementations must retain standalone Provider.Load behavior without hints.
