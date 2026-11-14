@@ -49,5 +49,8 @@ stay as they are.
 - Browser (vite + mock, live chat): `/review the scan engine` shows `cmd`
   beside "You" in JetBrains Mono, in light and dark; a message mentioning
   `/home/haith` is untagged.
+- Follow-up: the tag is uppercase (`CMD`, by CSS) and semibold, in
+  `--accent-color` on a 12% accent tint with a 45% accent border. It was
+  checked in the browser in light and dark; tests and check pass.
 - Not checked: a saved Claude transcript with a real plugin invocation in the
   desktop app (same component, so expected to match).

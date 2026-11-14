@@ -419,11 +419,14 @@
 
   .command-tag {
     padding: 0 5px;
-    border: 1px solid var(--border-color);
+    border: 1px solid color-mix(in srgb, var(--accent-color) 45%, transparent);
     border-radius: 6px;
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
     font-family: var(--font-mono);
     font-size: calc(var(--session-font-size, 14.5px) * var(--type-tag));
-    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--accent-color);
   }
 
   .role-user.slash-command .message-parts-body {
