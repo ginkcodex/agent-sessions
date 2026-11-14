@@ -66,7 +66,10 @@ type Capabilities struct {
 	ChatAttachments bool `json:"chatAttachments,omitempty"`
 	// ChatQuestions: chatStart takes the questions flag, and chatAnswer
 	// answers the agents' questions (chat question updates).
-	ChatQuestions   bool `json:"chatQuestions,omitempty"`
+	ChatQuestions bool `json:"chatQuestions,omitempty"`
+	// ChatQueue: chatPrompt queues while the agent works and returns
+	// ChatPromptResult; chatSendNow and chatUnqueue work on the queue.
+	ChatQueue       bool `json:"chatQueue,omitempty"`
 	AgentSettings   bool `json:"agentSettings,omitempty"`
 	DiscoveryStatus bool `json:"discoveryStatus,omitempty"`
 	GitDiff         bool `json:"gitDiff,omitempty"`

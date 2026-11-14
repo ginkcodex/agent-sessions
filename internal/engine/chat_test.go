@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -157,7 +158,7 @@ func (f *chatFixture) start(t *testing.T, resume *model.SessionRef) ChatState {
 func (f *chatFixture) turn(t *testing.T, chatID, text string) ChatUpdate {
 	t.Helper()
 	before, _ := f.events.of(chatID)
-	if err := f.m.Prompt(chatID, text, nil); err != nil {
+	if _, err := f.m.Prompt(chatID, text, nil); err != nil {
 		t.Fatal(err)
 	}
 	return f.events.wait(t, chatID, func(u ChatUpdate) bool { return u.Kind == ChatTurnEnded && u.Seq > uint64(len(before)) })
@@ -233,7 +234,7 @@ func TestChatNewSessionStreams(t *testing.T) {
 	if _, ok := f.m.Owned(st.Session); ok {
 		t.Fatal("session still owned after close")
 	}
-	if err := f.m.Prompt(st.ChatID, "x", nil); !errors.Is(err, ErrChatNotFound) {
+	if _, err := f.m.Prompt(st.ChatID, "x", nil); !errors.Is(err, ErrChatNotFound) {
 		t.Fatalf("prompt after close = %v", err)
 	}
 	if err := f.m.Close(st.ChatID); !errors.Is(err, ErrChatNotFound) {
@@ -252,7 +253,7 @@ func TestChatPromptWithAttachments(t *testing.T) {
 
 	// The agent gets the text, then each attachment in order.
 	before, _ := f.events.of(st.ChatID)
-	if err := f.m.Prompt(st.ChatID, "blocks please", []chatattach.Attachment{txt, img}); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "blocks please", []chatattach.Attachment{txt, img}); err != nil {
 		t.Fatal(err)
 	}
 	f.events.wait(t, st.ChatID, func(u ChatUpdate) bool { return u.Kind == ChatTurnEnded && u.Seq > uint64(len(before)) })
@@ -264,7 +265,7 @@ func TestChatPromptWithAttachments(t *testing.T) {
 
 	// Attachments alone are a prompt; nothing at all is not.
 	before, _ = f.events.of(st.ChatID)
-	if err := f.m.Prompt(st.ChatID, "", []chatattach.Attachment{img}); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "", []chatattach.Attachment{img}); err != nil {
 		t.Fatal(err)
 	}
 	f.events.wait(t, st.ChatID, func(u ChatUpdate) bool { return u.Kind == ChatTurnEnded && u.Seq > uint64(len(before)) })
@@ -272,14 +273,14 @@ func TestChatPromptWithAttachments(t *testing.T) {
 	if got := chunks(u[len(before):]); len(got) != 1 || got[0] != "image image/png 16" {
 		t.Fatalf("blocks = %q", got)
 	}
-	if err := f.m.Prompt(st.ChatID, "", nil); !errors.Is(err, ErrEmptyPrompt) {
+	if _, err := f.m.Prompt(st.ChatID, "", nil); !errors.Is(err, ErrEmptyPrompt) {
 		t.Fatalf("empty prompt: %v", err)
 	}
 	// A malformed attachment refuses the prompt before any turn starts.
 	bad := img
 	bad.MimeType = "image/jpeg"
 	before, _ = f.events.of(st.ChatID)
-	if err := f.m.Prompt(st.ChatID, "x", []chatattach.Attachment{bad}); err == nil || !strings.Contains(err.Error(), "dot.png") {
+	if _, err := f.m.Prompt(st.ChatID, "x", []chatattach.Attachment{bad}); err == nil || !strings.Contains(err.Error(), "dot.png") {
 		t.Fatalf("bad attachment: %v", err)
 	}
 	if after, _ := f.events.of(st.ChatID); len(after) != len(before) {
@@ -294,7 +295,7 @@ func TestChatAgentWithoutImages(t *testing.T) {
 		t.Fatalf("prompt capabilities = %+v", st.PromptCapabilities)
 	}
 	img := chatattach.Attachment{Kind: chatattach.KindImage, Name: "dot.png", MimeType: "image/png", Data: base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\nxxxx"))}
-	if err := f.m.Prompt(st.ChatID, "look", []chatattach.Attachment{img}); !errors.Is(err, chatattach.ErrNoImages) {
+	if _, err := f.m.Prompt(st.ChatID, "look", []chatattach.Attachment{img}); !errors.Is(err, chatattach.ErrNoImages) {
 		t.Fatalf("image to a text-only agent: %v", err)
 	}
 	if got := f.m.Chats(); len(got) != 1 || got[0].Working {
@@ -303,7 +304,7 @@ func TestChatAgentWithoutImages(t *testing.T) {
 	// A text file goes in as text instead.
 	txt := chatattach.Attachment{Kind: chatattach.KindText, Name: "a.txt", MimeType: "text/plain", Text: "hi"}
 	before, _ := f.events.of(st.ChatID)
-	if err := f.m.Prompt(st.ChatID, "blocks", []chatattach.Attachment{txt}); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "blocks", []chatattach.Attachment{txt}); err != nil {
 		t.Fatal(err)
 	}
 	f.events.wait(t, st.ChatID, func(u ChatUpdate) bool { return u.Kind == ChatTurnEnded && u.Seq > uint64(len(before)) })
@@ -314,44 +315,277 @@ func TestChatAgentWithoutImages(t *testing.T) {
 	}
 }
 
-func TestChatRefusesConcurrentPrompt(t *testing.T) {
-	f := newChatFixture(t)
-	st := f.start(t, nil)
-	if err := f.m.Prompt(st.ChatID, "hang", nil); err != nil {
+// cancelTurn cancels the running turn and returns its end. The cancel may
+// reach the agent before the prompt; it is repeated until the turn ends.
+func (f *chatFixture) cancelTurn(t *testing.T, chatID string) ChatUpdate {
+	t.Helper()
+	before, _ := f.events.of(chatID)
+	for {
+		if err := f.m.Cancel(chatID); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(50 * time.Millisecond)
+		u, _ := f.events.of(chatID)
+		if i := slices.IndexFunc(u[len(before):], kind(ChatTurnEnded)); i >= 0 {
+			return u[len(before)+i]
+		}
+	}
+}
+
+// queue sends text to a working chat and returns the queued ID.
+func (f *chatFixture) queue(t *testing.T, chatID, text string, atts ...chatattach.Attachment) string {
+	t.Helper()
+	r, err := f.m.Prompt(chatID, text, atts)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.m.Prompt(st.ChatID, "stream 1", nil); !errors.Is(err, ErrChatBusy) {
-		t.Fatalf("second prompt = %v", err)
+	if r.Queued == "" {
+		t.Fatalf("%q was not queued", text)
+	}
+	return r.Queued
+}
+
+// turnEnds waits until the chat has emitted n turn ends.
+func (f *chatFixture) turnEnds(t *testing.T, chatID string, n int) []ChatUpdate {
+	t.Helper()
+	f.events.wait(t, chatID, func(u ChatUpdate) bool {
+		all, _ := f.events.of(chatID)
+		ends := 0
+		for _, e := range all {
+			if e.Kind == ChatTurnEnded {
+				ends++
+			}
+		}
+		return ends >= n
+	})
+	u, _ := f.events.of(chatID)
+	return u
+}
+
+// story names the turn, queue and steering events: "start", "start:<text>"
+// for a turn from the queue, "queue:<n>", "steered:<text>", "end:<reason>".
+func story(updates []ChatUpdate) []string {
+	var out []string
+	for _, u := range updates {
+		switch u.Kind {
+		case ChatTurnStarted:
+			if u.Prompt != nil {
+				out = append(out, "start:"+u.Prompt.Text)
+			} else {
+				out = append(out, "start")
+			}
+		case ChatQueueChanged:
+			out = append(out, "queue:"+strconv.Itoa(len(u.Queue)))
+		case ChatSteered:
+			out = append(out, "steered:"+u.Prompt.Text)
+		case ChatTurnEnded:
+			out = append(out, "end:"+u.StopReason)
+		}
+	}
+	return out
+}
+
+func TestChatQueueSendsAfterNormalEnd(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.start(t, nil)
+	if !st.CanQueue || !st.CanSteer {
+		t.Fatalf("state = %+v", st)
+	}
+	if r, err := f.m.Prompt(st.ChatID, "permission", nil); err != nil || r.Queued != "" {
+		t.Fatalf("prompt = %+v, %v", r, err)
+	}
+	asked := f.events.wait(t, st.ChatID, kind(ChatPermissionAsked)).Permission
+	first := f.queue(t, st.ChatID, "stream 1")
+	second := f.queue(t, st.ChatID, "second")
+	if first == second {
+		t.Fatalf("both queued as %q", first)
+	}
+	// A reloaded window finds the queue in the chat's state.
+	if open := f.m.Chats(); len(open[0].Queue) != 2 || open[0].Queue[0].ID != first || open[0].Queue[1].Text != "second" {
+		t.Fatalf("chats = %+v", open)
+	}
+	if err := f.m.Respond(st.ChatID, asked.ID, "allow-once"); err != nil {
+		t.Fatal(err)
+	}
+	u := f.turnEnds(t, st.ChatID, 3)
+	want := []string{"start", "queue:1", "queue:2", "end:end_turn", "queue:1", "start:stream 1", "end:end_turn", "queue:0", "start:second", "end:end_turn"}
+	if got := story(u); !slices.Equal(got, want) {
+		t.Fatalf("story = %q, want %q", got, want)
+	}
+	if got := chunks(u); !slices.Equal(got, []string{"allowed:allow-once", "0 ", "second"}) {
+		t.Fatalf("chunks = %q", got)
+	}
+	if open := f.m.Chats(); open[0].Working || len(open[0].Queue) != 0 {
+		t.Fatalf("chats = %+v", open)
+	}
+	f.events.checkSeq(t, st.ChatID)
+}
+
+func TestChatQueuePausesAfterCancel(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.start(t, nil)
+	if _, err := f.m.Prompt(st.ChatID, "hang", nil); err != nil {
+		t.Fatal(err)
 	}
 	if got := f.m.Chats(); !got[0].Working {
 		t.Fatalf("not working: %+v", got)
 	}
-	// The cancel may reach the agent before the prompt; repeat until it ends.
-	var end ChatUpdate
-	for done := false; !done; {
-		if err := f.m.Cancel(st.ChatID); err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(50 * time.Millisecond)
-		u, _ := f.events.of(st.ChatID)
-		if i := slices.IndexFunc(u, kind(ChatTurnEnded)); i >= 0 {
-			end, done = u[i], true
-		}
-	}
-	if end.StopReason != acp.StopCancelled {
+	queued := f.queue(t, st.ChatID, "stream 1")
+	if end := f.cancelTurn(t, st.ChatID); end.StopReason != acp.StopCancelled {
 		t.Fatalf("turn end = %+v", end)
 	}
-	// The next turn may start as soon as the end is seen.
-	if end := f.turn(t, st.ChatID, "stream 1"); end.StopReason != acp.StopEndTurn {
-		t.Fatalf("next turn = %+v", end)
+	// Paused: nothing starts, and the message stays queued.
+	time.Sleep(100 * time.Millisecond)
+	if open := f.m.Chats(); open[0].Working || len(open[0].Queue) != 1 || open[0].Queue[0].ID != queued {
+		t.Fatalf("chats = %+v", open)
+	}
+	// A new message starts at once; the queue goes on after it.
+	if r, err := f.m.Prompt(st.ChatID, "fresh words", nil); err != nil || r.Queued != "" {
+		t.Fatalf("prompt = %+v, %v", r, err)
+	}
+	u := f.turnEnds(t, st.ChatID, 3)
+	want := []string{"start", "queue:1", "end:cancelled", "start", "end:end_turn", "queue:0", "start:stream 1", "end:end_turn"}
+	if got := story(u); !slices.Equal(got, want) {
+		t.Fatalf("story = %q, want %q", got, want)
+	}
+	if got := chunks(u); !slices.Equal(got, []string{"fresh words", "0 "}) {
+		t.Fatalf("chunks = %q", got)
 	}
 	f.events.checkSeq(t, st.ChatID)
+}
+
+func TestChatQueueChecksAttachments(t *testing.T) {
+	f := newChatFixture(t, "ACPTEST_TEXT_ONLY=1")
+	st := f.start(t, nil)
+	if _, err := f.m.Prompt(st.ChatID, "hang", nil); err != nil {
+		t.Fatal(err)
+	}
+	img := chatattach.Attachment{Kind: chatattach.KindImage, Name: "dot.png", MimeType: "image/png", Size: 12, Data: base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\nxxxx"))}
+	if _, err := f.m.Prompt(st.ChatID, "look", []chatattach.Attachment{img}); !errors.Is(err, chatattach.ErrNoImages) {
+		t.Fatalf("queued image = %v", err)
+	}
+	if open := f.m.Chats(); len(open[0].Queue) != 0 {
+		t.Fatalf("chats = %+v", open)
+	}
+	f.cancelTurn(t, st.ChatID)
+}
+
+func TestChatUnqueue(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.start(t, nil)
+	if _, err := f.m.Prompt(st.ChatID, "permission", nil); err != nil {
+		t.Fatal(err)
+	}
+	asked := f.events.wait(t, st.ChatID, kind(ChatPermissionAsked)).Permission
+	img := chatattach.Attachment{Kind: chatattach.KindImage, Name: "dot.png", MimeType: "image/png", Size: 12, Data: base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\nxxxx"))}
+	id := f.queue(t, st.ChatID, "look", img)
+	queued := f.events.wait(t, st.ChatID, kind(ChatQueueChanged)).Queue
+	if len(queued) != 1 || len(queued[0].Attachments) != 1 ||
+		queued[0].Attachments[0] != (ChatAttachmentInfo{Kind: "image", Name: "dot.png", MimeType: "image/png", Size: 12}) {
+		t.Fatalf("queue = %+v", queued)
+	}
+	draft, err := f.m.Unqueue(st.ChatID, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.Text != "look" || len(draft.Attachments) != 1 || draft.Attachments[0] != img {
+		t.Fatalf("draft = %+v", draft)
+	}
+	if _, err := f.m.Unqueue(st.ChatID, id); !errors.Is(err, ErrQueuedNotFound) {
+		t.Fatalf("second unqueue = %v", err)
+	}
+	if err := f.m.Respond(st.ChatID, asked.ID, "allow-once"); err != nil {
+		t.Fatal(err)
+	}
+	f.events.wait(t, st.ChatID, kind(ChatTurnEnded))
+	time.Sleep(100 * time.Millisecond)
+	u, _ := f.events.of(st.ChatID)
+	if got, want := story(u), []string{"start", "queue:1", "queue:0", "end:end_turn"}; !slices.Equal(got, want) {
+		t.Fatalf("story = %q, want %q", got, want)
+	}
+}
+
+func TestChatSendNowSteers(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.start(t, nil)
+	if _, err := f.m.Prompt(st.ChatID, "hold", nil); err != nil {
+		t.Fatal(err)
+	}
+	id := f.queue(t, st.ChatID, "look at b.txt")
+	// The steer may reach the agent before the prompt: it then answers
+	// promptRequired and the message goes back to the queue. Repeat.
+	for {
+		if err := f.m.SendNow(chatCtx(t), st.ChatID, id); err != nil {
+			t.Fatal(err)
+		}
+		if u, _ := f.events.of(st.ChatID); slices.ContainsFunc(u, kind(ChatSteered)) {
+			break
+		}
+		if open := f.m.Chats(); len(open[0].Queue) != 1 || open[0].Queue[0].ID != id {
+			t.Fatalf("not steered and not queued: %+v", open)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	u := f.turnEnds(t, st.ChatID, 1)
+	got := story(u)
+	if got[len(got)-2] != "steered:look at b.txt" || got[len(got)-1] != "end:end_turn" {
+		t.Fatalf("story = %q", got)
+	}
+	if got := chunks(u); !slices.Equal(got, []string{"steered:look at b.txt"}) {
+		t.Fatalf("chunks = %q", got)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if open := f.m.Chats(); open[0].Working || len(open[0].Queue) != 0 {
+		t.Fatalf("chats = %+v", open)
+	}
+	f.events.checkSeq(t, st.ChatID)
+}
+
+func TestChatSendNowStartsPausedQueue(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.start(t, nil)
+	if _, err := f.m.Prompt(st.ChatID, "hang", nil); err != nil {
+		t.Fatal(err)
+	}
+	f.queue(t, st.ChatID, "first")
+	id := f.queue(t, st.ChatID, "stream 1")
+	f.cancelTurn(t, st.ChatID)
+	if err := f.m.SendNow(chatCtx(t), st.ChatID, id); err != nil {
+		t.Fatal(err)
+	}
+	u := f.turnEnds(t, st.ChatID, 3)
+	want := []string{"start", "queue:1", "queue:2", "end:cancelled", "queue:1", "start:stream 1", "end:end_turn", "queue:0", "start:first", "end:end_turn"}
+	if got := story(u); !slices.Equal(got, want) {
+		t.Fatalf("story = %q, want %q", got, want)
+	}
+	if err := f.m.SendNow(chatCtx(t), st.ChatID, id); !errors.Is(err, ErrQueuedNotFound) {
+		t.Fatalf("sent twice = %v", err)
+	}
+}
+
+func TestChatSendNowWithoutSteering(t *testing.T) {
+	f := newChatFixture(t, "ACPTEST_NO_STEER=1")
+	st := f.start(t, nil)
+	if !st.CanQueue || st.CanSteer {
+		t.Fatalf("state = %+v", st)
+	}
+	if _, err := f.m.Prompt(st.ChatID, "hang", nil); err != nil {
+		t.Fatal(err)
+	}
+	id := f.queue(t, st.ChatID, "later")
+	if err := f.m.SendNow(chatCtx(t), st.ChatID, id); !errors.Is(err, ErrSteerUnsupported) {
+		t.Fatalf("send now = %v", err)
+	}
+	if open := f.m.Chats(); len(open[0].Queue) != 1 || open[0].Queue[0].ID != id {
+		t.Fatalf("chats = %+v", open)
+	}
+	f.cancelTurn(t, st.ChatID)
 }
 
 func TestChatPermissionAnswered(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.start(t, nil)
-	if err := f.m.Prompt(st.ChatID, "permission", nil); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatPermissionAsked)).Permission
@@ -396,7 +630,7 @@ func TestChatPermissionAnswered(t *testing.T) {
 func TestChatCancelAnswersPermission(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.start(t, nil)
-	if err := f.m.Prompt(st.ChatID, "permission", nil); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatPermissionAsked)).Permission
@@ -418,7 +652,7 @@ func TestChatCancelAnswersPermission(t *testing.T) {
 func TestChatCloseDuringPermission(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.start(t, nil)
-	if err := f.m.Prompt(st.ChatID, "permission", nil); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "permission", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatPermissionAsked)).Permission
@@ -680,7 +914,7 @@ func TestChatCloseAll(t *testing.T) {
 		st := f.start(t, nil)
 		ids = append(ids, st.ChatID)
 		if text != "" {
-			if err := f.m.Prompt(st.ChatID, text, nil); err != nil {
+			if _, err := f.m.Prompt(st.ChatID, text, nil); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -864,7 +1098,7 @@ func (f *chatFixture) startAsking(t *testing.T) ChatState {
 func TestChatQuestionAnswered(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.startAsking(t)
-	if err := f.m.Prompt(st.ChatID, "question claude", nil); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "question claude", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
@@ -939,7 +1173,7 @@ func TestChatQuestionAnswered(t *testing.T) {
 func TestChatQuestionDeclined(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.startAsking(t)
-	if err := f.m.Prompt(st.ChatID, "question codex", nil); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "question codex", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
@@ -976,7 +1210,7 @@ func TestChatQuestionsNeedTheFlag(t *testing.T) {
 func TestChatCancelAnswersQuestion(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.startAsking(t)
-	if err := f.m.Prompt(st.ChatID, "question", nil); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "question", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
@@ -997,7 +1231,7 @@ func TestChatCancelAnswersQuestion(t *testing.T) {
 func TestChatCloseDuringQuestion(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.startAsking(t)
-	if err := f.m.Prompt(st.ChatID, "question", nil); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "question", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
@@ -1025,7 +1259,7 @@ func TestChatCloseDuringQuestion(t *testing.T) {
 func TestChatQuestionWithdrawn(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.startAsking(t)
-	if err := f.m.Prompt(st.ChatID, "withdraw 200", nil); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "withdraw 200", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
@@ -1046,7 +1280,7 @@ func TestChatQuestionWithdrawn(t *testing.T) {
 func TestChatAgentExitAnswersQuestion(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.startAsking(t)
-	if err := f.m.Prompt(st.ChatID, "askexit", nil); err != nil {
+	if _, err := f.m.Prompt(st.ChatID, "askexit", nil); err != nil {
 		t.Fatal(err)
 	}
 	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question

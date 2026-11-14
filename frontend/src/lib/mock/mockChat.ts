@@ -8,9 +8,12 @@ import type {
   ChatAttachment,
   ChatAttachResult,
   ChatConfigOption,
+  ChatDraft,
   ChatPermission,
+  ChatPromptResult,
   ChatQuestion,
   ChatQuestionField,
+  ChatQueuedPrompt,
   ChatStartRequest,
   ChatState,
   ChatUpdateEvent,
@@ -88,10 +91,25 @@ function base64Size(data: string): number {
 
 export const CHAT_REMOTE_ERROR = "this host's agent-sessions does not support chat; reconnect to update it";
 
+/** A running turn: Stop cancels it; Send now adds steered messages to it. */
+interface MockTurn {
+  cancelled: boolean;
+  steered: MockQueued[];
+}
+
+interface MockQueued {
+  info: ChatQueuedPrompt;
+  text: string;
+  attachments: ChatAttachment[];
+}
+
 interface MockChat {
   state: ChatState;
   seq: number;
-  turn: { cancelled: boolean } | null;
+  turn: MockTurn | null;
+  /** The messages sent while a turn ran, in sending order. */
+  queue: MockQueued[];
+  nextQueued: number;
   permission: { request: ChatPermission; answer: (optionId: string) => void } | null;
   nextPerm: number;
   /** The window shows questions (ChatStartRequest.questions). */
@@ -122,13 +140,18 @@ export interface MockChatHost {
  * - "run": runs a command, its output in _meta as Codex sends it;
  * - "fail": the turn fails; "login": the turn needs a login;
  * - "crash": the agent dies;
- * - "hang": the turn runs until cancelled;
+ * - "hang": the turn runs until cancelled, or until Send now steers a
+ *   message into it;
  * - "question": the agent asks the user, with a form shaped like
  *   its adapter's; "withdraw": it asks, then goes on without the answer
  *   after withdrawMs, as Codex's auto-resolution does; "async": Codex asks
  *   without waiting, keeps streaming, and withdraws the question when the
  *   turn ends, as its async questions do.
- * The reply says how many files the prompt carried.
+ * The reply says how many files the prompt carried, and which messages
+ * Send now steered into the turn.
+ *
+ * As the engine does, a message sent during a turn is queued; the queue
+ * runs after a turn that ends normally and pauses after any other end.
  */
 export class MockChats {
   /** The pause between two streamed steps; 0 in tests. */
@@ -141,6 +164,8 @@ export class MockChats {
   outdated = new Set<AgentID>();
   /** Agents whose adapter the app has installed for itself since. */
   installed = new Set<AgentID>();
+  /** Agents whose adapter cannot take a message during a turn. */
+  noSteer = new Set<AgentID>();
   private chats = new Map<string, MockChat>();
   private nextChat = 1;
   private host: MockChatHost;
@@ -189,9 +214,13 @@ export class MockChats {
         ],
         promptCapabilities: { image: true, embeddedContext: true },
         working: false,
+        canQueue: true,
+        canSteer: !this.noSteer.has(req.agent),
       },
       seq: 0,
       turn: null,
+      queue: [],
+      nextQueued: 0,
       permission: null,
       nextPerm: 0,
       questions: !!req.questions,
@@ -206,17 +235,57 @@ export class MockChats {
     return structuredClone(chat.state);
   }
 
-  async prompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<void> {
+  /** Starts a turn, or queues the message while one runs. */
+  async prompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<ChatPromptResult> {
     this.requireAvailable();
     const chat = this.get(chatId);
     if (!text && attachments.length === 0) throw new Error('the message is empty');
     if (attachments.length > MOCK_MAX_ATTACHMENTS) throw new Error(`a message can carry at most ${MOCK_MAX_ATTACHMENTS} attachments`);
-    if (chat.turn) throw new Error('chat: a turn is already running');
-    const turn = { cancelled: false };
-    chat.turn = turn;
-    chat.state.working = true;
-    this.update(chat, { kind: 'turn_start' });
-    void this.run(chat, turn, text, attachments);
+    // A copy: what the UI passes may be reactive state, which does not clone.
+    const atts = attachments.map((a) => ({ ...a }));
+    if (chat.turn) {
+      const id = `queued-${++chat.nextQueued}`;
+      const info: ChatQueuedPrompt = {
+        id,
+        ...(text && { text }),
+        ...(atts.length > 0 && { attachments: atts.map((a) => ({ kind: a.kind, name: a.name, mimeType: a.mimeType, size: a.size })) }),
+      };
+      chat.queue.push({ info, text, attachments: atts });
+      this.queueChanged(chat);
+      return { queued: id };
+    }
+    this.startTurn(chat, text, atts);
+    return {};
+  }
+
+  /**
+   * Sends a queued message now: it starts a turn when none runs, and joins
+   * the running one otherwise.
+   */
+  async sendNow(chatId: string, queuedId: string): Promise<void> {
+    this.requireAvailable();
+    const chat = this.get(chatId);
+    const i = chat.queue.findIndex((q) => q.info.id === queuedId);
+    if (i < 0) throw new Error(`the message is no longer queued: ${queuedId}`);
+    if (chat.turn && !chat.state.canSteer) throw new Error('the agent cannot take a message while it works; it is sent when the turn ends');
+    const [q] = chat.queue.splice(i, 1);
+    this.queueChanged(chat);
+    if (!chat.turn) {
+      this.startTurn(chat, q.text, q.attachments, q.info);
+      return;
+    }
+    chat.turn.steered.push(q);
+    this.update(chat, { kind: 'steered', prompt: structuredClone(q.info) });
+  }
+
+  /** Takes a message back from the queue, to edit it. */
+  async unqueue(chatId: string, queuedId: string): Promise<ChatDraft> {
+    const chat = this.get(chatId);
+    const i = chat.queue.findIndex((q) => q.info.id === queuedId);
+    if (i < 0) throw new Error(`the message is no longer queued: ${queuedId}`);
+    const [q] = chat.queue.splice(i, 1);
+    this.queueChanged(chat);
+    return { ...(q.text && { text: q.text }), ...(q.attachments.length > 0 && { attachments: q.attachments }) };
   }
 
   async cancel(chatId: string): Promise<void> {
@@ -257,7 +326,12 @@ export class MockChats {
 
   async list(): Promise<ChatState[]> {
     return [...this.chats.values()].map((c) =>
-      structuredClone({ ...c.state, permissions: c.permission ? [c.permission.request] : [], questions: c.question ? [c.question.request] : [] }),
+      structuredClone({
+        ...c.state,
+        permissions: c.permission ? [c.permission.request] : [],
+        questions: c.question ? [c.question.request] : [],
+        ...(c.queue.length > 0 && { queue: c.queue.map((q) => q.info) }),
+      }),
     );
   }
 
@@ -279,6 +353,19 @@ export class MockChats {
   private update(chat: MockChat, fields: Omit<ChatUpdateEvent, 'chatId' | 'seq'>): void {
     if (chat.closed) return;
     this.host.emit('chat:update', { chatId: chat.state.chatId, seq: ++chat.seq, ...fields });
+  }
+
+  private queueChanged(chat: MockChat): void {
+    this.update(chat, { kind: 'queue', ...(chat.queue.length > 0 && { queue: structuredClone(chat.queue.map((q) => q.info)) }) });
+  }
+
+  /** prompt is the queued message the turn sends, if it came from the queue. */
+  private startTurn(chat: MockChat, text: string, attachments: ChatAttachment[], prompt?: ChatQueuedPrompt): void {
+    const turn: MockTurn = { cancelled: false, steered: [] };
+    chat.turn = turn;
+    chat.state.working = true;
+    this.update(chat, { kind: 'turn_start', ...(prompt && { prompt: structuredClone(prompt) }) });
+    void this.run(chat, turn, text, attachments);
   }
 
   private session(chat: MockChat, update: AcpSessionUpdate): void {
@@ -305,7 +392,7 @@ export class MockChats {
     return new Promise((resolve) => setTimeout(resolve, this.stepMs));
   }
 
-  private async stream(chat: MockChat, turn: { cancelled: boolean }, kind: 'agent_message_chunk' | 'agent_thought_chunk', messageId: string, text: string): Promise<void> {
+  private async stream(chat: MockChat, turn: MockTurn, kind: 'agent_message_chunk' | 'agent_thought_chunk', messageId: string, text: string): Promise<void> {
     for (const word of text.match(/\S+\s*/g) ?? []) {
       if (turn.cancelled) return;
       this.session(chat, { sessionUpdate: kind, messageId, content: { type: 'text', text: word } });
@@ -359,17 +446,13 @@ export class MockChats {
     });
   }
 
-  private async run(chat: MockChat, turn: { cancelled: boolean }, text: string, attachments: ChatAttachment[]): Promise<void> {
+  private async run(chat: MockChat, turn: MockTurn, text: string, attachments: ChatAttachment[]): Promise<void> {
     const n = ++chat.nextMessage;
     const msg = `msg_mock_${chat.state.chatId}_${n}`;
     const tool = `toolu_mock_${chat.state.chatId}_${n}`;
     // The agent saves the files with the prompt; the mock keeps an image's
     // bytes in the part, where an agent's log would have them.
-    const prompt: Message['parts'] = [
-      ...(text ? [{ kind: 'text' as const, text }] : []),
-      ...attachments.map((a): Message['parts'][number] => ({ kind: 'file', file: { name: a.name, mime: a.mimeType, size: a.size, ...(a.data && { data: a.data }) } })),
-    ];
-    const saved: Message[] = [{ id: `user_mock_${chat.state.chatId}_${n}`, role: 'user', time: new Date().toISOString(), parts: prompt }];
+    const saved: Message[] = [{ id: `user_mock_${chat.state.chatId}_${n}`, role: 'user', time: new Date().toISOString(), parts: userParts(text, attachments) }];
     // The turn runs on the model the session has now, as an agent's does.
     const model = chat.state.configOptions.find((o) => o.id === 'model')?.currentValue;
     const reply: Message = { id: msg, role: 'assistant', time: new Date().toISOString(), model: typeof model === 'string' ? model : 'mock-large', parts: [] };
@@ -489,12 +572,13 @@ export class MockChats {
       }
 
       if (/hang/i.test(text)) {
-        while (!turn.cancelled) await new Promise((resolve) => setTimeout(resolve, Math.max(this.stepMs, 10)));
+        while (!turn.cancelled && turn.steered.length === 0) await new Promise((resolve) => setTimeout(resolve, Math.max(this.stepMs, 10)));
       }
       this.session(chat, plan(2));
       const files = `${attachments.length} file${attachments.length === 1 ? '' : 's'} (${attachments.map((a) => a.name).join(', ')})`;
       const said = attachments.length === 0 ? `You said "${text}"` : text ? `You said "${text}", with ${files} attached` : `You sent ${files}`;
-      const answer = `Done. ${said}, and the mock project has a README. This reply streams a word at a time, as an agent's would.`;
+      const also = turn.steered.map((q) => ` While I worked you added "${q.text || q.attachments.map((a) => a.name).join(', ')}".`).join('');
+      const answer = `Done. ${said}, and the mock project has a README.${also} This reply streams a word at a time, as an agent's would.`;
       await this.stream(chat, turn, 'agent_message_chunk', msg, answer);
       if (turn.cancelled) {
         stopReason = 'cancelled';
@@ -509,12 +593,30 @@ export class MockChats {
         chat.turn = null;
         chat.state.working = false;
         if (turn.cancelled) stopReason = 'cancelled';
+        // The agent saves a steered message after the prompt it joined.
+        for (const [i, q] of turn.steered.entries()) {
+          saved.push({ id: `user_mock_${chat.state.chatId}_${n}_steered_${i + 1}`, role: 'user', time: new Date().toISOString(), parts: userParts(q.text, q.attachments) });
+        }
         if (reply.parts.length > 0) saved.push(reply);
         if (!error) this.host.save(chat.state.session, chat.state.dir, saved);
         this.update(chat, error ? { kind: 'turn_end', error, ...(authMethods && { authMethods }) } : { kind: 'turn_end', stopReason });
+        // The queue goes on after a normal end, and pauses after any other.
+        const next = !error && stopReason === 'end_turn' ? chat.queue.shift() : undefined;
+        if (next) {
+          this.queueChanged(chat);
+          this.startTurn(chat, next.text, next.attachments, next.info);
+        }
       }
     }
   }
+}
+
+/** A user message's parts as the agent saves them. */
+function userParts(text: string, attachments: ChatAttachment[]): Message['parts'] {
+  return [
+    ...(text ? [{ kind: 'text' as const, text }] : []),
+    ...attachments.map((a): Message['parts'][number] => ({ kind: 'file', file: { name: a.name, mime: a.mimeType, size: a.size, ...(a.data && { data: a.data }) } })),
+  ];
 }
 
 const APPROACHES = [

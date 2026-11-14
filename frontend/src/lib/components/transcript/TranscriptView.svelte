@@ -18,7 +18,8 @@
   import { files } from '../../stores/files.svelte';
   import { contentSearch } from '../../stores/contentSearch.svelte';
   import { createTerminalFileOpener } from '../../terminalFileOpen';
-  import { parseMessageFileLink } from '../../messageFileLinks';
+  import { parseMessageFileLink, type MessageFileLink } from '../../messageFileLinks';
+  import type { ToolFileTarget } from '../../toolPresentation';
   import { messageFileRecovery } from '../../messageFileOpen';
   import { browserLinkDestination } from '../../linkPreview';
   import { preferences } from '../../stores/preferences.svelte';
@@ -79,9 +80,15 @@
     return () => fileOpener.dispose();
   });
   function openMessageFile(value: string, ref: SessionRef) {
-    if (!refsMatch(appState.selectedSessionRef, ref)) return;
     const target = parseMessageFileLink(value);
-    if (!target) return;
+    if (target) openSessionFile(target, ref);
+  }
+  // A tool's path is not a link destination: it opens as given, undecoded.
+  function openToolFile(target: ToolFileTarget) {
+    if (appState.selectedSessionRef) openSessionFile(target, appState.selectedSessionRef);
+  }
+  function openSessionFile(target: MessageFileLink, ref: SessionRef) {
+    if (!refsMatch(appState.selectedSessionRef, ref)) return;
     const cwd = appState.selectedSessionMeta?.cwd;
     if (!cwd) {
       toast.show({ title: 'Could not open message file', body: 'The session working directory is not available.', tone: 'error' });
@@ -882,6 +889,7 @@
                 message={msg}
                 sessionRef={appState.selectedSessionRef}
                 onFileLink={(value) => { if (appState.selectedSessionRef) openMessageFile(value, appState.selectedSessionRef); }}
+                onOpenFile={openToolFile}
                 {onRunCommand}
                 index={globalIndex}
                 {mode}
@@ -911,6 +919,7 @@
             sessionRef={appState.selectedSessionRef}
             {mode}
             onFileLink={(value) => { if (appState.selectedSessionRef) openMessageFile(value, appState.selectedSessionRef); }}
+            onOpenFile={openToolFile}
             onRunCommand={launcher.info.panel && chat.dir ? (command) => void terminals.runCommand(command, chat.dir) : undefined}
             onOpenTerminal={launcher.info.panel ? () => void terminals.newShell(chat.dir) : undefined}
           />

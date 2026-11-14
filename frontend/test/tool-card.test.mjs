@@ -118,3 +118,29 @@ test('blob failure stays retryable and fetched text uses the same readable previ
   assert.equal(target.querySelector('.blob-error-msg'), null);
   await close();
 });
+
+test('a file tool\'s path opens its file; other summaries stay text', async () => {
+  const opened = [];
+  const onOpenFile = target => opened.push(target);
+  const read = { id: 'r', name: 'Read', status: 'completed', input: { file_path: '/w/docs/plan.md', offset: 12 } };
+  let card = setup({ tool: read, onOpenFile });
+  const link = card.target.querySelector('button.tool-summary');
+  assert.equal(link.textContent, '/w/docs/plan.md');
+  assert.equal(link.title, 'Open /w/docs/plan.md');
+  link.click();
+  assert.deepEqual(opened, [{ path: '/w/docs/plan.md', line: 12 }]);
+  await card.close();
+
+  // No callback: the same card keeps plain text.
+  card = setup({ tool: read });
+  assert.equal(card.target.querySelector('button.tool-summary'), null);
+  assert.equal(card.target.querySelector('span.tool-summary').textContent, '/w/docs/plan.md');
+  await card.close();
+
+  // A command is not a file.
+  card = setup({ onOpenFile });
+  assert.equal(card.target.querySelector('button.tool-summary'), null);
+  assert.equal(card.target.querySelector('span.tool-summary').textContent, 'git status');
+  await card.close();
+  assert.equal(opened.length, 1);
+});

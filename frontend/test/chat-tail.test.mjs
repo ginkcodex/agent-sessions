@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addAnswer,
+  addPrompt,
   applySessionUpdate,
   beginTurn,
   emptyTail,
@@ -365,4 +366,28 @@ test("a question's outcome stays in its turn until the tool call that asked is s
   u = endTurn(u);
   const reply = { id: 'm1', role: 'assistant', time: '', parts: [{ kind: 'text', text: 'Asking.' }] };
   assert.deepEqual(reconcile(u, [user, reply]).items, []);
+});
+
+test('a steered message joins the open turn after what it streamed, and its saved copy replaces it', () => {
+  const sentAt = Date.parse('2026-11-11T10:00:00Z');
+  let t = beginTurn(emptyTail(), { text: 'fix the build', sentAt });
+  t = applySessionUpdate(t, { sessionUpdate: 'agent_message_chunk', messageId: 'm1', content: { type: 'text', text: 'Looking.' } });
+  t = addPrompt(t, { text: 'also the tests', sentAt: sentAt + 5000, attachments: [{ name: 'a.png', mimeType: 'image/png', size: 3, data: 'AAA' }] });
+  assert.equal(t.turn, 1);
+  assert.deepEqual(
+    t.items.map((i) => [i.turn, i.role, i.text]),
+    [
+      [1, 'user', 'fix the build'],
+      [1, 'assistant', 'Looking.'],
+      [1, 'user', 'also the tests'],
+    ],
+  );
+  assert.equal(t.items[2].attachments[0].data, 'AAA');
+  assert.equal(addPrompt(t, { text: '', sentAt }), t, 'an empty message adds nothing');
+
+  const saved = [
+    { id: 'u1', role: 'user', time: '2026-11-11T10:00:00Z', parts: [{ kind: 'text', text: 'fix the build' }] },
+    { id: 'u2', role: 'user', time: '2026-11-11T10:00:05Z', parts: [{ kind: 'text', text: 'also the tests' }] },
+  ];
+  assert.deepEqual(reconcile(t, saved).items.map((i) => i.text), ['Looking.']);
 });

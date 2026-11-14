@@ -144,16 +144,164 @@ test('a failed turn keeps its error and the login the agent asks for', async () 
   });
 });
 
-test('a refused prompt leaves the chat idle and throws', async () => {
+const users = (store, chatId) => store.byChatId(chatId).tail.items.filter((i) => i.role === 'user');
+
+test('a message sent during a turn is queued, and runs with its image after the turn ends', async () => {
+  const { mockAttachFiles } = await import('../src/lib/mock/mockChat.ts');
+  await withChats(async ({ store, mock }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR });
+    assert.equal(chat.canQueue, true);
+    assert.equal(chat.canSteer, true);
+    assert.deepEqual(chat.queue, []);
+    assert.equal(await store.prompt(chat.chatId, 'tidy the readme'), undefined, 'an idle chat starts the turn');
+    const shot = mockAttachFiles(['/home/mock/shot.png']).attachments;
+    const id = await store.prompt(chat.chatId, 'then the release notes', shot);
+    assert.match(id, /^queued-/);
+    let c = store.byChatId(chat.chatId);
+    assert.equal(c.phase, 'working');
+    assert.deepEqual(c.queue, [{ id, text: 'then the release notes', attachments: [{ kind: 'image', name: 'shot.png', mimeType: 'image/png', size: shot[0].size }] }]);
+    assert.deepEqual(users(store, chat.chatId).map((u) => u.text), ['tidy the readme'], 'a queued message is not in the tail');
+
+    await until('the queued turn', () => store.byChatId(chat.chatId).tail.turn === 2);
+    assert.deepEqual(store.byChatId(chat.chatId).queue, []);
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    c = store.byChatId(chat.chatId);
+    assert.equal(c.stopReason, 'end_turn');
+    const second = users(store, chat.chatId)[1];
+    assert.equal(second.turn, 2);
+    assert.equal(second.text, 'then the release notes');
+    assert.deepEqual(second.attachments.map((a) => [a.name, !!a.data]), [['shot.png', true]], 'the image shows from its bytes');
+
+    const page = await mock.getMessages(c.session, -1, 100);
+    assert.deepEqual(page.messages.filter((m) => m.role === 'user').map((m) => m.parts[0].text), ['tidy the readme', 'then the release notes']);
+    store.reconcile(chat.chatId, page.messages);
+    assert.deepEqual(store.byChatId(chat.chatId).tail.items, []);
+  });
+});
+
+test('Stop pauses the queue; Send now starts the next message', async () => {
+  await withChats(async ({ store }) => {
+    const chat = await store.start({ agent: 'opencode', dir: DIR });
+    await store.prompt(chat.chatId, 'hang');
+    const first = await store.prompt(chat.chatId, 'first after');
+    await store.prompt(chat.chatId, 'second after');
+    await store.cancel(chat.chatId);
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    let c = store.byChatId(chat.chatId);
+    assert.equal(c.stopReason, 'cancelled');
+    assert.deepEqual(c.queue.map((q) => q.text), ['first after', 'second after'], 'the queue waits');
+    assert.equal(c.tail.turn, 1);
+
+    await store.sendNow(chat.chatId, first);
+    await until('both turns', () => store.byChatId(chat.chatId).tail.turn === 3 && store.byChatId(chat.chatId).phase === 'idle');
+    c = store.byChatId(chat.chatId);
+    assert.deepEqual(c.queue, []);
+    assert.deepEqual(users(store, chat.chatId).map((u) => [u.turn, u.text]), [[1, 'hang'], [2, 'first after'], [3, 'second after']]);
+    await assert.rejects(store.sendNow(chat.chatId, first), /no longer queued/);
+  });
+});
+
+test('a failed turn pauses the queue too', async () => {
+  await withChats(async ({ store }) => {
+    const chat = await store.start({ agent: 'codex', dir: DIR });
+    await store.prompt(chat.chatId, 'fail please');
+    await store.prompt(chat.chatId, 'next');
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    const c = store.byChatId(chat.chatId);
+    assert.match(c.error, /asked to fail/);
+    assert.deepEqual(c.queue.map((q) => q.text), ['next']);
+    assert.equal(c.tail.turn, 1);
+  });
+});
+
+test('Send now steers a queued message into the running turn', async () => {
+  await withChats(async ({ store, mock }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR });
+    await store.prompt(chat.chatId, 'hang');
+    const id = await store.prompt(chat.chatId, 'also check the tests');
+    await store.sendNow(chat.chatId, id);
+    let c = store.byChatId(chat.chatId);
+    assert.deepEqual(c.queue, []);
+    assert.deepEqual(users(store, chat.chatId).map((u) => [u.turn, u.text]), [[1, 'hang'], [1, 'also check the tests']], 'it joins the open turn');
+
+    // The mock's hang ends with the steered message, as the turn goes on.
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    c = store.byChatId(chat.chatId);
+    assert.equal(c.stopReason, 'end_turn');
+    assert.equal(c.tail.turn, 1);
+    assert.match(c.tail.items.at(-1).text, /While I worked you added "also check the tests"/);
+    const page = await mock.getMessages(c.session, -1, 100);
+    assert.deepEqual(page.messages.filter((m) => m.role === 'user').map((m) => m.parts[0].text), ['hang', 'also check the tests']);
+    store.reconcile(chat.chatId, page.messages);
+    assert.deepEqual(store.byChatId(chat.chatId).tail.items, []);
+  });
+});
+
+test('an agent that cannot steer refuses Send now during a turn; the message stays queued', async () => {
+  await withChats(async ({ store, mock }) => {
+    mock.chat.noSteer.add('codex');
+    const chat = await store.start({ agent: 'codex', dir: DIR });
+    assert.equal(chat.canQueue, true);
+    assert.equal(chat.canSteer, false);
+    await store.prompt(chat.chatId, 'hang');
+    const id = await store.prompt(chat.chatId, 'later');
+    await assert.rejects(store.sendNow(chat.chatId, id), /cannot take a message while it works/);
+    assert.deepEqual(store.byChatId(chat.chatId).queue.map((q) => q.id), [id]);
+    await store.cancel(chat.chatId);
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    // Idle, Send now starts it.
+    await store.sendNow(chat.chatId, id);
+    await until('its turn', () => store.byChatId(chat.chatId).tail.turn === 2 && store.byChatId(chat.chatId).phase === 'idle');
+  });
+});
+
+test('Remove takes a queued message back with its files', async () => {
+  const { mockAttachFiles } = await import('../src/lib/mock/mockChat.ts');
   await withChats(async ({ store }) => {
     const chat = await store.start({ agent: 'claude-code', dir: DIR });
     await store.prompt(chat.chatId, 'hang');
-    await assert.rejects(store.prompt(chat.chatId, 'second'), /already running/);
-    assert.equal(store.byChatId(chat.chatId).phase, 'working', 'the first turn still runs');
+    const files = mockAttachFiles(['/home/mock/shot.png', '/home/mock/plan.md']).attachments;
+    const id = await store.prompt(chat.chatId, 'look at these', files);
+    const draft = await store.unqueue(chat.chatId, id);
+    assert.equal(draft.text, 'look at these');
+    assert.deepEqual(draft.attachments.map((a) => [a.kind, a.name, !!(a.data || a.text)]), [['image', 'shot.png', true], ['text', 'plan.md', true]]);
+    assert.deepEqual(store.byChatId(chat.chatId).queue, []);
+    await assert.rejects(store.unqueue(chat.chatId, id), /no longer queued/);
     await store.cancel(chat.chatId);
     await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
-    assert.equal(store.byChatId(chat.chatId).tail.turn, 1, 'the refused prompt started no turn');
-    assert.equal(store.byChatId(chat.chatId).tail.items.filter((i) => i.role === 'user').length, 1);
+    assert.equal(store.byChatId(chat.chatId).tail.turn, 1, 'the removed message never ran');
+  });
+});
+
+test('a reloaded page gets the queue, and a queued message from it runs', async () => {
+  await withChats(
+    async ({ store, mock }) => {
+      const st = await mock.chatStart({ agent: 'opencode', dir: DIR });
+      await mock.chatPrompt(st.chatId, 'hang');
+      const { queued } = await mock.chatPrompt(st.chatId, 'from before the reload');
+      await store.init();
+      const c = store.byChatId(st.chatId);
+      assert.equal(c.canQueue, true);
+      assert.deepEqual(c.queue, [{ id: queued, text: 'from before the reload' }]);
+      await store.cancel(st.chatId);
+      await until('turn end', () => store.byChatId(st.chatId).phase === 'idle');
+      await store.sendNow(st.chatId, queued);
+      await until('its turn', () => store.byChatId(st.chatId).tail.turn > 0 && store.byChatId(st.chatId).phase === 'idle');
+      // This window did not send it: the tail shows it from the queue.
+      assert.deepEqual(users(store, st.chatId).map((u) => u.text), ['from before the reload']);
+    },
+    { init: false },
+  );
+});
+
+test('a chat that ends drops its queue', async () => {
+  await withChats(async ({ store }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR });
+    await store.prompt(chat.chatId, 'hang');
+    await store.prompt(chat.chatId, 'never sent');
+    await store.close(chat.chatId);
+    await until('exit', () => store.byChatId(chat.chatId).phase === 'exited');
+    assert.deepEqual(store.byChatId(chat.chatId).queue, []);
   });
 });
 

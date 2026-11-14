@@ -261,6 +261,26 @@ func (c *Client) Prompt(ctx context.Context, sessionID string, prompt []ContentB
 	return r.StopReason, nil
 }
 
+// CanSteer reports whether the agent takes Steer.
+func (c *Client) CanSteer() bool { return c.info.CanSteer() }
+
+// Steer adds prompt to the session's running turn (_session/steering). The
+// outcome is SteerInjected, or SteerPromptRequired when no turn was running:
+// the agent then started nothing, and the prompt is the caller's to send. An
+// agent that leaves the outcome out is taken to have injected it.
+func (c *Client) Steer(ctx context.Context, sessionID string, prompt []ContentBlock) (string, error) {
+	var r SteerResponse
+	req := SteerRequest{SessionID: sessionID, Prompt: prompt,
+		Meta: SteerMeta{Steering: SteerOptions{IdleBehavior: SteerIdlePromptRequired}}}
+	if err := c.call(ctx, MethodSessionSteering, req, &r); err != nil {
+		return "", err
+	}
+	if r.Outcome == "" {
+		return SteerInjected, nil
+	}
+	return r.Outcome, nil
+}
+
 // Cancel asks the agent to stop the session's turn and answers the
 // session's pending permission requests Cancelled.
 func (c *Client) Cancel(sessionID string) error {

@@ -25,6 +25,9 @@ const (
 	MethodSessionPrompt          = "session/prompt"
 	MethodSessionCancel          = "session/cancel"
 	MethodSessionSetConfigOption = "session/set_config_option"
+	// MethodSessionSteering is the steering extension: a message for the
+	// session's running turn. Agents advertise it in the initialize _meta.
+	MethodSessionSteering = "_session/steering"
 
 	MethodSessionUpdate     = "session/update"
 	MethodRequestPermission = "session/request_permission"
@@ -110,6 +113,19 @@ type InitializeResponse struct {
 	AgentCapabilities AgentCapabilities `json:"agentCapabilities"`
 	AuthMethods       []AuthMethod      `json:"authMethods,omitempty"`
 	AgentInfo         *Implementation   `json:"agentInfo,omitempty"`
+	// Meta is the agent's extensions, such as steering.supported.
+	Meta json.RawMessage `json:"_meta,omitempty"`
+}
+
+// CanSteer reports whether the agent advertises _session/steering
+// (_meta.steering.supported).
+func (r InitializeResponse) CanSteer() bool {
+	var m struct {
+		Steering struct {
+			Supported bool `json:"supported"`
+		} `json:"steering"`
+	}
+	return len(r.Meta) > 0 && json.Unmarshal(r.Meta, &m) == nil && m.Steering.Supported
 }
 
 type AgentCapabilities struct {
@@ -253,6 +269,37 @@ const (
 	StopRefusal         = "refusal"
 	StopCancelled       = "cancelled"
 )
+
+// Steering outcomes. SteerPromptRequired means the session had no running
+// turn, so nothing was started: the message is the caller's to send.
+const (
+	SteerInjected       = "injected"
+	SteerPromptRequired = "promptRequired"
+	SteerStartedNewTurn = "startedNewTurn"
+)
+
+// SteerIdlePromptRequired is the idleBehavior that keeps an idle agent from
+// starting a turn of its own.
+const SteerIdlePromptRequired = "promptRequired"
+
+type SteerRequest struct {
+	SessionID string         `json:"sessionId"`
+	Prompt    []ContentBlock `json:"prompt"`
+	Meta      SteerMeta      `json:"_meta"`
+}
+
+type SteerMeta struct {
+	Steering SteerOptions `json:"steering"`
+}
+
+type SteerOptions struct {
+	IdleBehavior string `json:"idleBehavior,omitempty"`
+}
+
+type SteerResponse struct {
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason,omitempty"`
+}
 
 type PromptResponse struct {
 	StopReason string `json:"stopReason"`

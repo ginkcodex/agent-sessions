@@ -10,6 +10,8 @@
 //	             as a chunk "allowed:<id>" or "rejected:<id>", and a
 //	             cancelled answer ends the turn cancelled
 //	hang         waits for session/cancel, then ends cancelled
+//	hold         waits for session/cancel (ends cancelled) or a steer (ends
+//	             end_turn)
 //	crash        writes "fake agent crashed" to stderr and exits with status 3
 //	auth         fails with -32000 "Authentication required"
 //	opened       one chunk naming how the session was opened: session/new,
@@ -32,6 +34,10 @@
 //	             waiting for the answer
 //	anything     echoed back as one chunk
 //
+// _session/steering during a turn reports the message as a chunk
+// "steered:<text>", sent before the reply, and answers injected; with no
+// turn running it answers promptRequired.
+//
 // Environment, set through Command's env:
 //
 //	ACPTEST_PROTOCOL=N       reply with protocol version N
@@ -39,6 +45,7 @@
 //	ACPTEST_NO_LOAD=1        do not advertise session/load
 //	ACPTEST_STDERR_BYTES=N   write N bytes of numbered stderr lines at start
 //	ACPTEST_TEXT_ONLY=1      advertise no image or embedded-context prompts
+//	ACPTEST_NO_STEER=1       do not advertise or answer _session/steering
 //
 // Loading or resuming the session "in-use" fails as codex-acp does while
 // another Codex process holds the session: -32600 with data.reason
@@ -101,7 +108,8 @@ type agent struct {
 	mu       sync.Mutex
 	next     int
 	turns    map[string]context.CancelFunc
-	opened   map[string]string // session ID -> the method that opened it
+	holds    map[string]chan struct{} // a hold turn's session -> its steer signal
+	opened   map[string]string        // session ID -> the method that opened it
 	mode     string
 	stubborn bool
 	forms    bool // the client advertised form elicitation
@@ -157,7 +165,7 @@ func run() int {
 		}
 		_, _ = os.Stderr.WriteString(b.String())
 	}
-	a := &agent{turns: map[string]context.CancelFunc{}, opened: map[string]string{}, mode: "ask", ready: make(chan struct{})}
+	a := &agent{turns: map[string]context.CancelFunc{}, holds: map[string]chan struct{}{}, opened: map[string]string{}, mode: "ask", ready: make(chan struct{})}
 	a.conn = acp.NewConn(os.Stdin, os.Stdout, acp.ConnOptions{
 		OnRequest:      a.request,
 		OnNotification: a.notification,
@@ -206,7 +214,12 @@ func (a *agent) request(ctx context.Context, method string, params json.RawMessa
 		if os.Getenv("ACPTEST_NO_RESUME") == "" {
 			caps["resume"] = json.RawMessage("{}")
 		}
+		var meta json.RawMessage
+		if os.Getenv("ACPTEST_NO_STEER") == "" {
+			meta = json.RawMessage(`{"steering":{"supported":true}}`)
+		}
 		return acp.InitializeResponse{
+			Meta:            meta,
 			ProtocolVersion: version,
 			AgentCapabilities: acp.AgentCapabilities{
 				LoadSession:         os.Getenv("ACPTEST_NO_LOAD") == "",
@@ -264,8 +277,42 @@ func (a *agent) request(ctx context.Context, method string, params json.RawMessa
 			return nil, &acp.Error{Code: acp.CodeInvalidParams, Message: err.Error()}
 		}
 		return a.prompt(p)
+	case acp.MethodSessionSteering:
+		if os.Getenv("ACPTEST_NO_STEER") != "" {
+			break
+		}
+		var p acp.SteerRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &acp.Error{Code: acp.CodeInvalidParams, Message: err.Error()}
+		}
+		return a.steer(p), nil
 	}
 	return nil, acp.MethodNotFound(method)
+}
+
+func (a *agent) steer(p acp.SteerRequest) acp.SteerResponse {
+	a.mu.Lock()
+	_, running := a.turns[p.SessionID]
+	hold := a.holds[p.SessionID]
+	a.mu.Unlock()
+	if !running {
+		if p.Meta.Steering.IdleBehavior != acp.SteerIdlePromptRequired {
+			return acp.SteerResponse{Outcome: acp.SteerStartedNewTurn}
+		}
+		return acp.SteerResponse{Outcome: acp.SteerPromptRequired, Reason: "noRunningTurn"}
+	}
+	text := ""
+	if len(p.Prompt) > 0 {
+		text = p.Prompt[0].Text
+	}
+	a.chunk(p.SessionID, "msg_steered", "steered:"+text)
+	if hold != nil {
+		select {
+		case hold <- struct{}{}:
+		default:
+		}
+	}
+	return acp.SteerResponse{Outcome: acp.SteerInjected}
 }
 
 func (a *agent) notification(method string, params json.RawMessage) {
@@ -382,6 +429,22 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 	case "hang":
 		<-ctx.Done()
 		return end(acp.StopCancelled)
+	case "hold":
+		steered := make(chan struct{}, 1)
+		a.mu.Lock()
+		a.holds[p.SessionID] = steered
+		a.mu.Unlock()
+		defer func() {
+			a.mu.Lock()
+			delete(a.holds, p.SessionID)
+			a.mu.Unlock()
+		}()
+		select {
+		case <-ctx.Done():
+			return end(acp.StopCancelled)
+		case <-steered:
+			return end(acp.StopEndTurn)
+		}
 	case "auth":
 		return nil, &acp.Error{Code: acp.CodeAuthRequired, Message: "Authentication required"}
 	case "spawn":

@@ -89,6 +89,8 @@ import type {
   ChatAttachment,
   ChatAttachResult,
   ChatAnswerAction,
+  ChatDraft,
+  ChatPromptResult,
 } from '../types.js';
 import { MOCK_MANAGED_TOOLS, MockChats, mockAttachFiles, mockAttachImage, mockManagedAdapter } from './mockChat';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
@@ -952,8 +954,16 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     return this.chat.start(req);
   }
 
-  async chatPrompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<void> {
+  async chatPrompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<ChatPromptResult> {
     return this.chat.prompt(chatId, text, attachments);
+  }
+
+  async chatSendNow(chatId: string, queuedId: string): Promise<void> {
+    return this.chat.sendNow(chatId, queuedId);
+  }
+
+  async chatUnqueue(chatId: string, queuedId: string): Promise<ChatDraft> {
+    return this.chat.unqueue(chatId, queuedId);
   }
 
   /** The mock "picks" two made-up files: a small image and a text file. */

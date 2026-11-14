@@ -2,7 +2,7 @@
   import Icon from '../../common/Icon.svelte';
   import type { ToolCall, SessionRef } from '../../../types';
   import { highlightCode } from '../../../highlight';
-  import { readableToolOutput, toolOutputPreview, toolInputSummary } from '../../../toolPresentation';
+  import { readableToolOutput, toolOutputPreview, toolInputSummary, toolFileTarget, type ToolFileTarget } from '../../../toolPresentation';
   import { api } from '../../../api';
   import SubagentLink from './SubagentLink.svelte';
 
@@ -10,9 +10,11 @@
     tool: ToolCall;
     sessionRef: SessionRef;
     defaultExpanded?: boolean;
+    /** Opens a file tool's file; without it the path stays text. */
+    onOpenFile?: (target: ToolFileTarget) => void;
   }
 
-  let { tool, sessionRef, defaultExpanded = false }: Props = $props();
+  let { tool, sessionRef, defaultExpanded = false, onOpenFile }: Props = $props();
 
   let isFetchingBlob = $state(false);
   let fullOutput = $state<string | null>(null);
@@ -42,6 +44,7 @@
   let outputExpanded = $state(false);
   let showFullOutput = $derived(defaultExpanded || outputExpanded);
   let summary = $derived(toolInputSummary(tool.input));
+  let fileTarget = $derived(onOpenFile ? toolFileTarget(tool.name, tool.input) : null);
 
   async function handleLoadFullOutput() {
     if (!tool.outputRef || isFetchingBlob) return;
@@ -76,7 +79,10 @@
     <div class="tool-id-group">
       <Icon name="wrench" size={14} class="tool-icon" />
       <span class="tool-name" title={tool.id ? `${tool.name}\n${tool.id}` : tool.name}>{tool.name}</span>
-      {#if summary}<span class="tool-summary" title={summary}>{summary}</span>{/if}
+      {#if fileTarget}
+        <button type="button" class="tool-summary tool-file-link" title={`Open ${fileTarget.path}`}
+          onclick={() => { if (fileTarget) onOpenFile?.(fileTarget); }}>{fileTarget.path}</button>
+      {:else if summary}<span class="tool-summary" title={summary}>{summary}</span>{/if}
     </div>
 
     <div class="tool-status-badge status-{tool.status}">
@@ -216,6 +222,22 @@
     font-size: calc(var(--session-font-size, 14.5px) * var(--type-code));
     font-family: var(--font-mono);
     color: var(--text-secondary);
+  }
+
+  /* A button keeps the summary's look; only hover and focus show the link. */
+  .tool-file-link {
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-weight: inherit;
+    line-height: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .tool-file-link:hover {
+    color: var(--accent-color);
+    text-decoration: underline;
   }
 
   .tool-name {

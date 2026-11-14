@@ -42,13 +42,18 @@ const (
 	// ChatQuestionResolved carries the Question's ID, its Outcome and, when
 	// accepted, the Content sent.
 	ChatQuestionResolved = "question_resolved"
-	// ChatTurnStarted is sent when a prompt is sent to the agent.
+	// ChatTurnStarted is sent when a prompt is sent to the agent. It
+	// carries the Prompt when the message came from the queue.
 	ChatTurnStarted = "turn_start"
 	// ChatTurnEnded carries the StopReason, or Error (and AuthMethods when
 	// the agent needs a login).
 	ChatTurnEnded = "turn_end"
 	// ChatConfigOptions carries the session options after they changed.
 	ChatConfigOptions = "config_options"
+	// ChatQueueChanged carries the whole Queue after it changed.
+	ChatQueueChanged = "queue"
+	// ChatSteered carries the queued Prompt that joined the running turn.
+	ChatSteered = "steered"
 )
 
 // Reasons a chat ended, in ChatExit.
@@ -62,6 +67,7 @@ var (
 	// ErrChatNotFound means there is no open chat with that ID.
 	ErrChatNotFound = errors.New("chat not found")
 	// ErrChatBusy means the agent is still working on the previous prompt.
+	// Servers before the message queue returned it; Prompt now queues.
 	ErrChatBusy = errors.New("the agent is still working on the last prompt")
 	// ErrChatClosed means the chat is closing or its agent has exited.
 	ErrChatClosed = errors.New("the chat is closed")
@@ -76,6 +82,12 @@ var (
 	ErrQuestionNotFound = errors.New("the question is no longer pending")
 	// ErrSessionOwned is wrapped by SessionOwnedError.
 	ErrSessionOwned = errors.New("the session is already open in a chat")
+	// ErrQueuedNotFound means the queued message was already sent or
+	// removed.
+	ErrQueuedNotFound = errors.New("the message is no longer queued")
+	// ErrSteerUnsupported means the agent cannot take a message during its
+	// turn; the message stays queued for the next one.
+	ErrSteerUnsupported = errors.New("the agent cannot take a message while it works; it is sent when the turn ends")
 	// ErrEmptyPrompt means a prompt had neither text nor attachments.
 	ErrEmptyPrompt = errors.New("the message is empty")
 	// ErrSessionInUse is wrapped by SessionInUseError.
@@ -163,6 +175,40 @@ type ChatState struct {
 	Permissions []ChatPermission `json:"permissions,omitempty"`
 	// Questions are the questions waiting for an answer, oldest first.
 	Questions []ChatQuestion `json:"questions,omitempty"`
+	// Queue is the messages waiting for the next turn, in sending order.
+	Queue []ChatQueuedPrompt `json:"queue,omitempty"`
+	// CanQueue says Prompt queues while the agent works; false from a
+	// server before the queue.
+	CanQueue bool `json:"canQueue,omitempty"`
+	// CanSteer says SendNow can put a queued message into the running turn.
+	CanSteer bool `json:"canSteer,omitempty"`
+}
+
+// ChatPromptResult is what Prompt did: Queued is the queued message's ID,
+// or empty when the message started a turn.
+type ChatPromptResult struct {
+	Queued string `json:"queued,omitempty"`
+}
+
+// ChatQueuedPrompt is a queued message as events show it.
+type ChatQueuedPrompt struct {
+	ID          string               `json:"id"`
+	Text        string               `json:"text,omitempty"`
+	Attachments []ChatAttachmentInfo `json:"attachments,omitempty"`
+}
+
+// ChatAttachmentInfo describes an attachment without its content.
+type ChatAttachmentInfo struct {
+	Kind     string `json:"kind"`
+	Name     string `json:"name"`
+	MimeType string `json:"mimeType,omitempty"`
+	Size     int64  `json:"size,omitempty"`
+}
+
+// ChatDraft is a message taken back from the queue, with its attachments.
+type ChatDraft struct {
+	Text        string                  `json:"text,omitempty"`
+	Attachments []chatattach.Attachment `json:"attachments,omitempty"`
 }
 
 // Outcomes of a ChatQuestion besides the ACP actions accept, decline and
@@ -231,6 +277,8 @@ type ChatUpdate struct {
 	Error         string             `json:"error,omitempty"`
 	AuthMethods   []acp.AuthMethod   `json:"authMethods,omitempty"`
 	ConfigOptions []acp.ConfigOption `json:"configOptions,omitempty"`
+	Queue         []ChatQueuedPrompt `json:"queue,omitempty"`
+	Prompt        *ChatQueuedPrompt  `json:"prompt,omitempty"`
 }
 
 // ChatExit is the payload of chat:exit.
@@ -538,42 +586,153 @@ func (m *ChatManager) release(ch *chat) {
 }
 
 // Prompt sends text and attachments as a new turn and returns once the
-// turn has started. Its updates follow as events, then ChatTurnEnded. An
-// attachment the agent cannot take refuses the whole prompt.
-func (m *ChatManager) Prompt(chatID, text string, atts []chatattach.Attachment) error {
+// turn has started. Its updates follow as events, then ChatTurnEnded. While
+// a turn runs the message is queued instead, and its ID returned: it is sent
+// when a turn ends with end_turn. An attachment the agent cannot take
+// refuses the whole message, queued or not.
+func (m *ChatManager) Prompt(chatID, text string, atts []chatattach.Attachment) (ChatPromptResult, error) {
 	if text == "" && len(atts) == 0 {
-		return ErrEmptyPrompt
+		return ChatPromptResult{}, ErrEmptyPrompt
 	}
 	if err := chatattach.Check(atts); err != nil {
-		return err
+		return ChatPromptResult{}, err
 	}
 	ch, err := m.get(chatID)
 	if err != nil {
-		return err
+		return ChatPromptResult{}, err
 	}
+	ch.emitMu.Lock()
+	defer ch.emitMu.Unlock()
 	ch.mu.Lock()
-	switch {
-	case ch.closing || ch.exited || ch.client == nil || !ch.started:
+	if ch.closing || ch.exited || ch.client == nil || !ch.started {
 		ch.mu.Unlock()
-		return ErrChatClosed
-	case ch.working:
-		ch.mu.Unlock()
-		return ErrChatBusy
+		return ChatPromptResult{}, ErrChatClosed
 	}
 	blocks, err := chatattach.Blocks(text, atts, ch.client.Info().AgentCapabilities.PromptCapabilities)
 	if err != nil {
 		ch.mu.Unlock()
+		return ChatPromptResult{}, err
+	}
+	if ch.working {
+		ch.nextQueued++
+		q := &queuedPrompt{
+			info: ChatQueuedPrompt{ID: "queued-" + strconv.Itoa(ch.nextQueued), Text: text, Attachments: attachmentInfos(atts)},
+			atts: slices.Clone(atts), blocks: blocks,
+		}
+		ch.queue = append(ch.queue, q)
+		queue := ch.queueLocked()
+		ch.mu.Unlock()
+		ch.emitLocked(ChatUpdate{Kind: ChatQueueChanged, Queue: queue})
+		return ChatPromptResult{Queued: q.info.ID}, nil
+	}
+	client, sessionID := ch.beginTurnLocked()
+	ch.mu.Unlock()
+	ch.emitLocked(ChatUpdate{Kind: ChatTurnStarted})
+	go m.runTurns(ch, client, sessionID, blocks)
+	return ChatPromptResult{}, nil
+}
+
+// SendNow sends a queued message at once: an idle chat starts a turn with
+// it; a working chat whose agent steers adds it to the running turn. When
+// the steering fails, or the turn ended meanwhile, the message goes back
+// first in the queue; a failure is returned.
+func (m *ChatManager) SendNow(ctx context.Context, chatID, queuedID string) error {
+	ch, err := m.get(chatID)
+	if err != nil {
 		return err
 	}
-	ch.working = true
+	ch.emitMu.Lock()
+	ch.mu.Lock()
+	if ch.closing || ch.exited || ch.client == nil || !ch.started {
+		ch.mu.Unlock()
+		ch.emitMu.Unlock()
+		return ErrChatClosed
+	}
+	i := ch.queuedIndexLocked(queuedID)
+	if i < 0 {
+		ch.mu.Unlock()
+		ch.emitMu.Unlock()
+		return fmt.Errorf("%w: %s", ErrQueuedNotFound, queuedID)
+	}
+	q := ch.queue[i]
+	if !ch.working {
+		ch.queue = slices.Delete(ch.queue, i, i+1)
+		queue := ch.queueLocked()
+		client, sessionID := ch.beginTurnLocked()
+		ch.mu.Unlock()
+		prompt := q.info
+		ch.emitLocked(ChatUpdate{Kind: ChatQueueChanged, Queue: queue})
+		ch.emitLocked(ChatUpdate{Kind: ChatTurnStarted, Prompt: &prompt})
+		ch.emitMu.Unlock()
+		go m.runTurns(ch, client, sessionID, q.blocks)
+		return nil
+	}
+	if !ch.client.CanSteer() {
+		ch.mu.Unlock()
+		ch.emitMu.Unlock()
+		return ErrSteerUnsupported
+	}
+	ch.queue = slices.Delete(ch.queue, i, i+1)
+	queue := ch.queueLocked()
+	// The turn's end waits for the steering, as for a permission answer.
 	ch.work.Add(1)
+	ch.asking++
 	client, sessionID := ch.client, ch.ref.ID
 	ch.mu.Unlock()
+	ch.emitLocked(ChatUpdate{Kind: ChatQueueChanged, Queue: queue})
+	ch.emitMu.Unlock()
+	defer ch.work.Done()
+	defer ch.answerDone()
 
-	ch.emit(ChatUpdate{Kind: ChatTurnStarted})
-	go func() {
-		defer ch.work.Done()
-		// The turn runs until it ends or the agent goes away; Cancel stops it.
+	outcome, err := client.Steer(ctx, sessionID, q.blocks)
+	if err == nil && outcome != acp.SteerPromptRequired {
+		prompt := q.info
+		ch.emit(ChatUpdate{Kind: ChatSteered, Prompt: &prompt})
+		return nil
+	}
+	// Back first in the queue: the turn's end, which waits for this, sends
+	// it or leaves the queue paused.
+	ch.emitMu.Lock()
+	ch.mu.Lock()
+	ch.queue = slices.Insert(ch.queue, 0, q)
+	queue = ch.queueLocked()
+	ch.mu.Unlock()
+	ch.emitLocked(ChatUpdate{Kind: ChatQueueChanged, Queue: queue})
+	ch.emitMu.Unlock()
+	if err != nil {
+		return ch.closedOr(m.chatError(ch.agent, client, err))
+	}
+	return nil
+}
+
+// Unqueue removes a queued message and returns it.
+func (m *ChatManager) Unqueue(chatID, queuedID string) (ChatDraft, error) {
+	ch, err := m.get(chatID)
+	if err != nil {
+		return ChatDraft{}, err
+	}
+	ch.emitMu.Lock()
+	defer ch.emitMu.Unlock()
+	ch.mu.Lock()
+	i := ch.queuedIndexLocked(queuedID)
+	if i < 0 {
+		ch.mu.Unlock()
+		return ChatDraft{}, fmt.Errorf("%w: %s", ErrQueuedNotFound, queuedID)
+	}
+	q := ch.queue[i]
+	ch.queue = slices.Delete(ch.queue, i, i+1)
+	queue := ch.queueLocked()
+	ch.mu.Unlock()
+	ch.emitLocked(ChatUpdate{Kind: ChatQueueChanged, Queue: queue})
+	return ChatDraft{Text: q.info.Text, Attachments: slices.Clone(q.atts)}, nil
+}
+
+// runTurns runs a turn, then each queued message the turns that end with
+// end_turn take from the queue. The turn runs until it ends or the agent
+// goes away; Cancel stops it.
+func (m *ChatManager) runTurns(ch *chat, client *acp.Client, sessionID string, blocks []acp.ContentBlock) {
+	defer ch.work.Done()
+	for {
 		stop, err := client.Prompt(context.Background(), sessionID, blocks)
 		ev := ChatUpdate{Kind: ChatTurnEnded, StopReason: stop}
 		if err != nil {
@@ -584,21 +743,15 @@ func (m *ChatManager) Prompt(chatID, text string, atts []chatattach.Attachment) 
 				ev.AuthMethods = auth.Methods
 			}
 		}
-		// The turn's end follows every update the turn produced, including
-		// the last of a permission or question wait woken by the close.
-		ch.awaitAnswers()
-		// The next turn's start must follow this end.
-		ch.emitMu.Lock()
-		ch.mu.Lock()
-		ch.working = false
-		ch.mu.Unlock()
-		ch.emitLocked(ev)
-		ch.emitMu.Unlock()
+		next := ch.endTurn(ev, err == nil && stop == acp.StopEndTurn)
 		if m.opts.Refresh != nil {
 			m.opts.Refresh(ch.agent)
 		}
-	}()
-	return nil
+		if next == nil {
+			return
+		}
+		blocks = next.blocks
+	}
 }
 
 // Cancel asks the agent to stop the running turn. Pending permission
@@ -764,11 +917,14 @@ type chat struct {
 	nextPerm    int
 	questions   map[string]*pendingQuestion
 	nextQuest   int
+	queue       []*queuedPrompt
+	nextQueued  int
 	// work counts turns, permission waits and questions; Add only under mu
 	// while !exited.
 	work sync.WaitGroup
-	// asking counts the permission and question waits in flight; their last
-	// update comes before the turn's end. Guarded by mu; cond signals it.
+	// asking counts the permission and question waits and the steering
+	// calls in flight; their last update comes before the turn's end.
+	// Guarded by mu; cond signals it.
 	asking int
 	cond   *sync.Cond
 }
@@ -777,6 +933,78 @@ type pendingPermission struct {
 	n      int // the order asked
 	req    acp.RequestPermissionRequest
 	answer chan acp.RequestPermissionResponse // buffered; one send
+}
+
+type queuedPrompt struct {
+	info   ChatQueuedPrompt
+	atts   []chatattach.Attachment
+	blocks []acp.ContentBlock
+}
+
+func attachmentInfos(atts []chatattach.Attachment) []ChatAttachmentInfo {
+	if len(atts) == 0 {
+		return nil
+	}
+	out := make([]ChatAttachmentInfo, len(atts))
+	for i, a := range atts {
+		out[i] = ChatAttachmentInfo{Kind: a.Kind, Name: a.Name, MimeType: a.MimeType, Size: a.Size}
+	}
+	return out
+}
+
+func (ch *chat) queueLocked() []ChatQueuedPrompt {
+	out := make([]ChatQueuedPrompt, len(ch.queue))
+	for i, q := range ch.queue {
+		out[i] = q.info
+	}
+	return out
+}
+
+func (ch *chat) queuedIndexLocked(id string) int {
+	return slices.IndexFunc(ch.queue, func(q *queuedPrompt) bool { return q.info.ID == id })
+}
+
+// beginTurnLocked marks a turn running and returns what it sends to. Call
+// it with mu held on a live chat, then emit the turn's start and run it.
+func (ch *chat) beginTurnLocked() (*acp.Client, string) {
+	ch.working = true
+	ch.work.Add(1)
+	return ch.client, ch.ref.ID
+}
+
+// endTurn emits the turn's end after every permission, question and
+// steering in flight, then takes the next queued message when the turn
+// ended normally and emits its start. It returns that message, or nil when
+// the chat is now idle.
+func (ch *chat) endTurn(ev ChatUpdate, normal bool) *queuedPrompt {
+	for {
+		ch.awaitAnswers()
+		// The next turn's start must follow this end.
+		ch.emitMu.Lock()
+		ch.mu.Lock()
+		if ch.asking == 0 {
+			break
+		}
+		// A steering started between the wait and the locks.
+		ch.mu.Unlock()
+		ch.emitMu.Unlock()
+	}
+	var next *queuedPrompt
+	if normal && len(ch.queue) > 0 && !ch.closing && !ch.exited {
+		next = ch.queue[0]
+		ch.queue = slices.Delete(ch.queue, 0, 1)
+	}
+	ch.working = next != nil
+	queue := ch.queueLocked()
+	ch.mu.Unlock()
+	ch.emitLocked(ev)
+	if next != nil {
+		prompt := next.info
+		ch.emitLocked(ChatUpdate{Kind: ChatQueueChanged, Queue: queue})
+		ch.emitLocked(ChatUpdate{Kind: ChatTurnStarted, Prompt: &prompt})
+	}
+	ch.emitMu.Unlock()
+	return next
 }
 
 type pendingQuestion struct {
@@ -809,6 +1037,10 @@ func (ch *chat) state() (ChatState, bool) {
 	st := ChatState{
 		ChatID: ch.id, Agent: ch.agent, Dir: ch.dir, Session: ch.ref,
 		ConfigOptions: slices.Clone(ch.options), Working: ch.working,
+		CanQueue: true, CanSteer: ch.client.CanSteer(),
+	}
+	if len(ch.queue) > 0 {
+		st.Queue = ch.queueLocked()
 	}
 	if st.ConfigOptions == nil {
 		st.ConfigOptions = []acp.ConfigOption{}

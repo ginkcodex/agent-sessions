@@ -8,6 +8,7 @@
   import { asksWhileWorking } from '../../chatQuestions';
   import { ALL_AGENTS } from '../../portable';
   import MessageBubble from '../transcript/MessageBubble.svelte';
+  import type { ToolFileTarget } from '../../toolPresentation';
   import PermissionCard from './PermissionCard.svelte';
   import QuestionCard from './QuestionCard.svelte';
   import Icon from '../common/Icon.svelte';
@@ -17,13 +18,15 @@
     sessionRef: SessionRef;
     mode?: TranscriptMode;
     onFileLink?: (value: string) => void;
+    /** Opens the file a tool call reads or changes. */
+    onOpenFile?: (target: ToolFileTarget) => void;
     /** Runs a shell block of the agent's text in a terminal tab. */
     onRunCommand?: (command: string) => void;
     /** Opens a terminal tab in the chat's directory, to log in there. */
     onOpenTerminal?: () => void;
   }
 
-  let { chat, sessionRef, mode = 'activity', onFileLink, onRunCommand, onOpenTerminal }: Props = $props();
+  let { chat, sessionRef, mode = 'activity', onFileLink, onOpenFile, onRunCommand, onOpenTerminal }: Props = $props();
 
   let blocks = $derived(tailBlocks(chat.tail));
   // A late question, or one the agent keeps working through, does not hold the turn.
@@ -52,7 +55,7 @@
   {#each blocks as block (block.kind === 'message' ? block.message.id : `answer:${block.answer.key}`)}
     {#if block.kind === 'message'}
       <div class="live-message">
-        <MessageBubble message={block.message} {sessionRef} {mode} {onFileLink} {onRunCommand} />
+        <MessageBubble message={block.message} {sessionRef} {mode} {onFileLink} {onOpenFile} {onRunCommand} />
       </div>
     {:else}
       <div class="answer-line" class:answered={block.answer.outcome === 'accept'} data-answer-line={block.answer.questionId}>
