@@ -1,7 +1,7 @@
 # Review fixes — tasks
 
 - **Plan:** [review-fixes.md](../../plan/review-fixes.md)
-- **Progress:** 2/25 done
+- **Progress:** 3/25 done
 
 From the architecture and feature review of 2026-11-14. RF-01 to RF-10 are
 security and privacy; RF-11 to RF-23 are reliability; RF-24 and RF-25 are CI
@@ -13,7 +13,7 @@ and docs.
 | [RF-02](RF-02.md) | ⬜ Not started | The release and artifacts jobs install apt packages without the shared cache, or check them | 2 h | None |
 | [RF-03](RF-03.md) | ⬜ Not started | Every `uses:` pinned to a full SHA with its tag in a comment; Dependabot for actions | 1.5 h | None |
 | [RF-04](RF-04.md) | ✅ Done | Pass `--no-textconv` to blame and the submodule diff; filters stay with IS-06 | 2 h | None |
-| [RF-05](RF-05.md) | ⬜ Not started | Strip control characters from pasted text; bound OSC 52 writes | 2 h | None |
+| [RF-05](RF-05.md) | ✅ Done | Strip control characters from pasted text; bound OSC 52 writes | 2 h | None |
 | [RF-06](RF-06.md) | ⬜ Not started | Quote dropped file names for PowerShell and cmd so `$`, backtick and `%` stay literal | 1.5 h | None |
 | [RF-07](RF-07.md) | ⬜ Not started | Denylist for webview-supplied paths; opt-in switches only from their own dialog flow | 3 h | None |
 | [RF-08](RF-08.md) | ⬜ Not started | The website ingest and the AUR job verify `SHA256SUMS.minisig` before trusting `SHA256SUMS` | 3 h | None |
