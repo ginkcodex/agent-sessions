@@ -313,11 +313,19 @@ func (l *loader) user(rec *rawRecord, start int64, lineNo int) {
 
 	metaText := rec.IsMeta
 	var parts []model.Part
-	if text != "" {
-		if isMetaText(text) {
+	// A typed skill or plugin command shows as its "/name args"; the expanded
+	// skill follows in its own isMeta record and stays hidden.
+	userText := func(s string) string {
+		if cmd, ok := commandPrompt(s); ok {
+			return cmd
+		}
+		if isMetaText(s) {
 			metaText = true
 		}
-		parts = append(parts, model.Part{Kind: model.PartText, Text: text})
+		return s
+	}
+	if text != "" {
+		parts = append(parts, model.Part{Kind: model.PartText, Text: userText(text)})
 	}
 	for i, b := range blocks {
 		switch b.Type {
@@ -325,10 +333,7 @@ func (l *loader) user(rec *rawRecord, start int64, lineNo int) {
 			if b.Text == "" {
 				continue
 			}
-			if isMetaText(b.Text) {
-				metaText = true
-			}
-			parts = append(parts, model.Part{Kind: model.PartText, Text: b.Text})
+			parts = append(parts, model.Part{Kind: model.PartText, Text: userText(b.Text)})
 		case "image":
 			if b.Source == nil {
 				continue

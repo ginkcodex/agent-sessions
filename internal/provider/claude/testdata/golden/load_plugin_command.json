@@ -1,0 +1,236 @@
+{
+  "meta": {
+    "ref": {
+      "agent": "claude-code",
+      "id": "plugin_command"
+    },
+    "sourcePath": "<fixture>",
+    "cwd": "<fixture-cwd>",
+    "title": "Why does <command-name>/x</command-name> appear in logs?",
+    "firstPrompt": "/ponytail:ponytail",
+    "model": "claude-sonnet-5",
+    "createdAt": "2026-11-14T10:00:00Z",
+    "updatedAt": "2026-11-14T10:03:00Z",
+    "counts": {
+      "user": 3,
+      "assistant": 2,
+      "toolCalls": 0
+    },
+    "tokens": {
+      "input": 120,
+      "output": 14,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "turn": "working"
+  },
+  "messages": [
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-11-14T10:00:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "/ponytail:ponytail"
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-11-14T10:00:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Base directory for this skill: /home/dev/.claude/plugins/ponytail\n\n# Ponytail\n\nYou are a lazy senior developer."
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "system",
+      "time": "2026-11-14T10:00:01Z",
+      "parts": [
+        {
+          "kind": "notice",
+          "text": "attachment (command_permissions): "
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "msg-1",
+      "role": "assistant",
+      "time": "2026-11-14T10:00:05Z",
+      "model": "claude-sonnet-5",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Ponytail mode is on."
+        }
+      ],
+      "tokens": {
+        "input": 50,
+        "output": 6,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-11-14T10:01:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "/understand-anything:understand-chat how does\nauth work?"
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-11-14T10:01:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Base directory for this skill: /home/dev/.claude/plugins/understand-anything\n\nAnswer the question with the graph."
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-11-14T10:01:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "/understand-anything:understand-chat"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "msg-2",
+      "role": "assistant",
+      "time": "2026-11-14T10:01:09Z",
+      "model": "claude-sonnet-5",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Auth goes through the session middleware."
+        }
+      ],
+      "tokens": {
+        "input": 70,
+        "output": 8,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-11-14T10:02:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-11-14T10:02:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "<local-command-stdout>Set model to sonnet</local-command-stdout>"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-11-14T10:03:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Why does <command-name>/x</command-name> appear in logs?"
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    }
+  ]
+}

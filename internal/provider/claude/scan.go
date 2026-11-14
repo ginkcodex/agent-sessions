@@ -54,7 +54,7 @@ type checkpoint struct {
 
 // checkpointVersion 4 normalizes Windows CWDs in their own style; 5 adds
 // Turn. A full rescan replaces metadata cached by earlier versions.
-const checkpointVersion = 7 // Manual Bash records must not replace conversation titles.
+const checkpointVersion = 8 // Typed skill and plugin commands count as prompts.
 
 var ignoredRecordTypes = map[string]bool{
 	"attachment": true, "last-prompt": true, "mode": true,
@@ -271,6 +271,9 @@ func (c *checkpoint) pendingOr(state string) string {
 func userContent(content gjson.Result) (string, bool) {
 	if content.Type == gjson.String {
 		text := content.String()
+		if cmd, ok := commandPrompt(text); ok {
+			return cmd, true
+		}
 		return text, strings.TrimSpace(text) != "" && !isCommandText(text)
 	}
 	if !content.IsArray() {
@@ -284,6 +287,9 @@ func userContent(content gjson.Result) (string, bool) {
 			counts = true
 		case "text":
 			text := part.Get("text").String()
+			if cmd, ok := commandPrompt(text); ok {
+				text = cmd
+			}
 			if !isCommandText(text) {
 				counts = true
 				if prompt == "" {

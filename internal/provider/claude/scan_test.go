@@ -89,6 +89,13 @@ func TestScanFixtures(t *testing.T) {
 			model:  "claude-sonnet-5", created: "2026-09-20T14:00:00Z", updated: "2026-09-20T14:00:01Z",
 		},
 		{
+			// Typed plugin commands are prompts; the expanded skill, /model and its output are not.
+			name: "plugin_command", prompt: "/ponytail:ponytail", title: "Why does <command-name>/x</command-name> appear in logs?",
+			counts: model.MessageCounts{User: 3, Assistant: 2},
+			tokens: model.TokenUsage{Input: 120, Output: 14},
+			model:  "claude-sonnet-5", created: "2026-11-14T10:00:00Z", updated: "2026-11-14T10:03:00Z",
+		},
+		{
 			name: "unknown_types", prompt: "Show unknown records", title: "Show unknown records",
 			counts: model.MessageCounts{User: 1, Assistant: 1},
 			tokens: model.TokenUsage{Input: 20, Output: 8},
@@ -281,7 +288,7 @@ func TestScanSubagentAndMetadataChange(t *testing.T) {
 
 func TestScanResumeAtEveryFixtureBoundary(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"basic", "split_assistant", "compaction", "meta", "partial_last_line", "unknown_types"} {
+	for _, name := range []string{"basic", "split_assistant", "compaction", "meta", "partial_last_line", "unknown_types", "plugin_command"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			content, err := os.ReadFile(filepath.Join("testdata", name+".jsonl"))
@@ -463,6 +470,7 @@ func TestScanTurnState(t *testing.T) {
 		sidechain  = `{"type":"assistant","isSidechain":true,"message":{"id":"s1","stop_reason":"tool_use","content":[{"type":"tool_use","id":"s9"}]}}`
 		metaUser   = `{"type":"user","isMeta":true,"message":{"content":"Caveat: local command"}}`
 		command    = `{"type":"user","message":{"content":"<command-name>/model</command-name>"}}`
+		plugin     = `{"type":"user","message":{"content":"<command-message>ponytail:ponytail</command-message>\n<command-name>/ponytail:ponytail</command-name>"}}`
 	)
 	tests := []struct {
 		name  string
@@ -481,6 +489,7 @@ func TestScanTurnState(t *testing.T) {
 		{"interrupted at a call", []string{prompt, call, interrupt}, model.TurnDone},
 		{"API error", []string{prompt, apiError}, model.TurnDone},
 		{"a new prompt drops an abandoned call", []string{prompt, call, prompt}, model.TurnWorking},
+		{"a typed plugin command starts a turn", []string{prompt, answer, plugin}, model.TurnWorking},
 		{"sidechain and meta records leave it", []string{prompt, call, result1, answer, sidechain, metaUser, command}, model.TurnDone},
 	}
 	for _, tt := range tests {
