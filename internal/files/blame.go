@@ -84,7 +84,7 @@ func BlameFile(ctx context.Context, dir, path string, line int) (BlameLine, erro
 		return uncommittedBlame(line), nil
 	}
 	n := strconv.Itoa(line)
-	out, blameErr := blameGit(ctx, realDir, "blame", "--line-porcelain", "-L", n+","+n, "--", rel)
+	out, blameErr := blameGit(ctx, realDir, "blame", "--no-textconv", "--line-porcelain", "-L", n+","+n, "--", rel)
 	if blameErr != nil {
 		if result, ok := unrecordedBlame(ctx, realDir, rel, line); ok {
 			return result, nil

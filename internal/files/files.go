@@ -242,7 +242,10 @@ func gitOutput(ctx context.Context, root string, stdin io.Reader, flags []string
 // `ls-files` and index refreshes then start: opening a project, before or
 // after approval, must not run a program the project chose. Git's built-in
 // daemon (`core.fsmonitor=true`) is turned off with it, so very large
-// repositories lose its speed-up.
+// repositories lose its speed-up. For the same reason every `blame` and
+// `diff` (`diff-tree` included) passes --no-textconv, and every diff also
+// --no-ext-diff: a committed .gitattributes plus one config line would
+// otherwise pick a program for them.
 var gitNoFsmonitor = []string{"-c", "core.fsmonitor=false"}
 
 // gitOutputEnv is gitOutput with env added to the process environment.
