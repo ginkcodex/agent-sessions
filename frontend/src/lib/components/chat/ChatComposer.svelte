@@ -322,7 +322,15 @@
   {/if}
   {#if pluginListing?.chatId === chat.chatId && !closed}
     {#key pluginListing.n}
-      <PluginInventory chatId={pluginListing.chatId} {agentName} {commands} onClose={() => (pluginListing = null)} />
+      <PluginInventory
+        chatId={pluginListing.chatId}
+        {agentName}
+        {commands}
+        onClose={() => {
+          pluginListing = null;
+          input?.focus();
+        }}
+      />
     {/key}
   {/if}
   {#if chat.queue.length > 0 && !closed}

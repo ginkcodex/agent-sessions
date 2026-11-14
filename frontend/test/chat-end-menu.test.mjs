@@ -80,9 +80,9 @@ globalThis.__endMenu = {
   },
 };
 globalThis.__endMenu.QueuedMessages = await loadComponent('QueuedMessages');
-globalThis.__endMenu.PluginInventory = await loadComponent('PluginInventory', { keepMount: true });
 globalThis.__endMenu.DialogCloseButton = await loadComponent('../common/DialogCloseButton');
 globalThis.__endMenu.CommandResultDialog = await loadComponent('CommandResultDialog');
+globalThis.__endMenu.PluginInventory = await loadComponent('PluginInventory', { keepMount: true });
 globalThis.__endMenu.McpServersDialog = await loadComponent('McpServersDialog');
 const Composer = await loadComponent('ChatComposer');
 
@@ -538,7 +538,7 @@ test('a / word lists the agent\'s commands; choosing one inserts it and only sen
   c.close();
 });
 
-test('/plugin lists the installed plugins above the composer without sending anything to the agent', async () => {
+test('/plugin lists the installed plugins in the Plugins modal without sending anything to the agent', async () => {
   const commands = [{ name: 'ponytail:ponytail', input: { hint: '[lite|full]' } }];
   const listed = [];
   let reply;
@@ -559,7 +559,7 @@ test('/plugin lists the installed plugins above the composer without sending any
     await settle();
     flushSync();
   };
-  const panel = () => c.target.querySelector('[data-chat-plugins]');
+  const panel = () => c.target.querySelector('[data-command-result]');
   const state = () => panel()?.querySelector('[data-plugins-state]')?.dataset.pluginsState;
   const answer = async (fn) => {
     fn();
@@ -593,10 +593,22 @@ test('/plugin lists the installed plugins above the composer without sending any
   assert.equal(state(), 'listed');
   const rows = [...panel().querySelectorAll('li')].map((li) => li.textContent.trim().replace(/\s+/g, ' '));
   assert.deepEqual(rows, ['ponytail @ponytail 5.3.3 user enabled loaded', 'gopls-lsp @official disabled']);
-  assert.deepEqual([...panel().querySelectorAll('button')].map((b) => b.textContent.trim()), ['Close'], 'no install or enable actions');
-  panel().querySelector('button').click();
+  assert.equal(panel().querySelector('h2').textContent, 'Plugins');
+  assert.deepEqual([...panel().querySelectorAll('button')].map((b) => b.getAttribute('aria-label')), ['Close Plugins'], 'no install or enable actions');
+  const filter = panel().querySelector('input[type="search"]');
+  assert.equal(document.activeElement, filter);
+  for (const [query, want] of [['GOPLS', ['gopls-lsp @official disabled']], ['official', ['gopls-lsp @official disabled']], ['zzz', []]]) {
+    filter.value = query;
+    filter.dispatchEvent(new window.Event('input', { bubbles: true }));
+    flushSync();
+    assert.deepEqual([...panel().querySelectorAll('li')].map((li) => li.textContent.trim().replace(/\s+/g, ' ')), want, query);
+  }
+  assert.equal(state(), 'no-match');
+  assert.deepEqual(calls, [], 'filtering sends nothing');
+  panel().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
   flushSync();
   assert.equal(panel(), null);
+  assert.equal(document.activeElement, box, 'focus goes back to the composer');
 
   for (const [out, want, text] of [
     [{ supported: false, plugins: [] }, 'unsupported', /cannot list its plugins/],
