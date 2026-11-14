@@ -11,9 +11,11 @@
   import { filePrompt } from '../../../stores/filePrompt.svelte';
   import { preferences } from '../../../stores/preferences.svelte';
 
-  let { id, text, path, version, wrap, disabled = false, diagnostics, position, onposition, selection, onselection, onchange, onsave, symbols, onproblems, scroller = $bindable() }: FileEditorOptions & {
+  let { id, text, path, version, wrap, disabled = false, diagnostics, position, onposition, selection, onselection, onchange, onsave, symbols, onproblems, scroller = $bindable(), autofocus = true }: FileEditorOptions & {
     /** The element that scrolls the text, for the overview ruler. */
     scroller?: HTMLElement;
+    /** Off for the read-only view, which must not take focus from the file picker. */
+    autofocus?: boolean;
   } = $props();
   let host: HTMLDivElement;
   let editor = $state<FileEditorController>();
@@ -32,7 +34,7 @@
         if (pending?.valid()) editor.revealRange(pending.range);
         pending = undefined;
         // The runtime loads lazily: by now a prompt may hold focus.
-        if (!filePrompt.request) editor.focus();
+        if (autofocus && !filePrompt.request) editor.focus();
       }
     }).catch((cause: unknown) => {
       if (!disposed) error = cause instanceof Error ? cause.message : 'Unable to load editor';

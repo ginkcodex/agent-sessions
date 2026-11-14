@@ -37,6 +37,9 @@ export function highlightFileWith(hljs: HLJSApi, code: string, language: string)
   return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
 }
 
+/** Text longer than this (UTF-16 units) is shown plain: highlight.js runs on the whole text at once. */
+export const HIGHLIGHT_LIMIT = 500_000;
+
 let loading: Promise<HLJSApi> | null = null;
 
 export function loadFileHighlighter(): Promise<HLJSApi> {

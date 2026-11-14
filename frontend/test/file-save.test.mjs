@@ -21,7 +21,7 @@ test('mock file saves return a new baseline; stale revisions conflict without wr
 test('mock refuses unsupported text and oversized snapshots', async () => {
   const api = new MockBackendAPI();
   const original = await api.readFile('/project', 'main.go');
-  for (const text of ['a\rb', 'a\0b', 'x'.repeat(500_001)]) {
+  for (const text of ['a\rb', 'a\0b', 'x'.repeat((5 << 20) + 1)]) {
     await assert.rejects(api.saveFile('/project', { path: 'main.go', text, expectedRevision: original.revision }));
   }
   assert.equal((await api.readFile('/project', 'main.go')).text, original.text);

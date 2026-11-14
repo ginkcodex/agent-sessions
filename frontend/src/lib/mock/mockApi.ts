@@ -99,10 +99,19 @@ import { refKey } from '../manage.js';
 import { capPage } from '../pageCap';
 import { wslDistro } from '../hosts.js';
 import { GitSyncError } from '../gitSync';
+import { MAX_EDIT_BYTES } from '../fileEditing';
 
 async function mockFileRevision(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return 'sha256:' + Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// A JSON file the size of the reported one (2.5 MB, 107,506 lines), to try the large-file editor.
+let largeMockJson: string | undefined;
+function mockLargeJson(): string {
+  largeMockJson ??= `{\n${Array.from({ length: 107_504 }, (_, i) =>
+    `  "f${i}": "${(i * 2654435761 >>> 0).toString(16).padStart(8, '0')}"`).join(',\n')}\n}\n`;
+  return largeMockJson;
 }
 
 /** A small deterministic 32-bit hash (FNV-1a). */
@@ -1360,7 +1369,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       files: [
         '.gitignore', 'README.md', 'Makefile', 'docs/formats.md', 'go.mod', 'main.go', 'internal/app/app.go', 'internal/app/app_test.go',
         'frontend/package.json', 'frontend/src/App.svelte', 'frontend/src/lib/api.ts', 'assets/logo.png',
-        'frontend/src/lib/new.ts',
+        'frontend/src/lib/new.ts', '.ua/fingerprints.json',
       ],
       ignored: ['.env', '.env.local', 'frontend/.env.development'],
       ignoredDirectories: ['node_modules'],
@@ -1410,7 +1419,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     }
     if (/[\r\0]/.test(req.text)) throw new Error('Unsupported edit text.');
     const bytes = new TextEncoder().encode(req.text);
-    if (bytes.length > 500_000) throw new Error('Edit text is too large.');
+    if (bytes.length > MAX_EDIT_BYTES) throw new Error('Edit text is too large.');
     const content: FileContent = {
       path: req.path, size: bytes.length, text: req.text,
       revision: await mockFileRevision(req.text),
@@ -1728,6 +1737,10 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     }
     if (/\.(md|markdown|mdx)$/i.test(path)) {
       const text = '# Project overview\n\nMarkdown preview with **formatted text**, lists and diagrams.\n\n- Browse project files\n- Preview Markdown\n\n[Open package.json](frontend/package.json)\n\n```mermaid\nflowchart LR\n  Files --> Preview\n  Preview --> Presentation\n```\n';
+      return { path, size: text.length, text };
+    }
+    if (path.endsWith('fingerprints.json')) {
+      const text = mockLargeJson();
       return { path, size: text.length, text };
     }
     const text = path.endsWith('.go')

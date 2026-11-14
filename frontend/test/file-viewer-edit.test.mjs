@@ -18,8 +18,9 @@ const viewer = await loadServerComponent(VIEWER_URL, [
   ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
   ["import { files } from '../../../stores/files.svelte';", fixtureStore('files')],
   ["import { tabId, tabOwner } from '../../../stores/files.svelte';", "const tabId = tab => tab.id ?? tab.path; const tabOwner = tab => tab.owner ?? 'working';"],
-  ["import { highlightFile, splitHighlightedLines, splitLines } from '../../../codeHighlight';",
-    "const highlightFile = async () => ''; const splitHighlightedLines = (h) => h.split('\\n'); const splitLines = (t) => t.split('\\n');"],
+  // The compiler puts a long import on several lines.
+  ["import {\n\tHIGHLIGHT_LIMIT,\n\thighlightFile,\n\tsplitHighlightedLines,\n\tsplitLines\n} from '../../../codeHighlight';",
+    "const HIGHLIGHT_LIMIT = 500000; const highlightFile = async () => ''; const splitHighlightedLines = (h) => h.split('\\n'); const splitLines = (t) => t.split('\\n');"],
   ["import { copyToClipboard } from '../../../portable';", 'const copyToClipboard = async () => true;'],
   ["'../../../selectionTranslation'", lib('../../../selectionTranslation.ts')],
   ["import { fileTranslations, fileTranslationKey } from '../../../stores/fileTranslations.svelte';", "const fileTranslations = { get() {} }; const fileTranslationKey = (...parts) => JSON.stringify(parts);"],
@@ -63,6 +64,7 @@ const viewer = await loadServerComponent(VIEWER_URL, [
       attr('data-version', '$$props.version'),
       attr('data-wrap', '$$props.wrap'),
       attr('data-disabled', '$$props.disabled'),
+      attr('data-autofocus', '$$props.autofocus'),
     ].join(''))};`],
   ["import { createImagePreview } from './imagePreview.svelte';", `const createImagePreview = () => ({
     imgZoom: 1, MIN_ZOOM: 0.1, MAX_ZOOM: 16, ZOOM_STEP: 1.25, imgFitted: true, imgFailed: false, imgDragging: false,
@@ -225,6 +227,19 @@ function editorProps(html) {
   return Object.fromEntries([...tag.matchAll(/data-([a-z]+)="([^"]*)"/g)].map(([, k, v]) => [k, unescapeHTML(v)]));
 }
 
+test('a large file shows in the read-only editor, not the all-lines source view', async () => {
+  const long = Array.from({ length: 5001 }, (_, i) => `line ${i}`).join('\n');
+  const html = await render({ files: { content: content('big.json', long) } });
+  assert.match(html, /data-file-editor[^>]*data-disabled="true"[^>]*data-autofocus="false"/);
+  assert.doesNotMatch(html, /data-source-view/);
+  // Wide rather than long: one line past the highlight limit.
+  assert.match(await render({ files: { content: content('min.json', 'x'.repeat(500001)) } }), /data-file-editor/);
+  // Small files keep the source view; a large file's diff still uses it too.
+  assert.match(await render({ files: { content: content('small.json', 'a\nb') } }), /data-source-view/);
+  const changed = content('big.json', long, { changes: [{ kind: 'modified', start: 0, count: 1, removed: ['old'] }] });
+  assert.match(await render({ files: { content: changed, diff: true, listing: { files: ['big.json'], status: { 'big.json': 'M' } } } }), /data-source-view[^>]*data-show-diff="true"/);
+});
+
 test('an eligible empty file offers Edit beside the empty state', async () => {
   const html = await render({ files: { content: content('notes/empty.txt', '') } });
   assert.match(html, /This file is empty\./);
@@ -321,7 +336,7 @@ test('no Edit appears while the file is loading or failed to load', async () => 
 test('editing shows the editor with the draft and Save and Discard, no Done', async () => {
   const html = await render({ files: editingFiles('src/main.ts', 'old\n', 'new <draft> & more\n', { wrap: true }) });
   assert.deepEqual(editorProps(html), {
-    text: 'new <draft> & more\n', path: 'src/main.ts', version: '3', wrap: 'true', disabled: 'false',
+    text: 'new <draft> & more\n', path: 'src/main.ts', version: '3', wrap: 'true', disabled: 'false', autofocus: 'undefined',
   });
   assert.deepEqual(button(html, 'Save'), { text: 'Save', disabled: false });
   assert.deepEqual(button(html, 'Discard'), { text: 'Discard', disabled: false });

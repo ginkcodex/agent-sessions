@@ -105,11 +105,8 @@ func TestReadEditMetadata(t *testing.T) {
 		{"unicode.md", "# 标题\n\nhéllo 🙂\n", NewlineLF, false, EditNotChecked},
 		{"mixed.txt", "a\nb\r\n", "", false, EditUnsupportedNewlines},
 		{"cr.txt", "a\rb", "", false, EditUnsupportedNewlines},
-		{"limit.txt", strings.Repeat("x", MaxEditBytes), NewlineNone, false, EditNotChecked},
-		{"over.txt", strings.Repeat("x", MaxEditBytes+1), NewlineNone, false, EditTooLarge},
-		// Above the edit limit but within the viewer's: text and revision
-		// are still returned.
-		{"readmax.txt", strings.Repeat("x", MaxReadBytes), NewlineNone, false, EditTooLarge},
+		// Every file the viewer reads may be edited; larger ones are not read.
+		{"readmax.txt", strings.Repeat("x", MaxReadBytes), NewlineNone, false, EditNotChecked},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {

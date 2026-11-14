@@ -15,7 +15,7 @@
   import { tabId, tabOwner } from '../../../stores/files.svelte';
   import { contentSearch } from '../../../stores/contentSearch.svelte';
   import type { FileTab, FileLinkRevealRequest } from '../../../stores/files.svelte';
-  import { highlightFile, splitHighlightedLines, splitLines } from '../../../codeHighlight';
+  import { HIGHLIGHT_LIMIT, highlightFile, splitHighlightedLines, splitLines } from '../../../codeHighlight';
   import { copyToClipboard } from '../../../portable';
   import { printFile } from '../../../print';
   import { findCount } from '../../../fileFind';
@@ -205,9 +205,9 @@
   }
   const blameTime = (b: BlameLine) => new Date(b.authorTime * 1000).toISOString();
 
-  // Files larger than this are shown without highlighting, which is slow on
-  // very long text.
-  const HIGHLIGHT_LIMIT = 500_000;
+  // SourceView puts every line in the DOM, so longer files show in the
+  // read-only editor, which renders only the lines in view.
+  const LARGE_LINES = 5_000;
 
   const DIFF_BASES = [
     { value: 'head', label: 'Working tree vs HEAD' },
@@ -334,7 +334,7 @@
         finishNavigation(); return;
       }
       const editorValid = () => valid() && !frozen && !request.locate(tab, shownSource()) && Boolean(rangeOffsets(shownSource(), range));
-      const shown = editing ? editor?.revealRange(range, editorValid) : codeScroll && revealSourceRange(codeScroll, range);
+      const shown = editing || largeView ? editor?.revealRange(range, editorValid) : codeScroll && revealSourceRange(codeScroll, range);
       if (shown) finishNavigation();
     }); });
   });
@@ -513,7 +513,6 @@
     const result = cached?.text === text && cached.language === language ? cached : highlighted;
     return result?.text === text && result.language === language ? result.lines : null;
   });
-  let highlightPending = $derived(Boolean(text && language && text.length <= HIGHLIGHT_LIMIT && !htmlLines && !(highlightFailed?.text === text && highlightFailed.language === language)));
   let changes = $derived(
     files.selectedPath && !external ? historical || activeTab?.gitBasis ? files.content?.changes : fileChanges(status?.[files.selectedPath], files.content?.changes, plainLines.length) : undefined
   );
@@ -522,6 +521,10 @@
   let hasChanges = $derived(Boolean(changes?.length));
   // Git markers describe the saved file, so the diff never shows over a draft.
   let showDiff = $derived((historical || files.diff) && hasChanges && !editing);
+  // shortcut: the diff of a large file still renders every row in SourceView, until it is virtualized too.
+  let largeView = $derived(Boolean(activeTab) && textContent && !editing && !showPreview && !showDiff
+    && (text.length > HIGHLIGHT_LIMIT || plainLines.length > LARGE_LINES));
+  let highlightPending = $derived(Boolean(text && language && text.length <= HIGHLIGHT_LIMIT && !largeView && !htmlLines && !(highlightFailed?.text === text && highlightFailed.language === language)));
   let sourceDiagnostics = $derived(projectSourceDiagnostics(text,
     codeDiagnostics.project && codeDiagnostics.directory === files.dir && !external && !historical && !activeTab?.gitBasis && !blocked && !files.loadingFile && !showDiff && !showPreview && !blameOpen
       ? codeDiagnostics.findings.filter(f => f.diagnostic.path === files.selectedPath) : [],
@@ -545,7 +548,7 @@
   let viewerProblems = $derived(sourceProblems(sourceDiagnostics));
   let editorProblems = $state.raw<OverviewProblem[]>([]);
   let editorScroller: HTMLElement | undefined = $state();
-  let overview = $derived(overviewMarks(editing ? editorProblems : viewerProblems));
+  let overview = $derived(overviewMarks(editing || largeView ? editorProblems : viewerProblems));
   // Line tops from the rendered lines, so wrapped lines place marks right.
   function viewerMeasurer() {
     const root = codeScroll;
@@ -561,7 +564,7 @@
   const editorMeasurer = () => (line: number) => editor?.lineTop(line);
   function pickProblem(problem: OverviewProblem) {
     closeSymbolPopups();
-    if (editing) {
+    if (editing || largeView) {
       editor?.revealRange(problem.range, () => true);
       editor?.focus();
     } else if (codeScroll) revealSourceRange(codeScroll, problem.range);
@@ -582,7 +585,7 @@
     const tab = activeTab;
     const cached = tab && highlightedTabs.get(tab);
     if (cached?.text === code && cached.language === lang) return;
-    if (!code || !lang || code.length > HIGHLIGHT_LIMIT) return;
+    if (!code || !lang || code.length > HIGHLIGHT_LIMIT || largeView) return;
     let current = true;
     highlightFile(code, lang).then(
       (out) => {
@@ -1035,7 +1038,7 @@
   /** The hover for the editor's own tooltip (CodeMirror places and closes it). */
   async function draftHover(position: CodeDiagnosticPosition, current: () => boolean) {
     const path = files.selectedPath, tab = files.activeTab;
-    if (!path || !tab || !editing || symbolBlocker || symbolMenu || symbolPicker) return undefined;
+    if (!path || !tab || !(editing || largeView) || symbolBlocker || symbolMenu || symbolPicker) return undefined;
     const out = await codeDiagnostics.navigate(path, 'hover', position, { current, wait: DRAFT_SYNC_WAIT });
     if (files.activeTab !== tab || files.selectedPath !== path || !current() || out.kind !== 'result' || !out.result.hover?.value) return undefined;
     return { html: hoverHtml(out.result.hover), truncated: Boolean(out.result.truncated) };
@@ -1129,6 +1132,8 @@
       }
       return false;
     }
+    // The read-only editor's own find, and Escape closing it or a hover.
+    if (largeView && editor?.handleKey(e)) return true;
     if (e.key === 'Escape') {
       if (keyHandled(e) || !find.findActive) return false;
       e.preventDefault();
@@ -1137,7 +1142,7 @@
       return true;
     }
     const command = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-    if (contentShown && !showSvg && command && !e.altKey && !e.shiftKey && e.code === 'KeyF') {
+    if (contentShown && !showSvg && !largeView && command && !e.altKey && !e.shiftKey && e.code === 'KeyF') {
       e.preventDefault();
       find.openFind();
       return true;
@@ -1349,7 +1354,7 @@
           aria-pressed={find.findActive}
           aria-label="Find"
           title="Find in the file ({findShortcut})"
-          onclick={() => (find.findActive ? find.closeFind() : find.openFind())}
+          onclick={() => (largeView ? editor?.find() : find.findActive ? find.closeFind() : find.openFind())}
         >
           <span class="btn-icon icon-find" aria-hidden="true"></span>
         </button>
@@ -1476,7 +1481,7 @@
       <div class="state center">{activeTab?.gitDeleted ? 'This file does not exist in this version.' : 'This file is empty.'}</div>
     {:else if files.content}
       <div class="code-area">
-      {#if find.findActive}
+      {#if find.findActive && !largeView}
         <div class="find-bar" role="search">
           <!-- One field: the case toggle sits inside the input's frame. -->
           <div class="find-field text-field">
@@ -1555,6 +1560,35 @@
       {#if !showPreview}
         <UnplacedDiagnostics diagnostics={sourceDiagnostics} recovery={sourceRecovery} />
       {/if}
+      {#if largeView && activeTab}
+        <!-- Version -1 is never an edit's, so the editor never takes this
+             view's cached state for a draft's or the other way round. -->
+        <FileEditor
+          bind:this={editor}
+          id={activeTab}
+          {text}
+          path={activeTab.path}
+          version={-1}
+          diagnostics={{ tab: activeTab, path: activeTab.path,
+            context: JSON.stringify(navigationIdentity()),
+            findings: codeDiagnostics.project && codeDiagnostics.directory === files.dir && !external && !historical && !activeTab.gitBasis ? codeDiagnostics.findings : [],
+            dirty: false, revision: files.content?.revision, live: historical ? undefined : codeDiagnostics.liveBasis(activeTab.path),
+            current: codeDiagnostics.status === 'ready' && !codeDiagnostics.revoking && !blocked && !files.loadingFile }}
+          wrap={files.wrap}
+          disabled
+          autofocus={false}
+          selection={selectedLines}
+          onselection={((tab) => (selection: FileLineSelection) => { lineSelections.set(tab, selection); selectionVersion++; })(activeTab)}
+          position={sourcePositions.get(activeTab)}
+          onposition={((tab) => (position: FilePosition) => sourcePositions.set(tab, position))(activeTab)}
+          onchange={() => {}}
+          onsave={() => {}}
+          symbols={editorSymbols}
+          onproblems={(problems) => (editorProblems = problems)}
+          bind:scroller={editorScroller}
+        />
+        <OverviewRuler marks={overview} scroller={editorScroller} measurer={editorMeasurer} onpick={pickProblem} />
+      {:else}
       <div
         class="code-scroll"
         bind:this={codeScroll}
@@ -1587,6 +1621,7 @@
       </div>
       {#if !showPreview}
         <OverviewRuler marks={overview} scroller={codeScroll} measurer={viewerMeasurer} onpick={pickProblem} />
+      {/if}
       {/if}
       {#if showMarkdown && (hoveredPreviewLink || focusedPreviewLink)}
         <div class="link-preview" role="status">{hoveredPreviewLink || focusedPreviewLink}</div>
