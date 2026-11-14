@@ -96,6 +96,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [auto-update.md](auto-update.md) | [auto-update](../tasks/auto-update/README.md) | macOS and Windows read GitHub's latest release, download and check it in the background, and install it on restart or quit |
 | [chat-message-queue.md](chat-message-queue.md) | [chat-message-queue](../tasks/chat-message-queue/README.md) | While a chat's agent works, Enter queues the message for the next turn; Send now puts a queued message into the running turn (ACP steering) |
 | [tool-file-links.md](tool-file-links.md) | [tool-file-links](../tasks/tool-file-links/README.md) | The path in a file tool's card header (Read, Edit, Write) opens the file in the file viewer |
+| [review-fixes.md](review-fixes.md) | [review-fixes](../tasks/review-fixes/README.md) | Fixes from the 2026-11-14 architecture and feature review: release signing and supply chain, untrusted content reaching programs, redaction, watcher, RPC, chat and remote reliability, CI lint |
 
 ## Supporting documents
 
