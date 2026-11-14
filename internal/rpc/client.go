@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -242,7 +245,7 @@ func (c *Client) readLoop() {
 		}
 
 		var partial struct {
-			ID     any             `json:"id"`
+			ID     json.RawMessage `json:"id"`
 			Method string          `json:"method"`
 			Params json.RawMessage `json:"params"`
 			Result json.RawMessage `json:"result"`
@@ -252,19 +255,19 @@ func (c *Client) readLoop() {
 			continue
 		}
 
-		if partial.Method != "" && partial.ID == nil {
+		key, hasID := responseKey(partial.ID)
+		if partial.Method != "" && !hasID {
 			c.handleNotification(partial.Method, partial.Params)
 			continue
 		}
 
-		if partial.ID != nil {
-			if fmt.Sprint(partial.ID) == fmt.Sprint(c.pingID.Load()) {
+		if hasID {
+			if key == requestKey(c.pingID.Load()) {
 				c.pinging.Store(false)
 			}
 			// Deliver once: taking the entry out under the lock means a
 			// duplicate or late response for this ID finds nothing, so this
 			// send never blocks the read loop (the channel holds one).
-			key := fmt.Sprintf("%v", partial.ID)
 			c.mu.Lock()
 			ch, ok := c.pending[key]
 			delete(c.pending, key)
@@ -279,6 +282,28 @@ func (c *Client) readLoop() {
 			}
 		}
 	}
+}
+
+// requestKey is the pending-call key for request id.
+func requestKey(id int64) string { return strconv.FormatInt(id, 10) }
+
+// responseKey is the pending-call key for a reply's raw "id", and whether it
+// has one (absent and null are none). Integer IDs, however the peer spells
+// them (1000000, 1e6, 1000000.0), give requestKey's decimal form. Decoding
+// into any and printing it with %v gave "1e+06" from ID 1,000,000 on, so no
+// reply found its call. Other IDs keep their JSON text and match no call.
+func responseKey(raw json.RawMessage) (string, bool) {
+	text := strings.TrimSpace(string(raw))
+	if text == "" || text == "null" {
+		return "", false
+	}
+	if n, err := strconv.ParseInt(text, 10, 64); err == nil {
+		return requestKey(n), true
+	}
+	if f, err := strconv.ParseFloat(text, 64); err == nil && f == math.Trunc(f) && math.Abs(f) < 1<<63 {
+		return requestKey(int64(f)), true
+	}
+	return text, true
 }
 
 func (c *Client) sendNotification(method string, params any) error {
@@ -304,7 +329,7 @@ func (c *Client) call(ctx context.Context, method string, params any, out any) e
 		return ErrDisconnected
 	}
 	id := atomic.AddInt64(&c.seq, 1)
-	key := fmt.Sprintf("%d", id)
+	key := requestKey(id)
 	ch := make(chan *Response, 1)
 	c.pending[key] = ch
 	c.mu.Unlock()

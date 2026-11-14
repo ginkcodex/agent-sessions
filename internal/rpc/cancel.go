@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 )
 
@@ -19,9 +20,21 @@ func NewCancelRegistry() *CancelRegistry {
 	}
 }
 
+// idKey is the registry key for a request ID as decoded into any: integers
+// in their decimal form (a float64 1000000 is "1000000", not "1e+06"), like
+// the client's keys.
 func idKey(id any) string {
-	if id == nil {
+	switch v := id.(type) {
+	case nil:
 		return ""
+	case float64:
+		if v == math.Trunc(v) && math.Abs(v) < 1<<63 {
+			return requestKey(int64(v))
+		}
+	case int64:
+		return requestKey(v)
+	case int:
+		return requestKey(int64(v))
 	}
 	return fmt.Sprintf("%v", id)
 }
