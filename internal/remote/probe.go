@@ -94,9 +94,8 @@ func probeHost(ctx context.Context, alias string, opts SSHOptions, appVersion st
 
 	remoteScript := probeScript(preface, appVersion)
 
-	// Run inside login shell $SHELL -lc to load PATH and env
-	shellCmd := []string{LoginShell, "-lc", remoteScript}
-	cmd, err := BuildHostCmd(ctx, alias, shellCmd, opts)
+	// In the login environment, for PATH and the agents' variables.
+	cmd, err := BuildHostCmd(ctx, alias, LoginCommand(remoteScript), opts)
 	if err != nil {
 		return nil, err
 	}

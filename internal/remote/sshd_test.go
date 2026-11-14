@@ -35,7 +35,7 @@ func startSSHD(t *testing.T) *sshtest.Host {
 	h := sshtest.Start(t)
 	t.Setenv("AGENT_SESSIONS_REMOTE_SERVERS_DIR", sshtest.ServerBundleDir(t, version.Current()))
 	fixture := filepath.Join("..", "provider", "claude", "testdata", "project-x")
-	for _, user := range []string{sshtest.UserSh, sshtest.UserZsh} {
+	for _, user := range sshtest.Users {
 		h.CopyTree(t, fixture, user, ".claude/projects/-home-dev-project-x")
 	}
 	return h
@@ -51,7 +51,7 @@ func TestSSHD_DeployReuseAndBrowse(t *testing.T) {
 	h := startSSHD(t)
 	opts := sshdOpts(h)
 
-	for _, user := range []string{sshtest.UserSh, sshtest.UserZsh} {
+	for _, user := range sshtest.Users {
 		t.Run(user, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
@@ -65,6 +65,16 @@ func TestSSHD_DeployReuseAndBrowse(t *testing.T) {
 			}
 			if probe.OS != "linux" || probe.Arch != runtime.GOARCH || probe.Home != home || len(probe.Installed) != 0 {
 				t.Fatalf("fresh probe = %+v", *probe)
+			}
+
+			// Scripts run with /bin/sh whatever the login shell, in the
+			// environment its startup file set.
+			var out strings.Builder
+			if err := runRemote(ctx, alias, opts, &out, nil, `printf '[%s|%s]' "${`+sshtest.LoginEnv+`:-none}" "${0##*/}"`); err != nil {
+				t.Fatalf("run a script: %v", err)
+			}
+			if got, want := out.String(), "["+user+"|sh]"; !strings.HasSuffix(got, want) {
+				t.Fatalf("script printed %q, want it to end in %q", got, want)
 			}
 
 			sess, err := StartSession(ctx, alias, opts, nil, noopEmitter())
@@ -323,10 +333,12 @@ func TestSSHD_NoServerLeftBehind(t *testing.T) {
 	waitServeCount(t, h, 0, 10*time.Second)
 
 	// Run the server by hand with a short idle timeout and never write to
-	// it, keeping stdin open.
-	script := QuotePOSIX(bin) + " serve --stdio --idle-timeout 2s"
+	// it, keeping stdin open. exec, as the real start does: the /bin/sh
+	// that decoded the script would otherwise stay as its parent, and its
+	// command line matches the count too.
+	script := "exec " + QuotePOSIX(bin) + " serve --stdio --idle-timeout 2s"
 	opts.NoTTY = true
-	cmd, err := BuildSSHCmd(ctx, alias, []string{LoginShell, "-lc", script}, opts)
+	cmd, err := BuildSSHCmd(ctx, alias, LoginCommand(script), opts)
 	if err != nil {
 		t.Fatal(err)
 	}

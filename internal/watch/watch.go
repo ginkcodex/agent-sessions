@@ -28,6 +28,10 @@ const (
 	filePollInterval     = 30 * time.Second
 	openCodePollInterval = 60 * time.Second
 	fallbackPollInterval = 10 * time.Second
+	// A provider in fallback tries its watches again after the fallback poll
+	// interval, doubling up to this many times that; a watch limit (ENOSPC,
+	// EMFILE) waits the longest at once.
+	retryBackoffLimit = 32
 )
 
 // Change identifies one provider's changed sources. Paths is nil when a full
@@ -96,6 +100,9 @@ type Watcher struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	fs     fsWatcher
+	// fsBroken is set when the filesystem watcher is gone (it could not be
+	// created, or its event channel closed): watches are not retried.
+	fsBroken bool
 
 	mu        sync.Mutex
 	started   bool
@@ -116,14 +123,22 @@ type providerState struct {
 	last     time.Time
 	nextPoll time.Time
 	fallback bool
-	watched  map[string]struct{}
-	roots    []watchRoot
+	// retryAt is when a provider in fallback next tries its watches, after
+	// retryDelay; healthySince is when it last had them back.
+	retryAt      time.Time
+	retryDelay   time.Duration
+	healthySince time.Time
+	watched      map[string]struct{}
+	// anchors are directories watched only for the creation of a missing
+	// root: the nearest one that exists, such as $HOME without ~/.codex.
+	// Nothing under them is watched or rescanned for.
+	anchors map[string]struct{}
+	roots   []watchRoot
 }
 
 type watchRoot struct {
 	path      string
 	recursive bool
-	anchor    string
 }
 
 type fsWatcher interface {
@@ -181,6 +196,7 @@ func New(providers provider.Set, onChange func(Change), opts ...Option) (*Watche
 			provider: p,
 			pending:  make(map[string]struct{}),
 			watched:  make(map[string]struct{}),
+			anchors:  make(map[string]struct{}),
 		}
 	}
 
@@ -213,8 +229,9 @@ func (w *Watcher) Start(parent context.Context) {
 
 	watcher, err := w.options.newFSWatcher()
 	if err != nil {
+		w.fsBroken = true
 		for _, state := range w.states {
-			w.setFallbackLocked(state, now)
+			w.setFallbackLocked(state, now, err)
 		}
 	} else {
 		w.fs = watcher
@@ -282,17 +299,17 @@ func (w *Watcher) run() {
 		case event, ok := <-events:
 			if !ok {
 				events = nil
-				w.failAll()
+				w.failAll(errWatcherClosed, true)
 				continue
 			}
 			w.handleEvent(event)
-		case _, ok := <-watchErrors:
+		case err, ok := <-watchErrors:
 			if !ok {
 				watchErrors = nil
-				w.failAll()
+				w.failAll(errWatcherClosed, true)
 				continue
 			}
-			w.failAll()
+			w.handleError(err)
 		case <-w.wake:
 		case <-timer.C:
 		}
@@ -317,13 +334,24 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 		if state == nil || state.fallback {
 			continue
 		}
+		if !w.watchesLocked(state, path) {
+			w.anchorEventLocked(state, path, event.Op, now)
+			continue
+		}
 
 		isDir := false
 		if event.Op&(fsnotify.Create|fsnotify.Rename) != 0 {
 			if info, err := os.Stat(path); err == nil && info.IsDir() {
+				// In a non-recursive root (the folder of Codex's or
+				// OpenCode's database) a new directory is no tree to watch;
+				// it matters only on the way to a missing root.
+				if !w.inRecursiveRootLocked(state, path) {
+					w.rootCreatedLocked(state, path, now)
+					continue
+				}
 				isDir = true
 				if err := w.addTreeLocked(state, path); err != nil {
-					w.setFallbackLocked(state, now)
+					w.setFallbackLocked(state, now, err)
 					continue
 				}
 			}
@@ -335,6 +363,14 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 		if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
 			wasWatchedDir = w.isWatchedDirLocked(state, path)
 			w.forgetTreeLocked(state, path)
+			// A removed root, or a directory above one, leaves an anchor
+			// that sees the root come back.
+			if wasWatchedDir {
+				if err := w.reinstallRootsUnderLocked(state, path); err != nil {
+					w.setFallbackLocked(state, now, err)
+					continue
+				}
+			}
 		}
 		if isDir || wasWatchedDir {
 			w.queueLocked(state, nil, true, now)
@@ -356,22 +392,85 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 	}
 }
 
-func (w *Watcher) failAll() {
+var errWatcherClosed = errors.New("watch: filesystem watcher closed")
+
+// handleError handles an error from the filesystem watcher. An overflow lost
+// events but kept every watch: each provider is rescanned in full. Any other
+// error names no path, so every provider falls back to polling and tries its
+// watches again later.
+func (w *Watcher) handleError(err error) {
+	if errors.Is(err, fsnotify.ErrEventOverflow) {
+		now := w.options.now()
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		for _, state := range w.states {
+			if !state.fallback {
+				w.queueLocked(state, nil, true, now)
+			}
+		}
+		return
+	}
+	w.failAll(err, false)
+}
+
+// failAll moves every provider to polling. broken means the filesystem
+// watcher itself is gone, so watches are not tried again.
+func (w *Watcher) failAll(err error, broken bool) {
 	now := w.options.now()
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if broken {
+		w.fsBroken = true
+	}
 	for _, state := range w.states {
-		w.setFallbackLocked(state, now)
+		w.setFallbackLocked(state, now, err)
 	}
 }
 
-func (w *Watcher) installProviderLocked(state *providerState, now time.Time) {
+// installProviderLocked watches each of state's roots; on an error the
+// provider falls back to polling.
+func (w *Watcher) installProviderLocked(state *providerState, now time.Time) bool {
 	for _, root := range state.roots {
 		if err := w.installRootLocked(state, root); err != nil {
-			w.setFallbackLocked(state, now)
-			return
+			w.setFallbackLocked(state, now, err)
+			return false
 		}
 	}
+	return true
+}
+
+// retryWatchesLocked tries the watches of a provider in fallback again. On
+// success it leaves fallback, with a full rescan for what changed meanwhile;
+// on failure setFallbackLocked schedules the next try, later.
+func (w *Watcher) retryWatchesLocked(state *providerState, now time.Time) {
+	state.fallback = false
+	state.retryAt = time.Time{}
+	if !w.installProviderLocked(state, now) {
+		return
+	}
+	state.healthySince = now
+	state.nextPoll = now.Add(w.pollInterval(state))
+	w.queueLocked(state, nil, true, now)
+}
+
+// nextRetryDelay is how long a provider that just fell back waits before
+// trying its watches again: the fallback poll interval, doubled on each
+// failure in a row up to retryBackoffLimit times it. A watch limit waits the
+// longest at once, since more watches won't fit until something else frees
+// them. A provider that kept its watches that long starts again from the
+// shortest delay.
+func (w *Watcher) nextRetryDelay(state *providerState, now time.Time, err error) time.Duration {
+	base := w.options.fallbackPoll
+	limit := base * retryBackoffLimit
+	switch {
+	case isWatchLimit(err):
+		state.retryDelay = limit
+	case state.retryDelay == 0 || (!state.healthySince.IsZero() && now.Sub(state.healthySince) >= limit):
+		state.retryDelay = base
+	default:
+		state.retryDelay = min(state.retryDelay*2, limit)
+	}
+	return state.retryDelay
 }
 
 func (w *Watcher) installRootLocked(state *providerState, root watchRoot) error {
@@ -388,17 +487,97 @@ func (w *Watcher) installRootLocked(state *providerState, root watchRoot) error 
 	case err == nil:
 		return w.addDirLocked(state, filepath.Dir(root.path))
 	case errors.Is(err, fs.ErrNotExist):
-		anchor := root.anchor
-		if anchor == "" {
-			anchor = nearestExistingDir(root.path)
-		}
+		anchor := nearestExistingDir(root.path)
 		if anchor == "" {
 			return nil
 		}
-		return w.addDirLocked(state, anchor)
+		return w.addAnchorLocked(state, anchor)
 	default:
 		return err
 	}
+}
+
+// watchesLocked reports whether path is in or directly under a directory
+// state watches as part of a root, rather than only as an anchor.
+func (w *Watcher) watchesLocked(state *providerState, path string) bool {
+	_, self := state.watched[path]
+	_, parent := state.watched[filepath.Dir(path)]
+	return self || parent
+}
+
+// anchorEventLocked handles an event in an anchor directory. Only the
+// creation of a directory on the way to a missing root counts: that root is
+// installed again, which watches it (and rescans) once it exists, or watches
+// the deeper anchor. Anything else under an anchor, such as a new project
+// directory in $HOME, is ignored.
+func (w *Watcher) anchorEventLocked(state *providerState, path string, op fsnotify.Op, now time.Time) {
+	if op&(fsnotify.Create|fsnotify.Rename) == 0 {
+		return
+	}
+	if _, ok := state.anchors[filepath.Dir(path)]; !ok {
+		return
+	}
+	w.rootCreatedLocked(state, path, now)
+}
+
+// inRecursiveRootLocked reports whether path is a recursive root or inside
+// one.
+func (w *Watcher) inRecursiveRootLocked(state *providerState, path string) bool {
+	for _, root := range state.roots {
+		if root.recursive && (path == root.path || strings.HasPrefix(path, root.path+string(filepath.Separator))) {
+			return true
+		}
+	}
+	return false
+}
+
+// rootCreatedLocked installs each root at or below a directory that just
+// appeared, and rescans once one exists.
+func (w *Watcher) rootCreatedLocked(state *providerState, path string, now time.Time) {
+	prefix := path + string(filepath.Separator)
+	for _, root := range state.roots {
+		if root.path != path && !strings.HasPrefix(root.path, prefix) {
+			continue
+		}
+		if err := w.installRootLocked(state, root); err != nil {
+			w.setFallbackLocked(state, now, err)
+			return
+		}
+		if _, err := os.Stat(root.path); err == nil {
+			w.queueLocked(state, nil, true, now)
+		}
+	}
+}
+
+// reinstallRootsUnderLocked installs again each root at or below a removed
+// path, so a missing root gets its anchor.
+func (w *Watcher) reinstallRootsUnderLocked(state *providerState, removed string) error {
+	prefix := removed + string(filepath.Separator)
+	for _, root := range state.roots {
+		if root.path != removed && !strings.HasPrefix(root.path, prefix) {
+			continue
+		}
+		if err := w.installRootLocked(state, root); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addAnchorLocked watches dir as an anchor for state.
+func (w *Watcher) addAnchorLocked(state *providerState, dir string) error {
+	dir, ok := absoluteClean(dir)
+	if !ok {
+		return nil
+	}
+	if _, exists := state.anchors[dir]; exists {
+		return nil
+	}
+	if err := w.watchPathLocked(state, dir); err != nil {
+		return err
+	}
+	state.anchors[dir] = struct{}{}
+	return nil
 }
 
 func (w *Watcher) addTreeLocked(state *providerState, root string) error {
@@ -421,13 +600,22 @@ func (w *Watcher) addDirLocked(state *providerState, path string) error {
 	if _, exists := state.watched[path]; exists {
 		return nil
 	}
+	if err := w.watchPathLocked(state, path); err != nil {
+		return err
+	}
+	state.watched[path] = struct{}{}
+	return nil
+}
+
+// watchPathLocked adds path to the filesystem watcher and records state as
+// one of its owners.
+func (w *Watcher) watchPathLocked(state *providerState, path string) error {
 	if w.fs == nil {
 		return errors.New("watch: filesystem watcher unavailable")
 	}
 	if err := w.fs.Add(path); err != nil {
 		return err
 	}
-	state.watched[path] = struct{}{}
 	owners := w.pathOwner[path]
 	if owners == nil {
 		owners = make(map[model.AgentID]struct{})
@@ -439,16 +627,29 @@ func (w *Watcher) addDirLocked(state *providerState, path string) error {
 
 func (w *Watcher) forgetTreeLocked(state *providerState, path string) {
 	prefix := path + string(filepath.Separator)
-	for watched := range state.watched {
-		if watched != path && !strings.HasPrefix(watched, prefix) {
-			continue
+	for _, set := range []map[string]struct{}{state.watched, state.anchors} {
+		for watched := range set {
+			if watched != path && !strings.HasPrefix(watched, prefix) {
+				continue
+			}
+			delete(set, watched)
+			w.disownLocked(state, watched)
 		}
-		delete(state.watched, watched)
-		owners := w.pathOwner[watched]
-		delete(owners, state.provider.ID())
-		if len(owners) == 0 {
-			delete(w.pathOwner, watched)
-		}
+	}
+}
+
+// disownLocked drops state as an owner of path, unless state still watches
+// it as a root directory or an anchor.
+func (w *Watcher) disownLocked(state *providerState, path string) {
+	_, watched := state.watched[path]
+	_, anchor := state.anchors[path]
+	if watched || anchor {
+		return
+	}
+	owners := w.pathOwner[path]
+	delete(owners, state.provider.ID())
+	if len(owners) == 0 {
+		delete(w.pathOwner, path)
 	}
 }
 
@@ -469,23 +670,33 @@ func (w *Watcher) ownersLocked(path string) map[model.AgentID]struct{} {
 	return owners
 }
 
-func (w *Watcher) setFallbackLocked(state *providerState, now time.Time) {
+// setFallbackLocked moves state to polling after err, drops its watches and,
+// while the filesystem watcher works, schedules a try to watch again.
+func (w *Watcher) setFallbackLocked(state *providerState, now time.Time, err error) {
 	if state.fallback {
 		return
 	}
 	state.fallback = true
 	state.nextPoll = now.Add(w.options.fallbackPoll)
-	for path := range state.watched {
-		owners := w.pathOwner[path]
-		delete(owners, state.provider.ID())
-		if len(owners) == 0 {
-			delete(w.pathOwner, path)
-			if w.fs != nil {
-				_ = w.fs.Remove(path)
+	state.retryAt = time.Time{}
+	if !w.fsBroken && w.fs != nil {
+		state.retryAt = now.Add(w.nextRetryDelay(state, now, err))
+	}
+	state.healthySince = time.Time{}
+	for _, set := range []map[string]struct{}{state.watched, state.anchors} {
+		for path := range set {
+			owners := w.pathOwner[path]
+			delete(owners, state.provider.ID())
+			if len(owners) == 0 {
+				delete(w.pathOwner, path)
+				if w.fs != nil {
+					_ = w.fs.Remove(path)
+				}
 			}
 		}
 	}
 	clear(state.watched)
+	clear(state.anchors)
 	w.signalWake()
 }
 
@@ -521,6 +732,9 @@ func (w *Watcher) dispatchDue() {
 	w.mu.Lock()
 	for _, p := range w.providers {
 		state := w.states[p.ID()]
+		if state.fallback && !state.retryAt.IsZero() && !state.retryAt.After(now) {
+			w.retryWatchesLocked(state, now)
+		}
 		if !state.nextPoll.After(now) {
 			w.queueLocked(state, nil, true, now)
 			state.nextPoll = now.Add(w.pollInterval(state))
@@ -566,6 +780,11 @@ func (w *Watcher) nextDelay() time.Duration {
 	for _, state := range w.states {
 		if until := state.nextPoll.Sub(now); until < delay {
 			delay = until
+		}
+		if state.fallback && !state.retryAt.IsZero() {
+			if until := state.retryAt.Sub(now); until < delay {
+				delay = until
+			}
 		}
 		if !state.first.IsZero() {
 			due := state.last.Add(w.options.debounce)

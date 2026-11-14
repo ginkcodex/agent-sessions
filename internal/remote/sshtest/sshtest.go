@@ -28,21 +28,44 @@ const EnableEnv = "AGENT_SESSIONS_SSH_DOCKER"
 
 const image = "agent-sessions-sshd:test"
 
-// Remote users, one per login shell the app must cope with. Both print a
-// banner from their login profile, which the nonce preface has to skip.
+// Remote users, one per login shell the app must cope with. Each prints a
+// banner from its startup file, which the nonce preface has to skip, and
+// exports LoginEnv there.
 const (
-	UserSh  = "tester" // /bin/sh (BusyBox ash)
-	UserZsh = "zuser"  // /bin/zsh, as on macOS
+	UserSh   = "tester" // /bin/sh (BusyBox ash)
+	UserZsh  = "zuser"  // /bin/zsh, as on macOS
+	UserFish = "fuser"  // /usr/bin/fish: not a POSIX shell
+	UserTcsh = "tuser"  // /bin/tcsh: not a POSIX shell either
 )
+
+// Users are every remote user, one per login shell.
+var Users = []string{UserSh, UserZsh, UserFish, UserTcsh}
 
 // Banner is printed by every login shell in the container.
 const Banner = "Welcome to the agent-sessions test host"
 
+// LoginEnv is set to the user's name by their shell's startup file, so a
+// test can check a command ran in the login environment.
+const LoginEnv = "AS_TEST_LOGIN"
+
+// startup is each user's shell startup file, relative to their home, and
+// the lines it holds: the banner and LoginEnv.
+var startup = map[string][2]string{
+	UserSh:   {".profile", `echo "` + Banner + `"; export ` + LoginEnv + `=` + UserSh},
+	UserZsh:  {".zprofile", `echo "` + Banner + `"; export ` + LoginEnv + `=` + UserZsh},
+	UserFish: {".config/fish/config.fish", `echo "` + Banner + `"; set -gx ` + LoginEnv + ` ` + UserFish},
+	// tcsh runs commands with -c, which reads .tcshrc; .login only when
+	// the command reads it.
+	UserTcsh: {".login", `echo "` + Banner + `"; setenv ` + LoginEnv + ` ` + UserTcsh},
+}
+
 const dockerfile = `FROM alpine:3.20
-RUN apk add --no-cache openssh-server zsh iptables && \
+RUN apk add --no-cache openssh-server zsh fish tcsh iptables && \
     adduser -D -s /bin/sh ` + UserSh + ` && \
     adduser -D -s /bin/zsh ` + UserZsh + ` && \
-    for u in ` + UserSh + ` ` + UserZsh + `; do \
+    adduser -D -s /usr/bin/fish ` + UserFish + ` && \
+    adduser -D -s /bin/tcsh ` + UserTcsh + ` && \
+    for u in ` + UserSh + ` ` + UserZsh + ` ` + UserFish + ` ` + UserTcsh + `; do \
       echo "$u:$(head -c 18 /dev/urandom | base64)" | chpasswd; \
     done && \
     printf '%s\n' \
@@ -111,17 +134,14 @@ func Start(t testing.TB) *Host {
 	h := &Host{Container: name, Aliases: map[string]string{}}
 	h.cp(t, hostKey, "/etc/ssh/test_host_key")
 	h.Exec(t, "chown root:root /etc/ssh/test_host_key && chmod 600 /etc/ssh/test_host_key")
-	for _, user := range []string{UserSh, UserZsh} {
+	for _, user := range Users {
 		h.cp(t, clientKey+".pub", "/tmp/"+user+".pub")
-		profile := ".profile"
-		if user == UserZsh {
-			profile = ".zprofile"
-		}
+		file := startup[user]
 		h.Exec(t, fmt.Sprintf(
 			`set -e; home=/home/%[1]s; mkdir -p $home/.ssh; mv /tmp/%[1]s.pub $home/.ssh/authorized_keys; `+
-				`echo 'echo "%[2]s"' > $home/%[3]s; `+
+				`mkdir -p "$(dirname "$home/%[2]s")"; printf '%%s\n' %[3]s > "$home/%[2]s"; `+
 				`chown -R %[1]s:%[1]s $home; chmod 700 $home/.ssh; chmod 600 $home/.ssh/authorized_keys`,
-			user, Banner, profile))
+			user, file[0], shQuote(file[1])))
 	}
 	h.Exec(t, "/usr/sbin/sshd -e")
 
@@ -138,7 +158,7 @@ func Start(t testing.TB) *Host {
 	writeFile(t, knownHosts, fmt.Sprintf("[127.0.0.1]:%s %s %s\n", port, fields[0], fields[1]))
 
 	var cfg strings.Builder
-	for _, user := range []string{UserSh, UserZsh} {
+	for _, user := range Users {
 		alias := "as-test-" + user
 		h.Aliases[user] = alias
 		fmt.Fprintf(&cfg, "Host %s\n  User %s\n", alias, user)
@@ -344,6 +364,8 @@ func buildBundle(version string) (string, error) {
 	}
 	return dir, os.Rename(gz.Name(), filepath.Join(dir, name+".gz"))
 }
+
+func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func keygen(t testing.TB, path string) {
 	t.Helper()

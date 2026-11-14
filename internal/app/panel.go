@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ginkcode/agent-sessions/internal/configfile"
 	"github.com/ginkcode/agent-sessions/internal/launch"
@@ -300,6 +301,9 @@ func (a *App) TerminalDropFiles(id string, paths []string) ([]string, error) {
 		return nil, err
 	}
 	windows := tab.Host == "" && runtime.GOOS == "windows"
+	if err := typeablePaths(paths); err != nil {
+		return nil, err
+	}
 	if tab.Host != "" {
 		opts := remote.SSHOptions{}
 		if a.conn != nil {
@@ -310,6 +314,9 @@ func (a *App) TerminalDropFiles(id string, paths []string) ([]string, error) {
 		if paths, err = a.panelSys().dropFiles(ctx, tab.Host, opts, paths); err != nil {
 			return nil, err
 		}
+		if err := typeablePaths(paths); err != nil {
+			return nil, err
+		}
 	}
 	typed := make([]string, len(paths))
 	for i, p := range paths {
@@ -318,9 +325,31 @@ func (a *App) TerminalDropFiles(id string, paths []string) ([]string, error) {
 	return typed, nil
 }
 
+// typeablePaths refuses a path with a control character in it. Typed at a
+// prompt, a newline or CR in a name would end the line, and no quoting keeps
+// it: the paste filter would drop it, which names another file.
+func typeablePaths(paths []string) error {
+	for _, p := range paths {
+		if strings.ContainsFunc(p, unicode.IsControl) {
+			return fmt.Errorf("can't type %q at the prompt: its name has a control character", p)
+		}
+	}
+	return nil
+}
+
+// powerShellExpands are the characters PowerShell acts on inside a
+// double-quoted string: $ and ` expand, and the curly double quotes end the
+// string as " does. Windows file names may contain all of them.
+const powerShellExpands = "$`\u201c\u201d\u201e"
+
 // typedPath quotes a path the way terminal apps type a dropped file, which
 // agents recognize: in double quotes on Windows, else in single quotes,
-// and only when it has characters a shell would split or expand.
+// and only when it has characters a shell would split or expand. A local
+// Windows tab runs PowerShell, as a shell or around an agent: a name that
+// PowerShell would expand in double quotes gets its verbatim single quotes
+// instead. cmd (typed into a shell tab by hand) still expands %VAR% inside
+// double quotes, which changes the path but runs nothing. The caller has
+// refused control characters.
 func typedPath(p string, windows bool) string {
 	safe := `-_./:+,@%=`
 	if windows {
@@ -332,6 +361,8 @@ func typedPath(p string, windows bool) string {
 	switch {
 	case plain:
 		return p
+	case windows && strings.ContainsAny(p, powerShellExpands):
+		return launch.PowerShellQuote(p)
 	case windows:
 		return `"` + p + `"`
 	default:

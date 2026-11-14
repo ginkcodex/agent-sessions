@@ -61,6 +61,7 @@ precmd_functions+=(__agent_sessions_cwd)
 end`
 	bashRC := ""
 	fallback := `exec "$__as_shell" -l`
+	cshCase := ""
 	if payload != "" {
 		// The payload is POSIX sh, regardless of the user's shell syntax.
 		run := JoinCommand(PosixBootstrapArgv(payload))
@@ -76,6 +77,13 @@ trap 'case "${BASH_SOURCE[0]}" in "$HOME/.bashrc") __as_rc_loaded=1;; esac' DEBU
 set -T
 `
 		fallback = `exec "$__as_shell" -ilc ` + ShellEscape("exec "+run)
+		// csh and tcsh take -l only as their sole flag. -ic reads their rc
+		// files, then cshLoginFiles the login files. A precmd alias
+		// (direnv's hook, say) runs before the agent, as the first prompt
+		// would. A one-line if would not expand the alias.
+		cshCase = "csh|tcsh) exec \"$__as_shell\" -ic " + ShellEscape(cshLoginFiles+
+			"if ( `alias precmd | wc -c` ) then\nprecmd\nendif\n"+
+			"exec "+run) + " ;;\n"
 	}
 	bashAfterProfile := ""
 	if payload != "" {
@@ -130,7 +138,7 @@ unset __AS_USER_ZDOTDIR __AS_WRAPPER
   exit "$__as_status"
   ;;
 fish) exec "$__as_shell" -il -C ` + ShellEscape(fishHook) + ` ;;
-*) ` + fallback + ` ;;
+` + cshCase + `*) ` + fallback + ` ;;
 esac
 `
 }

@@ -1,0 +1,39 @@
+# Review fixes — tasks
+
+- **Plan:** [review-fixes.md](../../plan/review-fixes.md)
+- **Progress:** 11/28 done
+
+From the architecture and feature review of 2026-11-14. RF-01 to RF-10 are
+security and privacy; RF-11 to RF-23 are reliability; RF-24 and RF-25 are CI
+and docs. RF-26 to RF-28 were found during RF-21 and RF-26.
+
+| Task | Status | Scope | Est | Depends on |
+|---|---|---|---|---|
+| [RF-01](RF-01.md) | ✅ Done | Limit the `release` environment to `main` and `v*` tags; tag ruleset | 1 h | None |
+| [RF-02](RF-02.md) | ⬜ Not started | The release and artifacts jobs install apt packages without the shared cache, or check them | 2 h | None |
+| [RF-03](RF-03.md) | ⬜ Not started | Every `uses:` pinned to a full SHA with its tag in a comment; Dependabot for actions | 1.5 h | None |
+| [RF-04](RF-04.md) | ✅ Done | Pass `--no-textconv` to blame and the submodule diff; filters stay with IS-06 | 2 h | None |
+| [RF-05](RF-05.md) | ✅ Done | Strip control characters from pasted text; bound OSC 52 writes | 2 h | None |
+| [RF-06](RF-06.md) | ✅ Done | Quote dropped file names so PowerShell expands nothing; refuse control characters | 1.5 h | None |
+| [RF-07](RF-07.md) | ⬜ Not started | Denylist for webview-supplied paths; opt-in switches only from their own dialog flow | 3 h | None |
+| [RF-08](RF-08.md) | ⬜ Not started | The website ingest and the AUR job verify `SHA256SUMS.minisig` before trusting `SHA256SUMS` | 3 h | None |
+| [RF-09](RF-09.md) | ⬜ Not started | Redact manifest fields; key/value pairs in JSON; Windows home paths | 3 h | None |
+| [RF-10](RF-10.md) | ⬜ Not started | `openURL` stops falling back after a refusal; `http://` refused for keyed endpoints | 1.5 h | None |
+| [RF-11](RF-11.md) | ✅ Done | Decode the reply ID as an integer, not `any` | 1 h | None |
+| [RF-12](RF-12.md) | ✅ Done | Watch a missing root's nearest directory only for the root's creation; no trees outside recursive roots | 2.5 h | None |
+| [RF-13](RF-13.md) | ✅ Done | `ErrEventOverflow` rescan; a provider in fallback retries its watches with backoff | 3 h | RF-12 |
+| [RF-14](RF-14.md) | ⬜ Not started | One running scan plus a dirty flag per provider; `Close` waits for refreshes | 3.5 h | None |
+| [RF-15](RF-15.md) | ⬜ Not started | An unreadable source keeps its previous state; it neither blocks the provider nor drops sessions | 3 h | None |
+| [RF-16](RF-16.md) | ✅ Done | The client kills the agent when the connection ends with an error it did not cause | 2 h | None |
+| [RF-17](RF-17.md) | ⬜ Not started | A start deadline and a cancel path while the frontend has no chat ID yet | 3 h | RF-16 |
+| [RF-18](RF-18.md) | ⬜ Not started | Decide whether `turn_end` waits for questions; make the engine, store and tests agree | 3 h | None |
+| [RF-19](RF-19.md) | ⬜ Not started | Lstat (or open non-blocking) before reading in Read, Blame, diff and external | 1.5 h | None |
+| [RF-20](RF-20.md) | ⬜ Not started | Wire `SessionManager.Retry` into a production path with backoff | 3 h | None |
+| [RF-21](RF-21.md) | ✅ Done | Run remote probe, deploy and serve scripts through `/bin/sh`, as panels do | 3 h | None |
+| [RF-22](RF-22.md) | ⬜ Not started | Drop or version-gate `ForkAfterAuthentication=no` | 2 h | None |
+| [RF-23](RF-23.md) | ⬜ Not started | Unescape on read, TOML-valid quoting on write, check `Scanner.Err` | 2 h | None |
+| [RF-24](RF-24.md) | ⬜ Not started | Run the existing `.golangci.yml` and govulncheck in CI; fix `nilerr` hits | 3 h | None |
+| [RF-25](RF-25.md) | ⬜ Not started | AUR-07, LR-19, M5-04, M5-06, M8-07 and the code-diagnostics count | 1 h | None |
+| [RF-26](RF-26.md) | ✅ Done | Run agent panel tabs under csh and tcsh, which reject `-ilc` | 2 h | None |
+| [RF-27](RF-27.md) | ⬜ Not started | Run the fish panel startup test in a pty; without one fish never prompts | 2 h | None |
+| [RF-28](RF-28.md) | ✅ Done | Read `/etc/csh.login` and `~/.login` in remote connect's csh and tcsh line | 1 h | RF-21 |

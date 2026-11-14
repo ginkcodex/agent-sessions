@@ -58,10 +58,10 @@ func TestValidateHost(t *testing.T) {
 }
 
 func TestRemoteLine(t *testing.T) {
-	if got := remoteLine([]string{LoginShell, "-lc", "echo 'x'"}, wslLoginShell); got != `"${SHELL:-/bin/sh}" '-lc' 'echo '\''x'\'''` {
-		t.Errorf("login line = %s", got)
+	if got, want := remoteLine(LoginCommand("echo 'x'")), QuoteArgs(launch.PosixLoginArgv("echo 'x'")); got != want {
+		t.Errorf("login line = %s, want %s", got, want)
 	}
-	if got := remoteLine([]string{"/bin/cli", "transfer", "get"}, wslLoginShell); got != `'/bin/cli' 'transfer' 'get'` {
+	if got := remoteLine([]string{"/bin/cli", "transfer", "get"}); got != `'/bin/cli' 'transfer' 'get'` {
 		t.Errorf("plain line = %s", got)
 	}
 }
@@ -113,19 +113,27 @@ func TestWSLArgsRunCommandExactly(t *testing.T) {
 		t.Errorf("args = %q, want %q", got, tricky)
 	}
 
-	// A login-shell script, as probe, deploy and serve send: SHELL runs it.
+	// A login command, as probe, deploy and serve send: the login shell
+	// sets up the environment and hands the script to /bin/sh. Unset,
+	// SHELL is /bin/sh.
 	shell := filepath.Join(platform.TempDir(t), "login-shell")
-	if err := os.WriteFile(shell, []byte("#!/bin/sh\nprintf '%s\\0' \"$@\"\n"), 0o755); err != nil {
+	if err := os.WriteFile(shell, []byte("#!/bin/sh\n[ \"$1\" = -lc ] || exit 9\nexport AS_LOGIN=yes\nexec /bin/sh -c \"$2\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	script := "exec 'it'\\''s' \"$X\" `y`\n100%"
-	args, err = wslArgs("Ubuntu", []string{LoginShell, "-lc", script})
+	script := "printf '%s\\0' \"${AS_LOGIN:-none}\" 'it'\\''s' '$(id)' \"`echo y`\" '100%' 'ünï'"
+	args, err = wslArgs("Ubuntu", LoginCommand(script))
 	if err != nil {
 		t.Fatal(err)
 	}
+	want := []string{"yes", "it's", "$(id)", "y", "100%", "ünï"}
 	got = strings.Split(strings.TrimSuffix(string(runWSLArgs(t, args, "SHELL="+shell)), "\x00"), "\x00")
-	if !slices.Equal(got, []string{"-lc", script}) {
-		t.Errorf("login shell args = %q", got)
+	if !slices.Equal(got, want) {
+		t.Errorf("login command printed %q, want %q", got, want)
+	}
+	want[0] = "none"
+	got = strings.Split(strings.TrimSuffix(string(runWSLArgs(t, args, "SHELL=")), "\x00"), "\x00")
+	if !slices.Equal(got, want) {
+		t.Errorf("login command without SHELL printed %q, want %q", got, want)
 	}
 }
 
@@ -139,7 +147,7 @@ func TestWSLArgsFitCommandLine(t *testing.T) {
 		"unpack": unpackScript(filepath.Dir(bin), bin, strings.Repeat("a", 64), "0123456789abcdef"),
 		"prune":  pruneScript("/home/someone/.cache/agent-sessions/server", "v0.5.2-0123abcd"),
 	} {
-		args, err := wslArgs("Ubuntu", []string{LoginShell, "-lc", script})
+		args, err := wslArgs("Ubuntu", LoginCommand(script))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,11 +162,11 @@ func TestBuildHostCmd(t *testing.T) {
 	t.Cleanup(func() { wslBinary = orig })
 	wslBinary = func() (string, error) { return "/fake/wsl.exe", nil }
 
-	cmd, err := BuildHostCmd(context.Background(), "wsl:Ubuntu", []string{LoginShell, "-lc", "true"}, SSHOptions{Binary: "/fake/ssh"})
+	cmd, err := BuildHostCmd(context.Background(), "wsl:Ubuntu", LoginCommand("true"), SSHOptions{Binary: "/fake/ssh"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, _ := wslArgs("Ubuntu", []string{LoginShell, "-lc", "true"})
+	want, _ := wslArgs("Ubuntu", LoginCommand("true"))
 	if cmd.Path != "/fake/wsl.exe" || !slices.Equal(cmd.Args[1:], want) {
 		t.Errorf("WSL command = %s %q", cmd.Path, cmd.Args)
 	}

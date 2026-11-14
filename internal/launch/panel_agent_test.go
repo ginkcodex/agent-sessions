@@ -16,8 +16,12 @@ func TestRemotePanelAgentStartup(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX shells")
 	}
-	for _, shell := range []string{"bash", "zsh", "fish"} {
-		for _, mode := range []string{"rc", "profile", "profile-sources-rc"} {
+	for _, shell := range []string{"bash", "zsh", "fish", "tcsh"} {
+		modes := []string{"rc", "profile", "profile-sources-rc"}
+		if shell == "tcsh" {
+			modes = []string{"rc", "profile"}
+		}
+		for _, mode := range modes {
 			t.Run(shell+"/"+mode, func(t *testing.T) {
 				path, err := exec.LookPath(shell)
 				if err != nil {
@@ -60,6 +64,13 @@ func TestRemotePanelAgentStartup(t *testing.T) {
 					} else {
 						write(".zshrc", activation)
 					}
+				case "tcsh":
+					activation := "setenv ACTIVATED ${ACTIVATED}x\nalias precmd 'setenv PROJECT_READY \"$cwd\"'\n"
+					if mode == "profile" {
+						write(".login", activation)
+					} else {
+						write(".tcshrc", activation)
+					}
 				case "fish":
 					write(".config/fish/config.fish", "set -gx ACTIVATED x\nfunction project_ready --on-event fish_prompt\n set -gx PROJECT_READY $PWD\nend\n")
 				}
@@ -73,7 +84,13 @@ func TestRemotePanelAgentStartup(t *testing.T) {
 				defer cancel()
 				// Exercise the actual shell-neutral SSH transport, with stdin left for
 				// the agent rather than injecting a command into its terminal input.
-				cmd := exec.CommandContext(ctx, path, "-c", JoinCommand(PosixBootstrapArgv(script)))
+				// tcsh reads .tcshrc for -c too, so an ssh server's tcsh would
+				// add one more x; RF-21's ssh tests cover tcsh as that shell.
+				outer := path
+				if shell == "tcsh" {
+					outer = "/bin/sh"
+				}
+				cmd := exec.CommandContext(ctx, outer, "-c", JoinCommand(PosixBootstrapArgv(script)))
 				cmd.Env = append(os.Environ(), "HOME="+home, "ZDOTDIR="+home, "XDG_CONFIG_HOME="+filepath.Join(home, ".config"), "TMPDIR="+tmp, "TERM=dumb", "SHELL="+path, "ACTIVATED=", "PROJECT_READY=")
 				b, err := cmd.CombinedOutput()
 				var exit *exec.ExitError

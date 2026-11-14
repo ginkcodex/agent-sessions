@@ -169,8 +169,8 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	// shell behind to outlive the server.
 	//
 	// The variable makes the server the code diagnostics host for this kind
-	// of connection (it computes its own identity there). env keeps it
-	// independent of the login shell's syntax; an older server ignores it.
+	// of connection (it computes its own identity there); an older server
+	// ignores it.
 	script := fmt.Sprintf(`exec env %s=%s %s serve --stdio --nonce %s`,
 		DiagnosticsHostEnv, diagnosticsHostKind(alias), QuotePOSIX(bin), QuotePOSIX(nonce))
 	if dir, ok := buildDir(bin); ok {
@@ -181,7 +181,7 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	opts.NoTTY = true
 
 	runCtx, cancel := context.WithCancel(ctx)
-	cmd, err := BuildHostCmd(runCtx, alias, []string{LoginShell, "-lc", script}, opts)
+	cmd, err := BuildHostCmd(runCtx, alias, LoginCommand(script), opts)
 	if err != nil {
 		cancel()
 		return nil, err

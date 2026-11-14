@@ -13,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/launch"
 )
 
 // SSHOptions configures ssh invocation parameters.
@@ -41,10 +43,15 @@ type SSHOptions struct {
 	AskpassBroker *AskpassBroker
 }
 
-// LoginShell, as the first element of a remote command, runs the rest under
-// the remote user's own shell. It is sent as "$SHELL" so the remote side
-// expands it; every other element is single-quoted.
+// LoginShell, as the first element of a remote command, marks a
+// LoginCommand. It is never sent as is.
 const LoginShell = "$SHELL"
+
+// LoginCommand is the remote command that runs script, a POSIX sh script,
+// with /bin/sh in the remote user's login environment (PATH, agent
+// variables), whatever their login shell is: fish, csh and tcsh included.
+// See launch.PosixLoginArgv.
+func LoginCommand(script string) []string { return []string{LoginShell, script} }
 
 // maxControlDirLen keeps ControlPath sockets bindable. sun_path holds 104
 // bytes on macOS (108 on Linux) including the NUL, and the ssh master first
@@ -206,23 +213,28 @@ func buildSSHArgs(alias string, remoteCmd []string, opts SSHOptions, windows boo
 	args = append(args, "--", alias)
 
 	if len(remoteCmd) > 0 {
-		args = append(args, remoteLine(remoteCmd, `"$SHELL"`))
+		args = append(args, remoteLine(remoteCmd))
 	}
 
 	return args, nil
 }
 
-// remoteLine renders remoteCmd as one POSIX shell line, with shell in place
-// of a leading LoginShell.
-func remoteLine(remoteCmd []string, shell string) string {
-	if len(remoteCmd) > 0 && remoteCmd[0] == LoginShell {
-		line := shell
-		if rest := remoteCmd[1:]; len(rest) > 0 {
-			line += " " + QuoteArgs(rest)
-		}
-		return line
+// remoteLine renders remoteCmd as the line sshd hands the remote user's
+// shell. A LoginCommand becomes launch.PosixLoginArgv, which every login
+// shell parses alike; any other command is single-quoted POSIX words.
+func remoteLine(remoteCmd []string) string {
+	if script, ok := loginScript(remoteCmd); ok {
+		return QuoteArgs(launch.PosixLoginArgv(script))
 	}
 	return QuoteArgs(remoteCmd)
+}
+
+// loginScript is the script of a LoginCommand.
+func loginScript(remoteCmd []string) (string, bool) {
+	if len(remoteCmd) == 2 && remoteCmd[0] == LoginShell {
+		return remoteCmd[1], true
+	}
+	return "", false
 }
 
 // BuildHostCmd runs remoteCmd on host: through wsl.exe for a WSL

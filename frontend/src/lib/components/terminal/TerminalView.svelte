@@ -22,7 +22,7 @@
   import { createTerminalFileOpener } from '../../terminalFileOpen';
   import { messageFileRecovery } from '../../messageFileOpen';
   import { installTerminalColorScheme } from '../../terminalColorScheme';
-  import { installTerminalClipboard } from '../../terminalClipboard';
+  import { installTerminalClipboard, installTerminalPaste, pasteInto } from '../../terminalClipboard';
   import { installTerminalCompositionText, terminalReplacementText } from '../../terminalTextInput';
   import { files } from '../../stores/files.svelte';
   import { link } from '../../stores/link.svelte';
@@ -187,6 +187,7 @@
     const scheme = installTerminalColorScheme(t, theme.resolved);
     colorScheme = scheme;
     const clipboard = installTerminalClipboard(t, (text) => void copyToClipboard(text));
+    const nativePaste = installTerminalPaste(host, t);
     processSize = new TerminalResize(async (cols, rows) => {
       if (tab.status !== 'running') { processSize?.dispose(); return; }
       terminals.resized(id);
@@ -196,7 +197,7 @@
       write: (data) => t.write(data, () => void api.terminalAck(id, data.length).catch(() => {})),
       exit: (code) => t.write(`\r\n\x1b[2m[Process exited with code ${code}]\x1b[0m\r\n`),
       paste: (text) => {
-        t.paste(text);
+        pasteInto(t, text);
         t.focus();
       },
     });
@@ -222,6 +223,7 @@
       scheme.dispose();
       colorScheme = null;
       clipboard.dispose();
+      nativePaste.dispose();
       fileLinks.dispose();
       results.dispose();
       opener.dispose();
@@ -276,7 +278,7 @@
 
   async function paste() {
     const text = await readClipboard();
-    if (text && tab.status === 'running') term?.paste(text);
+    if (text && term && tab.status === 'running') pasteInto(term, text);
   }
 
   // A new font or size (Settings → Terminal) measures the cells again; the

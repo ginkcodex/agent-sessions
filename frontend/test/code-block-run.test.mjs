@@ -17,6 +17,10 @@ test('runnableCommand drops control characters, a leading ! and uniform prompts'
   assert.equal(runnableCommand('bash', 'echo hi\x1b[201~; rm -rf ~\x07\x7f\x9b'), 'echo hi[201~; rm -rf ~');
   assert.equal(runnableCommand('bash', 'printf "a\\tb"\r\nexit\r\n'), 'printf "a\\tb"\nexit', 'CR goes, tab and LF stay');
   assert.equal(runnableCommand('bash', 'echo\ta'), 'echo\ta');
+  // Zero-width and bidi characters would make the shown command differ from the one run.
+  assert.equal(runnableCommand('bash', 'echo safe\u202e;hs|x lruc\u202c'), 'echo safe;hs|x lruc');
+  assert.equal(runnableCommand('bash', 'l\u200bs \u2066-la\u2069\ufeff\u2060'), 'ls -la');
+  assert.equal(runnableCommand('bash', 'echo "שלום"'), 'echo "שלום"', 'right-to-left letters stay');
 
   // Claude Code's shell-mode prefix, as agents quote it.
   assert.equal(

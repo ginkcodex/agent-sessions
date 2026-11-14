@@ -126,6 +126,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Chat login environment | [chat-login-env](docs/plan/chat-login-env.md) | [chat-login-env/](docs/tasks/chat-login-env/README.md) | 3/4 ✅ · 1 ⬜ |
 | Code block run | [code-block-run](docs/plan/code-block-run.md) | [code-block-run/](docs/tasks/code-block-run/README.md) | 3/4 ✅ · 1 ⬜ |
 | Linux repositories | [linux-repos](docs/plan/linux-repos.md) | [linux-repos/](docs/tasks/linux-repos/README.md) | 16/21 ✅ · 4 🟡 · 1 ⬜ |
-| Auto-update (macOS, Windows) | [auto-update](docs/plan/auto-update.md) | [auto-update/](docs/tasks/auto-update/README.md) | 12/17 ✅ · 1 🟡 · 4 ⬜ |
+| Auto-update (macOS, Windows) | [auto-update](docs/plan/auto-update.md) | [auto-update/](docs/tasks/auto-update/README.md) | 14/17 ✅ · 3 ⬜ |
 | Chat message queue | [chat-message-queue](docs/plan/chat-message-queue.md) | [chat-message-queue/](docs/tasks/chat-message-queue/README.md) | 7/8 ✅ · 1 ⬜ |
 | Tool file links | [tool-file-links](docs/plan/tool-file-links.md) | [tool-file-links/](docs/tasks/tool-file-links/README.md) | 1/2 ✅ · 1 ⬜ |
+| Review fixes (2026-11-14 review) | [review-fixes](docs/plan/review-fixes.md) | [review-fixes/](docs/tasks/review-fixes/README.md) | 11/28 ✅ · 17 ⬜ |

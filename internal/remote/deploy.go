@@ -179,11 +179,11 @@ func verifyRemoteVersion(ctx context.Context, alias string, opts SSHOptions, bin
 	return nil
 }
 
-// runRemote executes script inside a login shell on alias. stdin, when set,
+// runRemote runs script with /bin/sh in alias's login environment. stdin, when set,
 // is the ssh process stdin (used to stream the gzip archive).
 func runRemote(ctx context.Context, alias string, opts SSHOptions, stdout io.Writer, stdin io.Reader, script string) error {
 	opts.NoTTY = true
-	cmd, err := BuildHostCmd(ctx, alias, []string{LoginShell, "-lc", script}, opts)
+	cmd, err := BuildHostCmd(ctx, alias, LoginCommand(script), opts)
 	if err != nil {
 		return err
 	}

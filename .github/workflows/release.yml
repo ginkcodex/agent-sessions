@@ -13,8 +13,14 @@
 # v1.2.0-beta.1 from develop. The tag must match wails.json, and a stable tag
 # must point at a commit on main. Versions with a suffix publish as
 # pre-releases. Manual runs (workflow_dispatch) build, verify and upload
-# artifacts only, on any ref: the artifacts job adds the aggregate SHA256SUMS
-# and the commit and run they came from.
+# artifacts only: the artifacts job adds the aggregate SHA256SUMS and the
+# commit and run they came from, and signs them.
+#
+# The signing keys are secrets of the release environment, which only main
+# and v* tags may use (Settings > Environments > release). A manual run on
+# any other branch builds everything, then fails at the artifacts job. The
+# ruleset "Protect release tags" stops anyone but an admin from moving or
+# deleting a v* tag. See docs/plan/review-fixes.md (RF-01).
 #
 # Each packaging job inspects what it built with packaging/**/verify-*.sh.
 # Those checks are static apart from installing the .deb in a clean Ubuntu
@@ -386,7 +392,8 @@ jobs:
     needs: [version, linux, macos, windows, remote-servers]
     runs-on: ubuntu-latest
     # Signs exactly as the release job does, so a manual run proves the
-    # signing secrets work before anything is published.
+    # signing secrets work before anything is published. Only on main: the
+    # release environment refuses other branches.
     environment: release
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -492,8 +499,8 @@ jobs:
     if: needs.version.outputs.publish == 'true'
     needs: [version, linux, macos, windows, remote-servers]
     runs-on: ubuntu-latest
-    # The signing key is a secret of this environment, which can be limited to
-    # protected branches and tags (Settings > Environments).
+    # The signing keys are secrets of this environment, which only main and
+    # v* tags may use (Settings > Environments).
     environment: release
     permissions:
       contents: write

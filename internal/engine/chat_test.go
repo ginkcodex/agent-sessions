@@ -706,6 +706,24 @@ func TestChatAgentCrash(t *testing.T) {
 	f.start(t, &st.Session)
 }
 
+// An agent that writes a message over the frame limit is stopped, and the
+// chat ends with that error instead of staying live.
+func TestChatOversizedMessageEndsChat(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.start(t, nil)
+	if end := f.turn(t, st.ChatID, "flood"); end.Error == "" {
+		t.Fatalf("turn end = %+v", end)
+	}
+	exit := f.events.waitExit(t, st.ChatID)
+	if exit.Reason != ChatExitCrashed || !strings.Contains(exit.Error, acp.ErrFrameTooLarge.Error()) {
+		t.Fatalf("exit = %+v", exit)
+	}
+	f.events.checkSeq(t, st.ChatID)
+	if _, ok := f.m.Owned(st.Session); ok {
+		t.Fatal("the chat still owns its session")
+	}
+}
+
 func TestChatAuthRequired(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.start(t, nil)

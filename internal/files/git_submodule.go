@@ -49,7 +49,7 @@ func readGitSubmoduleDiff(w gitWriter, rel string, basis GitDiffBasis) (result G
 	if err != nil || (indexed == "" && committed == "") {
 		return result, false, err
 	}
-	args := []string{"diff", "--no-color", "--no-ext-diff", "--submodule=short", "--ignore-submodules=none"}
+	args := []string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "--submodule=short", "--ignore-submodules=none"}
 	switch basis {
 	case GitDiffHead:
 		if committed != "" {

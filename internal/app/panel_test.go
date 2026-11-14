@@ -387,6 +387,17 @@ func TestTerminalDropFiles(t *testing.T) {
 	if _, err := a.TerminalDropFiles("t2", []string{"/x/a.png"}); !errors.Is(err, failed) {
 		t.Errorf("failed upload: %v", err)
 	}
+	for _, name := range []string{"/x/a\nrm -rf ~\n.png", "/x/a\rb.png", "/x/a\x1b[201~.png", "/x/a\u0085.png"} {
+		if typed, err := a.TerminalDropFiles("t1", []string{"/x/ok.png", name}); err == nil || !strings.Contains(err.Error(), "control character") {
+			t.Errorf("control character in %q: %q, %v", name, typed, err)
+		}
+	}
+	a.panelOverride.dropFiles = func(context.Context, string, remote.SSHOptions, []string) ([]string, error) {
+		return []string{"/tmp/up/a\nb.png"}, nil
+	}
+	if typed, err := a.TerminalDropFiles("t2", []string{"/x/a.png"}); err == nil {
+		t.Errorf("control character in the host's copy: %q", typed)
+	}
 	a.terminals = nil
 	if _, err := a.TerminalDropFiles("t1", []string{"/x/a.png"}); !errors.Is(err, ErrPanelUnavailable) {
 		t.Errorf("no panel: %v", err)
@@ -407,6 +418,19 @@ func TestTypedPath(t *testing.T) {
 		{`C:\Users\me\my shot.png`, true, `"C:\Users\me\my shot.png"`},
 		{`C:\Users\me\a&b.png`, true, `"C:\Users\me\a&b.png"`},
 		{`C:\Users\me\ảnh.png`, true, `"C:\Users\me\ảnh.png"`},
+		// PowerShell expands $ and ` in double quotes, and a curly double
+		// quote ends them: these names get verbatim single quotes.
+		{`C:\x\$(calc).txt`, true, `'C:\x\$(calc).txt'`},
+		{`C:\x\$env:USERNAME.png`, true, `'C:\x\$env:USERNAME.png'`},
+		{"C:\\x\\a`b.png", true, "'C:\\x\\a`b.png'"},
+		{"C:\\x\\a\u201d; calc; \u201cb.png", true, "'C:\\x\\a\u201d; calc; \u201cb.png'"},
+		{"C:\\x\\it\u2019s $x.png", true, "'C:\\x\\it\u2019\u2019s $x.png'"},
+		{`C:\x\it's $x.png`, true, `'C:\x\it''s $x.png'`},
+		// PowerShell leaves % alone; cmd would expand it, but runs nothing.
+		{`C:\x\%PATH%.txt`, true, `"C:\x\%PATH%.txt"`},
+		{`C:\x\it's.png`, true, `"C:\x\it's.png"`},
+		{"/tmp/$(id)`id`.png", false, "'/tmp/$(id)`id`.png'"},
+		{"/tmp/%PATH%.txt", false, "/tmp/%PATH%.txt"},
 	} {
 		if got := typedPath(tc.path, tc.windows); got != tc.want {
 			t.Errorf("typedPath(%q, %v) = %q, want %q", tc.path, tc.windows, got, tc.want)
