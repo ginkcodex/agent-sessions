@@ -30,6 +30,6 @@ website test flake found during LR-01. LR-21 came out of LR-15's checks.
 | [LR-16](LR-16.md) | 🟡 Partial: ran on `wrangler dev`, arm64; preview/production run in LR-19 | Container checks for Ubuntu, Debian and Fedora | 3 h | LR-14 |
 | [LR-17](LR-17.md) | ✅ Done | App: Linux update toast knows the repository | 2.5 h | — |
 | [LR-18](LR-18.md) | 🟡 Partial: key fingerprints wait for the real keys (LR-19) | Install docs: README and website | 2 h | LR-16 |
-| [LR-19](LR-19.md) | 🟡 Partial: production serves signed, empty repositories; the first signed release is next | Production setup, backfill and first release through the repositories | 2.5 h | LR-06, LR-07, LR-08, LR-15, LR-16 |
+| [LR-19](LR-19.md) | 🟡 Partial: production serves signed, empty repositories; RPM signing proven in a manual run; the first signed release is next | Production setup, backfill and first release through the repositories | 2.5 h | LR-06, LR-07, LR-08, LR-15, LR-16 |
 | [LR-20](LR-20.md) | ✅ Done | Website: theme menu test fails now and then | 1 h | — |
 | [LR-21](LR-21.md) | ⬜ Not started (needs a decision) | Ship the repository keyring in the `.deb` (needs a decision) | 3 h | LR-15 |
