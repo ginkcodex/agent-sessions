@@ -17,6 +17,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/chatattach"
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
 // chatBackend runs chats with the fake ACP agent.
@@ -120,6 +121,9 @@ func newChatBackend(t *testing.T) (*chatBackend, string) {
 		Agents: func(context.Context) ([]engine.ChatAgent, error) {
 			return []engine.ChatAgent{{Agent: model.AgentClaude, Name: "Claude Code", Available: true}}, nil
 		},
+		Plugins: func(_ context.Context, _ model.AgentID, launch acp.Command) (engine.ChatPlugins, error) {
+			return engine.ChatPlugins{Supported: true, Plugins: []provider.Plugin{{ID: "p@m", Name: "p", Marketplace: launch.Dir}}}, nil
+		},
 		Grace: 2 * time.Second,
 	})
 	t.Cleanup(m.CloseAll)
@@ -203,6 +207,19 @@ func TestChatRPCRoundTrip(t *testing.T) {
 	opts, err := x.c.ChatSetOption(ctx, st.ChatID, "mode", "auto")
 	if err != nil || len(opts) != 1 || string(opts[0].CurrentValue) != `"auto"` {
 		t.Fatal(opts, err)
+	}
+	if !x.c.Capabilities().ChatPlugins {
+		t.Fatal("no chatPlugins capability")
+	}
+	if pl, err := x.c.ChatPlugins(ctx, st.ChatID); err != nil || !pl.Supported || len(pl.Plugins) != 1 || pl.Plugins[0].Marketplace != dir {
+		t.Fatalf("plugins = %+v, %v", pl, err)
+	}
+	// A host before plugin listings refuses it here.
+	x.c.mu.Lock()
+	x.c.caps.ChatPlugins = false
+	x.c.mu.Unlock()
+	if _, err := x.c.ChatPlugins(ctx, st.ChatID); !errors.Is(err, ErrNoChatPlugins) {
+		t.Fatalf("old host plugins: %v", err)
 	}
 
 	// A permission request comes back as an event and is answered by ID.
@@ -322,6 +339,10 @@ func TestChatRPCOwnership(t *testing.T) {
 		"respond": func() error { return other.c.ChatRespond(ctx, st.ChatID, perm.Permission.ID, "allow-once") },
 		"option": func() error {
 			_, err := other.c.ChatSetOption(ctx, st.ChatID, "mode", "auto")
+			return err
+		},
+		"plugins": func() error {
+			_, err := other.c.ChatPlugins(ctx, st.ChatID)
 			return err
 		},
 		"close": func() error { return other.c.ChatClose(ctx, st.ChatID) },
@@ -560,9 +581,10 @@ func TestChatRPCCapability(t *testing.T) {
 		_, list := c.ChatList(ctx)
 		_, prompt := c.ChatPrompt(ctx, "c", "hi", nil)
 		_, unqueue := c.ChatUnqueue(ctx, "c", "q")
+		_, plugins := c.ChatPlugins(ctx, "c")
 		return map[string]error{
 			"agents": agents, "start": start, "option": option, "list": list,
-			"prompt": prompt, "unqueue": unqueue,
+			"prompt": prompt, "unqueue": unqueue, "plugins": plugins,
 			"send now": c.ChatSendNow(ctx, "c", "q"),
 			"cancel":   c.ChatCancel(ctx, "c"),
 			"respond":  c.ChatRespond(ctx, "c", "p", "o"),
@@ -591,6 +613,7 @@ func TestChatRPCCapability(t *testing.T) {
 				x.c.caps.ACPChat = true
 				x.c.caps.ChatQuestions = true
 				x.c.caps.ChatQueue = true
+				x.c.caps.ChatPlugins = true
 				x.c.mu.Unlock()
 			}
 			for name, err := range calls(x.c) {

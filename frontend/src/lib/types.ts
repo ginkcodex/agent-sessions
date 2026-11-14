@@ -659,6 +659,27 @@ export interface ChatCommand {
   input?: { hint?: string } | null;
 }
 
+/** A plugin the agent's CLI reports installed (chatPlugins). */
+export interface ChatPlugin {
+  /** The CLI's own ID, such as "ponytail@ponytail". */
+  id: string;
+  name: string;
+  marketplace?: string;
+  version?: string;
+  /** Where it is installed (Claude: user, project, local). */
+  scope?: string;
+  enabled: boolean;
+  /** The enabled state for the chat's directory, when the CLI reports one. */
+  projectEnabled?: boolean;
+}
+
+/** The answer to /plugin: what is installed on disk, which the session may not have loaded yet. */
+export interface ChatPlugins {
+  /** False when the agent's CLI cannot list its plugins (OpenCode). */
+  supported: boolean;
+  plugins: ChatPlugin[];
+}
+
 /** An open chat. */
 export interface ChatState {
   chatId: string;

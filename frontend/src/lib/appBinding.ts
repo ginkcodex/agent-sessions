@@ -31,6 +31,7 @@ export const APP_METHODS = [
   'ChatClose',
   'ChatList',
   'ChatPickAttachments',
+  'ChatPlugins',
   'ChatPrompt',
   'ChatRespond',
   'ChatSendNow',

@@ -8,6 +8,7 @@ import type {
   ChatAttachment,
   ChatAttachResult,
   ChatConfigOption,
+  ChatPlugins,
   ChatDraft,
   ChatPermission,
   ChatPromptResult,
@@ -317,6 +318,20 @@ export class MockChats {
     opt.currentValue = value;
     this.update(chat, { kind: 'config_options', configOptions: structuredClone(chat.state.configOptions) });
     return structuredClone(chat.state.configOptions);
+  }
+
+  /** Claude's and Codex's CLIs list their plugins; OpenCode's cannot. */
+  async plugins(chatId: string): Promise<ChatPlugins> {
+    this.requireAvailable();
+    const chat = this.get(chatId);
+    if (chat.state.agent === 'opencode') return { supported: false, plugins: [] };
+    return {
+      supported: true,
+      plugins: [
+        { id: 'ponytail@ponytail', name: 'ponytail', marketplace: 'ponytail', version: '5.3.3', scope: 'user', enabled: true },
+        { id: 'gopls-lsp@claude-plugins-official', name: 'gopls-lsp', marketplace: 'claude-plugins-official', version: '1.0.0', scope: 'user', enabled: false },
+      ],
+    };
   }
 
   async close(chatId: string): Promise<void> {

@@ -84,6 +84,7 @@ import type {
   AgentStatus,
   ChatAgent,
   ChatConfigOption,
+  ChatPlugins,
   ChatStartRequest,
   ChatState,
   ChatAttachment,
@@ -993,6 +994,10 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   async chatSetOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]> {
     return this.chat.setOption(chatId, configId, value);
+  }
+
+  async chatPlugins(chatId: string): Promise<ChatPlugins> {
+    return this.chat.plugins(chatId);
   }
 
   async chatClose(chatId: string): Promise<void> {

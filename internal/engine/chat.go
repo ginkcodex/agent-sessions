@@ -308,6 +308,9 @@ type ChatManagerOptions struct {
 	Launch func(ctx context.Context, agent model.AgentID, dir string) (acp.Command, error)
 	// Agents reports adapter availability.
 	Agents func(ctx context.Context) ([]ChatAgent, error)
+	// Plugins lists agent's installed plugins, run with the environment and
+	// directory of launch, the chat's adapter command. Nil: none listed.
+	Plugins func(ctx context.Context, agent model.AgentID, launch acp.Command) (ChatPlugins, error)
 	// Refresh asks for a rescan of the agent's sessions. It must not block.
 	Refresh func(agent model.AgentID)
 	// OwnershipChanged refreshes catalog views after a chat opens or releases
@@ -511,7 +514,7 @@ func (m *ChatManager) start(ctx context.Context, ch *chat, req ChatStartRequest)
 	ch.mu.Lock()
 	closing := ch.closing
 	if !closing {
-		ch.client = client
+		ch.client, ch.launch = client, cmd
 	}
 	ch.mu.Unlock()
 	if closing {
@@ -911,6 +914,7 @@ type chat struct {
 
 	mu          sync.Mutex
 	client      *acp.Client
+	launch      acp.Command // how the adapter was started
 	startCancel context.CancelFunc
 	ref         model.SessionRef
 	options     []acp.ConfigOption
