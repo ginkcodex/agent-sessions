@@ -32,6 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Large file view | [large-file-view](../plan/large-file-view.md) | [large-file-view/](large-file-view/README.md) | 1/4 ✅ · 3 ⬜ |
 | Chat MCP and plugin commands | [chat-plugin-commands](../plan/chat-plugin-commands.md) | [chat-plugin-commands/](chat-plugin-commands/README.md) | 1/8 ✅ · 7 ⬜ |
 | Layout memory | [layout-memory](../plan/layout-memory.md) | [layout-memory/](layout-memory/README.md) | 3/5 ✅ · 2 ⬜ |
 | Transcript tool readability | [transcript-tool-readability](../plan/transcript-tool-readability.md) | [transcript-tool-readability/](transcript-tool-readability/README.md) | 3/4 ✅ · 1 ⬜ |
@@ -96,7 +97,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Codex Guardian ancestry | [codex-guardian-ancestry](../plan/codex-guardian-ancestry.md) | [codex-guardian-ancestry/](codex-guardian-ancestry/README.md) | 1/1 ✅ |
 | Live filter for chat sessions | [chat-live-filter](../plan/chat-live-filter.md) | [chat-live-filter/](chat-live-filter/README.md) | 2/2 ✅ |
 | Codex restore filenames | [codex-restore-filenames](../plan/codex-restore-filenames.md) | [codex-restore-filenames/](codex-restore-filenames/README.md) | 6/6 ✅ |
-| Chat option dropdowns | [chat-options-dropdown](../plan/chat-options-dropdown.md) | [chat-options-dropdown/](chat-options-dropdown/README.md) | 2/4 ✅ · 2 ⬜ |
+| Chat option dropdowns | [chat-options-dropdown](../plan/chat-options-dropdown.md) | [chat-options-dropdown/](chat-options-dropdown/README.md) | 1/4 ✅ · 3 ⬜ |
 | Workspace filter release | [workspace-filter-release](../plan/workspace-filter-release.md) | [workspace-filter-release/](workspace-filter-release/README.md) | 2/3 ✅ · 1 ⬜ |
 | Chat login environment | [chat-login-env](../plan/chat-login-env.md) | [chat-login-env/](chat-login-env/README.md) | 3/4 ✅ · 1 ⬜ |
 | Code block run | [code-block-run](../plan/code-block-run.md) | [code-block-run/](code-block-run/README.md) | 3/4 ✅ · 1 ⬜ |

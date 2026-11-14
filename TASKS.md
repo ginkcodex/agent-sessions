@@ -58,6 +58,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Large file view | [large-file-view](docs/plan/large-file-view.md) | [large-file-view/](docs/tasks/large-file-view/README.md) | 1/4 ✅ · 3 ⬜ |
 | Chat MCP and plugin commands | [chat-plugin-commands](docs/plan/chat-plugin-commands.md) | [chat-plugin-commands/](docs/tasks/chat-plugin-commands/README.md) | 1/8 ✅ · 7 ⬜ |
 | Layout memory | [layout-memory](docs/plan/layout-memory.md) | [layout-memory/](docs/tasks/layout-memory/README.md) | 3/5 ✅ · 2 ⬜ |
 | Transcript tool readability | [transcript-tool-readability](docs/plan/transcript-tool-readability.md) | [transcript-tool-readability/](docs/tasks/transcript-tool-readability/README.md) | 3/4 ✅ · 1 ⬜ |
@@ -122,7 +123,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Codex Guardian ancestry | [codex-guardian-ancestry](docs/plan/codex-guardian-ancestry.md) | [codex-guardian-ancestry/](docs/tasks/codex-guardian-ancestry/README.md) | 1/1 ✅ |
 | Live filter for chat sessions | [chat-live-filter](docs/plan/chat-live-filter.md) | [chat-live-filter/](docs/tasks/chat-live-filter/README.md) | 2/2 ✅ |
 | Codex restore filenames | [codex-restore-filenames](docs/plan/codex-restore-filenames.md) | [codex-restore-filenames/](docs/tasks/codex-restore-filenames/README.md) | 6/6 ✅ |
-| Chat option dropdowns | [chat-options-dropdown](docs/plan/chat-options-dropdown.md) | [chat-options-dropdown/](docs/tasks/chat-options-dropdown/README.md) | 2/4 ✅ · 2 ⬜ |
+| Chat option dropdowns | [chat-options-dropdown](docs/plan/chat-options-dropdown.md) | [chat-options-dropdown/](docs/tasks/chat-options-dropdown/README.md) | 1/4 ✅ · 3 ⬜ |
 | Workspace filter release | [workspace-filter-release](docs/plan/workspace-filter-release.md) | [workspace-filter-release/](docs/tasks/workspace-filter-release/README.md) | 2/3 ✅ · 1 ⬜ |
 | Chat login environment | [chat-login-env](docs/plan/chat-login-env.md) | [chat-login-env/](docs/tasks/chat-login-env/README.md) | 3/4 ✅ · 1 ⬜ |
 | Code block run | [code-block-run](docs/plan/code-block-run.md) | [code-block-run/](docs/tasks/code-block-run/README.md) | 3/4 ✅ · 1 ⬜ |
