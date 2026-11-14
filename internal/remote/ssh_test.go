@@ -175,23 +175,56 @@ func TestControlDir_Permissions(t *testing.T) {
 }
 
 // The remote command line is run by the remote user's shell, as sshd does
-// with `$SHELL -c <line>`. LoginShell must expand there; the script must not.
-func TestBuildSSHArgs_LoginShellExpands(t *testing.T) {
+// with `$SHELL -c <line>`. A LoginCommand must mean the same to every login
+// shell, run its script with /bin/sh unchanged, and keep the environment the
+// login shell's startup files set. Shells missing here are skipped; the
+// Docker sshd tests cover fish, tcsh and zsh.
+func TestBuildSSHArgs_LoginCommandUnderEveryShell(t *testing.T) {
 	platform.RequireCommand(t, "/bin/sh")
-	args, err := BuildSSHArgs("box", []string{LoginShell, "-lc", `printf '%s|' "$0" '$(whoami)'`}, SSHOptions{ControlMaster: "no"})
+	script := `printf '%s|' "$0" "${AS_LOGIN:-none}" '$(whoami)' "it's" '100%' "back\\slash" 'ünï'`
+	args, err := BuildSSHArgs("box", LoginCommand(script), SSHOptions{ControlMaster: "no"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	line := args[len(args)-1]
-	cmd := exec.Command("/bin/sh", "-c", line)
-	// A synthetic home keeps host-specific login profiles out of this quoting test.
-	cmd.Env = append(os.Environ(), "SHELL=/bin/sh", "HOME="+t.TempDir())
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("run %q: %v: %s", line, err, out)
+	// Each shell's login startup file, in a synthetic home.
+	startup := map[string][2]string{
+		"sh":   {".profile", "export AS_LOGIN=sh\n"},
+		"dash": {".profile", "export AS_LOGIN=dash\n"},
+		"bash": {".bash_profile", "export AS_LOGIN=bash\n"},
+		"zsh":  {".zprofile", "export AS_LOGIN=zsh\n"},
+		"fish": {".config/fish/config.fish", "set -gx AS_LOGIN fish\n"},
+		"tcsh": {".tcshrc", "setenv AS_LOGIN tcsh\n"},
+		"csh":  {".cshrc", "setenv AS_LOGIN csh\n"},
 	}
-	if got := string(out); got != "/bin/sh|$(whoami)|" {
-		t.Fatalf("output = %q (line %q)", got, line)
+	ran := 0
+	for name, file := range startup {
+		shell, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		ran++
+		home := t.TempDir()
+		path := filepath.Join(home, file[0])
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(file[1]), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(shell, "-c", line)
+		cmd.Env = append(os.Environ(), "SHELL="+shell, "HOME="+home, "ZDOTDIR=", "XDG_CONFIG_HOME=", "ENV=", "AS_LOGIN=")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Errorf("%s: run %q: %v: %s", name, line, err, out)
+			continue
+		}
+		if got, want := string(out), "sh|"+name+`|$(whoami)|it's|100%|back\slash|ünï|`; got != want {
+			t.Errorf("%s: output = %q, want %q", name, got, want)
+		}
+	}
+	if ran == 0 {
+		t.Skip("no shell found")
 	}
 }
 

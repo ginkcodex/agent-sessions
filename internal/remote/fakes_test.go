@@ -111,7 +111,7 @@ func sshFakeMain() int {
 // fakeShell runs the remote command here with /bin/sh as the login shell:
 // what follows --exec for wsl.exe, else ssh's last argument.
 func fakeShell(args []string, stdin []byte) int {
-	argv := []string{"/bin/sh", "-c", scriptArg(args)}
+	argv := []string{"/bin/sh", "-c", args[len(args)-1]}
 	if i := slices.Index(args, "--exec"); i >= 0 {
 		argv = args[i+1:]
 	}
@@ -134,11 +134,40 @@ func readStdin() ([]byte, error) {
 	return io.ReadAll(os.Stdin)
 }
 
+// scriptArg is the script the remote command runs: ssh's last argument, or
+// for a login command (see launch.PosixLoginArgv) its last word decoded from
+// OctalEscape form.
 func scriptArg(args []string) string {
 	if len(args) == 0 {
 		return ""
 	}
-	return args[len(args)-1]
+	last := args[len(args)-1]
+	if !strings.Contains(strings.Join(args, "\x00"), `printf "$1"`) {
+		return last
+	}
+	// Over ssh the login argv arrives as one quoted line ending in the
+	// script's word; from wsl.exe --exec, as separate arguments.
+	if strings.HasSuffix(last, "'") {
+		last = strings.TrimSuffix(last, "'")
+		last = last[strings.LastIndexByte(last, '\'')+1:]
+	}
+	return unOctal(last)
+}
+
+// unOctal undoes launch.OctalEscape.
+func unOctal(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) {
+			if n, err := strconv.ParseUint(s[i+1:i+4], 8, 8); err == nil {
+				b.WriteByte(byte(n))
+				i += 3
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 func prefaceFromScript(script string) (string, bool) {

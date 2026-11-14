@@ -13,3 +13,9 @@ var ErrWSLNotInstalled = errors.New("WSL is not installed")
 func WSLExecArgs(distro, script string) []string {
 	return []string{"-d", distro, "--cd", "~", "--exec", "/bin/sh", "-c", octalDecoder, "sh", OctalEscape(script)}
 }
+
+// WSLLoginExecArgs returns the wsl.exe arguments that run script as
+// PosixLoginArgv does, in distro, starting in the user's home.
+func WSLLoginExecArgs(distro, script string) []string {
+	return append([]string{"-d", distro, "--cd", "~", "--exec"}, PosixLoginArgv(script)...)
+}

@@ -74,10 +74,6 @@ func CheckWSLDistro(distro string) error {
 // wslBinary is a variable so tests can run a fake wsl.exe.
 var wslBinary = launch.WSLBinary
 
-// wslLoginShell starts a WSL command's login shell. wsl.exe --exec runs no
-// shell of its own, so SHELL may be unset.
-const wslLoginShell = `"${SHELL:-/bin/sh}"`
-
 // wslArgs returns the wsl.exe arguments that run remoteCmd in distro, as
 // buildSSHArgs does for ssh.
 func wslArgs(distro string, remoteCmd []string) ([]string, error) {
@@ -89,7 +85,12 @@ func wslArgs(distro string, remoteCmd []string) ([]string, error) {
 			return nil, fmt.Errorf("%w: WSL command contains a NUL byte", launch.ErrUnsafeArgument)
 		}
 	}
-	return launch.WSLExecArgs(distro, remoteLine(remoteCmd, wslLoginShell)), nil
+	// wsl.exe --exec runs no shell of its own, so SHELL may be unset;
+	// PosixLoginArgv falls back to /bin/sh then.
+	if script, ok := loginScript(remoteCmd); ok {
+		return launch.WSLLoginExecArgs(distro, script), nil
+	}
+	return launch.WSLExecArgs(distro, remoteLine(remoteCmd)), nil
 }
 
 // buildWSLCmd runs remoteCmd in distro with no window. WSL_UTF8 makes

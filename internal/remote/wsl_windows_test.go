@@ -75,7 +75,7 @@ func TestWSLSmoke(t *testing.T) {
 		t.Errorf("sha256sum = %q, want %s", out.String(), want)
 	}
 
-	cmd, err := BuildHostCmd(ctx, host, []string{LoginShell, "-lc", fmt.Sprintf("exit %d", exitServerMissing)}, SSHOptions{})
+	cmd, err := BuildHostCmd(ctx, host, LoginCommand(fmt.Sprintf("exit %d", exitServerMissing)), SSHOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

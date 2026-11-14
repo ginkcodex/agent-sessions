@@ -1,11 +1,11 @@
 # Review fixes — tasks
 
 - **Plan:** [review-fixes.md](../../plan/review-fixes.md)
-- **Progress:** 8/25 done
+- **Progress:** 9/26 done
 
 From the architecture and feature review of 2026-11-14. RF-01 to RF-10 are
 security and privacy; RF-11 to RF-23 are reliability; RF-24 and RF-25 are CI
-and docs.
+and docs. RF-26 is reliability, found during RF-21.
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -29,8 +29,9 @@ and docs.
 | [RF-18](RF-18.md) | ⬜ Not started | Decide whether `turn_end` waits for questions; make the engine, store and tests agree | 3 h | None |
 | [RF-19](RF-19.md) | ⬜ Not started | Lstat (or open non-blocking) before reading in Read, Blame, diff and external | 1.5 h | None |
 | [RF-20](RF-20.md) | ⬜ Not started | Wire `SessionManager.Retry` into a production path with backoff | 3 h | None |
-| [RF-21](RF-21.md) | ⬜ Not started | Run remote probe, deploy and serve scripts through `/bin/sh`, as panels do | 3 h | None |
+| [RF-21](RF-21.md) | ✅ Done | Run remote probe, deploy and serve scripts through `/bin/sh`, as panels do | 3 h | None |
 | [RF-22](RF-22.md) | ⬜ Not started | Drop or version-gate `ForkAfterAuthentication=no` | 2 h | None |
 | [RF-23](RF-23.md) | ⬜ Not started | Unescape on read, TOML-valid quoting on write, check `Scanner.Err` | 2 h | None |
 | [RF-24](RF-24.md) | ⬜ Not started | Run the existing `.golangci.yml` and govulncheck in CI; fix `nilerr` hits | 3 h | None |
 | [RF-25](RF-25.md) | ⬜ Not started | AUR-07, LR-19, M5-04, M5-06, M8-07 and the code-diagnostics count | 1 h | None |
+| [RF-26](RF-26.md) | ⬜ Not started | Run agent panel tabs under csh and tcsh, which reject `-ilc` | 2 h | None |

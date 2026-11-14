@@ -69,7 +69,7 @@ Share-safe bundles leave the manifest's `CWD`, `RepoRoot`, `GitBranch` and
 sees a JSON key next to its value, and the home-path rules miss Windows
 profiles.
 
-### Reliability (RF-11 to RF-23)
+### Reliability (RF-11 to RF-23, RF-26)
 
 | Task | Finding | Checked |
 |---|---|---|
@@ -83,9 +83,10 @@ profiles.
 | RF-18 | A question still open when the prompt returns holds back `turn_end`; the store and its test assume the opposite | reviewer |
 | RF-19 | Reading a FIFO opens it before the regular-file check and hangs (`internal/files/files.go:615`) | ✅ |
 | RF-20 | A crashed language server can't restart before the app does; `SessionManager.Retry` has no production caller | reviewer |
-| RF-21 | Remote probe, deploy and serve run POSIX scripts under `$SHELL -lc`, which fails with fish, csh and tcsh | reviewer |
+| RF-21 | Remote probe, deploy and serve run POSIX scripts under `$SHELL -lc`, which fails with fish, csh and tcsh | ✅ |
 | RF-22 | Port forwards use `ForkAfterAuthentication=no`, which needs OpenSSH 8.7 | reviewer |
 | RF-23 | `configfile` values are not unescaped on read, so backslashes grow on every save; a line over 64 KiB truncates the rewrite | reviewer |
+| RF-26 | Agent panel tabs on a csh or tcsh host run `$SHELL -ilc`, which those shells reject (`internal/launch/panel_shell.go`) | ✅ (found in RF-21) |
 
 ### CI and docs (RF-24, RF-25)
 

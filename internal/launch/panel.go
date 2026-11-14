@@ -3,6 +3,7 @@ package launch
 import (
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/ginkcode/agent-sessions/internal/provider"
 )
@@ -83,6 +84,27 @@ func posixPanelAgentScript(argv []string, dir string) string {
 func PosixBootstrapArgv(script string) []string {
 	return []string{"/bin/sh", "-c", octalDecoder, "sh", OctalEscape(script)}
 }
+
+// PosixLoginArgv runs script with /bin/sh in the environment of the user's
+// login shell, whatever that shell is. Like PosixBootstrapArgv, the argv
+// means the same to bash, zsh, fish, csh and tcsh. /bin/sh starts the login
+// shell (SHELL, else /bin/sh) and has it run a line that hands script, still
+// in OctalEscape form, to /bin/sh again, so the login shell parses only that
+// shell-neutral line. csh and tcsh take -l only as their sole flag: they run
+// the line with -c, after their rc file but without .login.
+func PosixLoginArgv(script string) []string {
+	return []string{"/bin/sh", "-c", octalDecoder, "sh", OctalEscape(loginWrapper), OctalEscape(script)}
+}
+
+// loginWrapper is the /bin/sh script PosixLoginArgv decodes and runs; $2 is
+// the script in OctalEscape form.
+var loginWrapper = `__as_shell=${SHELL:-/bin/sh}
+__as_run="/bin/sh -c '` + strings.NewReplacer(`"`, `\"`, `$`, `\$`).Replace(octalDecoder) + `' sh '$2'"
+case "${__as_shell##*/}" in
+csh|tcsh) exec "$__as_shell" -c "$__as_run" ;;
+*) exec "$__as_shell" -lc "$__as_run" ;;
+esac
+`
 
 // WSLPanelArgv returns the wsl.exe argv that runs script with /bin/sh in
 // distro.
