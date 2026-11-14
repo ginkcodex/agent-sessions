@@ -7,10 +7,17 @@
 
 ## Scope
 
-Implement the inventory contracts verified in CPC-02. Prefer the adapter for
-session MCP status. Where necessary expose a host-side bounded read-only native
-CLI listing (Claude `plugin list --json`) using the session cwd, resolved CLI,
-login environment and selected host. Return typed safe inventory fields and
+Implement the inventory contracts verified in CPC-02
+([contract](../../plan/chat-plugin-commands-contract.md)). `/mcp` needs no
+backend, because both adapters handle it. Expose a host-side, bounded,
+read-only `/plugin` listing:
+
+- Claude: `claude plugin list --json`.
+- Codex: `codex plugin list --json`, with a timeout of at least 90 s and
+  cancellation.
+
+Run it with the session cwd, resolved CLI, login environment and selected
+host. O‍penCode returns "unsupported" (see [CPC-09](CPC-09.md)). Return typed safe inventory fields and
 explicit unsupported/error states. No mutation commands or credential reads.
 
 ## Likely files

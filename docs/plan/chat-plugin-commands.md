@@ -86,6 +86,10 @@ of this first release.
   without accidentally merging different commands/arguments or alias collisions.
 - These observations do not verify a real ACP plugin turn. CPC-02/CPC-08 must
   validate that path rather than assuming the CLI log shape is universal.
+- The verified per-agent interfaces, safe fields, membership rule and record
+  shapes are in the [provider contract](chat-plugin-commands-contract.md)
+  (CPC-02). `/mcp` is handled by both adapters. `/plugin` is an app-side
+  listing for Claude and Codex. O‍penCode is unsupported in the first release.
 
 ## Decisions
 
