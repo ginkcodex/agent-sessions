@@ -403,6 +403,24 @@ func TestAgentCrashMidTurn(t *testing.T) {
 	}
 }
 
+// A message over the frame limit ends the connection while the agent still
+// runs: the client kills it, and the exit carries the connection's error.
+func TestOversizedMessageStopsAgent(t *testing.T) {
+	c, _ := start(t, acp.ClientOptions{})
+	_, err := prompt(t, c, newSession(t, c), "flood")
+	if !errors.Is(err, acp.ErrFrameTooLarge) {
+		t.Fatalf("prompt err = %v", err)
+	}
+	var exit *acp.ExitError
+	if !errors.As(err, &exit) || !errors.Is(exit.Exit, acp.ErrFrameTooLarge) {
+		t.Fatalf("err = %v (%T), want an ExitError for the frame limit", err, err)
+	}
+	waitExited(t, c)
+	if err := c.ExitErr(); !errors.Is(err, acp.ErrFrameTooLarge) {
+		t.Fatalf("ExitErr = %v", err)
+	}
+}
+
 func TestAuthRequired(t *testing.T) {
 	c, _ := start(t, acp.ClientOptions{})
 	_, err := prompt(t, c, newSession(t, c), "auth")

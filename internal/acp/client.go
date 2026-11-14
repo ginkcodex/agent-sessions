@@ -76,6 +76,10 @@ type Client struct {
 	exited  chan struct{}
 	waitErr error // set before exited is closed
 
+	// connErr is why the connection broke under a running agent, which
+	// the client then killed; under mu.
+	connErr error
+
 	mu       sync.Mutex
 	closing  bool
 	perms    map[*permWait]struct{}
@@ -162,6 +166,7 @@ func Start(ctx context.Context, command Command, opts ClientOptions) (*Client, e
 		OnProtocolError: opts.OnProtocolError,
 	})
 	go c.watch()
+	go c.watchConn()
 
 	info := opts.ClientInfo
 	if info.Name == "" {
@@ -192,9 +197,17 @@ func (c *Client) Info() InitializeResponse { return c.info }
 func (c *Client) Done() <-chan struct{} { return c.exited }
 
 // ExitErr is the process's exit error once Done is closed; nil for status 0.
+// When the connection broke first and the client killed the agent for it,
+// it is the connection's error instead: ErrFrameTooLarge, ErrAgentGone or a
+// read error.
 func (c *Client) ExitErr() error {
 	select {
 	case <-c.exited:
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.connErr != nil {
+			return c.connErr
+		}
 		return c.waitErr
 	default:
 		return nil
@@ -367,6 +380,35 @@ func (c *Client) watch() {
 	c.released = true
 	_ = c.tree.Release()
 	c.treeMu.Unlock()
+}
+
+// watchConn stops an agent whose connection ended under it. After an
+// oversized message or a failed read nothing more is read from the agent, so
+// it is killed and Done follows, rather than the chat looking live. An agent
+// that closed its output is given the grace period to exit first.
+func (c *Client) watchConn() {
+	select {
+	case <-c.conn.Done():
+	case <-c.exited:
+		return
+	}
+	err := c.conn.Err()
+	if errors.Is(err, ErrClosed) {
+		return // Close stops the agent
+	}
+	if errors.Is(err, ErrAgentGone) && c.waitExit(c.opts.Grace) {
+		return
+	}
+	c.mu.Lock()
+	select {
+	case <-c.exited:
+		c.mu.Unlock()
+		return
+	default:
+	}
+	c.connErr = err
+	c.mu.Unlock()
+	c.signalTree((*proctree.Tree).Kill)
 }
 
 func (c *Client) call(ctx context.Context, method string, params, result any) error {

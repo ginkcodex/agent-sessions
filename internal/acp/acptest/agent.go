@@ -20,6 +20,8 @@
 //	             "child <pid>"
 //	stubborn     from now on, ignores a closed stdin (SIGTERM still works)
 //	immortal     from now on, ignores a closed stdin and SIGTERM
+//	flood        from now on, ignores a closed stdin; writes one line longer
+//	             than acp.DefaultMaxFrameBytes, then waits for session/cancel
 //	blocks       one chunk listing the prompt's blocks, as describeBlocks
 //	             does; also any prompt that does not start with text
 //	question F   asks form F (QuestionForms; "claude" when left out) with
@@ -465,6 +467,18 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 		return end(acp.StopEndTurn)
 	case "question", "withdraw":
 		return a.question(p.SessionID, word, fields[1:])
+	case "flood":
+		a.mu.Lock()
+		a.stubborn = true
+		a.mu.Unlock()
+		line := make([]byte, acp.DefaultMaxFrameBytes+1)
+		for i := range line {
+			line[i] = 'x'
+		}
+		// Straight to stdout: not a message, only too long to be one.
+		_, _ = os.Stdout.Write(append(line, '\n'))
+		<-ctx.Done()
+		return end(acp.StopCancelled)
 	case "stubborn", "immortal":
 		a.mu.Lock()
 		a.stubborn = true
