@@ -23,6 +23,7 @@ import {
   addPrompt,
   applySessionUpdate,
   beginTurn,
+  blockText,
   emptyTail,
   endTurn,
   newSequence,
@@ -90,12 +91,29 @@ export interface Chat {
   authMethods?: ChatAuthMethod[];
   /** How the chat ended. */
   exit?: ChatExitEvent;
+  /** The last captured inventory command (/mcp) and its reply, until dismissed. */
+  inspection?: ChatInspection;
   /** The connection epoch the chat belongs to. */
   epoch: number;
 }
 
+/**
+ * An inventory command sent as a prompt whose turn the app keeps out of the
+ * transcript: its reply goes here, for the command result modal, instead.
+ */
+export interface ChatInspection {
+  /** The text sent, e.g. "/mcp". */
+  command: string;
+  /** The agent's reply so far, as Markdown. */
+  text: string;
+  state: 'running' | 'done' | 'cancelled' | 'failed' | 'exited';
+  error?: string;
+}
+
 interface Internal {
   seq: ChatSequence<ChatEvent>;
+  /** An inspection's turn: pending until its turn_start, open until its turn_end. */
+  capture?: 'pending' | 'open';
   /** The prompt sent and waiting for its turn_start. */
   prompt?: TailPrompt;
   /** The messages this window queued, by queued ID: they keep an image's bytes to show. */
@@ -170,7 +188,7 @@ export class ChatsStore {
   reset(sameHost = false): void {
     // A chat still starting is refused when its start answers.
     const ended = (c: Chat): Chat =>
-      c.phase === 'exited' ? c : { ...c, phase: 'exited', exit: { chatId: c.chatId, seq: 0, reason: 'disconnected' }, permissions: [], questions: [], queue: [], tail: endTurn(c.tail) };
+      c.phase === 'exited' ? c : { ...c, phase: 'exited', exit: { chatId: c.chatId, seq: 0, reason: 'disconnected' }, permissions: [], questions: [], queue: [], tail: endTurn(c.tail), inspection: endInspection(c.inspection, 'exited') };
     this.chats = sameHost ? this.chats.filter((c) => c.phase !== 'starting').map((c) => ({ ...ended(c), epoch: epoch() })) : [];
     this.internal.clear();
     this.early.clear();
@@ -291,6 +309,44 @@ export class ChatsStore {
       if (this.byKey(chat.key)?.queue.some((q) => q.id === queued)) state.queued.set(queued, prompt);
     }
     return queued;
+  }
+
+  /**
+   * Sends an inventory command (exactly /mcp) as a prompt whose turn stays
+   * out of the transcript: the reply collects in chat.inspection. Only an
+   * idle chat with nothing queued takes one, so no other turn's text joins
+   * it; a failure ends the inspection rather than throwing.
+   */
+  async inspect(chatId: string, command: string): Promise<void> {
+    const chat = this.byChatId(chatId);
+    const state = this.internal.get(chat?.key ?? '');
+    if (!chat || !state) throw new Error('The chat is not open.');
+    if (chat.phase !== 'idle' || chat.queue.length > 0 || state.capture) {
+      const error = `${command} runs only while the agent is idle and nothing is queued.`;
+      this.update(chat.key, (c) => (c.inspection?.state === 'running' ? c : { ...c, inspection: { command, text: '', state: 'failed', error } }));
+      return;
+    }
+    state.prompt = undefined;
+    state.capture = 'pending';
+    this.update(chat.key, (c) => ({ ...c, phase: 'working', error: undefined, authMethods: undefined, inspection: { command, text: '', state: 'running' } }));
+    let failure = '';
+    try {
+      // Another window's turn began first: the backend queued it as an ordinary message.
+      if ((await api.chatPrompt(chatId, command, [])).queued) failure = `Another turn was running, so ${command} was queued as a message.`;
+    } catch (e) {
+      failure = errorText(e);
+      this.update(chat.key, (c) => (c.phase === 'working' && !c.tail.turnOpen ? { ...c, phase: 'idle' } : c));
+    }
+    if (failure && state.capture === 'pending') {
+      state.capture = undefined;
+      this.update(chat.key, (c) => ({ ...c, inspection: c.inspection && { ...c.inspection, state: 'failed', error: failure } }));
+    }
+  }
+
+  /** Forgets the inspection the modal showed; a running one's reply is still kept out of the transcript. */
+  dismissInspection(chatId: string): void {
+    const chat = this.byChatId(chatId);
+    if (chat?.inspection) this.update(chat.key, (c) => ({ ...c, inspection: undefined }));
   }
 
   /**
@@ -447,9 +503,10 @@ export class ChatsStore {
     if (e.exit) {
       const exit = e.exit;
       state.prompt = undefined;
+      state.capture = undefined;
       state.asked.clear();
       state.queued.clear();
-      this.update(key, (c) => ({ ...c, phase: 'exited', exit, permissions: [], questions: [], queue: [], tail: endTurn(c.tail) }));
+      this.update(key, (c) => ({ ...c, phase: 'exited', exit, permissions: [], questions: [], queue: [], tail: endTurn(c.tail), inspection: endInspection(c.inspection, 'exited') }));
       return;
     }
     switch (e.kind) {
@@ -461,6 +518,11 @@ export class ChatsStore {
         return;
       case 'session_update': {
         const u = e.update;
+        if (state.capture === 'open' && u && CAPTURED.has(u.sessionUpdate)) {
+          const text = u.sessionUpdate === 'agent_message_chunk' ? blockText(u.content) : '';
+          if (text) this.update(key, (c) => (c.inspection?.state === 'running' ? { ...c, inspection: { ...c.inspection, text: c.inspection.text + text } } : c));
+          return;
+        }
         this.update(key, (c) => {
           const tail = applySessionUpdate(c.tail, u);
           return tail === c.tail ? c : { ...c, tail };
@@ -508,7 +570,9 @@ export class ChatsStore {
         // A turn for a queued message names it; any other sends the prompt
         // this window sent, if it did.
         let prompt: TailPrompt | undefined;
-        if (e.prompt) {
+        // The inspection's turn opens without a prompt in the tail.
+        if (!e.prompt && state.capture === 'pending') state.capture = 'open';
+        else if (e.prompt) {
           prompt = this.takeQueued(state, e.prompt);
         } else {
           prompt = state.prompt;
@@ -529,6 +593,20 @@ export class ChatsStore {
         // them) are not needed.
         const queue = this.byKey(key)?.queue ?? [];
         for (const id of state.queued.keys()) if (!queue.some((q) => q.id === id)) state.queued.delete(id);
+        if (state.capture === 'open') {
+          // How the inspection ended is the modal's to show, not the chat's.
+          state.capture = undefined;
+          const end = e.error ? 'failed' : e.stopReason === 'cancelled' ? 'cancelled' : 'done';
+          this.update(key, (c) => ({
+            ...c,
+            phase: c.phase === 'exited' ? c.phase : 'idle',
+            tail: endTurn(c.tail),
+            permissions: [],
+            authMethods: e.authMethods?.length ? e.authMethods : undefined,
+            inspection: c.inspection && { ...endInspection(c.inspection, end)!, ...(e.error && { error: e.error }) },
+          }));
+          return;
+        }
         // Permission requests end with their turn; the backend has answered
         // them. A question goes only with its question_resolved: the agent
         // may still wait for it (Codex's async questions outlive the prompt
@@ -585,6 +663,13 @@ export class ChatsStore {
     const attachments = (q.attachments ?? []).map((a) => ({ name: a.name, mimeType: a.mimeType ?? '', size: a.size ?? 0 }));
     return { text: q.text ?? '', sentAt: Date.now(), ...(attachments.length > 0 && { attachments }) };
   }
+}
+
+/** The agent's output an inspection's turn keeps out of the tail. */
+const CAPTURED = new Set(['agent_message_chunk', 'agent_thought_chunk', 'user_message_chunk', 'tool_call', 'tool_call_update', 'plan']);
+
+function endInspection(i: ChatInspection | undefined, end: Exclude<ChatInspection['state'], 'running'>): ChatInspection | undefined {
+  return i?.state === 'running' ? { ...i, state: end } : i;
 }
 
 function errorText(e: unknown): string {

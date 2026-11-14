@@ -773,3 +773,90 @@ test('closing the chat clears its question', async () => {
     assert.deepEqual(store.byChatId(chat.chatId).questions, []);
   });
 });
+
+test('a captured /mcp keeps its turn out of the tail, and the next turn renders normally', async () => {
+  const { MOCK_MCP_STATUS } = await import('../src/lib/mock/mockChat.ts');
+  await withChats(async ({ store, mock }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR });
+    await store.inspect(chat.chatId, '/mcp');
+    assert.equal(store.byChatId(chat.chatId).phase, 'working');
+    await until('inspection end', () => store.byChatId(chat.chatId).inspection?.state === 'done');
+    let c = store.byChatId(chat.chatId);
+    assert.deepEqual(c.inspection, { command: '/mcp', text: MOCK_MCP_STATUS, state: 'done' });
+    assert.equal(c.phase, 'idle');
+    assert.deepEqual(c.tail.items, []);
+    assert.equal(c.tail.turnOpen, false);
+    assert.equal(c.stopReason, undefined, "the inspection's end is the modal's");
+
+    await store.prompt(chat.chatId, 'hello');
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    c = store.byChatId(chat.chatId);
+    assert.deepEqual(c.tail.items.filter((i) => i.type === 'text').map((i) => i.role), ['user', 'assistant']);
+    assert.ok(!c.tail.items.some((i) => i.text?.includes('MCP servers')));
+    assert.equal(c.inspection.text, MOCK_MCP_STATUS, 'no other turn joins it');
+
+    // Nothing of /mcp is saved, so reconciling brings nothing back.
+    const page = await mock.getMessages(c.session, -1, 100);
+    assert.ok(!page.messages.some((m) => m.parts.some((p) => p.text?.includes('/mcp') || p.text?.includes('MCP servers'))));
+    store.reconcile(chat.chatId, page.messages);
+    assert.deepEqual(store.byChatId(chat.chatId).tail.items, []);
+
+    store.dismissInspection(chat.chatId);
+    assert.equal(store.byChatId(chat.chatId).inspection, undefined);
+  });
+});
+
+test('a cancelled /mcp ends the inspection cancelled; a dismissed one still stays out of the tail', async () => {
+  await withChats(async ({ store, mock }) => {
+    mock.chat.stepMs = 5;
+    const chat = await store.start({ agent: 'codex', dir: DIR });
+    await store.inspect(chat.chatId, '/mcp');
+    await store.cancel(chat.chatId);
+    await until('inspection end', () => store.byChatId(chat.chatId).inspection?.state !== 'running');
+    assert.equal(store.byChatId(chat.chatId).inspection.state, 'cancelled');
+    assert.deepEqual(store.byChatId(chat.chatId).tail.items, []);
+
+    await store.inspect(chat.chatId, '/mcp');
+    store.dismissInspection(chat.chatId);
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    assert.equal(store.byChatId(chat.chatId).inspection, undefined);
+    assert.deepEqual(store.byChatId(chat.chatId).tail.items, []);
+  });
+});
+
+test('/mcp is refused while a turn runs, and never queued', async () => {
+  await withChats(async ({ store }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR });
+    await store.prompt(chat.chatId, 'hang');
+    await store.inspect(chat.chatId, '/mcp');
+    const c = store.byChatId(chat.chatId);
+    assert.equal(c.inspection.state, 'failed');
+    assert.match(c.inspection.error, /only while the agent is idle/);
+    assert.deepEqual(c.queue, []);
+    await store.cancel(chat.chatId);
+    await until('turn end', () => store.byChatId(chat.chatId).phase === 'idle');
+    assert.deepEqual(users(store, chat.chatId).map((u) => u.text), ['hang']);
+  });
+});
+
+test('a refused /mcp prompt and a chat exit end the inspection truthfully', async () => {
+  await withChats(async ({ store, mock }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR });
+    const prompt = mock.chatPrompt;
+    mock.chatPrompt = async () => {
+      throw new Error('the chat is busy');
+    };
+    await store.inspect(chat.chatId, '/mcp');
+    mock.chatPrompt = prompt;
+    let c = store.byChatId(chat.chatId);
+    assert.deepEqual([c.inspection.state, c.inspection.error, c.phase], ['failed', 'the chat is busy', 'idle']);
+
+    mock.chat.stepMs = 5;
+    await store.inspect(chat.chatId, '/mcp');
+    await store.close(chat.chatId);
+    await until('exit', () => store.byChatId(chat.chatId).phase === 'exited');
+    c = store.byChatId(chat.chatId);
+    assert.equal(c.inspection.state, 'exited');
+    assert.deepEqual(c.tail.items, []);
+  });
+});

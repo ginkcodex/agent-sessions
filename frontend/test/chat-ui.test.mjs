@@ -7,6 +7,7 @@ import {
   chatAgentAvailable,
   commandChoices,
   endChatQuestion,
+  isMcpListing,
   isPluginListing,
   PLUGIN_COMMAND,
   pluginRows,
@@ -162,6 +163,14 @@ test('commandChoices lists the commands a / or $ word could name, by full or sho
   assert.deepEqual(commandChoices(commands, '/mc'), [{ text: '/mcp', description: 'MCP status', hint: '' }]);
   assert.deepEqual(commandChoices(commands, '/ponytail:'), [{ text: '/ponytail:ponytail ', description: '(ponytail) Lazy', hint: '[lite|full]' }]);
   assert.deepEqual(commandChoices([], '/'), []);
+});
+
+test('only a bare /mcp the agent advertises is the captured listing', () => {
+  const mcp = [{ name: 'mcp', input: { hint: '[reconnect|enable|disable [<server>|all]]' } }];
+  assert.equal(isMcpListing('/mcp', mcp), true);
+  assert.equal(isMcpListing(' /mcp\n', mcp), true);
+  assert.equal(isMcpListing('/mcp reconnect docs', mcp), false, 'arguments change servers: an ordinary turn');
+  assert.equal(isMcpListing('/mcp', []), false, 'an agent without /mcp gets the text as a prompt');
 });
 
 test('/plugin is the app\'s listing unless the agent has its own, and a plugin is loaded only by its commands', () => {

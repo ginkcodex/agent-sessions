@@ -287,6 +287,14 @@ export function isPluginListing(text: string, commands: readonly ChatCommand[]):
 }
 
 /**
+ * Whether text is the agent's bare /mcp, the status listing the app captures
+ * for its modal. /mcp with arguments changes servers: an ordinary turn.
+ */
+export function isMcpListing(text: string, commands: readonly ChatCommand[]): boolean {
+  return text.trim() === '/mcp' && commands.some((c) => c.name === 'mcp');
+}
+
+/**
  * /plugin's rows. The CLI says what is installed and enabled on disk; a
  * plugin is loaded in the chat only when its catalog has a command named
  * "<plugin>:…" (Codex: "$<plugin>:…"). mcp: names are MCP prompts.

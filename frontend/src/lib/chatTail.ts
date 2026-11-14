@@ -174,7 +174,7 @@ export function applySessionUpdate(tail: ChatTail, update: AcpSessionUpdate | un
   }
 }
 
-function blockText(block: unknown): string {
+export function blockText(block: unknown): string {
   const b = block as AcpContentBlock | undefined;
   return b && b.type === 'text' && typeof b.text === 'string' ? b.text : '';
 }

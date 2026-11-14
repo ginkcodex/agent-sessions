@@ -87,6 +87,15 @@ export function mockAttachImage(name: string, data: string): ChatAttachment {
   return { kind: 'image', name: label, mimeType: `image/${format}`, size: base64Size(data), data };
 }
 
+/** A /mcp reply in the shape both adapters format it. */
+export const MOCK_MCP_STATUS = [
+  '**MCP servers:** 3 (1 failed, 1 connected, 1 disabled)',
+  '**Failed**\n- `docs`: connection refused',
+  '**Connected**\n- `super-fetch`: 2 tools',
+  '**Disabled:** `old-search`',
+  'Run `/mcp reconnect <server>` to reconnect one server, or `/mcp reconnect` to reconnect every server that is not connected and not disabled.',
+].join('\n\n');
+
 /** What the adapters advertise: Claude's plugin commands, Codex's skills with $, and /mcp. */
 function mockCommands(agent: AgentID): ChatCommand[] {
   const mcp: ChatCommand = { name: 'mcp', description: 'Show MCP server status', input: { hint: '[reconnect|enable|disable [<server>|all]]' } };
@@ -491,6 +500,7 @@ export class MockChats {
     let stopReason = 'end_turn';
     let error: string | undefined;
     let authMethods: ChatUpdateEvent['authMethods'];
+    let local = false;
     try {
       await this.pause();
       if (/crash/i.test(text)) {
@@ -500,6 +510,12 @@ export class MockChats {
       if (/login/i.test(text)) {
         error = 'Authentication required: provider authentication required';
         authMethods = [{ id: 'mock-login', name: 'Log in', description: 'Run `mock auth login` in the terminal' }];
+        return;
+      }
+      if (text.trim() === '/mcp') {
+        // The adapters answer /mcp themselves and save nothing.
+        local = true;
+        await this.stream(chat, turn, 'agent_message_chunk', msg, MOCK_MCP_STATUS);
         return;
       }
       if (/fail/i.test(text)) {
@@ -630,7 +646,7 @@ export class MockChats {
           saved.push({ id: `user_mock_${chat.state.chatId}_${n}_steered_${i + 1}`, role: 'user', time: new Date().toISOString(), parts: userParts(q.text, q.attachments) });
         }
         if (reply.parts.length > 0) saved.push(reply);
-        if (!error) this.host.save(chat.state.session, chat.state.dir, saved);
+        if (!error && !local) this.host.save(chat.state.session, chat.state.dir, saved);
         this.update(chat, error ? { kind: 'turn_end', error, ...(authMethods && { authMethods }) } : { kind: 'turn_end', stopReason });
         // The queue goes on after a normal end, and pauses after any other.
         const next = !error && stopReason === 'end_turn' ? chat.queue.shift() : undefined;
