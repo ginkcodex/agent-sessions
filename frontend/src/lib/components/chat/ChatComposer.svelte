@@ -13,7 +13,7 @@
   import type { Chat } from '../../stores/chats.svelte';
   import type { ChatAttachment, ChatAttachResult, ChatDraft } from '../../types';
   import { api } from '../../api';
-  import { addAttachments, canSendPrompt, commandChoices, endChatQuestion, isPluginListing, PLUGIN_COMMAND, skippedToast, switchToTerminalQuestion } from '../../chat';
+  import { addAttachments, canSendPrompt, commandChoices, endChatQuestion, isMcpListing, isPluginListing, PLUGIN_COMMAND, skippedToast, switchToTerminalQuestion } from '../../chat';
   import AttachmentChips from './AttachmentChips.svelte';
   import { chats } from '../../stores/chats.svelte';
   import { toast } from '../../stores/toast.svelte';
@@ -24,6 +24,7 @@
   import ChatOptions from './ChatOptions.svelte';
   import QueuedMessages from './QueuedMessages.svelte';
   import PluginInventory from './PluginInventory.svelte';
+  import McpServersDialog from './McpServersDialog.svelte';
   import Icon from '../common/Icon.svelte';
 
   interface Props {
@@ -120,6 +121,14 @@
     if (chat.phase !== 'starting' && !closed && attachments.length === 0 && isPluginListing(text, commands)) {
       text = '';
       pluginListing = { chatId: chat.chatId, n: (pluginListing?.n ?? 0) + 1 };
+      return;
+    }
+    // A bare /mcp answers in the modal; the store refuses it while a turn runs.
+    if (chat.phase !== 'starting' && !closed && attachments.length === 0 && isMcpListing(text, commands)) {
+      text = '';
+      void chats.inspect(chat.chatId, '/mcp').catch((err) => {
+        if (!isStaleReply(err)) toast.show({ title: 'Could not list the MCP servers', body: errorText(err, 'The chat is not open.'), tone: 'error' });
+      });
       return;
     }
     if (!canSend) return;
@@ -301,6 +310,16 @@
     void send();
   }}
 >
+  {#if chat.inspection}
+    <McpServersDialog
+      inspection={chat.inspection}
+      {agentName}
+      onClose={() => {
+        chats.dismissInspection(chat.chatId);
+        input?.focus();
+      }}
+    />
+  {/if}
   {#if pluginListing?.chatId === chat.chatId && !closed}
     {#key pluginListing.n}
       <PluginInventory chatId={pluginListing.chatId} {agentName} {commands} onClose={() => (pluginListing = null)} />

@@ -8,6 +8,7 @@ import {
   commandChoices,
   endChatQuestion,
   isMcpListing,
+  parseMcpStatus,
   isPluginListing,
   PLUGIN_COMMAND,
   pluginRows,
@@ -173,6 +174,60 @@ test('only a bare /mcp the agent advertises is the captured listing', () => {
   assert.equal(isMcpListing('/mcp', []), false, 'an agent without /mcp gets the text as a prompt');
 });
 
+test("parseMcpStatus reads Claude's /mcp reply, scopes, escapes and code spans", () => {
+  const claude = [
+    '**MCP servers:** 5 (1 failed, 1 needs authentication, 2 connected, 1 disabled)',
+    '**Failed**\n- `docs`: connect ECONNREFUSED 127.0.0.1:3000; 0 tools',
+    '**Needs authentication**\n- `git``hub`',
+    '**Connected**\n- `fetch` (user): 1 tool\n- `fetch` (project): a\\_b \\*c\\* \\<x\\> \\| y; 3 tools',
+    '**Disabled:** `old`, `` `tick` ``',
+    'Run `/mcp reconnect <server>` to reconnect one server, or `/mcp reconnect` to reconnect every server that is not connected and not disabled.',
+  ].join('\n\n');
+  assert.deepEqual(parseMcpStatus(claude), {
+    summary: '5 (1 failed, 1 needs authentication, 2 connected, 1 disabled)',
+    groups: [
+      { title: 'Failed', servers: [{ name: 'docs', detail: 'connect ECONNREFUSED 127.0.0.1:3000; 0 tools' }] },
+      { title: 'Needs authentication', servers: [{ name: 'git``hub', detail: '' }] },
+      { title: 'Connected', servers: [{ name: 'fetch', scope: 'user', detail: '1 tool' }, { name: 'fetch', scope: 'project', detail: 'a_b *c* <x> | y; 3 tools' }] },
+      { title: 'Disabled', servers: [{ name: 'old', detail: '' }, { name: '`tick`', detail: '' }] },
+    ],
+    notes: ['Run `/mcp reconnect <server>` to reconnect one server, or `/mcp reconnect` to reconnect every server that is not connected and not disabled.'],
+  });
+  assert.deepEqual(parseMcpStatus('No MCP servers are configured.'), { summary: 'No MCP servers are configured.', groups: [], notes: [] });
+});
+
+test("parseMcpStatus reads Codex's statuses and notes, and refuses other shapes", () => {
+  const codex = [
+    'Reloaded the MCP configuration.\nSome MCP servers are still starting. Run `/mcp` again later to see their status.',
+    '',
+    '**MCP servers:** 4 (1 cancelled, 1 not started, 1 unknown, 1 connected)',
+    '',
+    '**Cancelled**\n- `a`',
+    '',
+    '**Not started**\n- (unnamed): not signed in',
+    '',
+    '**Connected**\n- `b`: 2 tools; tool \\~list\\~ failed',
+    '',
+    '**Unknown**\n- `c`',
+    '',
+    'Run `/mcp reconnect` to restart the servers that are not connected.',
+  ].join('\n');
+  const st = parseMcpStatus(codex);
+  assert.equal(st.summary, '4 (1 cancelled, 1 not started, 1 unknown, 1 connected)');
+  assert.deepEqual(st.groups.map((g) => [g.title, g.servers.map((s) => `${s.name}|${s.detail}`)]), [
+    ['Cancelled', ['a|']],
+    ['Not started', ['(unnamed)|not signed in']],
+    ['Connected', ['b|2 tools; tool ~list~ failed']],
+    ['Unknown', ['c|']],
+  ]);
+  assert.equal(st.notes.length, 2);
+  assert.match(st.notes[0], /^Reloaded/);
+
+  for (const text of ['', 'Done. You said "/mcp"', '**Connected**\n- `a`', '**MCP servers:** 1 (1 connected)\n\n**Connected**\n- a', '**MCP servers:** 1\n\n**Disabled:** `a` `b`', '**MCP servers:** 1\n\n**MCP servers:** 2']) {
+    assert.equal(parseMcpStatus(text), null, text);
+  }
+});
+
 test('/plugin is the app\'s listing unless the agent has its own, and a plugin is loaded only by its commands', () => {
   assert.equal(isPluginListing('/plugin', []), true);
   assert.equal(isPluginListing(' /plugin\n', [{ name: 'mcp' }]), true);
@@ -226,6 +281,7 @@ async function renderComposer(c, props = {}) {
     ["'../../chat'", lib('../../chat.ts', COMPOSER_URL)],
     ["import AttachmentChips from './AttachmentChips.svelte';", 'const AttachmentChips = () => {};'],
     ["import PluginInventory from './PluginInventory.svelte';", 'const PluginInventory = () => {};'],
+    ["import McpServersDialog from './McpServersDialog.svelte';", 'const McpServersDialog = () => {};'],
     [
       "import QueuedMessages from './QueuedMessages.svelte';",
       'const QueuedMessages = ($$renderer, p) => $$renderer.push(`<div data-stub-queue="${p.chat.queue.length}" data-empty="${p.composerEmpty}"></div>`);',

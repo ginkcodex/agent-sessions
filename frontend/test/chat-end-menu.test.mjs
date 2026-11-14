@@ -39,6 +39,12 @@ async function loadComponent(name, { keepMount = false } = {}) {
     .replace("import ChatOptions from './ChatOptions.svelte';", 'const ChatOptions = () => {};')
     .replace("import QueuedMessages from './QueuedMessages.svelte';", 'const QueuedMessages = globalThis.__endMenu.QueuedMessages;')
     .replace("import PluginInventory from './PluginInventory.svelte';", 'const PluginInventory = globalThis.__endMenu.PluginInventory;')
+    .replace("import McpServersDialog from './McpServersDialog.svelte';", 'const McpServersDialog = globalThis.__endMenu.McpServersDialog;')
+    .replace("import CommandResultDialog from './CommandResultDialog.svelte';", 'const CommandResultDialog = globalThis.__endMenu.CommandResultDialog;')
+    .replace("import DialogCloseButton from '../common/DialogCloseButton.svelte';", 'const DialogCloseButton = globalThis.__endMenu.DialogCloseButton;')
+    // The Markdown renderer is the transcript's; here its text is enough.
+    .replace("import TextPart from '../transcript/parts/TextPart.svelte';", 'const TextPart = (anchor, p) => { const el = document.createElement("div"); el.dataset.markdown = ""; el.textContent = p.text; anchor.before(el); };')
+    .replace("'../../modalFocus'", lib('../../modalFocus.ts', url))
     .replace("import Icon from '../common/Icon.svelte';", 'const Icon = () => {};')
     .replace("import { chats } from '../../stores/chats.svelte';", 'const chats = globalThis.__endMenu.chats;')
     .replace("import { toast } from '../../stores/toast.svelte';", 'const toast = globalThis.__endMenu.toast;')
@@ -56,6 +62,8 @@ globalThis.__endMenu = {
     close: async (chatId) => calls.push(['close', chatId]),
     dismiss: (key) => calls.push(['dismiss', key]),
     prompt: async (chatId, text) => calls.push(['prompt', chatId, text]),
+    inspect: async (chatId, text) => calls.push(['inspect', chatId, text]),
+    dismissInspection: (chatId) => calls.push(['dismissInspection', chatId]),
     sendNow: async (chatId, id) => calls.push(['sendNow', chatId, id]),
     unqueue: async (chatId, id) => {
       calls.push(['unqueue', chatId, id]);
@@ -73,6 +81,9 @@ globalThis.__endMenu = {
 };
 globalThis.__endMenu.QueuedMessages = await loadComponent('QueuedMessages');
 globalThis.__endMenu.PluginInventory = await loadComponent('PluginInventory', { keepMount: true });
+globalThis.__endMenu.DialogCloseButton = await loadComponent('../common/DialogCloseButton');
+globalThis.__endMenu.CommandResultDialog = await loadComponent('CommandResultDialog');
+globalThis.__endMenu.McpServersDialog = await loadComponent('McpServersDialog');
 const Composer = await loadComponent('ChatComposer');
 
 // Lets every pending promise chain run before an assertion.
@@ -118,7 +129,7 @@ async function openComposer(fields, props = {}) {
     calls.length = 0;
     ask = async () => 'cancel';
   };
-  return { target, trigger, items, disabledItems, clickItem, openMenu, escape, outside, close };
+  return { target, state, trigger, items, disabledItems, clickItem, openMenu, escape, outside, close };
 }
 
 test('the power button opens a menu with the two items, Switch to terminal enabled only for a saved session', async () => {
@@ -505,7 +516,7 @@ test('a / word lists the agent\'s commands; choosing one inserts it and only sen
   assert.equal(c.target.querySelector('.command-hint'), null, 'no mutating arguments offered');
   key('Enter');
   await settle();
-  assert.deepEqual(calls, [['prompt', 'c1', '/mcp']]);
+  assert.deepEqual(calls, [['inspect', 'c1', '/mcp']], 'a bare /mcp answers in the modal');
   calls.length = 0;
 
   // Escape closes the list and sends nothing; while an IME composes, keys are its own.
@@ -623,4 +634,78 @@ test('/plugin lists the installed plugins above the composer without sending any
   await settle();
   assert.deepEqual(calls, [['prompt', 'c1', '/plugin']]);
   own.close();
+});
+
+test('a bare /mcp answers in the MCP servers modal: grouped rows, a filter, every end state, Escape', async () => {
+  const { MOCK_MCP_STATUS } = await import('../src/lib/mock/mockChat.ts');
+  const c = await openComposer({ phase: 'idle', agent: 'claude', commands: [{ name: 'mcp', input: { hint: '[reconnect]' } }] });
+  const box = c.target.querySelector('textarea');
+  const send = async (value) => {
+    box.value = value;
+    box.dispatchEvent(new window.Event('input', { bubbles: true }));
+    flushSync();
+    // Enter inserts a highlighted choice first; submitting sends as it is.
+    c.target.querySelector('form').requestSubmit();
+    await settle();
+    flushSync();
+  };
+  const show = (inspection) => {
+    c.state.chat = { ...c.state.chat, inspection };
+    flushSync();
+  };
+  const dialog = () => c.target.querySelector('[data-command-result]');
+  const state = () => dialog()?.querySelector('[data-mcp-state]')?.dataset.mcpState;
+  const rows = () => [...dialog().querySelectorAll('li')].map((li) => li.textContent.trim().replace(/\s+/g, ' '));
+
+  await send('/mcp');
+  assert.deepEqual(calls, [['inspect', 'c1', '/mcp']], 'captured, not prompted');
+  assert.equal(box.value, '');
+  await send('/mcp reconnect docs');
+  assert.deepEqual(calls.at(-1), ['prompt', 'c1', '/mcp reconnect docs'], 'arguments are an ordinary turn');
+  calls.length = 0;
+
+  show({ command: '/mcp', text: '', state: 'running' });
+  assert.equal(dialog().getAttribute('aria-modal'), 'true');
+  assert.equal(dialog().querySelector('h2').textContent, 'MCP servers');
+  assert.equal(state(), 'loading');
+
+  show({ command: '/mcp', text: MOCK_MCP_STATUS, state: 'done' });
+  assert.equal(state(), 'listed');
+  assert.match(dialog().querySelector('.summary').textContent, /3 \(1 failed, 1 connected, 1 disabled\)/);
+  assert.deepEqual([...dialog().querySelectorAll('h3')].map((h) => h.textContent), ['Failed (1)', 'Connected (1)', 'Disabled (1)']);
+  assert.deepEqual(rows(), ['docs connection refused Failed', 'super-fetch 2 tools ✓ Connected', 'old-search Disabled']);
+  assert.match(dialog().querySelector('[data-markdown]').textContent, /mcp reconnect/, 'the hint is a note');
+  assert.deepEqual([...dialog().querySelectorAll('button')].map((b) => b.getAttribute('aria-label')), ['Close MCP servers'], 'read-only');
+
+  const filter = dialog().querySelector('input[type="search"]');
+  assert.equal(document.activeElement, filter, 'the filter takes focus');
+  filter.value = 'FETCH';
+  filter.dispatchEvent(new window.Event('input', { bubbles: true }));
+  flushSync();
+  assert.deepEqual(rows(), ['super-fetch 2 tools ✓ Connected']);
+  filter.value = 'zzz';
+  filter.dispatchEvent(new window.Event('input', { bubbles: true }));
+  flushSync();
+  assert.deepEqual(rows(), []);
+  assert.ok(dialog().querySelector('[data-mcp-state="no-match"]'));
+  assert.deepEqual(calls, [], 'filtering sends nothing');
+
+  for (const [inspection, want, text] of [
+    [{ command: '/mcp', text: '', state: 'failed', error: 'Internal error: boom' }, 'failed', /boom/],
+    [{ command: '/mcp', text: '', state: 'cancelled' }, 'cancelled', /Stopped before claude answered/],
+    [{ command: '/mcp', text: '', state: 'exited' }, 'exited', /chat ended/],
+    [{ command: '/mcp', text: 'Some **other** answer', state: 'done' }, 'markdown', /Some \*\*other\*\* answer/],
+  ]) {
+    show(inspection);
+    assert.equal(state(), want);
+    assert.match(dialog().textContent, text);
+  }
+
+  dialog().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  flushSync();
+  assert.deepEqual(calls, [['dismissInspection', 'c1']]);
+  assert.equal(document.activeElement, box, 'focus goes back to the composer');
+  dialog().querySelector('button').click();
+  assert.deepEqual(calls.at(-1), ['dismissInspection', 'c1']);
+  c.close();
 });

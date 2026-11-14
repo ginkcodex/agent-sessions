@@ -99,7 +99,7 @@ export const MOCK_MCP_STATUS = [
 /** What the adapters advertise: Claude's plugin commands, Codex's skills with $, and /mcp. */
 function mockCommands(agent: AgentID): ChatCommand[] {
   const mcp: ChatCommand = { name: 'mcp', description: 'Show MCP server status', input: { hint: '[reconnect|enable|disable [<server>|all]]' } };
-  if (agent === 'claude') {
+  if (agent === 'claude-code') {
     return [
       mcp,
       { name: 'ponytail:ponytail', description: '(ponytail) Lazy senior developer mode', input: { hint: '[lite|full|ultra|off]' } },

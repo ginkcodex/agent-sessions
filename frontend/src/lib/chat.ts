@@ -294,6 +294,93 @@ export function isMcpListing(text: string, commands: readonly ChatCommand[]): bo
   return text.trim() === '/mcp' && commands.some((c) => c.name === 'mcp');
 }
 
+/** A server row of /mcp's reply. */
+export interface McpServerRow {
+  name: string;
+  /** Claude's scope, given only to tell apart two servers of one name. */
+  scope?: string;
+  /** Tool counts and the error, as plain text. */
+  detail: string;
+}
+
+/** /mcp's reply as the modal lists it: groups in the adapter's order, Disabled last. */
+export interface McpStatus {
+  /** The summary, e.g. "3 (1 failed, 2 connected)", or that none are configured. */
+  summary: string;
+  groups: { title: string; servers: McpServerRow[] }[];
+  /** The other blocks (Codex's notes, the reconnect hint), as Markdown. */
+  notes: string[];
+}
+
+const NO_MCP_SERVERS = 'No MCP servers are configured.';
+
+/**
+ * Reads the Markdown both adapters answer a bare /mcp with: a
+ * "**MCP servers:** N (…)" line, "**<Status>**" blocks of
+ * "- `name` (scope): detail" items and a "**Disabled:** `a`, `b`" line,
+ * between other notes. Null when it is not that shape, for the modal to
+ * show the Markdown itself.
+ */
+export function parseMcpStatus(markdown: string): McpStatus | null {
+  const out: McpStatus = { summary: '', groups: [], notes: [] };
+  for (const block of markdown.trim().split(/\n\s*\n/)) {
+    const b = block.trim();
+    const summary = /^\*\*MCP servers:\*\*\s*(.*)$/s.exec(b);
+    const disabled = /^\*\*Disabled:\*\*\s*(.+)$/s.exec(b);
+    const group = /^\*\*(.+?)\*\*\n(- [^]*)$/.exec(b);
+    if (b === NO_MCP_SERVERS || summary) {
+      if (out.summary) return null;
+      out.summary = summary ? unescapeMarkdown(summary[1]) : b;
+    } else if (disabled) {
+      const servers: McpServerRow[] = [];
+      let rest = disabled[1];
+      for (;;) {
+        const name = serverName(rest);
+        if (!name) return null;
+        servers.push({ name: name.text, detail: '' });
+        rest = rest.slice(name.length);
+        if (rest === '') break;
+        if (!rest.startsWith(', ')) return null;
+        rest = rest.slice(2);
+      }
+      out.groups.push({ title: 'Disabled', servers });
+    } else if (group) {
+      const servers: McpServerRow[] = [];
+      for (const line of group[2].split('\n')) {
+        const item = /^- (.*)$/.exec(line);
+        const name = item && serverName(item[1]);
+        if (!item || !name) return null;
+        const after = /^(?: \(((?:\\.|[^)\\])*)\))?(?:: (.*))?$/.exec(item[1].slice(name.length));
+        if (!after) return null;
+        servers.push({ name: name.text, ...(after[1] && { scope: unescapeMarkdown(after[1]) }), detail: unescapeMarkdown(after[2] ?? '') });
+      }
+      out.groups.push({ title: unescapeMarkdown(group[1]), servers });
+    } else if (b) {
+      out.notes.push(b);
+    }
+  }
+  return out.summary ? out : null;
+}
+
+/** A server name at the start of text: a code span, or Codex's "(unnamed)". */
+function serverName(text: string): { text: string; length: number } | null {
+  if (text.startsWith('(unnamed)')) return { text: '(unnamed)', length: 9 };
+  const fence = /^`+/.exec(text)?.[0];
+  if (!fence) return null;
+  // The span closes at the first run of exactly as many backticks.
+  const close = new RegExp(`(?<!\`)${fence}(?!\`)`, 'g');
+  close.lastIndex = fence.length;
+  const end = close.exec(text);
+  if (!end) return null;
+  let name = text.slice(fence.length, end.index);
+  if (name.length > 2 && name.startsWith(' ') && name.endsWith(' ') && name.trim()) name = name.slice(1, -1);
+  return { text: name, length: end.index + fence.length };
+}
+
+function unescapeMarkdown(text: string): string {
+  return text.replace(/\\([\\`*_[\]<>|~])/g, '$1');
+}
+
 /**
  * /plugin's rows. The CLI says what is installed and enabled on disk; a
  * plugin is loaded in the chat only when its catalog has a command named
