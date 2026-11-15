@@ -33,6 +33,7 @@ type chatService interface {
 	ChatAnswer(ctx context.Context, chatID, questionID, action string, content map[string]any) error
 	ChatSetOption(ctx context.Context, chatID, configID string, value any) ([]acp.ConfigOption, error)
 	ChatPlugins(ctx context.Context, chatID string) (engine.ChatPlugins, error)
+	ChatInventory(ctx context.Context, chatID, kind string) (engine.ChatInventory, error)
 	ChatClose(ctx context.Context, chatID string) error
 	ChatList(ctx context.Context) ([]engine.ChatState, error)
 }
@@ -78,6 +79,10 @@ func (l localChatService) ChatSetOption(ctx context.Context, chatID, configID st
 
 func (l localChatService) ChatPlugins(ctx context.Context, chatID string) (engine.ChatPlugins, error) {
 	return l.m.Plugins(ctx, chatID)
+}
+
+func (l localChatService) ChatInventory(ctx context.Context, chatID, kind string) (engine.ChatInventory, error) {
+	return l.m.Inventory(ctx, chatID, kind)
 }
 
 func (l localChatService) ChatClose(_ context.Context, chatID string) error {
@@ -165,6 +170,11 @@ func (r remoteChats) ChatSetOption(ctx context.Context, chatID, configID string,
 
 func (r remoteChats) ChatPlugins(ctx context.Context, chatID string) (engine.ChatPlugins, error) {
 	out, err := r.chatService.ChatPlugins(ctx, chatID)
+	return out, remoteErr(err)
+}
+
+func (r remoteChats) ChatInventory(ctx context.Context, chatID, kind string) (engine.ChatInventory, error) {
+	out, err := r.chatService.ChatInventory(ctx, chatID, kind)
 	return out, remoteErr(err)
 }
 
@@ -383,6 +393,17 @@ func (a *App) ChatPlugins(chatID string) (engine.ChatPlugins, error) {
 		return engine.ChatPlugins{}, err
 	}
 	return s.ChatPlugins(a.appCtx(), chatID)
+}
+
+// ChatInventory lists the MCP servers ("mcp") or skills ("skills") of the
+// chat's agent on the host the window shows, from its CLI (OpenCode's /mcps
+// and /skills).
+func (a *App) ChatInventory(chatID, kind string) (engine.ChatInventory, error) {
+	s, err := a.chats()
+	if err != nil {
+		return engine.ChatInventory{}, err
+	}
+	return s.ChatInventory(a.appCtx(), chatID, kind)
 }
 
 // ChatClose ends the chat and its agent. Pending permission requests are

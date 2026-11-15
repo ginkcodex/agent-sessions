@@ -682,6 +682,35 @@ export interface ChatPlugins {
   plugins: ChatPlugin[];
 }
 
+/** Which inventory chatInventory lists: MCP servers or skills. */
+export type ChatInventoryKind = 'mcp' | 'skills';
+
+/** An MCP server the agent's CLI reports (chatInventory 'mcp'). */
+export interface ChatMcpServer {
+  name: string;
+  title?: string;
+  /** connected, pending, disabled, failed or needs_auth. */
+  status: string;
+  /** Why a failed or needs_auth server is not connected. */
+  error?: string;
+}
+
+/** A skill the agent's CLI reports (chatInventory 'skills'). */
+export interface ChatSkill {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+/** The answer to OpenCode's /mcps or /skills, read from its CLI, not asked of the model. */
+export interface ChatInventory {
+  kind: ChatInventoryKind;
+  /** False when the agent's CLI cannot list this kind. */
+  supported: boolean;
+  mcpServers?: ChatMcpServer[];
+  skills?: ChatSkill[];
+}
+
 /** An open chat. */
 export interface ChatState {
   chatId: string;

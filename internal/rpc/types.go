@@ -71,7 +71,9 @@ type Capabilities struct {
 	// ChatPromptResult; chatSendNow and chatUnqueue work on the queue.
 	ChatQueue bool `json:"chatQueue,omitempty"`
 	// ChatPlugins: chatPlugins lists the plugins of a chat's agent.
-	ChatPlugins     bool `json:"chatPlugins,omitempty"`
+	ChatPlugins bool `json:"chatPlugins,omitempty"`
+	// ChatInventory: chatInventory lists a chat's agent's MCP servers or skills.
+	ChatInventory   bool `json:"chatInventory,omitempty"`
 	AgentSettings   bool `json:"agentSettings,omitempty"`
 	DiscoveryStatus bool `json:"discoveryStatus,omitempty"`
 	GitDiff         bool `json:"gitDiff,omitempty"`

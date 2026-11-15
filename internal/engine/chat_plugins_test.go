@@ -21,7 +21,7 @@ type pluginFake struct {
 	timeout time.Duration
 }
 
-func (f pluginFake) PluginList() provider.PluginList {
+func (f pluginFake) PluginList(string) provider.PluginList {
 	return provider.PluginList{Args: []string{"plugin", "list", "--json"}, Timeout: f.timeout, Parse: func(b []byte) ([]provider.Plugin, error) {
 		if !strings.HasPrefix(string(b), "ok:") {
 			return nil, errors.New("unknown output")
@@ -157,5 +157,80 @@ func TestChatManagerPlugins(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the listing did not stop when the chat closed")
+	}
+}
+
+// inventoryFake lists MCP servers from "ok:name=status,…" and has no skills.
+type inventoryFake struct{ acpFake }
+
+func (f inventoryFake) InventoryList(kind, dir string) (provider.InventoryList, bool) {
+	if kind != provider.InventoryMCP {
+		return provider.InventoryList{}, false
+	}
+	return provider.InventoryList{Args: []string{"api", "mcp.list", dir}, Timeout: time.Minute, Parse: func(b []byte) (provider.Inventory, error) {
+		if !strings.HasPrefix(string(b), "ok:") {
+			return provider.Inventory{}, errors.New("unknown output")
+		}
+		var out []provider.MCPServer
+		for n := range strings.SplitSeq(strings.TrimPrefix(string(b), "ok:"), ",") {
+			name, status, _ := strings.Cut(n, "=")
+			out = append(out, provider.MCPServer{Name: name, Status: status})
+		}
+		return provider.Inventory{MCPServers: out}, nil
+	}}, true
+}
+
+func TestServiceChatInventory(t *testing.T) {
+	svc := NewService(nil, provider.Set{
+		inventoryFake{acpFake{providertest.NewFake(model.AgentOpenCode, "OpenCode"), fakeAdapter}},
+		acpFake{providertest.NewFake(model.AgentClaude, "Claude Code"), fakeAdapter},
+	})
+	ctx := context.Background()
+	launch := acp.Command{Dir: "/work/a", Env: []string{"PATH=/login/bin"}}
+	calls := stubPluginCLI(t, func(context.Context) ([]byte, error) { return []byte("ok:fetch=connected,docs=failed"), nil })
+
+	got, err := svc.ChatInventory(ctx, model.AgentOpenCode, launch, provider.InventoryMCP)
+	if err != nil || !got.Supported || got.Kind != "mcp" || len(got.MCPServers) != 2 || got.MCPServers[1].Status != "failed" || got.Skills != nil {
+		t.Fatalf("ChatInventory = %+v, %v", got, err)
+	}
+	if c := (*calls)[0]; !slices.Equal(c.argv, []string{"fake", "api", "mcp.list", "/work/a"}) || c.dir != "/work/a" {
+		t.Fatalf("ran %+v", c)
+	}
+
+	// A kind or an agent without a listing is unsupported, and nothing runs.
+	for _, tc := range []struct {
+		agent model.AgentID
+		kind  string
+	}{{model.AgentOpenCode, provider.InventorySkills}, {model.AgentClaude, provider.InventoryMCP}} {
+		got, err := svc.ChatInventory(ctx, tc.agent, launch, tc.kind)
+		if err != nil || got.Supported || got.Kind != tc.kind || (got.MCPServers == nil && got.Skills == nil) {
+			t.Fatalf("%s %s = %+v, %v", tc.agent, tc.kind, got, err)
+		}
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("ran %d listings", len(*calls))
+	}
+	if _, err := svc.ChatInventory(ctx, model.AgentOpenCode, launch, "secrets"); err == nil {
+		t.Fatal("an unknown kind is listed")
+	}
+
+	stubPluginCLI(t, func(context.Context) ([]byte, error) { return []byte("<!doctype html>"), nil })
+	if _, err := svc.ChatInventory(ctx, model.AgentOpenCode, launch, provider.InventoryMCP); err == nil || err.Error() != "this OpenCode version does not list its MCP servers in a form the app reads; update it" {
+		t.Fatalf("unknown output: %v", err)
+	}
+}
+
+func TestChatManagerInventory(t *testing.T) {
+	f := newChatFixture(t)
+	f.m.opts.Inventory = func(_ context.Context, agent model.AgentID, launch acp.Command, kind string) (ChatInventory, error) {
+		return ChatInventory{Kind: kind, Supported: true, Skills: []provider.Skill{{ID: string(agent), Name: launch.Dir}}}, nil
+	}
+	if _, err := f.m.Inventory(chatCtx(t), "chat-404", provider.InventorySkills); !errors.Is(err, ErrChatNotFound) {
+		t.Fatalf("unknown chat: %v", err)
+	}
+	st := f.start(t, nil)
+	got, err := f.m.Inventory(chatCtx(t), st.ChatID, provider.InventorySkills)
+	if err != nil || !got.Supported || got.Skills[0].ID != string(model.AgentClaude) || got.Skills[0].Name != f.dir {
+		t.Fatalf("Inventory = %+v, %v", got, err)
 	}
 }

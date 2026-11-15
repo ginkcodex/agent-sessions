@@ -1,6 +1,6 @@
 # CPC-09 — O‍penCode MCP and plugin inventory
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 2 h
 - **Depends on:** CPC-04
 - **Plan:** [chat-plugin-commands.md](../../plan/chat-plugin-commands.md)
@@ -24,3 +24,30 @@ documented server API route. See the
   don't use an interface that connects to or changes MCP servers.
 - Apply the same safe-field, timeout and unsupported-version rules as CPC-04.
 - Fixture tests for the parser and for errors.
+
+## Evidence
+
+- OpenCode 2.3.0's documented `opencode api` operations `plugin.list`,
+  `mcp.list` and `skill.list` are read-only GETs that answer JSON for a
+  `location[directory]`. They are the machine-readable interface; text output
+  is never scraped. The user pointed out OpenCode's native spellings are
+  `/mcps`, `/plugins` and `/skills`, so those are what the picker offers and
+  intercepts for OpenCode (`/plugin` and `/mcp` are not).
+- Backend: `internal/provider/opencode/inventory.go` (`PluginList(dir)`,
+  `InventoryList(kind, dir)`, safe-field parsers); `provider.InventoryLister`;
+  `Service.ChatInventory` / `ChatManager.Inventory` sharing CPC-04's CLI run,
+  timeout, cancellation and unknown-format rules; the `chatInventory` RPC with
+  its capability; `App.ChatInventory`.
+- Frontend: `pickerCommands`, `inventoryListing`, `mcpStatusFromServers` in
+  `chat.ts`; `InventoryDialog.svelte`; `McpServersDialog` takes listed servers.
+- Tests: parser fixtures (builtins dropped, local path reduced to its file
+  name, unnamed plugin, skill content dropped, bad output rejected), argv,
+  engine service/manager tests, helper tests and a composer test that opens
+  all three modals with no prompt sent and leaves `/plugin` an ordinary turn.
+- `go vet ./...` and `go test ./...`: passed. `make lint`: 155 findings, all
+  in files this task did not touch; none in the changed files.
+- `npm --prefix frontend run check`: 0 errors, 0 warnings.
+  `npm --prefix frontend test`: 1,500 passed, 0 failed, 1 skipped.
+  `npm --prefix frontend run build`: passed.
+- Not run: the desktop app against a live OpenCode chat, and remote/WSL
+  hosts (CPC-08 QA). The live CLI calls were probed by hand on this host.

@@ -10,6 +10,8 @@ import type {
   ChatCommand,
   ChatConfigOption,
   ChatPlugins,
+  ChatInventory,
+  ChatInventoryKind,
   ChatDraft,
   ChatPermission,
   ChatPromptResult,
@@ -346,11 +348,23 @@ export class MockChats {
     return structuredClone(chat.state.configOptions);
   }
 
-  /** Claude's and Codex's CLIs list their plugins; OpenCode's cannot. */
+  /** OpenCode's CLI lists its MCP servers and skills; the others answer /mcp themselves. */
+  async inventory(chatId: string, kind: ChatInventoryKind): Promise<ChatInventory> {
+    this.requireAvailable();
+    const chat = this.get(chatId);
+    if (chat.state.agent !== 'opencode') return { kind, supported: false, mcpServers: [], skills: [] };
+    return kind === 'mcp'
+      ? { kind, supported: true, mcpServers: [{ name: 'super-fetch', status: 'connected' }, { name: 'docs', status: 'failed', error: 'connect ECONNREFUSED' }] }
+      : { kind, supported: true, skills: [{ id: 'report', name: 'Report', description: 'Report an OpenCode issue' }] };
+  }
+
+  /** The agents' CLIs list their plugins. */
   async plugins(chatId: string): Promise<ChatPlugins> {
     this.requireAvailable();
     const chat = this.get(chatId);
-    if (chat.state.agent === 'opencode') return { supported: false, plugins: [] };
+    if (chat.state.agent === 'opencode') {
+      return { supported: true, plugins: [{ id: 'opencode-notifier', name: 'opencode-notifier', version: '1.2.0', scope: 'package', enabled: true }] };
+    }
     return {
       supported: true,
       plugins: [

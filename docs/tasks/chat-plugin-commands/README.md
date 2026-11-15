@@ -1,7 +1,7 @@
 # Chat MCP and plugin commands — tasks
 
 - **Plan:** [chat-plugin-commands.md](../../plan/chat-plugin-commands.md)
-- **Progress:** 14/16 done
+- **Progress:** 15/16 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -13,7 +13,7 @@
 | [CPC-06](CPC-06.md) | ✅ Done | Normalize explicit plugin invocations in saved Claude transcripts | 3 h | CPC-02 |
 | [CPC-07](CPC-07.md) | ✅ Done | Keep live invocations visible once across echo and saved reconciliation | 3 h | CPC-03, CPC-06 |
 | [CPC-08](CPC-08.md) | ⬜ Not started | Cross-provider, desktop and remote QA | 3 h | CPC-05, CPC-07, CPC-10, CPC-13 |
-| [CPC-09](CPC-09.md) | ⬜ Not started | O‍penCode MCP and plugin inventory once a machine-readable interface exists | 2 h | CPC-04 |
+| [CPC-09](CPC-09.md) | ✅ Done | O‍penCode `/mcps`, `/plugins` and `/skills` via `opencode api` | 2 h | CPC-04 |
 | [CPC-10](CPC-10.md) | ✅ Done | `/plugin` inventory panel | 3 h | CPC-04, CPC-05 |
 | [CPC-11](CPC-11.md) | ✅ Done | Capture an exact `/mcp` turn out of the transcript | 3 h | CPC-03, CPC-07 |
 | [CPC-12](CPC-12.md) | ✅ Done | MCP servers modal: parsed status rows, filter, Markdown fallback | 4 h | CPC-11 |

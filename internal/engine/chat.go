@@ -313,6 +313,9 @@ type ChatManagerOptions struct {
 	// Plugins lists agent's installed plugins, run with the environment and
 	// directory of launch, the chat's adapter command. Nil: none listed.
 	Plugins func(ctx context.Context, agent model.AgentID, launch acp.Command) (ChatPlugins, error)
+	// Inventory lists agent's MCP servers or skills (kind) as Plugins does.
+	// Nil: none listed.
+	Inventory func(ctx context.Context, agent model.AgentID, launch acp.Command, kind string) (ChatInventory, error)
 	// Refresh asks for a rescan of the agent's sessions. It must not block.
 	Refresh func(agent model.AgentID)
 	// OwnershipChanged refreshes catalog views after a chat opens or releases

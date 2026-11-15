@@ -32,11 +32,12 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Codex skills dialog | [codex-skills-dialog](../plan/codex-skills-dialog.md) | [codex-skills-dialog/](codex-skills-dialog/README.md) | 1/1 ✅ |
 | Chat inventory dialog | [chat-inventory-dialog](../plan/chat-inventory-dialog.md) | [chat-inventory-dialog/](chat-inventory-dialog/README.md) | 2/2 ✅ |
 | Chat command picker | [chat-command-picker](../plan/chat-command-picker.md) | [chat-command-picker/](chat-command-picker/README.md) | 2/2 ✅ |
 | Understand Svelte | [understand-svelte](../plan/understand-svelte.md) | [understand-svelte/](understand-svelte/README.md) | 4/4 ✅ |
 | Large file view | [large-file-view](../plan/large-file-view.md) | [large-file-view/](large-file-view/README.md) | 4/7 ✅ · 3 ⬜ |
-| Chat MCP and plugin commands | [chat-plugin-commands](../plan/chat-plugin-commands.md) | [chat-plugin-commands/](chat-plugin-commands/README.md) | 14/16 ✅ · 2 ⬜ |
+| Chat MCP and plugin commands | [chat-plugin-commands](../plan/chat-plugin-commands.md) | [chat-plugin-commands/](chat-plugin-commands/README.md) | 15/16 ✅ · 1 ⬜ |
 | Layout memory | [layout-memory](../plan/layout-memory.md) | [layout-memory/](layout-memory/README.md) | 3/5 ✅ · 2 ⬜ |
 | Transcript tool readability | [transcript-tool-readability](../plan/transcript-tool-readability.md) | [transcript-tool-readability/](transcript-tool-readability/README.md) | 3/4 ✅ · 1 ⬜ |
 | Message file single match | [message-file-single-match](../plan/message-file-single-match.md) | [message-file-single-match/](message-file-single-match/README.md) | 1/1 ✅ |

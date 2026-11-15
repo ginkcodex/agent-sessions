@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [codex-skills-dialog.md](codex-skills-dialog.md) | [codex-skills-dialog](../tasks/codex-skills-dialog/README.md) | Codex skills inventory without model turns |
 | [chat-inventory-dialog.md](chat-inventory-dialog.md) | [chat-inventory-dialog](../tasks/chat-inventory-dialog/README.md) | Roomier inventory dialogs and plugin cards with grouped metadata and status pills |
 | [chat-command-picker.md](chat-command-picker.md) | [chat-command-picker](../tasks/chat-command-picker/README.md) | Roomier chat command picker with accent selection, argument badges and readable descriptions |
 | [understand-svelte.md](understand-svelte.md) | [understand-svelte](../tasks/understand-svelte/README.md) | Project-local Svelte/TypeScript and SvelteKit analysis with safe incremental knowledge-graph updates |

@@ -1,6 +1,6 @@
 // What the chat UI shows: the live tail as transcript messages, and which
 // agents can chat. Every function here is pure.
-import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatCommand, ChatPermission, ChatPlugin, ChatQueuedPrompt, Message, Part, SessionMeta, SessionRef, ToolStatus } from './types';
+import type { AgentID, ChatAgent, ChatAttachment, ChatAttachResult, ChatCommand, ChatInventoryKind, ChatMcpServer, ChatPermission, ChatPlugin, ChatQueuedPrompt, Message, Part, SessionMeta, SessionRef, ToolStatus } from './types';
 import { toolOutput, type ChatTail, type TailAnswer, type TailDiff, type TailItem, type TailTool } from './chatTail';
 
 /**
@@ -275,16 +275,88 @@ export function commandChoices(commands: readonly ChatCommand[], text: string): 
   return out.sort((a, b) => Number(b.exact) - Number(a.exact)).map(({ exact: _, ...c }) => c);
 }
 
+/** Agents whose native UI spells the plugin listing /plugins. */
+const PLURAL_PLUGINS = new Set(['codex', 'opencode']);
+
 /** The app's installed-plugin listing, using the provider's native UI spelling. */
 export function pluginCommand(agent: string): ChatCommand {
-  return { name: agent === 'codex' ? 'plugins' : 'plugin', description: 'List the installed plugins (shown here, not sent to the agent)', input: null };
+  return { name: PLURAL_PLUGINS.has(agent) ? 'plugins' : 'plugin', description: 'List the installed plugins (shown here, not sent to the agent)', input: null };
 }
 
-/** Codex uses only /plugins; other agents keep their own /plugin commands. */
+/**
+ * Codex and OpenCode use only /plugins, answered by the app even when
+ * advertised; other agents keep their own /plugin commands.
+ */
 export function isPluginListing(text: string, commands: readonly ChatCommand[], agent: string): boolean {
   const command = text.trim();
-  if (agent === 'codex') return command === '/plugins';
+  if (PLURAL_PLUGINS.has(agent)) return command === '/plugins';
   return command === '/plugin' && !commands.some((c) => c.name === 'plugin');
+}
+
+/**
+ * The listings the app answers from the agent's CLI besides plugins, in its
+ * native spelling: OpenCode's /mcps and /skills. Its ACP server advertises
+ * neither, and has no /mcp; Claude and Codex answer /mcp themselves.
+ * Codex's /skills uses its live ACP skill command catalog.
+ */
+export function inventoryCommands(agent: string): (ChatCommand & { kind: ChatInventoryKind })[] {
+  if (agent === 'codex') return [
+    { name: 'skills', kind: 'skills', description: 'List the available skills (shown here, not sent to the agent)', input: null },
+  ];
+  if (agent !== 'opencode') return [];
+  return [
+    { name: 'mcps', kind: 'mcp', description: 'List the MCP servers and their status (shown here, not sent to the agent)', input: null },
+    { name: 'skills', kind: 'skills', description: 'List the available skills (shown here, not sent to the agent)', input: null },
+  ];
+}
+
+/** The inventory a bare command such as OpenCode's /mcps asks for, or null. */
+export function inventoryListing(text: string, agent: string): ChatInventoryKind | null {
+  const command = text.trim();
+  return inventoryCommands(agent).find((c) => command === `/${c.name}`)?.kind ?? null;
+}
+
+/**
+ * The commands the composer's picker offers: the agent's advertised ones,
+ * with the app's listings in the agent's spelling in place of any it
+ * advertises under those names.
+ */
+export function pickerCommands(commands: readonly ChatCommand[], agent: string): ChatCommand[] {
+  const plugin = pluginCommand(agent);
+  const own = [...inventoryCommands(agent).map(({ kind: _, ...c }) => c)];
+  if (PLURAL_PLUGINS.has(agent)) {
+    own.unshift(plugin);
+    const names = new Set(['plugin', ...own.map((c) => c.name)]);
+    return [...commands.filter((c) => !names.has(c.name)), ...own];
+  }
+  return commands.some((c) => c.name === plugin.name) ? [...commands] : [...commands, plugin];
+}
+
+const MCP_STATUS_TITLES: Record<string, string> = {
+  failed: 'Failed',
+  needs_auth: 'Needs authentication',
+  pending: 'Connecting',
+  connected: 'Connected',
+  disabled: 'Disabled',
+};
+
+/**
+ * The CLI's MCP servers in /mcp's modal shape: grouped by status in the
+ * order Claude's /mcp uses, with a summary such as "2 (1 failed, 1 connected)".
+ */
+export function mcpStatusFromServers(servers: readonly ChatMcpServer[]): McpStatus {
+  if (servers.length === 0) return { summary: NO_MCP_SERVERS, groups: [], notes: [] };
+  const order = Object.keys(MCP_STATUS_TITLES);
+  const statuses = [...new Set(servers.map((s) => s.status))].sort((a, b) => {
+    const i = order.indexOf(a), j = order.indexOf(b);
+    return (i < 0 ? order.length : i) - (j < 0 ? order.length : j);
+  });
+  const groups = statuses.map((st) => ({
+    title: MCP_STATUS_TITLES[st] ?? st.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()),
+    servers: servers.filter((s) => s.status === st).map((s) => ({ name: s.name, ...(s.title && s.title !== s.name && { scope: s.title }), detail: s.error ?? '' })),
+  }));
+  const counts = groups.map((g) => `${g.servers.length} ${g.title.toLowerCase()}`).join(', ');
+  return { summary: `${servers.length} (${counts})`, groups, notes: [] };
 }
 
 /**

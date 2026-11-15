@@ -12,7 +12,7 @@ var _ provider.PluginLister = (*Provider)(nil)
 
 // PluginList runs `codex plugin list --json`. It queries the remote
 // marketplaces and took 68 s in testing, so it may take two minutes.
-func (p *Provider) PluginList() provider.PluginList {
+func (p *Provider) PluginList(string) provider.PluginList {
 	return provider.PluginList{Args: []string{"plugin", "list", "--json"}, Timeout: 2 * time.Minute, Parse: parsePlugins}
 }
 

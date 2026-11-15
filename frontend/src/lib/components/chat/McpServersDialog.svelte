@@ -1,20 +1,25 @@
 <script lang="ts">
   // /mcp's answer: the agent's reply to the captured turn (chat.inspection),
   // its servers grouped by status. A reply in another shape shows as
-  // Markdown. Nothing here changes a server.
+  // Markdown. OpenCode's /mcps passes the servers its CLI listed as status
+  // instead. Nothing here changes a server.
   import type { ChatInspection } from '../../stores/chats.svelte';
-  import { parseMcpStatus } from '../../chat';
+  import { parseMcpStatus, type McpStatus } from '../../chat';
   import CommandResultDialog from './CommandResultDialog.svelte';
   import TextPart from '../transcript/parts/TextPart.svelte';
 
   interface Props {
     inspection: ChatInspection;
     agentName: string;
+    /** The servers already read, when they come from the agent's CLI rather than its reply. */
+    listed?: McpStatus;
+    /** Where the servers come from, under the title. */
+    note?: string;
     onClose: () => void;
   }
 
-  let { inspection, agentName, onClose }: Props = $props();
-  let status = $derived(inspection.state === 'done' ? parseMcpStatus(inspection.text) : null);
+  let { inspection, agentName, listed, note, onClose }: Props = $props();
+  let status = $derived(inspection.state !== 'done' ? null : (listed ?? parseMcpStatus(inspection.text)));
 
   function tone(title: string): string {
     if (title === 'Connected') return 'ok';
@@ -24,7 +29,7 @@
   }
 </script>
 
-<CommandResultDialog title="MCP servers" note="{agentName}'s servers in this chat, as {agentName} reports them." filterPlaceholder="Filter servers…" {onClose}>
+<CommandResultDialog title="MCP servers" note={note ?? `${agentName}'s servers in this chat, as ${agentName} reports them.`} filterPlaceholder="Filter servers…" {onClose}>
   {#snippet children(query: string)}
     {#if inspection.state === 'running'}
       <p class="status" data-mcp-state="loading">Asking {agentName} for its MCP servers…</p>
