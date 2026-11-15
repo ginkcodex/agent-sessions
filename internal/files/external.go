@@ -2,8 +2,6 @@ package files
 
 import (
 	"errors"
-	"fmt"
-	"os"
 	"path/filepath"
 )
 
@@ -33,18 +31,11 @@ func ReadExternal(policy EditPolicy, path string, open ...string) (Content, erro
 	if err := policy.opening(open, lex, real).refuse(false, lex, real); err != nil {
 		return Content{}, err
 	}
-	f, err := os.Open(real)
+	f, info, err := openRegular(filepath.Dir(real), real)
 	if err != nil {
 		return Content{}, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return Content{}, err
-	}
-	if !info.Mode().IsRegular() {
-		return Content{}, fmt.Errorf("%s is not a regular file", path)
-	}
 	out := Content{Path: path, Size: info.Size()}
 	if _, err := readText(f, &out); err != nil {
 		return Content{}, err

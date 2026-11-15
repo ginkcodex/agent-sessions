@@ -33,7 +33,20 @@ func ListDirectory(ctx context.Context, root, rel string) (DirectoryEntries, err
 	if err != nil {
 		return DirectoryEntries{}, err
 	}
-	f, err := os.Open(full)
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return DirectoryEntries{}, err
+	}
+	r, err := os.OpenRoot(realRoot)
+	if err != nil {
+		return DirectoryEntries{}, err
+	}
+	defer r.Close()
+	name, err := filepath.Rel(realRoot, full)
+	if err != nil {
+		return DirectoryEntries{}, err
+	}
+	f, err := r.OpenFile(name, os.O_RDONLY|regularReadFlags, 0)
 	if err != nil {
 		return DirectoryEntries{}, err
 	}
@@ -57,7 +70,12 @@ func ListDirectory(ctx context.Context, root, rel string) (DirectoryEntries, err
 			dir := e.IsDir()
 			if e.Type()&os.ModeSymlink != 0 {
 				info, err := os.Stat(filepath.Join(full, e.Name()))
-				dir = err == nil && info.IsDir()
+				if err != nil || (!info.IsDir() && !info.Mode().IsRegular()) {
+					continue
+				}
+				dir = info.IsDir()
+			} else if !dir && !e.Type().IsRegular() {
+				continue
 			}
 			p := path.Join(rel, e.Name())
 			switch {

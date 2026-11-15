@@ -47,18 +47,11 @@ func WriteDownload(ctx context.Context, root, rel string, dst io.Writer) (Downlo
 		if !info.Mode().IsRegular() {
 			return Download{}, fmt.Errorf("not a regular file: %s", rel)
 		}
-		f, err := r.Open(name)
+		f, _, err := openRegularAt(r, name)
 		if err != nil {
 			return Download{}, err
 		}
 		defer f.Close()
-		opened, err := f.Stat()
-		if err != nil {
-			return Download{}, err
-		}
-		if !opened.Mode().IsRegular() {
-			return Download{}, fmt.Errorf("not a regular file: %s", rel)
-		}
 		_, err = io.Copy(dst, contextReader{ctx, f})
 		return out, err
 	}
@@ -102,18 +95,11 @@ func WriteDownload(ctx context.Context, root, rel string, dst io.Writer) (Downlo
 		if err != nil || info.IsDir() {
 			return err
 		}
-		f, err := r.Open(filepath.FromSlash(p))
+		f, _, err := openRegularAt(r, filepath.FromSlash(p))
 		if err != nil {
 			return err
 		}
 		defer f.Close()
-		stat, err := f.Stat()
-		if err != nil {
-			return err
-		}
-		if !stat.Mode().IsRegular() {
-			return fmt.Errorf("not a regular file: %s", p)
-		}
 		_, err = io.Copy(w, contextReader{ctx, f})
 		return err
 	})
