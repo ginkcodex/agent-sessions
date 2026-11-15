@@ -69,7 +69,7 @@ Share-safe bundles leave the manifest's `CWD`, `RepoRoot`, `GitBranch` and
 sees a JSON key next to its value, and the home-path rules miss Windows
 profiles.
 
-### Reliability (RF-11 to RF-23, RF-26 to RF-28)
+### Reliability (RF-11 to RF-23, RF-26 to RF-29)
 
 | Task | Finding | Checked |
 |---|---|---|
@@ -82,7 +82,7 @@ profiles.
 | RF-17 | `ChatStart` has no timeout and can't be cancelled; a hung start blocks every other chat open in the window | ✅ (2026-11-15) |
 | RF-18 | A question still open when the prompt returns holds back `turn_end`; the store and its test assume the opposite | ✅ (2026-11-15) |
 | RF-19 | Reading a FIFO opens it before the regular-file check and hangs (`internal/files/files.go:615`) | ✅ (2026-11-15) |
-| RF-20 | A crashed language server can't restart before the app does; `SessionManager.Retry` has no production caller | reviewer |
+| RF-20 | A crashed language server can't restart before the app does; `SessionManager.Retry` has no production caller | ✅ (2026-11-15) |
 | RF-21 | Remote probe, deploy and serve run POSIX scripts under `$SHELL -lc`, which fails with fish, csh and tcsh | ✅ |
 | RF-22 | Port forwards use `ForkAfterAuthentication=no`, which needs OpenSSH 8.7 | ✅ (2026-11-15) |
 | RF-23 | `configfile` values are not unescaped on read, so backslashes grow on every save; a line over 64 KiB truncates the rewrite | ✅ (2026-11-15) |

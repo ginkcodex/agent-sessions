@@ -165,11 +165,14 @@ test('R08 provider crash/truncation propagates through actual store, panel, coun
   assert.equal(projectSourceDiagnostics(h.files.content.text, h.checks.findings, basis, true).segments.length, 0);
   assert.equal(editorDiagnostics(EditorState.create({ doc: h.files.content.text }), { id: 't', path: 'a.go', diagnostics: { tab: 't', path: 'a.go', findings: h.checks.findings, ...basis, current: true } }).length, 0);
   const html = await renderWithFixture(checksComponent, { checks: h.checks });
-  for (const text of ['failed', 'Not installed', 'partial coverage', 'truncated', '&lt;script>', '&lt;img', 'No provider restart action']) assert.ok(html.includes(text), text);
-  assert.doesNotMatch(html, /<script>|<img|Retry lsp/);
+  for (const text of ['failed', 'Not installed', 'partial coverage', 'truncated', '&lt;script>', '&lt;img', 'bounded backoff', 'Retry lsp']) assert.ok(html.includes(text), text);
+  assert.doesNotMatch(html, /<script>|<img/);
   const panel = await renderWithFixture(problemsComponent, { checks: h.checks }, { expanded: true, onnavigate() {} });
   assert.match(panel, /stale/); assert.match(panel, /results truncated/); assert.doesNotMatch(panel, /<script>/);
-  await assert.rejects(h.checks.retry('lsp'), /live providers cannot be retried/);
+  let retried = false;
+  h.api.runCodeDiagnostics = async (c, ids) => { assert.deepEqual(ids, ['lsp']); retried = true; return { context: c, runs: [] }; };
+  await h.checks.retry('lsp');
+  assert.equal(retried, true);
   h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'still browsable');
   assert.equal(h.files.activeTab.edit.draft, 'still browsable');
   h.off(); await h.checks.detach();

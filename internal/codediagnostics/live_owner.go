@@ -15,6 +15,7 @@ type LiveDocuments struct {
 	manager  *Manager
 	mu       sync.RWMutex
 	projects map[Project]liveProject
+	retries  map[sessionKey]liveRetry
 }
 
 type liveProject struct {
@@ -24,7 +25,7 @@ type liveProject struct {
 }
 
 func NewLiveDocuments(trust *Trust, manager *Manager, options SessionOptions) *LiveDocuments {
-	d := &LiveDocuments{manager: manager, projects: map[Project]liveProject{}}
+	d := &LiveDocuments{manager: manager, projects: map[Project]liveProject{}, retries: map[sessionKey]liveRetry{}}
 	options.Notifications = d.notification
 	d.Sessions = NewSessionManager(trust, options)
 	return d
@@ -66,7 +67,7 @@ func (d *LiveDocuments) project(root AuthorizedRoot) (liveProject, bool) {
 
 // EnsureSession is invoked only after Manager validates approval, containment and
 // displayed text. Attach preflights the current complete grant before every reuse
-// or launch. Failure is not automatically retried.
+// or launch. Refresh retries failed displayed sessions with bounded backoff.
 func (d *LiveDocuments) EnsureSession(ctx context.Context, root AuthorizedRoot, path string) error {
 	p, ok := d.project(root)
 	if !ok {
@@ -229,7 +230,9 @@ func (d *LiveDocuments) Refresh() {
 				t = &tally{}
 				byProvider[cfg.ProviderID] = t
 			}
-			switch info := d.Sessions.Info(p.root, cfg); {
+			info := d.Sessions.Info(p.root, cfg)
+			d.recoverSession(p.root, cfg, info)
+			switch {
 			case info.Phase == phaseFailed || info.Phase == phaseDisconnected:
 				if t.failed++; t.cause == nil {
 					t.cause = info.Err

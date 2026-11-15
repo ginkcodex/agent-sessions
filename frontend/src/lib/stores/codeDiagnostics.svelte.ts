@@ -205,7 +205,7 @@ export class CodeDiagnosticsStore {
   get analyzing() { return this.approved && this.providers.some(p => p.availability === 'available'); }
   get running() { return this.pending === 'run' || this.pendingRuns.length > 0 || this.providers.some(p => ['starting', 'checking'].includes(p.phase)); }
   get canRun() { return this.approved && !this.pending && !this.running && this.providers.some(p => p.availability === 'available' && p.coverage.kind === 'savedProject'); }
-  canRetry(providerId: string) { return this.canRun && this.providers.some(p => p.providerId === providerId && p.availability === 'available' && p.coverage.kind === 'savedProject'); }
+  canRetry(providerId: string) { return this.approved && !this.pending && !this.running && this.providers.some(p => p.providerId === providerId && p.availability === 'available' && (p.coverage.kind === 'savedProject' || (p.coverage.kind === 'openedDocuments' && p.phase === 'failed'))); }
   /** Visibility discovery is asynchronous; only the latest visible route may attach. */
   async show(dir: string) {
     void this.detach();
@@ -669,7 +669,13 @@ export class CodeDiagnosticsStore {
       });
     });
   }
-  retry(providerId: string) { return this.run([providerId]); }
+  retry(providerId: string) {
+    if (this.providers.some(p => p.providerId === providerId && p.coverage.kind === 'openedDocuments')) {
+      if (!this.canRetry(providerId)) throw new CodeDiagnosticsError('unsupported', 'Live provider is not retryable');
+      return this.request('run', () => this.action((c, h) => this.backend.runCodeDiagnostics(c, [providerId], h)));
+    }
+    return this.run([providerId]);
+  }
   cancel(runs: CodeDiagnosticsRun[] = [...this.pendingRuns, ...this.providers.flatMap(p => p.runId && ['starting', 'checking'].includes(p.phase) ? [{ providerId: p.providerId, runId: p.runId }] : [])]) {
     return this.request('cancel', () => this.action((c, h) => this.backend.cancelCodeDiagnostics(c, runs, h)));
   }

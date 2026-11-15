@@ -45,7 +45,7 @@ func (m *Manager) LiveFailure(project Project, providerID string, cause error) {
 				continue
 			}
 			p.Phase, p.Freshness, p.Coverage.Partial = "failed", "stale", true
-			p.Notice = "Language session failed; retained findings are stale. Reopen after explicit session recovery."
+			p.Notice = "Language session failed; retained findings are stale. Recovery is retried with bounded backoff; use Retry if it stays failed."
 			p.Failure = &Error{Code: reason.Code, Message: reason.Message}
 			for j := range a.snapshot.ResultSets {
 				set := &a.snapshot.ResultSets[j]
