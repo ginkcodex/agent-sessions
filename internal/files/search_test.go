@@ -58,6 +58,21 @@ func TestSearchOptions(t *testing.T) {
 	}
 }
 
+func TestSearchAliasedRoot(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "a.txt", "needle\n")
+	alias := filepath.Join(t.TempDir(), "project")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	for _, path := range []string{root, alias} {
+		got, err := Search(context.Background(), path, SearchQuery{Pattern: "needle"})
+		if err != nil || got.Matches != 1 || !slices.Equal(searchPaths(got), []string{"a.txt"}) {
+			t.Fatalf("Search(%q) = %+v, %v", path, got, err)
+		}
+	}
+}
+
 func TestSearchMatchPositions(t *testing.T) {
 	root := t.TempDir()
 	// "é" is one UTF-16 unit, "😀" two; the editor counts columns that way.

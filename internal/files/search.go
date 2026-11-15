@@ -140,6 +140,11 @@ func Search(ctx context.Context, root string, q SearchQuery) (SearchResult, erro
 	}
 	limit = min(limit, MaxSearchMatches)
 
+	// Build paths under the same resolved root the regular-file opener checks.
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return SearchResult{}, err
+	}
 	info, err := os.Stat(root)
 	if err != nil {
 		return SearchResult{}, err

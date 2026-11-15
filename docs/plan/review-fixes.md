@@ -69,7 +69,7 @@ Share-safe bundles leave the manifest's `CWD`, `RepoRoot`, `GitBranch` and
 sees a JSON key next to its value, and the home-path rules miss Windows
 profiles.
 
-### Reliability (RF-11 to RF-23, RF-26 to RF-31)
+### Reliability (RF-11 to RF-23, RF-26 to RF-33)
 
 | Task | Finding | Checked |
 |---|---|---|
@@ -92,6 +92,8 @@ profiles.
 | RF-29 | Fish prompt-cwd tests also start without a PTY and never prompt | ✅ (found in RF-27, 2026-11-15) |
 | RF-30 | Refresh can publish an old session failure after recovery finishes, leaving healthy diagnostics falsely failed | ✅ (found in RF-20, 2026-11-15) |
 | RF-31 | Reliability changes introduce ten lint findings; keep new changes lint-clean independently of RF-24 | ✅ (integration, 2026-11-15) |
+| RF-32 | Search rejects files under aliased project roots after RF-19; Windows and macOS CI return no matches | ✅ (CI 43690937665, 2026-11-15) |
+| RF-33 | macOS chat-steering test times out after the steer notification | Investigating (CI 43690937665) |
 
 ### CI and docs (RF-24, RF-25)
 
