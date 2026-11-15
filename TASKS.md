@@ -58,7 +58,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| Chat inventory dialog | [chat-inventory-dialog](docs/plan/chat-inventory-dialog.md) | [chat-inventory-dialog/](docs/tasks/chat-inventory-dialog/README.md) | 1/1 ✅ |
+| Chat inventory dialog | [chat-inventory-dialog](docs/plan/chat-inventory-dialog.md) | [chat-inventory-dialog/](docs/tasks/chat-inventory-dialog/README.md) | 2/2 ✅ |
 | Chat command picker | [chat-command-picker](docs/plan/chat-command-picker.md) | [chat-command-picker/](docs/tasks/chat-command-picker/README.md) | 1/1 ✅ |
 | Understand Svelte | [understand-svelte](docs/plan/understand-svelte.md) | [understand-svelte/](docs/tasks/understand-svelte/README.md) | 3/3 ✅ |
 | Large file view | [large-file-view](docs/plan/large-file-view.md) | [large-file-view/](docs/tasks/large-file-view/README.md) | 4/7 ✅ · 3 ⬜ |

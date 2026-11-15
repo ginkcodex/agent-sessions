@@ -11,8 +11,8 @@ Use the existing shared `CommandResultDialog` frame: a slightly wider panel, roo
 ## Decisions
 
 - Reuse theme tokens and existing modal, search and close components. No dependencies, new controls or backend changes.
-- Shared frame changes intentionally also apply to `McpServersDialog`; its content and logic stay unchanged.
-- Scope: `CommandResultDialog.svelte`, `PluginInventory.svelte`, existing plugin/MCP interaction coverage, and plan/task indexes. Composer callers, API contracts, fixtures, configuration and exports need no changes.
+- Shared frame changes intentionally also apply to `McpServersDialog`. Follow-up CID-02 gives its server groups matching padded cards, identity/detail grouping, filled status pills, and padded loading/error/empty messages and notes. Parsing, filtering and read-only behavior stay unchanged.
+- Scope: `CommandResultDialog.svelte`, `PluginInventory.svelte`, `McpServersDialog.svelte`, existing plugin/MCP interaction coverage, and plan/task indexes. Composer callers, API contracts, fixtures, configuration and exports need no changes.
 - Associate the explanatory note with the dialog for assistive technology. Preserve search autofocus, focus trap, Escape, close button and composer focus restoration.
 
 ## Risks

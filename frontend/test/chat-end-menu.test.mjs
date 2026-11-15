@@ -693,6 +693,12 @@ test('a bare /mcp answers in the MCP servers modal: grouped rows, a filter, ever
   assert.match(dialog().querySelector('.summary').textContent, /3 \(1 failed, 1 connected, 1 disabled\)/);
   assert.deepEqual([...dialog().querySelectorAll('h3')].map((h) => h.textContent), ['Failed (1)', 'Connected (1)', 'Disabled (1)']);
   assert.deepEqual(rows(), ['docs connection refused Failed', 'super-fetch 2 tools ✓ Connected', 'old-search Disabled']);
+  const firstRow = dialog().querySelector('li');
+  assert.equal(firstRow.querySelector('.identity .heading .name').textContent, 'docs');
+  assert.equal(firstRow.querySelector('.identity .detail').textContent, 'connection refused');
+  assert.equal(firstRow.querySelector('.badge.bad').textContent, 'Failed');
+  assert.equal(dialog().querySelector('.badge.ok').textContent, '✓ Connected');
+  assert.equal(dialog().querySelector('.note').id, dialog().getAttribute('aria-describedby'));
   assert.match(dialog().querySelector('[data-markdown]').textContent, /mcp reconnect/, 'the hint is a note');
   assert.deepEqual([...dialog().querySelectorAll('button')].map((b) => b.getAttribute('aria-label')), ['Close MCP servers'], 'read-only');
 
