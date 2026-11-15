@@ -280,10 +280,10 @@ export function pluginCommand(agent: string): ChatCommand {
   return { name: agent === 'codex' ? 'plugins' : 'plugin', description: 'List the installed plugins (shown here, not sent to the agent)', input: null };
 }
 
-/** Bare Codex inventory aliases are local; other agents keep their own commands. */
+/** Codex uses only /plugins; other agents keep their own /plugin commands. */
 export function isPluginListing(text: string, commands: readonly ChatCommand[], agent: string): boolean {
   const command = text.trim();
-  if (agent === 'codex' && (command === '/plugins' || command === '/plugin')) return true;
+  if (agent === 'codex') return command === '/plugins';
   return command === '/plugin' && !commands.some((c) => c.name === 'plugin');
 }
 

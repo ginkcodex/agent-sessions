@@ -684,22 +684,22 @@ test('Codex /plugins opens the complete installed inventory, not a model turn or
   c.target.querySelector('[role="option"]').click();
   flushSync();
   assert.equal(box.value, '/plugins', 'the inventory choice is bare even if the adapter advertises arguments');
-  for (const spelling of ['/plugins', '/plugin']) {
-    type(spelling);
-    await submit();
-    const dialog = c.target.querySelector('[data-command-result]');
-    assert.ok(dialog, spelling);
-    assert.deepEqual([...dialog.querySelectorAll('li .name')].map((n) => n.textContent), ['sites', 'visualize', 'disabled']);
-    assert.equal(dialog.querySelectorAll('.badge.loaded').length, 1, 'commandless and disabled installed plugins are still listed');
-    assert.deepEqual(calls, [], 'no prompt or inspection reaches the model');
-    dialog.querySelector('button').click();
-    flushSync();
-    assert.equal(document.activeElement, box);
-  }
-  assert.deepEqual(listed, ['c1', 'c1']);
-  type('/plugins install something');
   await submit();
-  assert.deepEqual(calls, [['prompt', 'c1', '/plugins install something']], 'arguments retain ordinary prompt behavior');
+  const dialog = c.target.querySelector('[data-command-result]');
+  assert.ok(dialog);
+  assert.deepEqual([...dialog.querySelectorAll('li .name')].map((n) => n.textContent), ['sites', 'visualize', 'disabled']);
+  assert.equal(dialog.querySelectorAll('.badge.loaded').length, 1, 'commandless and disabled installed plugins are still listed');
+  assert.deepEqual(calls, [], 'no prompt or inspection reaches the model');
+  dialog.querySelector('button').click();
+  flushSync();
+  assert.equal(document.activeElement, box);
+  for (const text of ['/plugin', '/plugins install something']) {
+    type(text);
+    await submit();
+    assert.equal(c.target.querySelector('[data-command-result]'), null, 'only /plugins opens inventory');
+  }
+  assert.deepEqual(listed, ['c1'], 'the singular spelling is not an inventory alias');
+  assert.deepEqual(calls, [['prompt', 'c1', '/plugin'], ['prompt', 'c1', '/plugins install something']], 'other text retains ordinary prompt behavior');
   c.close();
 });
 

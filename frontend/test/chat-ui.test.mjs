@@ -236,11 +236,13 @@ test('/plugin is the app\'s listing unless the agent has its own, and a plugin i
   assert.equal(isPluginListing('/plugin', [{ name: 'plugin' }], 'claude-code'), false, 'the agent answers its own');
   assert.deepEqual(commandChoices([pluginCommand('claude-code')], '/plug').map((c) => c.text), ['/plugin']);
   assert.deepEqual(commandChoices([pluginCommand('codex')], '/plug').map((c) => c.text), ['/plugins']);
-  for (const text of ['/plugins', ' /plugins\n', '/plugin']) {
+  for (const text of ['/plugins', ' /plugins\n']) {
     assert.equal(isPluginListing(text, [{ name: 'plugins' }, { name: 'plugin' }], 'codex'), true, text);
   }
-  for (const text of ['/plugins list', '/plugin install x', '/plugins:skill', '/pluginx']) {
-    assert.equal(isPluginListing(text, [], 'codex'), false, text);
+  for (const text of ['/plugin', ' /plugin\n', '/plugins list', '/plugin install x', '/plugins:skill', '/pluginx']) {
+    for (const commands of [[], [{ name: 'plugin' }, { name: 'plugins' }]]) {
+      assert.equal(isPluginListing(text, commands, 'codex'), false, text);
+    }
   }
 
   const plugins = [
