@@ -32,6 +32,7 @@
 //	withdraw MS  asks the "claude" form and withdraws it with
 //	             $/cancel_request after MS milliseconds; the chunk is
 //	             "withdrawn"
+//	askhold      asks an async form, ends on a steer without withdrawing it
 //	askexit      asks the "claude" form, then exits with status 3 without
 //	             waiting for the answer
 //	commands N   an available_commands_update with N commands (0 clears),
@@ -466,11 +467,19 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 	case "hang":
 		<-ctx.Done()
 		return end(acp.StopCancelled)
-	case "hold":
+	case "hold", "askhold":
 		steered := make(chan struct{}, 1)
 		a.mu.Lock()
 		a.holds[p.SessionID] = steered
 		a.mu.Unlock()
+		if word == "askhold" {
+			params := map[string]any{"sessionId": p.SessionID}
+			for k, v := range QuestionForms["claude"] {
+				params[k] = v
+			}
+			params["_meta"] = map[string]any{"codex": map[string]any{"delivery": "async"}}
+			go func() { _ = a.c().Call(context.Background(), acp.MethodElicitationCreate, params, nil) }()
+		}
 		defer func() {
 			a.mu.Lock()
 			delete(a.holds, p.SessionID)

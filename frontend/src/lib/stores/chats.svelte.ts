@@ -629,10 +629,9 @@ export class ChatsStore {
           }));
           return;
         }
-        // Permission requests end with their turn; the backend has answered
-        // them. A question goes only with its question_resolved: the agent
-        // may still wait for it (Codex's async questions outlive the prompt
-        // until the adapter withdraws them), and a late one stays.
+        // The backend resolves unanswered questions as withdrawn before this
+        // event. Keep their late cards so answers can go as a new message.
+        // Permission requests have also been answered by now.
         this.update(key, (c) => ({
           ...c,
           phase: c.phase === 'exited' ? c.phase : 'idle',

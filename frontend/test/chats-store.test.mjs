@@ -742,24 +742,23 @@ test("Codex's async question outlives the streamed reply, goes late at the turn'
   });
 });
 
-test('a question still open at turn_end stays until its resolution, then goes late', async () => {
+test('an unanswered question resolves late before turn_end, matching the engine', async () => {
   await withChats(async ({ store, mock }) => {
     const chat = await store.start({ agent: 'codex', dir: DIR, questions: true });
-    // The agent's events as the backend sends them: Codex's adapter may end
-    // the prompt before it withdraws an async question.
+    // The adapter ends the prompt without withdrawing its question. The
+    // engine resolves it as withdrawn before emitting turn_end.
     const agent = mock.chat.chats.get(chat.chatId);
     const send = (fields) => mock.chat.update(agent, fields);
     const q = { id: 'question-9', message: 'Codex keeps working while you answer.', fields: [{ key: 'a', type: 'string', title: 'Why?' }], meta: { codex: { delivery: 'async' } } };
     send({ kind: 'turn_start' });
     send({ kind: 'question', question: q });
-    send({ kind: 'turn_end', stopReason: 'end_turn' });
-    let c = store.byChatId(chat.chatId);
-    assert.equal(c.phase, 'idle');
-    assert.deepEqual(c.questions, [q], 'the end of the turn does not take a pending question');
-
     send({ kind: 'question_resolved', question: { id: q.id, outcome: 'withdrawn' } });
-    c = store.byChatId(chat.chatId);
-    assert.deepEqual(c.questions, [{ ...q, late: true }]);
+    assert.equal(store.byChatId(chat.chatId).phase, 'working');
+    assert.deepEqual(store.byChatId(chat.chatId).questions, [{ ...q, late: true }]);
+    send({ kind: 'turn_end', stopReason: 'end_turn' });
+    const c = store.byChatId(chat.chatId);
+    assert.equal(c.phase, 'idle');
+    assert.deepEqual(c.questions, [{ ...q, late: true }], 'the end of the turn keeps the late card');
     assert.equal(c.tail.items.find((i) => i.type === 'answer').summary, 'The agent went on without an answer');
 
     send({ kind: 'turn_start' });

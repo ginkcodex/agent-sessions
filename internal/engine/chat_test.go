@@ -1344,6 +1344,36 @@ func TestChatCloseDuringQuestion(t *testing.T) {
 	f.events.checkSeq(t, st.ChatID)
 }
 
+func TestChatQuestionOutlivesPrompt(t *testing.T) {
+	f := newChatFixture(t)
+	st := f.startAsking(t)
+	if _, err := f.m.Prompt(st.ChatID, "askhold", nil); err != nil {
+		t.Fatal(err)
+	}
+	asked := f.events.wait(t, st.ChatID, kind(ChatQuestionAsked)).Question
+	// This steering ends the prompt, but the adapter never withdraws its form.
+	queued, err := f.m.Prompt(st.ChatID, "continue", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.m.SendNow(chatCtx(t), st.ChatID, queued.Queued); err != nil {
+		t.Fatal(err)
+	}
+	end := f.events.wait(t, st.ChatID, kind(ChatTurnEnded))
+	resolved := f.events.wait(t, st.ChatID, kind(ChatQuestionResolved))
+	if resolved.Question.ID != asked.ID || resolved.Question.Outcome != ChatQuestionWithdrawn || resolved.Seq >= end.Seq {
+		t.Fatalf("resolution = %+v (seq %d), turn end = %+v", resolved.Question, resolved.Seq, end)
+	}
+	if open := f.m.Chats(); open[0].Working || len(open[0].Questions) != 0 {
+		t.Fatalf("prompt reply left a pending turn or question: %+v", open)
+	}
+	if err := f.m.Answer(st.ChatID, asked.ID, acp.ElicitationDecline, nil); !errors.Is(err, ErrQuestionNotFound) {
+		t.Fatalf("answer after turn end = %v", err)
+	}
+	f.turn(t, st.ChatID, "next turn")
+	f.events.checkSeq(t, st.ChatID)
+}
+
 func TestChatQuestionWithdrawn(t *testing.T) {
 	f := newChatFixture(t)
 	st := f.startAsking(t)
