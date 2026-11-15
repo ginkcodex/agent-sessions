@@ -379,7 +379,7 @@
       autocapitalize="off"
       disabled={chat.phase === 'starting' || closed}
       onkeydown={onKeydown}
-      oninput={() => (active = 0)}
+      oninput={() => { active = 0; dismissed = null; }}
       onpaste={onPaste}
     ></textarea>
     <span id={hintId} class="sr-only"
