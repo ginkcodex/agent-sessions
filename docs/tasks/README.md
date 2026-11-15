@@ -32,6 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Chat inventory dialog | [chat-inventory-dialog](../plan/chat-inventory-dialog.md) | [chat-inventory-dialog/](chat-inventory-dialog/README.md) | 1/1 ✅ |
 | Chat command picker | [chat-command-picker](../plan/chat-command-picker.md) | [chat-command-picker/](chat-command-picker/README.md) | 1/1 ✅ |
 | Understand Svelte | [understand-svelte](../plan/understand-svelte.md) | [understand-svelte/](understand-svelte/README.md) | 3/3 ✅ |
 | Large file view | [large-file-view](../plan/large-file-view.md) | [large-file-view/](large-file-view/README.md) | 4/7 ✅ · 3 ⬜ |

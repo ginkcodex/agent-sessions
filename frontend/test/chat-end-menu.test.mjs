@@ -594,6 +594,13 @@ test('/plugin lists the installed plugins in the Plugins modal without sending a
   const rows = [...panel().querySelectorAll('li')].map((li) => li.textContent.trim().replace(/\s+/g, ' '));
   assert.deepEqual(rows, ['ponytail @ponytail 5.3.3 user enabled loaded', 'gopls-lsp @official disabled']);
   assert.equal(panel().querySelector('h2').textContent, 'Plugins');
+  const note = panel().querySelector('.note');
+  assert.equal(panel().getAttribute('aria-describedby'), note.id, 'the dialog exposes its explanatory note');
+  assert.match(note.textContent, /Not sent to the agent/);
+  const firstRow = panel().querySelector('li');
+  assert.equal(firstRow.querySelector('.identity .name').textContent, 'ponytail');
+  assert.deepEqual([...firstRow.querySelectorAll('.metadata .meta')].map((m) => m.textContent), ['@ponytail', '5.3.3', 'user']);
+  assert.deepEqual([...firstRow.querySelectorAll('.badges .badge')].map((b) => b.textContent), ['enabled', 'loaded']);
   assert.deepEqual([...panel().querySelectorAll('button')].map((b) => b.getAttribute('aria-label')), ['Close Plugins'], 'no install or enable actions');
   const filter = panel().querySelector('input[type="search"]');
   assert.equal(document.activeElement, filter);

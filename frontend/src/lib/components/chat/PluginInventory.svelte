@@ -58,13 +58,18 @@
       <ul data-plugins-state="listed">
         {#each shown as p (p.id)}
           <li>
-            <span class="name">{p.name}</span>
-            {#if p.marketplace}<span class="meta">@{p.marketplace}</span>{/if}
-            {#if p.version}<span class="meta">{p.version}</span>{/if}
-            {#if p.scope}<span class="meta">{p.scope}</span>{/if}
-            <span class="spacer"></span>
-            <span class="badge" class:on={p.enabled}>{p.enabled ? 'enabled' : 'disabled'}</span>
-            {#if p.loaded}<span class="badge" title="The session has this plugin's commands">loaded</span>{/if}
+            <div class="identity">
+              <span class="name">{p.name}</span>
+              <div class="metadata">
+                {#if p.marketplace}<span class="meta">@{p.marketplace}</span>{/if}
+                {#if p.version}<span class="meta">{p.version}</span>{/if}
+                {#if p.scope}<span class="meta">{p.scope}</span>{/if}
+              </div>
+            </div>
+            <div class="badges">
+              <span class="badge" class:on={p.enabled}>{p.enabled ? 'enabled' : 'disabled'}</span>
+              {#if p.loaded}<span class="badge loaded" title="The session has this plugin's commands">loaded</span>{/if}
+            </div>
           </li>
         {/each}
       </ul>
@@ -73,14 +78,55 @@
 </CommandResultDialog>
 
 <style>
-  .status { margin: 4px 0; color: var(--text-secondary); }
+  .status {
+    margin: 0;
+    padding: 18px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+  }
   .status.error { color: var(--danger); }
-  ul { margin: 0; padding: 0; list-style: none; }
-  li { display: flex; align-items: baseline; gap: 8px; padding: 5px 6px; border-radius: var(--radius-md); }
-  li:hover { background: var(--hover-bg); }
-  .name { font-family: var(--font-mono); color: var(--text-primary); }
-  .meta { font-size: 12px; color: var(--text-muted); }
-  .spacer { flex: 1; }
-  .badge { flex: none; padding: 0 6px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 11px; color: var(--text-muted); white-space: nowrap; }
-  .badge.on { color: var(--status-live); border-color: currentColor; }
+
+  ul { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 16px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--bg-secondary) 55%, var(--bg-primary));
+  }
+
+  .identity { flex: 1 1 240px; min-width: 0; }
+  .name { font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); }
+  .metadata { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
+  .meta { min-width: 0; font-size: 12px; color: var(--text-muted); }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  .badge {
+    padding: 3px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .badge.on {
+    color: var(--status-live);
+    border-color: color-mix(in srgb, var(--status-live) 25%, transparent);
+    background: color-mix(in srgb, var(--status-live) 10%, var(--bg-primary));
+  }
+
+  .badge.loaded {
+    color: var(--accent-hover);
+    border-color: color-mix(in srgb, var(--accent-color) 25%, transparent);
+    background: color-mix(in srgb, var(--accent-color) 10%, var(--bg-primary));
+  }
 </style>
