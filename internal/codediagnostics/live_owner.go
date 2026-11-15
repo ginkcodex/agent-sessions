@@ -216,38 +216,47 @@ func (d *LiveDocuments) Refresh() {
 	}
 	d.mu.RUnlock()
 	for _, p := range projects {
-		// Contexts of one provider fail independently: the provider is failed
-		// only when every context that ever ran has failed. A failed sibling of
-		// a healthy context is a bounded partial-coverage notice instead.
-		type tally struct {
-			failed, running int
-			cause           error // of the first failed context
-		}
-		byProvider := map[string]*tally{}
 		for _, cfg := range p.servers {
-			t := byProvider[cfg.ProviderID]
-			if t == nil {
-				t = &tally{}
-				byProvider[cfg.ProviderID] = t
-			}
-			info := d.Sessions.Info(p.root, cfg)
-			d.recoverSession(p.root, cfg, info)
-			switch {
-			case info.Phase == phaseFailed || info.Phase == phaseDisconnected:
-				if t.failed++; t.cause == nil {
-					t.cause = info.Err
-				}
-			case live(info.Phase):
-				t.running++
-			}
+			d.recoverSession(p.root, cfg, d.Sessions.Info(p.root, cfg))
 		}
-		for id, t := range byProvider {
-			switch {
-			case t.failed > 0 && t.running == 0:
-				d.manager.LiveFailure(p.root.Project(), id, t.cause)
-			case t.failed > 0:
-				d.manager.LiveNotice(p.root.Project(), id, "One Go build context failed; files in it have no live results. Other contexts keep working.")
+		d.refreshStatus(p)
+	}
+}
+
+func (d *LiveDocuments) refreshStatus(p liveProject) {
+	// Recovery and its status reset hold the same lock; never publish an old failure.
+	d.manager.mu.Lock()
+	defer d.manager.mu.Unlock()
+	// Contexts of one provider fail independently: the provider is failed
+	// only when every context that ever ran has failed. A failed sibling of
+	// a healthy context is a bounded partial-coverage notice instead.
+	type tally struct {
+		failed, running int
+		cause           error // of the first failed context
+	}
+	byProvider := map[string]*tally{}
+	for _, cfg := range p.servers {
+		t := byProvider[cfg.ProviderID]
+		if t == nil {
+			t = &tally{}
+			byProvider[cfg.ProviderID] = t
+		}
+		info := d.Sessions.Info(p.root, cfg)
+		switch {
+		case info.Phase == phaseFailed || info.Phase == phaseDisconnected:
+			if t.failed++; t.cause == nil {
+				t.cause = info.Err
 			}
+		case live(info.Phase):
+			t.running++
+		}
+	}
+	for id, t := range byProvider {
+		switch {
+		case t.failed > 0 && t.running == 0:
+			d.manager.liveFailureLocked(p.root.Project(), id, t.cause)
+		case t.failed > 0:
+			d.manager.liveNoticeLocked(p.root.Project(), id, "One Go build context failed; files in it have no live results. Other contexts keep working.")
 		}
 	}
 }

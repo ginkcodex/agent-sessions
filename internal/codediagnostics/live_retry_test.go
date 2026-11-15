@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -108,6 +109,60 @@ func TestLiveAutomaticRestartBackoffCapAndManualRetry(t *testing.T) {
 	current := d.Sessions.Info(root, cfg).Generation
 	if err := m.PublishPathDiagnostics(root.Project(), "gopls", current, "a.go", &v, nil); err != nil {
 		t.Fatal("recovered publication", err)
+	}
+}
+
+func TestLiveRefreshDoesNotRestoreRecoveredFailure(t *testing.T) {
+	for _, manual := range []bool{false, true} {
+		name := "automatic"
+		if manual {
+			name = "manual"
+		}
+		t.Run(name, func(t *testing.T) {
+			e, d, m, s, root, cfg, steps := liveRetryFixture(t, 2)
+			_ = e.next().Terminate()
+			eventually(t, "crash", func() bool { return d.Sessions.Info(root, cfg).Phase == phaseFailed })
+			project, _ := d.project(root)
+			old := d.Sessions.Info(root, cfg)
+			d.Refresh()
+			if manual {
+				if _, err := m.RetryLive(s.Context, cfg.ProviderID); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				e.clock.Advance(restartBackoff)
+				d.recoverSession(root, cfg, old)
+				m.workers.Wait()
+			}
+			<-steps
+			// Force the old sample / recovery / status-publication ordering.
+			d.refreshStatus(project)
+			healthy := func() {
+				t.Helper()
+				snapshot, err := m.GetSnapshot(s.Context)
+				if err != nil || snapshot.Providers[0].Phase != "idle" || snapshot.Providers[0].Failure != nil {
+					t.Fatalf("recovered provider falsely failed: %+v %v", snapshot.Providers, err)
+				}
+			}
+			healthy()
+			var refreshes sync.WaitGroup
+			for range 4 {
+				refreshes.Add(1)
+				go func() {
+					defer refreshes.Done()
+					for range 20 {
+						d.Refresh()
+					}
+				}()
+			}
+			v := int64(1)
+			current := d.Sessions.Info(root, cfg).Generation
+			if err := m.PublishPathDiagnostics(root.Project(), cfg.ProviderID, current, "a.go", &v, nil); err != nil {
+				t.Fatal(err)
+			}
+			refreshes.Wait()
+			healthy()
+		})
 	}
 }
 
