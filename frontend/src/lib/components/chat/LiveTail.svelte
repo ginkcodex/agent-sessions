@@ -2,7 +2,8 @@
   // What a chat's agent has streamed and the saved transcript does not show
   // yet, below the saved messages, with the chat's state under it.
   import type { SessionRef } from '../../types';
-  import type { Chat } from '../../stores/chats.svelte';
+  import { chats, type Chat } from '../../stores/chats.svelte';
+  import { errorText } from '../../manage';
   import type { TranscriptMode } from '../../transcript';
   import { tailBlocks } from '../../chat';
   import { asksWhileWorking } from '../../chatQuestions';
@@ -27,6 +28,19 @@
   }
 
   let { chat, sessionRef, mode = 'activity', onFileLink, onOpenFile, onRunCommand, onOpenTerminal }: Props = $props();
+
+  let cancelError = $state<string | undefined>();
+  let cancelling = $state(false);
+  async function cancelStart() {
+    cancelling = true;
+    cancelError = undefined;
+    try {
+      await chats.cancelStart(chat.key);
+    } catch (err) {
+      cancelError = errorText(err, 'Could not cancel the chat start.');
+      cancelling = false;
+    }
+  }
 
   let blocks = $derived(tailBlocks(chat.tail));
   // A late question, or one the agent keeps working through, does not hold the turn.
@@ -69,7 +83,9 @@
     <div class="chat-status" role="status">
       <Icon name="loader-circle" size={14} class="spin" />
       <span>{chat.session ? `Opening the session in ${agentName}…` : `Starting ${agentName}…`}</span>
+      <button type="button" class="notice-action" disabled={cancelling} onclick={() => void cancelStart()}>{cancelling ? 'Cancelling…' : 'Cancel'}</button>
     </div>
+    {#if cancelError}<div class="chat-notice error" role="alert">{cancelError}</div>{/if}
   {:else}
     {#each chat.permissions as permission (permission.id)}
       <PermissionCard {chat} {permission} {agentName} />

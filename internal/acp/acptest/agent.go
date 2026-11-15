@@ -53,6 +53,8 @@
 //	ACPTEST_STDERR_BYTES=N   write N bytes of numbered stderr lines at start
 //	ACPTEST_TEXT_ONLY=1      advertise no image or embedded-context prompts
 //	ACPTEST_NO_STEER=1       do not advertise or answer _session/steering
+//	ACPTEST_HANG_METHOD=M    never answer method M, ignoring cancellation
+//	ACPTEST_PID_FILE=P       write the PID to P when the hung method arrives
 //
 // Loading or resuming the session "in-use" fails as codex-acp does while
 // another Codex process holds the session: -32600 with data.reason
@@ -204,6 +206,12 @@ func (a *agent) configOptions() []acp.ConfigOption {
 }
 
 func (a *agent) request(ctx context.Context, method string, params json.RawMessage) (any, error) {
+	if method == os.Getenv("ACPTEST_HANG_METHOD") {
+		if path := os.Getenv("ACPTEST_PID_FILE"); path != "" {
+			_ = os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600)
+		}
+		select {} // Even a cancelled request never gets a reply.
+	}
 	switch method {
 	case acp.MethodInitialize:
 		var p acp.InitializeRequest

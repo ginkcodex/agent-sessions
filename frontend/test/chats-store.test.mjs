@@ -51,6 +51,58 @@ async function until(what, ok) {
 
 const DIR = '/home/user/projects/web-app';
 
+test('a starting chat cancels with its token and removes the placeholder', async () => {
+  await withChats(async ({ store, mock }) => {
+    const real = mock.chatStart.bind(mock);
+    let reject;
+    let request;
+    mock.chatStart = (req) => { request = req; return new Promise((_, no) => { reject = no; }); };
+    mock.chatStartCancel = async (token) => {
+      assert.equal(token, request.startToken);
+      reject(new Error('context canceled'));
+    };
+    const starting = store.start({ agent: 'codex', dir: DIR });
+    const failed = assert.rejects(starting, /context canceled/);
+    assert.equal(store.chats[0].phase, 'starting');
+    assert.match(request.startToken, /^[0-9a-f-]{36}$/);
+    await store.cancelStart(store.chats[0].key);
+    await failed;
+    assert.equal(store.chats.length, 0);
+    mock.chatStart = real;
+    assert.equal((await store.start({ agent: 'codex', dir: DIR })).phase, 'idle');
+  });
+});
+
+test('a failed cancel request does not discard a later successful start', async () => {
+  await withChats(async ({ store, mock }) => {
+    const real = mock.chatStart.bind(mock);
+    let release;
+    mock.chatStart = (req) => new Promise((resolve) => { release = async () => resolve(await real(req)); });
+    mock.chatStartCancel = async () => { throw new Error('cancel transport failed'); };
+    const starting = store.start({ agent: 'codex', dir: DIR });
+    await assert.rejects(store.cancelStart(store.chats[0].key), /cancel transport failed/);
+    await release();
+    const chat = await starting;
+    assert.equal(chat.phase, 'idle');
+    assert.equal((await mock.chatList()).length, 1);
+  });
+});
+
+test('a cancellation racing a successful start closes the new chat', async () => {
+  await withChats(async ({ store, mock }) => {
+    const real = mock.chatStart.bind(mock);
+    let release;
+    mock.chatStart = (req) => new Promise((resolve) => { release = async () => resolve(await real(req)); });
+    const starting = store.start({ agent: 'codex', dir: DIR });
+    const failed = assert.rejects(starting, /cancelled/);
+    await store.cancelStart(store.chats[0].key);
+    await release();
+    await failed;
+    assert.equal(store.chats.length, 0);
+    assert.deepEqual(await mock.chatList(), []);
+  });
+});
+
 test('a prompt streams into the live tail, and the saved turn replaces it', async () => {
   await withChats(async ({ store, mock }) => {
     const chat = await store.start({ agent: 'claude-code', dir: DIR });

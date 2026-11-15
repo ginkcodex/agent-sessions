@@ -1,7 +1,7 @@
 # Review fixes — tasks
 
 - **Plan:** [review-fixes.md](../../plan/review-fixes.md)
-- **Progress:** 17/29 done
+- **Progress:** 18/29 done
 
 From the architecture and feature review of 2026-11-14. RF-01 to RF-10 are
 security and privacy; RF-11 to RF-23 are reliability; RF-24 and RF-25 are CI
@@ -26,7 +26,7 @@ RF-26 and RF-27.
 | [RF-14](RF-14.md) | ✅ Done | One running scan plus a dirty flag per provider; `Close` waits for refreshes | 3.5 h | None |
 | [RF-15](RF-15.md) | ✅ Done | An unreadable source keeps its previous state; it neither blocks the provider nor drops sessions | 3 h | None |
 | [RF-16](RF-16.md) | ✅ Done | The client kills the agent when the connection ends with an error it did not cause | 2 h | None |
-| [RF-17](RF-17.md) | ⬜ Not started | A start deadline and a cancel path while the frontend has no chat ID yet | 3 h | RF-16 |
+| [RF-17](RF-17.md) | ✅ Done | A start deadline and a cancel path while the frontend has no chat ID yet | 3 h | RF-16 |
 | [RF-18](RF-18.md) | ⬜ Not started | Decide whether `turn_end` waits for questions; make the engine, store and tests agree | 3 h | None |
 | [RF-19](RF-19.md) | ⬜ Not started | Lstat (or open non-blocking) before reading in Read, Blame, diff and external | 1.5 h | None |
 | [RF-20](RF-20.md) | ⬜ Not started | Wire `SessionManager.Retry` into a production path with backoff | 3 h | None |

@@ -624,6 +624,8 @@ export interface ChatAgent {
 }
 
 export interface ChatStartRequest {
+  /** Client-chosen token for cancellation before the chat has an ID. */
+  startToken?: string;
   agent: AgentID;
   dir: string;
   /** The session to continue; a new session when absent. */

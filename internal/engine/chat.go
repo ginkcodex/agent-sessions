@@ -149,6 +149,8 @@ type ChatStartRequest struct {
 	Agent  model.AgentID     `json:"agent"`
 	Dir    string            `json:"dir"`
 	Resume *model.SessionRef `json:"resume,omitempty"`
+	// StartToken lets the desktop cancel a start before it has a chat ID.
+	StartToken string `json:"startToken,omitempty"`
 	// Questions says the caller shows questions (ChatQuestionAsked). Only
 	// then is the agent offered form elicitation; otherwise each agent
 	// falls back to not asking.

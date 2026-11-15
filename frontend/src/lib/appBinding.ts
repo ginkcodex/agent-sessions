@@ -37,6 +37,7 @@ export const APP_METHODS = [
   'ChatSendNow',
   'ChatSetOption',
   'ChatStart',
+  'ChatStartCancel',
   'ChatUnqueue',
   'CheckForUpdate',
   'ClearCodeCheckLogs',

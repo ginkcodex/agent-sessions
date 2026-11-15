@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/files"
@@ -86,7 +87,9 @@ type App struct {
 
 	// chatsOpen is what the frontend last said: whether the window has an
 	// open chat, on this computer or on the host it shows (SetChatsOpen).
-	chatsOpen atomic.Bool
+	chatsOpen        atomic.Bool
+	chatStarts       chatStarts    // starts keyed by the frontend's token
+	chatStartTimeout time.Duration // zero uses the 60-second default
 
 	// Agent alerts: notify is set up on first use; notifierOverride and
 	// notifyRaise replace the desktop's notifications and raising the
