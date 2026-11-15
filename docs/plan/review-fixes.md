@@ -89,6 +89,7 @@ profiles.
 | RF-26 | Agent panel tabs on a csh or tcsh host run `$SHELL -ilc`, which those shells reject (`internal/launch/panel_shell.go`) | ✅ (found in RF-21) |
 | RF-27 | The fish cases of the panel startup test run without a terminal, so fish never prompts and they fail wherever fish is installed | ✅ (found in RF-26) |
 | RF-28 | Remote connect under csh and tcsh reads the rc file but not `.login`, so PATH set there is missing; panel tabs read it | ✅ (found in RF-26) |
+| RF-29 | Fish prompt-cwd tests also start without a PTY and never prompt | ✅ (found in RF-27, 2026-11-15) |
 
 ### CI and docs (RF-24, RF-25)
 
