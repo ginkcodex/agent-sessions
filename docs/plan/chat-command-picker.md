@@ -15,6 +15,10 @@ Keep the existing listbox and options in `frontend/src/lib/components/chat/ChatC
 - Preserve the option DOM structure so active-option scrolling, keyboard navigation, click selection and ARIA relationships remain unchanged.
 - Scope reaches the composer styles, existing command interaction tests, and plan/task indexes. Callers, fixtures, exports and configuration need no changes.
 
+## Reopening after dismissal (CCP-02)
+
+Escape closes the current suggestions only until the next user edit. Reset dismissal alongside the active option in the composer's input handler, so clearing and retyping `/` (or Codex's `$`) reopens suggestions. Keep selection insertion dismissed until an actual edit; no backend, caller, fixture, export or configuration changes are needed. Add interaction regression coverage for Escape, clear, retype and repeated dismissal. This affects only transient picker state, not message or session data.
+
 ## Risks
 
 Roomier rows show fewer commands at once; the existing scrollable list and active-option scrolling remain available. Long command names and hints must not force horizontal overflow. No session data is read, written or exposed by this styling change.

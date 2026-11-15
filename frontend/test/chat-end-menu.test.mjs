@@ -538,6 +538,42 @@ test('a / word lists the agent\'s commands; choosing one inserts it and only sen
   c.close();
 });
 
+test('command suggestions reopen after Escape, clearing and retyping the same prefix', async () => {
+  const c = await openComposer({ phase: 'idle', agent: 'codex', commands: [
+    { name: 'mcp' }, { name: '$sites:sites' }, { name: '$other:skill' },
+  ] });
+  const box = c.target.querySelector('textarea');
+  const type = (value) => {
+    box.value = value;
+    box.dispatchEvent(new window.Event('input', { bubbles: true }));
+    flushSync();
+  };
+  try {
+    for (const prefix of ['/', '$']) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        type(prefix);
+        assert.ok(c.target.querySelector('[role="listbox"]'), `${prefix} opens on attempt ${attempt}`);
+        box.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+        flushSync();
+        box.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        flushSync();
+        assert.equal(c.target.querySelector('[role="listbox"]'), null);
+        assert.equal(box.getAttribute('aria-activedescendant'), null);
+        type('');
+        type(prefix);
+        const options = c.target.querySelectorAll('[role="option"]');
+        assert.ok(options.length > 0, `${prefix} reopens after clearing`);
+        assert.equal(options[0].getAttribute('aria-selected'), 'true', 'editing resets the active option');
+        assert.equal(box.getAttribute('aria-activedescendant'), options[0].id);
+        type('');
+      }
+    }
+    assert.deepEqual(calls, [], 'dismissal and editing never send a prompt');
+  } finally {
+    c.close();
+  }
+});
+
 test('/plugin lists the installed plugins in the Plugins modal without sending anything to the agent', async () => {
   const commands = [{ name: 'ponytail:ponytail', input: { hint: '[lite|full]' } }];
   const listed = [];
