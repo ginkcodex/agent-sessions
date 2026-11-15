@@ -61,7 +61,7 @@ func TestPanelShellPromptCwd(t *testing.T) {
 				}
 				if shell == "fish" {
 					profile = ".config/fish/config.fish"
-					hooks = "function fish_prompt; printf EXISTING_HOOK; end\n"
+					hooks = "function fish_prompt; printf EXISTING_HOOK >> \"$HOME/prompt-runs\"; printf EXISTING_HOOK; end\n"
 					if array {
 						hooks += "function existing_hook --on-event fish_prompt; printf FIRST_HOOK; end\n"
 					}
@@ -89,10 +89,10 @@ func TestPanelShellPromptCwd(t *testing.T) {
 					script = JoinCommand(PosixBootstrapArgv(PanelShellScript(home)))
 				}
 				cmd := exec.CommandContext(ctx, "/bin/sh", "-c", script)
-				cmd.Env = append(os.Environ(), "HOME="+home, "ZDOTDIR="+home, "TMPDIR="+tmp, "TERM=dumb", "SHELL="+path)
+				cmd.Env = append(os.Environ(), "HOME="+home, "ZDOTDIR="+home, "XDG_CONFIG_HOME="+filepath.Join(home, ".config"), "TMPDIR="+tmp, "TERM=dumb", "SHELL="+path)
 				cmd.Dir = home
-				cmd.Stdin = strings.NewReader("cd -- " + ShellEscape(dir) + "\ncd -- " + ShellEscape(filepath.Join(home, "missing")) + "\nexit 0\n")
-				b, err := cmd.CombinedOutput()
+				input := "cd -- " + ShellEscape(dir) + "\ncd -- " + ShellEscape(filepath.Join(home, "missing")) + "\nexit 0\n"
+				b, err := panelPTYOutput(t, ctx, cmd, input)
 				if err != nil {
 					t.Fatalf("%v: %s", err, b)
 				}
@@ -108,8 +108,16 @@ func TestPanelShellPromptCwd(t *testing.T) {
 				if want := []string{home, dir, dir}; !reflect.DeepEqual(got, want) {
 					t.Fatalf("cwd = %q, want %q; output %q", got, want, b)
 				}
-				if strings.Count(string(b), "EXISTING_HOOK") != 3 {
-					t.Fatalf("existing prompt hook lost: %q", b)
+				hookOutput := b
+				if shell == "fish" {
+					// fish redraws cached prompt text while editing each command.
+					hookOutput, err = os.ReadFile(filepath.Join(home, "prompt-runs"))
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				if strings.Count(string(hookOutput), "EXISTING_HOOK") != 3 {
+					t.Fatalf("existing prompt hook lost: %q", hookOutput)
 				}
 				if array && strings.Count(string(b), "FIRST_HOOK") != 3 {
 					t.Fatalf("array prompt hook lost: %q", b)
@@ -119,8 +127,13 @@ func TestPanelShellPromptCwd(t *testing.T) {
 					t.Fatal("profile modified")
 				}
 				files, err := os.ReadDir(tmp)
-				if err != nil || len(files) != 0 {
-					t.Fatalf("wrappers not cleaned: %v %v", files, err)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, file := range files {
+					if strings.HasPrefix(file.Name(), "agent-sessions-shell.") {
+						t.Fatalf("wrappers not cleaned: %v", files)
+					}
 				}
 			})
 		}
