@@ -361,10 +361,14 @@ func TestCloseAnswersPendingPermission(t *testing.T) {
 		return acp.Cancelled()
 	}})
 	id := newSession(t, c)
-	result := make(chan error, 1)
+	type promptResult struct {
+		stop string
+		err  error
+	}
+	result := make(chan promptResult, 1)
 	go func() {
-		_, err := prompt(t, c, id, "permission")
-		result <- err
+		stop, err := prompt(t, c, id, "permission")
+		result <- promptResult{stop, err}
 	}()
 	<-waiting
 	closed := make(chan struct{})
@@ -377,11 +381,11 @@ func TestCloseAnswersPendingPermission(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("Close blocked on a pending permission")
 	}
-	// The cancelled answer and stdin's close race the reply; either way the
-	// turn does not succeed.
-	if err := <-result; err == nil {
-		t.Fatal("prompt succeeded after close")
+	// A cancelled reply can arrive before stdin closes; it is not a successful turn.
+	if got := <-result; got.err == nil && got.stop != acp.StopCancelled {
+		t.Fatalf("prompt after close = %q, %v", got.stop, got.err)
 	}
+	waitExited(t, c)
 }
 
 func TestAgentCrashMidTurn(t *testing.T) {
