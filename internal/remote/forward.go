@@ -50,7 +50,8 @@ func BuildForwardCmd(ctx context.Context, alias, host string, remotePort, localP
 	// Only forwarding connections need to fail when a listener cannot be bound.
 	// Keep this out of ordinary shell invocations for clients that do not support it.
 	opts.ExtraOptions = append([]string{"ExitOnForwardFailure=yes"}, opts.ExtraOptions...)
-	opts.ExtraOptions = append(opts.ExtraOptions, "GatewayPorts=no", "ControlMaster=no", "ControlPath=none", "ControlPersist=no", "ForkAfterAuthentication=no", "PermitLocalCommand=no", "RemoteCommand=none", "RequestTTY=no")
+	// Foreground is the default; ForkAfterAuthentication is unknown before 8.7.
+	opts.ExtraOptions = append(opts.ExtraOptions, "GatewayPorts=no", "ControlMaster=no", "ControlPath=none", "ControlPersist=no", "PermitLocalCommand=no", "RemoteCommand=none", "RequestTTY=no")
 	cmd, err := BuildSSHCmd(ctx, alias, nil, opts)
 	if err != nil {
 		return nil, err

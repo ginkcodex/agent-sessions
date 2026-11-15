@@ -84,7 +84,7 @@ profiles.
 | RF-19 | Reading a FIFO opens it before the regular-file check and hangs (`internal/files/files.go:615`) | ✅ |
 | RF-20 | A crashed language server can't restart before the app does; `SessionManager.Retry` has no production caller | reviewer |
 | RF-21 | Remote probe, deploy and serve run POSIX scripts under `$SHELL -lc`, which fails with fish, csh and tcsh | ✅ |
-| RF-22 | Port forwards use `ForkAfterAuthentication=no`, which needs OpenSSH 8.7 | reviewer |
+| RF-22 | Port forwards use `ForkAfterAuthentication=no`, which needs OpenSSH 8.7 | ✅ (2026-11-15) |
 | RF-23 | `configfile` values are not unescaped on read, so backslashes grow on every save; a line over 64 KiB truncates the rewrite | reviewer |
 | RF-26 | Agent panel tabs on a csh or tcsh host run `$SHELL -ilc`, which those shells reject (`internal/launch/panel_shell.go`) | ✅ (found in RF-21) |
 | RF-27 | The fish cases of the panel startup test run without a terminal, so fish never prompts and they fail wherever fish is installed | ✅ (found in RF-26) |
