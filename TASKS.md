@@ -58,11 +58,12 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Codex skills dialog | [codex-skills-dialog](docs/plan/codex-skills-dialog.md) | [codex-skills-dialog/](docs/tasks/codex-skills-dialog/README.md) | 1/1 ✅ |
 | Chat inventory dialog | [chat-inventory-dialog](docs/plan/chat-inventory-dialog.md) | [chat-inventory-dialog/](docs/tasks/chat-inventory-dialog/README.md) | 2/2 ✅ |
 | Chat command picker | [chat-command-picker](docs/plan/chat-command-picker.md) | [chat-command-picker/](docs/tasks/chat-command-picker/README.md) | 2/2 ✅ |
 | Understand Svelte | [understand-svelte](docs/plan/understand-svelte.md) | [understand-svelte/](docs/tasks/understand-svelte/README.md) | 4/4 ✅ |
 | Large file view | [large-file-view](docs/plan/large-file-view.md) | [large-file-view/](docs/tasks/large-file-view/README.md) | 4/7 ✅ · 3 ⬜ |
-| Chat MCP and plugin commands | [chat-plugin-commands](docs/plan/chat-plugin-commands.md) | [chat-plugin-commands/](docs/tasks/chat-plugin-commands/README.md) | 14/16 ✅ · 2 ⬜ |
+| Chat MCP and plugin commands | [chat-plugin-commands](docs/plan/chat-plugin-commands.md) | [chat-plugin-commands/](docs/tasks/chat-plugin-commands/README.md) | 15/16 ✅ · 1 ⬜ |
 | Layout memory | [layout-memory](docs/plan/layout-memory.md) | [layout-memory/](docs/tasks/layout-memory/README.md) | 3/5 ✅ · 2 ⬜ |
 | Transcript tool readability | [transcript-tool-readability](docs/plan/transcript-tool-readability.md) | [transcript-tool-readability/](docs/tasks/transcript-tool-readability/README.md) | 3/4 ✅ · 1 ⬜ |
 | Message file single match | [message-file-single-match](docs/plan/message-file-single-match.md) | [message-file-single-match/](docs/tasks/message-file-single-match/README.md) | 1/1 ✅ |

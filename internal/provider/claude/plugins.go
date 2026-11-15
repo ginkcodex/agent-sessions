@@ -13,7 +13,7 @@ var _ provider.PluginLister = (*Provider)(nil)
 
 // PluginList runs `claude plugin list --json`, which reads the install
 // state on disk and takes under a second.
-func (p *Provider) PluginList() provider.PluginList {
+func (p *Provider) PluginList(string) provider.PluginList {
 	return provider.PluginList{Args: []string{"plugin", "list", "--json"}, Timeout: 30 * time.Second, Parse: parsePlugins}
 }
 

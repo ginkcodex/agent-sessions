@@ -42,6 +42,25 @@ of this first release.
 - Scope reaches the shared frontend command helper, composer, command/unit/interaction tests and provider documentation. Backend inventory changes, if needed after investigation, require their own tracked task and regression coverage. No new dependency, plugin mutation or credential/config scraping.
 - Release criteria: Codex's picker offers `/plugins`, only the plural opens its inventory without sending a prompt, other agents retain their behavior, and installed inventory remains distinct from loaded skill state. Record any native verification not run.
 
+### O‍penCode `/mcps`, `/plugins` and `/skills` (CPC-09)
+
+- O‍penCode's native spellings are `/mcps`, `/plugins` and `/skills`; it has
+  no `/mcp` or `/plugin`. Its ACP server advertises none of them (only
+  `init`, `review`, `goal`, `compact`), so the picker adds the three as app
+  listings and never offers `/plugin`. Bare `/plugins` is intercepted even
+  if a later adapter advertises it, as for Codex; `/plugin` is ordinary input.
+- The app answers each from `opencode api plugin.list|mcp.list|skill.list`
+  for the chat's directory, in the chat's environment and host, with no
+  model turn. See the
+  [contract](chat-plugin-commands-contract.md#opencode) for argv, fields and
+  errors. Backend: `provider.InventoryLister` (kinds `mcp`, `skills`) beside
+  `PluginLister`, served by the `chatInventory` RPC (capability
+  `chatInventory`; an older host says to reconnect to update it).
+- `/plugins` reuses the Plugins modal. `/mcps` reuses the MCP servers modal
+  with the listed servers already grouped by status; `/skills` is a filtered
+  Skills list (name, id, description). All three are transient and
+  read-only, like `/mcp`'s modal: nothing is sent, saved or changed.
+
 ### Plugin command discovery and invocation
 
 - Retain ACP `available_commands_update` as per-chat capability state, separate

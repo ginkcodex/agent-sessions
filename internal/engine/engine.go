@@ -170,6 +170,9 @@ func NewEngine(opts ...Option) *Engine {
 		Plugins: func(ctx context.Context, agent model.AgentID, launch acp.Command) (ChatPlugins, error) {
 			return e.svc.ChatPlugins(ctx, agent, launch)
 		},
+		Inventory: func(ctx context.Context, agent model.AgentID, launch acp.Command, kind string) (ChatInventory, error) {
+			return e.svc.ChatInventory(ctx, agent, launch, kind)
+		},
 		Refresh:          e.refreshAgent,
 		OwnershipChanged: func() { e.Events().NotifyFullRefresh() },
 		Emitter:          e.emitter,

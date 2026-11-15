@@ -87,6 +87,8 @@ import type {
   ChatAnswerAction,
   ChatConfigOption,
   ChatPlugins,
+  ChatInventory,
+  ChatInventoryKind,
   ChatStartRequest,
   ChatState,
   ChatAttachment,
@@ -218,6 +220,8 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   chatSetOption(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]>;
   /** The plugins installed for the chat's agent (/plugin). Codex's listing can take a minute or two. */
   chatPlugins(chatId: string): Promise<ChatPlugins>;
+  /** The chat's agent's MCP servers or skills, from its CLI (OpenCode's /mcps and /skills). */
+  chatInventory(chatId: string, kind: ChatInventoryKind): Promise<ChatInventory>;
   /** Ends the chat and its agent. */
   chatClose(chatId: string): Promise<void>;
   /** The window's open chats, for a reloaded page. */
@@ -448,6 +452,7 @@ export interface WailsAppBinding {
   ChatAnswer?(chatId: string, questionId: string, action: string, content: Record<string, unknown> | null): Promise<void>;
   ChatSetOption?(chatId: string, configId: string, value: unknown): Promise<ChatConfigOption[]>;
   ChatPlugins?(chatId: string): Promise<ChatPlugins>;
+  ChatInventory?(chatId: string, kind: ChatInventoryKind): Promise<ChatInventory>;
   ChatClose?(chatId: string): Promise<void>;
   ChatList?(): Promise<ChatState[]>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
@@ -581,6 +586,7 @@ type ChatBindingName =
   | 'ChatAnswer'
   | 'ChatSetOption'
   | 'ChatPlugins'
+  | 'ChatInventory'
   | 'ChatClose'
   | 'ChatList';
 
@@ -1115,6 +1121,13 @@ class WailsBackendAPI implements BackendAPI {
     try {
       const r = await this.chatBinding('ChatPlugins')(chatId);
       return { supported: !!r?.supported, plugins: r?.plugins ?? [] };
+    } catch (e) { throw normalizeError(e); }
+  }
+
+  async chatInventory(chatId: string, kind: ChatInventoryKind): Promise<ChatInventory> {
+    try {
+      const r = await this.chatBinding('ChatInventory')(chatId, kind);
+      return { kind, supported: !!r?.supported, mcpServers: r?.mcpServers ?? [], skills: r?.skills ?? [] };
     } catch (e) { throw normalizeError(e); }
   }
 

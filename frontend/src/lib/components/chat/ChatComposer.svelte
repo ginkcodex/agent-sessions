@@ -8,12 +8,13 @@
   // the agent works a message is queued, and the queue shows above the card.
   // A / (or Codex's $) word lists the agent's commands above the card: Enter
   // or Tab puts the chosen one in the text, and only sending runs it. The
-  // app answers /plugin (Codex: /plugins) in a modal, without asking the agent.
+  // app answers /plugin (Codex, OpenCode: /plugins) and OpenCode's /mcps and
+  // /skills in a modal, without asking the agent. Codex uses its skill catalog.
   import { onMount } from 'svelte';
   import type { Chat } from '../../stores/chats.svelte';
-  import type { ChatAttachment, ChatAttachResult, ChatDraft } from '../../types';
+  import type { ChatAttachment, ChatAttachResult, ChatDraft, ChatInventoryKind } from '../../types';
   import { api } from '../../api';
-  import { addAttachments, canSendPrompt, commandChoices, endChatQuestion, isMcpListing, isPluginListing, pluginCommand, skippedToast, switchToTerminalQuestion } from '../../chat';
+  import { addAttachments, canSendPrompt, commandChoices, endChatQuestion, inventoryListing, isMcpListing, isPluginListing, pickerCommands, skippedToast, switchToTerminalQuestion } from '../../chat';
   import AttachmentChips from './AttachmentChips.svelte';
   import { chats } from '../../stores/chats.svelte';
   import { toast } from '../../stores/toast.svelte';
@@ -25,6 +26,7 @@
   import QueuedMessages from './QueuedMessages.svelte';
   import PluginInventory from './PluginInventory.svelte';
   import McpServersDialog from './McpServersDialog.svelte';
+  import InventoryDialog from './InventoryDialog.svelte';
   import Icon from '../common/Icon.svelte';
 
   interface Props {
@@ -64,6 +66,8 @@
   let dismissed = $state<string | null>(null);
   // The last /plugin: each one lists afresh, and only for the chat it asked.
   let pluginListing = $state<{ chatId: string; n: number } | null>(null);
+  // The last /mcps (OpenCode) or /skills (OpenCode and Codex), the same way.
+  let inventory = $state<{ chatId: string; kind: ChatInventoryKind; n: number } | null>(null);
 
   let agentName = $derived(ALL_AGENTS.find((a) => a.id === chat.agent)?.label ?? chat.agent);
   let closed = $derived(chat.phase === 'exited');
@@ -87,11 +91,7 @@
   );
   let hintId = $derived(`chat-hint-${chat.key}`);
   let commands = $derived(chat.commands ?? []);
-  let inventoryCommand = $derived(pluginCommand(chat.agent));
-  let pickerCommands = $derived(chat.agent === 'codex'
-    ? [...commands.filter((c) => c.name !== 'plugin' && c.name !== 'plugins'), inventoryCommand]
-    : commands.some((c) => c.name === inventoryCommand.name) ? commands : [...commands, inventoryCommand]);
-  let choices = $derived(chat.phase === 'starting' || closed ? [] : commandChoices(pickerCommands, text));
+  let choices = $derived(chat.phase === 'starting' || closed ? [] : commandChoices(pickerCommands(commands, chat.agent), text));
   let picking = $derived(choices.length > 0 && dismissed !== text);
   let listId = $derived(`chat-commands-${chat.key}`);
   // WebKit (macOS and Linux) reads autocorrect on a textarea; Svelte's types
@@ -123,6 +123,12 @@
     if (chat.phase !== 'starting' && !closed && attachments.length === 0 && isPluginListing(text, commands, chat.agent)) {
       text = '';
       pluginListing = { chatId: chat.chatId, n: (pluginListing?.n ?? 0) + 1 };
+      return;
+    }
+    const kind = chat.phase !== 'starting' && !closed && attachments.length === 0 ? inventoryListing(text, chat.agent) : null;
+    if (kind) {
+      text = '';
+      inventory = { chatId: chat.chatId, kind, n: (inventory?.n ?? 0) + 1 };
       return;
     }
     // A bare /mcp answers in the modal; the store refuses it while a turn runs.
@@ -330,6 +336,22 @@
         {commands}
         onClose={() => {
           pluginListing = null;
+          input?.focus();
+        }}
+      />
+    {/key}
+  {/if}
+  {#if inventory?.chatId === chat.chatId && !closed}
+    {#key inventory.n}
+      <InventoryDialog
+        chatId={inventory.chatId}
+        kind={inventory.kind}
+        skills={chat.agent === 'codex' && inventory.kind === 'skills'
+          ? commands.filter((c) => c.name.startsWith('$')).map((c) => ({ id: c.name.slice(1), name: c.name.slice(1), description: c.description }))
+          : undefined}
+        {agentName}
+        onClose={() => {
+          inventory = null;
           input?.focus();
         }}
       />

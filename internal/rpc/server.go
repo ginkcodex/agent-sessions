@@ -384,6 +384,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 	caps.ChatQuestions = caps.ACPChat
 	caps.ChatQueue = caps.ACPChat
 	caps.ChatPlugins = caps.ACPChat
+	caps.ChatInventory = caps.ACPChat
 	s.chats.mu.Lock()
 	s.chats.enabled = caps.ACPChat
 	s.chats.mu.Unlock()
@@ -460,7 +461,7 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 	switch req.Method {
 	case "managedTool":
 		return s.dispatchManagedTool(ctx, req)
-	case "chatAgents", "chatStart", "chatPrompt", "chatCancel", "chatRespond", "chatAnswer", "chatSetOption", "chatClose", "chatList", "chatSendNow", "chatUnqueue", "chatPlugins":
+	case "chatAgents", "chatStart", "chatPrompt", "chatCancel", "chatRespond", "chatAnswer", "chatSetOption", "chatClose", "chatList", "chatSendNow", "chatUnqueue", "chatPlugins", "chatInventory":
 		return s.dispatchChat(ctx, backend, req)
 	case "invalidateCodeDiagnosticsPath", "attachCodeDiagnostics", "detachCodeDiagnostics", "getCodeDiagnosticsSnapshot", "approveCodeDiagnostics", "revokeCodeDiagnostics", "runCodeDiagnostics", "cancelCodeDiagnostics",
 		"openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument", "navigateCode", "readNavigationFile":

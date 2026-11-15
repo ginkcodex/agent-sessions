@@ -10,6 +10,9 @@ import {
   isMcpListing,
   parseMcpStatus,
   isPluginListing,
+  inventoryListing,
+  mcpStatusFromServers,
+  pickerCommands,
   pluginCommand,
   pluginRows,
   MAX_CHAT_ATTACHMENTS,
@@ -245,6 +248,10 @@ test('/plugin is the app\'s listing unless the agent has its own, and a plugin i
     }
   }
 
+  // OpenCode spells it /plugins, answered by the app even when advertised.
+  assert.equal(isPluginListing('/plugins', [{ name: 'plugins' }], 'opencode'), true);
+  for (const text of ['/plugin', '/plugins list', '/mcp']) assert.equal(isPluginListing(text, [], 'opencode'), false, text);
+
   const plugins = [
     { id: 'ponytail@ponytail', name: 'ponytail', enabled: true },
     { id: 'sites@m', name: 'sites', enabled: true },
@@ -291,6 +298,7 @@ async function renderComposer(c, props = {}) {
     ["import AttachmentChips from './AttachmentChips.svelte';", 'const AttachmentChips = () => {};'],
     ["import PluginInventory from './PluginInventory.svelte';", 'const PluginInventory = () => {};'],
     ["import McpServersDialog from './McpServersDialog.svelte';", 'const McpServersDialog = () => {};'],
+    ["import InventoryDialog from './InventoryDialog.svelte';", 'const InventoryDialog = () => {};'],
     [
       "import QueuedMessages from './QueuedMessages.svelte';",
       'const QueuedMessages = ($$renderer, p) => $$renderer.push(`<div data-stub-queue="${p.chat.queue.length}" data-empty="${p.composerEmpty}"></div>`);',
@@ -991,4 +999,41 @@ test('Switch to chat asks while a tab works or waits for an answer', () => {
   assert.equal(switchToChatQuestion('done', 'Codex'), null, 'its turn already finished');
   assert.equal(switchToChatQuestion('exited', 'Codex'), null, 'the agent is gone');
   assert.equal(switchToChatQuestion('', 'Codex'), null, 'nothing known says nothing runs');
+});
+
+test('OpenCode\'s picker offers its own /plugins, /mcps and /skills, answered by the app', () => {
+  const advertised = [{ name: 'init' }, { name: 'review' }, { name: 'plugin' }, { name: 'mcps' }, { name: 'compact' }];
+  const names = (agent, cmds = advertised) => pickerCommands(cmds, agent).map((c) => c.name);
+  assert.deepEqual(names('opencode'), ['init', 'review', 'compact', 'plugins', 'mcps', 'skills']);
+  assert.deepEqual(names('codex', [{ name: 'review' }, { name: 'plugin' }]), ['review', 'plugins', 'skills']);
+  assert.deepEqual(names('claude-code', [{ name: 'mcp' }]), ['mcp', 'plugin']);
+  assert.deepEqual(names('claude-code', [{ name: 'plugin' }]), ['plugin'], 'the agent\'s own is kept');
+  assert.deepEqual(commandChoices(pickerCommands([], 'opencode'), '/mc').map((c) => c.text), ['/mcps']);
+
+  assert.equal(inventoryListing('/mcps', 'opencode'), 'mcp');
+  assert.equal(inventoryListing(' /skills\n', 'opencode'), 'skills');
+  for (const text of ['/mcp', '/mcps list', '/skill', 'hi /skills']) assert.equal(inventoryListing(text, 'opencode'), null, text);
+  for (const agent of ['claude-code', 'codex']) assert.equal(inventoryListing('/mcps', agent), null, agent);
+
+  assert.deepEqual(mcpStatusFromServers([]), { summary: 'No MCP servers are configured.', groups: [], notes: [] });
+  const st = mcpStatusFromServers([
+    { name: 'fetch', status: 'connected' },
+    { name: 'docs', title: 'Docs site', status: 'failed', error: 'ECONNREFUSED' },
+    { name: 'gh', status: 'needs_auth' },
+    { name: 'odd', status: 'weird_state' },
+  ]);
+  assert.equal(st.summary, '4 (1 failed, 1 needs authentication, 1 connected, 1 weird state)');
+  assert.deepEqual(st.groups.map((g) => g.title), ['Failed', 'Needs authentication', 'Connected', 'Weird state']);
+  assert.deepEqual(st.groups[0].servers, [{ name: 'docs', scope: 'Docs site', detail: 'ECONNREFUSED' }]);
+});
+
+
+test('Codex intercepts only bare /skills and keeps skill invocation in the picker', () => {
+  assert.equal(inventoryListing(' /skills\n', 'codex'), 'skills');
+  for (const text of ['/skills help', '/skill', '$sites:sites', 'hi /skills']) {
+    assert.equal(inventoryListing(text, 'codex'), null, text);
+  }
+  const commands = pickerCommands([{ name: 'skills' }, { name: '$sites:sites', description: 'Build sites' }], 'codex');
+  assert.equal(commands.filter((c) => c.name === 'skills').length, 1);
+  assert.ok(commands.some((c) => c.name === '$sites:sites'));
 });

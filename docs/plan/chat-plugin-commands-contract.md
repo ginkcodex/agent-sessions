@@ -23,11 +23,12 @@ turn or MCP mutation ran.
 |---|---|---|---|
 | Claude | ✅ adapter command | ✅ app runs `claude plugin list --json` | ✅ advertised as `/plugin:command` |
 | Codex | ✅ adapter command | ✅ app runs `codex plugin list --json` (slow) | 🔶 advertised as `$plugin:skill` mentions; invocation unverified |
-| O‍penCode | ❌ not advertised; CLI has text output only | ❌ CLI has text output only | ❔ custom commands advertised; no plugin signal |
+| O‍penCode | ✅ `/mcps`: app runs `opencode api mcp.list` | ✅ `/plugins`: app runs `opencode api plugin.list` | ❔ custom commands advertised; no plugin signal |
 
 ✅ verified interface · 🔶 listed, behavior unverified · ❔ unverified ·
-❌ unsupported in the first release, said so explicitly in the UI. O‍penCode
-inventory is tracked in [CPC-09](../tasks/chat-plugin-commands/CPC-09.md).
+❌ unsupported, said so explicitly in the UI. O‍penCode's inventory
+([CPC-09](../tasks/chat-plugin-commands/CPC-09.md)) uses its native spellings
+`/mcps`, `/plugins` and `/skills` (skills too); it has no `/mcp` or `/plugin`.
 
 ## `/mcp`: use the adapter
 
@@ -102,9 +103,40 @@ in the argv.
 ### O‍penCode
 
 `opencode plugin list` and `opencode mcp list` print plain text ("No plugins
-found", "No MCP servers configured"), with no JSON flag. `opencode api GET
-/mcp` returned the web UI's HTML. The first release reports "not supported
-for O‍penCode" instead of parsing text.
+found", "No MCP servers configured"), with no JSON flag, and `opencode api GET
+/mcp` returns the web UI's HTML (the API lives under `/api/…`).
+
+O‍penCode 2.3.0's ACP server advertises only `init`, `review`, `goal` and
+`compact`. Its TUI's `/mcps`, `/plugins` and `/skills` are TUI-only, so the
+app answers them itself ([CPC-09](../tasks/chat-plugin-commands/CPC-09.md))
+with the documented read-only operations of `opencode api`, each a GET of the
+server's OpenAPI surface:
+
+| Command | argv (after the CLI) |
+|---|---|
+| `/plugins` | `api plugin.list --param location[directory]=<chat dir>` |
+| `/mcps` | `api mcp.list --param location[directory]=<chat dir>` |
+| `/skills` | `api skill.list --param location[directory]=<chat dir>` |
+
+- Each answers `{"location":{"directory":…},"data":[…]}` in under 0.1 s from
+  the background service (`opencode serve --service`), which is
+  authoritative. `--standalone` starts a private server that reported no MCP
+  servers where the service reported one, so it is not used. An unknown
+  directory answers `LocationNotFoundError` (HTTP 404, exit 1), which shows
+  as "could not list O‍penCode …". Timeout: 30 s.
+- **Plugins:** `{id?, source:{type, target?, version?, path?}, state:{status}}`.
+  `builtin` entries are part of O‍penCode and dropped. Package plugins keep
+  target (as the name), version and scope `package`; local ones keep only the
+  file's base name, never the path. A plugin without an id is listed as
+  "(unnamed)". Enabled is `state.status == "active"`.
+- **MCP servers:** keep `name`, `title`, `status.status` (connected, pending,
+  disabled, failed, needs_auth) and `status.error`. No config, URL or
+  headers. Listing never connects a server.
+- **Skills:** keep `id`, `name`, `description`. `path` and `content` (the
+  skill's body) are dropped.
+- Output without a `data` array, or entries missing their required fields,
+  is an unknown format: "this O‍penCode version does not list its … in a
+  form the app reads; update it", never an empty list.
 
 ### Disk state vs session state
 

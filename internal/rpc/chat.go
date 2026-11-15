@@ -29,6 +29,10 @@ var ErrNoChatQueue = errors.New("this host's agent-sessions cannot queue message
 // agents' plugins.
 var ErrNoChatPlugins = errors.New("this host's agent-sessions cannot list plugins; reconnect to update it")
 
+// ErrNoChatInventory means the host's agent-sessions is too old to list its
+// agents' MCP servers or skills.
+var ErrNoChatInventory = errors.New("this host's agent-sessions cannot list MCP servers or skills; reconnect to update it")
+
 // maxChatPromptBytes bounds a prompt's text. Prompts are typed by a person;
 // this only keeps a peer from handing the agent a frame-sized one.
 const maxChatPromptBytes = 1 << 20
@@ -49,6 +53,12 @@ type ChatPromptParams struct {
 	ChatID      string                  `json:"chatId"`
 	Text        string                  `json:"text"`
 	Attachments []chatattach.Attachment `json:"attachments,omitempty"`
+}
+
+// ChatInventoryParams asks for a chat's MCP servers or skills.
+type ChatInventoryParams struct {
+	ChatID string `json:"chatId"`
+	Kind   string `json:"kind"`
 }
 
 // ChatParams names a chat.
@@ -148,6 +158,7 @@ func (s *Server) dispatchChat(ctx context.Context, backend engine.Backend, req R
 		Content      map[string]any          `json:"content"`
 		ConfigID     string                  `json:"configId"`
 		Value        any                     `json:"value"`
+		Kind         string                  `json:"kind"`
 	}
 	if err := json.Unmarshal(req.Params, &p); err != nil {
 		return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
@@ -176,6 +187,8 @@ func (s *Server) dispatchChat(ctx context.Context, backend engine.Backend, req R
 		return m.SetOption(ctx, p.ChatID, p.ConfigID, p.Value)
 	case "chatPlugins":
 		return m.Plugins(ctx, p.ChatID)
+	case "chatInventory":
+		return m.Inventory(ctx, p.ChatID, p.Kind)
 	default: // chatClose
 		return nil, m.Close(p.ChatID)
 	}
@@ -359,6 +372,19 @@ func (c *Client) ChatPlugins(ctx context.Context, chatID string) (engine.ChatPlu
 		return out, ErrNoChatPlugins
 	}
 	return out, c.chatCall(ctx, "chatPlugins", ChatParams{ChatID: chatID}, &out)
+}
+
+// ChatInventory lists the MCP servers or skills of the chat's agent on the host.
+func (c *Client) ChatInventory(ctx context.Context, chatID, kind string) (engine.ChatInventory, error) {
+	var out engine.ChatInventory
+	caps := c.Capabilities()
+	if !caps.ACPChat {
+		return out, engine.ErrUnsupportedAction
+	}
+	if !caps.ChatInventory {
+		return out, ErrNoChatInventory
+	}
+	return out, c.chatCall(ctx, "chatInventory", ChatInventoryParams{ChatID: chatID, Kind: kind}, &out)
 }
 
 // ChatClose ends the chat and its agent.

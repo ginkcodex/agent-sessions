@@ -40,6 +40,7 @@ async function loadComponent(name, { keepMount = false } = {}) {
     .replace("import QueuedMessages from './QueuedMessages.svelte';", 'const QueuedMessages = globalThis.__endMenu.QueuedMessages;')
     .replace("import PluginInventory from './PluginInventory.svelte';", 'const PluginInventory = globalThis.__endMenu.PluginInventory;')
     .replace("import McpServersDialog from './McpServersDialog.svelte';", 'const McpServersDialog = globalThis.__endMenu.McpServersDialog;')
+    .replace("import InventoryDialog from './InventoryDialog.svelte';", 'const InventoryDialog = globalThis.__endMenu.InventoryDialog;')
     .replace("import CommandResultDialog from './CommandResultDialog.svelte';", 'const CommandResultDialog = globalThis.__endMenu.CommandResultDialog;')
     .replace("import DialogCloseButton from '../common/DialogCloseButton.svelte';", 'const DialogCloseButton = globalThis.__endMenu.DialogCloseButton;')
     // The Markdown renderer is the transcript's; here its text is enough.
@@ -84,6 +85,7 @@ globalThis.__endMenu.DialogCloseButton = await loadComponent('../common/DialogCl
 globalThis.__endMenu.CommandResultDialog = await loadComponent('CommandResultDialog');
 globalThis.__endMenu.PluginInventory = await loadComponent('PluginInventory', { keepMount: true });
 globalThis.__endMenu.McpServersDialog = await loadComponent('McpServersDialog');
+globalThis.__endMenu.InventoryDialog = await loadComponent('InventoryDialog', { keepMount: true });
 const Composer = await loadComponent('ChatComposer');
 
 // Lets every pending promise chain run before an assertion.
@@ -739,6 +741,68 @@ test('Codex /plugins opens the complete installed inventory, not a model turn or
   c.close();
 });
 
+test('OpenCode answers /plugins, /mcps and /skills from its CLI, never asking the model', async () => {
+  const listed = [];
+  globalThis.__endMenu.api.chatPlugins = async (chatId) => {
+    listed.push(['plugins', chatId]);
+    return { supported: true, plugins: [{ id: 'notifier', name: 'opencode-notifier', version: '1.2.0', scope: 'package', enabled: true }] };
+  };
+  globalThis.__endMenu.api.chatInventory = async (chatId, kind) => {
+    listed.push([kind, chatId]);
+    return kind === 'mcp'
+      ? { kind, supported: true, mcpServers: [{ name: 'super-fetch', status: 'connected' }, { name: 'docs', status: 'failed', error: 'ECONNREFUSED' }] }
+      : { kind, supported: true, skills: [{ id: 'report', name: 'Report', description: 'Report an issue' }] };
+  };
+  const c = await openComposer({ phase: 'idle', agent: 'opencode', commands: [{ name: 'init' }, { name: 'review' }, { name: 'compact' }] });
+  const box = c.target.querySelector('textarea');
+  const type = (value) => {
+    box.value = value;
+    box.dispatchEvent(new window.Event('input', { bubbles: true }));
+    flushSync();
+  };
+  const submit = async () => {
+    c.target.querySelector('form').requestSubmit();
+    await settle();
+    flushSync();
+  };
+  const dialog = () => c.target.querySelector('[data-command-result]');
+  const close = () => {
+    dialog().querySelector('button').click();
+    flushSync();
+  };
+  type('/');
+  assert.deepEqual([...c.target.querySelectorAll('[role="option"] .command-name')].map((o) => o.textContent), ['/init', '/review', '/compact', '/plugins', '/mcps', '/skills']);
+
+  type('/plugins');
+  await submit();
+  assert.deepEqual([...dialog().querySelectorAll('li .name')].map((n) => n.textContent), ['opencode-notifier']);
+  close();
+
+  type('/mcps');
+  await submit();
+  assert.equal(dialog().querySelector('h2').textContent, 'MCP servers');
+  assert.equal(dialog().querySelector('[data-mcp-state]').dataset.mcpState, 'listed');
+  assert.deepEqual([...dialog().querySelectorAll('h3')].map((h) => h.textContent), ['Failed (1)', 'Connected (1)']);
+  assert.match(dialog().querySelector('.note').textContent, /read from its CLI/);
+  close();
+
+  type('/skills');
+  await submit();
+  assert.equal(dialog().querySelector('h2').textContent, 'Skills');
+  assert.equal(dialog().querySelector('[data-skills-state]').dataset.skillsState, 'listed');
+  assert.deepEqual([...dialog().querySelectorAll('li')].map((li) => li.textContent.trim().replace(/\s+/g, ' ')), ['Report report Report an issue']);
+  close();
+  assert.equal(document.activeElement, box);
+  assert.deepEqual(listed, [['plugins', 'c1'], ['mcp', 'c1'], ['skills', 'c1']]);
+  assert.deepEqual(calls, [], 'nothing reaches the model');
+
+  type('/plugin');
+  await submit();
+  assert.equal(dialog(), null, '/plugin is not OpenCode\'s listing');
+  assert.deepEqual(calls, [['prompt', 'c1', '/plugin']]);
+  c.close();
+});
+
 test('a bare /mcp answers in the MCP servers modal: grouped rows, a filter, every end state, Escape', async () => {
   const { MOCK_MCP_STATUS } = await import('../src/lib/mock/mockChat.ts');
   const c = await openComposer({ phase: 'idle', agent: 'claude', commands: [{ name: 'mcp', input: { hint: '[reconnect]' } }] });
@@ -816,5 +880,54 @@ test('a bare /mcp answers in the MCP servers modal: grouped rows, a filter, ever
   assert.equal(document.activeElement, box, 'focus goes back to the composer');
   dialog().querySelector('button').click();
   assert.deepEqual(calls.at(-1), ['dismissInspection', 'c1']);
+  c.close();
+});
+
+test('Codex /skills lists its live skill catalog without a prompt or CLI request', async () => {
+  let inventoryCalls = 0;
+  globalThis.__endMenu.api.chatInventory = async () => { inventoryCalls++; throw new Error('unexpected CLI inventory'); };
+  const c = await openComposer({ phase: 'idle', agent: 'codex', commands: [
+    { name: 'skills' }, { name: 'review' },
+    { name: '$sites:sites', description: 'Build a website' },
+    { name: '$imagegen', description: 'Generate an image' },
+  ] });
+  const box = c.target.querySelector('textarea');
+  const type = (value) => {
+    box.value = value;
+    box.dispatchEvent(new window.Event('input', { bubbles: true }));
+    flushSync();
+  };
+  type('/skills');
+  c.target.querySelector('form').requestSubmit();
+  await settle();
+  flushSync();
+  const dialog = c.target.querySelector('[data-command-result]');
+  assert.equal(dialog.querySelector('[data-skills-state]').dataset.skillsState, 'listed');
+  assert.deepEqual([...dialog.querySelectorAll('li .name')].map((n) => n.textContent), ['sites:sites', 'imagegen']);
+  assert.match(dialog.textContent, /Build a website/);
+  const filter = dialog.querySelector('input');
+  filter.value = 'website';
+  filter.dispatchEvent(new window.Event('input', { bubbles: true }));
+  flushSync();
+  assert.deepEqual([...dialog.querySelectorAll('li .name')].map((n) => n.textContent), ['sites:sites']);
+  c.state.chat.commands = [{ name: 'review' }];
+  flushSync();
+  assert.equal(dialog.querySelector('[data-skills-state]').dataset.skillsState, 'empty');
+  c.state.chat.commands = [{ name: '$updated', description: 'Updated catalog' }];
+  flushSync();
+  filter.value = '';
+  filter.dispatchEvent(new window.Event('input', { bubbles: true }));
+  flushSync();
+  assert.deepEqual([...dialog.querySelectorAll('li .name')].map((n) => n.textContent), ['updated']);
+  dialog.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  flushSync();
+  assert.equal(c.target.querySelector('[data-command-result]'), null);
+  assert.equal(document.activeElement, box);
+  assert.equal(inventoryCalls, 0);
+  assert.deepEqual(calls, []);
+  type('$sites:sites make a site');
+  c.target.querySelector('form').requestSubmit();
+  await settle();
+  assert.deepEqual(calls, [['prompt', 'c1', '$sites:sites make a site']]);
   c.close();
 });

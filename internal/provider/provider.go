@@ -112,9 +112,53 @@ type PluginList struct {
 }
 
 // PluginLister is implemented by providers whose CLI lists its plugins in a
-// machine-readable form.
+// machine-readable form. dir is the chat's directory, for a CLI that is not
+// told it by its working directory.
 type PluginLister interface {
-	PluginList() PluginList
+	PluginList(dir string) PluginList
+}
+
+// Inventory kinds an agent's CLI may list besides its plugins.
+const (
+	InventoryMCP    = "mcp"
+	InventorySkills = "skills"
+)
+
+// MCPServer is one MCP server the agent reports, with its status:
+// connected, pending, disabled, failed or needs_auth. Error says why a
+// failed or needs_auth server is not connected. No config, URL or headers.
+type MCPServer struct {
+	Name   string `json:"name"`
+	Title  string `json:"title,omitempty"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
+// Skill is one skill the agent can use: no path and no content.
+type Skill struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// Inventory is a parsed listing; only the slice of its kind is set.
+type Inventory struct {
+	MCPServers []MCPServer
+	Skills     []Skill
+}
+
+// InventoryList is how an agent's CLI lists one inventory kind, as
+// PluginList does plugins.
+type InventoryList struct {
+	Args    []string
+	Timeout time.Duration
+	Parse   func(stdout []byte) (Inventory, error)
+}
+
+// InventoryLister is implemented by providers whose CLI lists MCP servers or
+// skills in a machine-readable form. ok is false for a kind it cannot list.
+type InventoryLister interface {
+	InventoryList(kind, dir string) (list InventoryList, ok bool)
 }
 
 // SourceLoader optionally loads using canonical scan metadata as an untrusted hint.

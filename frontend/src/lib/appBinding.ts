@@ -29,6 +29,7 @@ export const APP_METHODS = [
   'ChatAttachImage',
   'ChatCancel',
   'ChatClose',
+  'ChatInventory',
   'ChatList',
   'ChatPickAttachments',
   'ChatPlugins',
