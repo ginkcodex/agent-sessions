@@ -25,6 +25,7 @@ import (
 // DB manages the private cache SQLite database.
 // It coordinates single-writer access to prevent SQLITE_BUSY contention.
 type DB struct {
+	// db is immutable after construction; sql.DB synchronizes queries and Close.
 	db       *sql.DB
 	path     string
 	cacheDir string
@@ -252,9 +253,7 @@ func (d *DB) Close() error {
 	if d.db == nil {
 		return nil
 	}
-	err := d.db.Close()
-	d.db = nil
-	return err
+	return d.db.Close()
 }
 
 // Path returns the path to the SQLite index database file.

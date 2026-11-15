@@ -286,13 +286,13 @@
               <span class="pill tone-{status.tone}">{status.text}</span>
               <span class="detail">{providerMode(provider)}{provider.freshness !== 'current' && provider.availability === 'available' ? ` · ${provider.freshness}` : ''}</span>
               {#if offer && offer !== reviewing}{@render installButton(offer)}{/if}
-              {#if checks.approved && provider.phase === 'failed' && provider.availability === 'available' && provider.coverage.kind === 'savedProject'}
+              {#if checks.approved && provider.phase === 'failed' && provider.availability === 'available' && ['savedProject', 'openedDocuments'].includes(provider.coverage.kind)}
                 <button type="button" disabled={blocked || !checks.canRetry(provider.providerId)} onclick={() => perform(() => checks.retry(provider.providerId))}>Retry {provider.providerId}</button>
               {/if}
               {#if provider.failure}<p class="sub wrapped">{provider.failure.message} (retained findings are not a successful check)</p>{/if}
               {#if provider.phase === 'canceled'}<p class="sub">Check canceled; retained findings may be stale.</p>{/if}
               {#if checks.approved && provider.phase === 'failed' && provider.availability === 'available' && provider.coverage.kind !== 'savedProject'}
-                <p class="sub">No provider restart action is supported here. A failed session can be recreated by a subsequent document open; reopening in a surviving session may remain uncertain until a new isolated session. Refresh check status only reads status.</p>
+                <p class="sub">Language sessions retry automatically with bounded backoff. Retry starts a new recovery series; documents with failed synchronization must still be reopened.</p>
               {/if}
               {#if provider.availability !== 'available' && note}<p class="sub">{note}</p>{/if}
               {#if provider.availability === 'disabled'}<p class="sub">Turn this language on under Settings › Code checks.</p>

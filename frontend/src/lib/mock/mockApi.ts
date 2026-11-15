@@ -964,6 +964,10 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     return this.chat.start(req);
   }
 
+  async chatStartCancel(_startToken: string): Promise<void> {
+    // Mock starts finish synchronously; the store closes a raced reply.
+  }
+
   async chatPrompt(chatId: string, text: string, attachments: ChatAttachment[] = []): Promise<ChatPromptResult> {
     return this.chat.prompt(chatId, text, attachments);
   }

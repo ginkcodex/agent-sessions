@@ -188,6 +188,7 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    * can arrive before this returns.
    */
   chatStart(req: ChatStartRequest): Promise<ChatState>;
+  chatStartCancel(startToken: string): Promise<void>;
   /**
    * Sends a prompt, its text and attached files; returns once the turn has
    * started. While the agent works the message is queued, and the result
@@ -435,6 +436,7 @@ export interface WailsAppBinding {
   /** Chat bindings; absent on older App bindings. */
   ChatAgents?(): Promise<ChatAgent[]>;
   ChatStart?(req: ChatStartRequest): Promise<ChatState>;
+  ChatStartCancel?(startToken: string): Promise<void>;
   ChatPrompt?(chatId: string, text: string, attachments: ChatAttachment[]): Promise<ChatPromptResult | null>;
   ChatSendNow?(chatId: string, queuedId: string): Promise<void>;
   ChatUnqueue?(chatId: string, queuedId: string): Promise<ChatDraft>;
@@ -567,6 +569,7 @@ export const CHAT_UNSUPPORTED = 'Chat is not supported by this version of the ap
 type ChatBindingName =
   | 'ChatAgents'
   | 'ChatStart'
+  | 'ChatStartCancel'
   | 'ChatPrompt'
   | 'ChatSendNow'
   | 'ChatUnqueue'
@@ -1049,6 +1052,11 @@ class WailsBackendAPI implements BackendAPI {
 
   async chatStart(req: ChatStartRequest): Promise<ChatState> {
     try { return await this.chatBinding('ChatStart')(req); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async chatStartCancel(startToken: string): Promise<void> {
+    try { await this.chatBinding('ChatStartCancel')(startToken); }
     catch (e) { throw normalizeError(e); }
   }
 

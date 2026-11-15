@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/acp"
 	"github.com/ginkcode/agent-sessions/internal/chatattach"
@@ -193,6 +195,80 @@ func (a *App) ChatAgents() ([]engine.ChatAgent, error) {
 	return s.ChatAgents(a.appCtx())
 }
 
+// chatStarts remembers early cancellations because desktop calls may dispatch
+// Cancel before Start registers. Tombstones expire and are capped per window.
+type chatStarts struct {
+	mu        sync.Mutex
+	running   map[string]*fileSearch
+	cancelled map[string]time.Time
+}
+
+const maxCancelledStarts = 128
+
+func (s *chatStarts) prune(now time.Time) {
+	for token, expires := range s.cancelled {
+		if !expires.After(now) {
+			delete(s.cancelled, token)
+		}
+	}
+}
+
+func (s *chatStarts) start(parent context.Context, token string) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(parent)
+	if token == "" {
+		return ctx, cancel
+	}
+	run := &fileSearch{cancel: cancel}
+	s.mu.Lock()
+	s.prune(time.Now())
+	if _, ok := s.cancelled[token]; ok {
+		delete(s.cancelled, token)
+		cancel()
+	}
+	if s.running == nil {
+		s.running = make(map[string]*fileSearch)
+	}
+	if prev := s.running[token]; prev != nil {
+		prev.cancel()
+	}
+	s.running[token] = run
+	s.mu.Unlock()
+	return ctx, func() {
+		cancel()
+		s.mu.Lock()
+		if s.running[token] == run {
+			delete(s.running, token)
+		}
+		s.mu.Unlock()
+	}
+}
+
+func (s *chatStarts) cancel(token string) {
+	if token == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if run := s.running[token]; run != nil {
+		run.cancel()
+		return
+	}
+	s.prune(time.Now())
+	if s.cancelled == nil {
+		s.cancelled = make(map[string]time.Time)
+	}
+	if len(s.cancelled) >= maxCancelledStarts {
+		var oldest string
+		for id, expires := range s.cancelled {
+			if oldest == "" || expires.Before(s.cancelled[oldest]) {
+				oldest = id
+			}
+		}
+		delete(s.cancelled, oldest)
+	}
+	s.cancelled[token] = time.Now().Add(time.Minute)
+}
+
 // ChatStart starts the agent's ACP adapter in req.Dir: a new session, or the
 // session req.Resume names. Updates arrive as chat:update events and the end
 // as chat:exit.
@@ -201,7 +277,30 @@ func (a *App) ChatStart(req engine.ChatStartRequest) (engine.ChatState, error) {
 	if err != nil {
 		return engine.ChatState{}, err
 	}
-	return s.ChatStart(a.appCtx(), req)
+	timeout := a.chatStartTimeout
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(a.appCtx(), timeout)
+	defer cancel()
+	ctx, done := a.chatStarts.start(ctx, req.StartToken)
+	defer done()
+	if err := ctx.Err(); err != nil {
+		return engine.ChatState{}, err
+	}
+	st, err := s.ChatStart(ctx, req)
+	if err == nil && ctx.Err() != nil {
+		// Cancellation may race a successful session reply; do not orphan it.
+		_ = s.ChatClose(a.appCtx(), st.ChatID)
+		return engine.ChatState{}, ctx.Err()
+	}
+	return st, err
+}
+
+// ChatStartCancel cancels a start using the token supplied to ChatStart.
+// Early cancellations are remembered briefly; callers use a fresh token per start.
+func (a *App) ChatStartCancel(startToken string) {
+	a.chatStarts.cancel(startToken)
 }
 
 // ChatPrompt sends text and attachments to the chat's agent. It returns

@@ -69,7 +69,8 @@ end`
 		bashHook += "if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then\n  PROMPT_COMMAND+=(__agent_sessions_run)\nelse\n  PROMPT_COMMAND=\"$PROMPT_COMMAND\"$'\\n'__agent_sessions_run\nfi\n"
 		zshHook += "function __agent_sessions_run() {\n  " + run + "\n  exit $?\n}\nprecmd_functions+=(__agent_sessions_run)\n"
 		// fish_prompt events run before the prompt function itself.
-		fishHook += "\nfunction fish_prompt\n  " + run + "\n  exit $status\nend"
+		// fish captures prompt output and exits 0 after exit 7; exec on the tty keeps agent I/O and status.
+		fishHook += "\nfunction fish_prompt\n  exec " + run + " </dev/tty >/dev/tty 2>&1\nend"
 		// Login profiles commonly source .bashrc themselves. Track that using
 		// a temporary DEBUG trap so activation isn't performed twice.
 		bashRC = `__as_rc_loaded=

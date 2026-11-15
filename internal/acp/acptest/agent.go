@@ -32,6 +32,7 @@
 //	withdraw MS  asks the "claude" form and withdraws it with
 //	             $/cancel_request after MS milliseconds; the chunk is
 //	             "withdrawn"
+//	askhold      asks an async form, ends on a steer without withdrawing it
 //	askexit      asks the "claude" form, then exits with status 3 without
 //	             waiting for the answer
 //	commands N   an available_commands_update with N commands (0 clears),
@@ -53,6 +54,8 @@
 //	ACPTEST_STDERR_BYTES=N   write N bytes of numbered stderr lines at start
 //	ACPTEST_TEXT_ONLY=1      advertise no image or embedded-context prompts
 //	ACPTEST_NO_STEER=1       do not advertise or answer _session/steering
+//	ACPTEST_HANG_METHOD=M    never answer method M, ignoring cancellation
+//	ACPTEST_PID_FILE=P       write the PID to P when the hung method arrives
 //
 // Loading or resuming the session "in-use" fails as codex-acp does while
 // another Codex process holds the session: -32600 with data.reason
@@ -204,6 +207,12 @@ func (a *agent) configOptions() []acp.ConfigOption {
 }
 
 func (a *agent) request(ctx context.Context, method string, params json.RawMessage) (any, error) {
+	if method == os.Getenv("ACPTEST_HANG_METHOD") {
+		if path := os.Getenv("ACPTEST_PID_FILE"); path != "" {
+			_ = os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600)
+		}
+		select {} // Even a cancelled request never gets a reply.
+	}
 	switch method {
 	case acp.MethodInitialize:
 		var p acp.InitializeRequest
@@ -393,12 +402,21 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	var steered chan struct{}
+	if word == "hold" || word == "askhold" {
+		steered = make(chan struct{}, 1)
+	}
 	a.mu.Lock()
 	a.turns[p.SessionID] = cancel
+	// Steering must see the hold's signal as soon as it sees a running turn.
+	if steered != nil {
+		a.holds[p.SessionID] = steered
+	}
 	a.mu.Unlock()
 	defer func() {
 		a.mu.Lock()
 		delete(a.turns, p.SessionID)
+		delete(a.holds, p.SessionID)
 		a.mu.Unlock()
 	}()
 
@@ -458,16 +476,15 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 	case "hang":
 		<-ctx.Done()
 		return end(acp.StopCancelled)
-	case "hold":
-		steered := make(chan struct{}, 1)
-		a.mu.Lock()
-		a.holds[p.SessionID] = steered
-		a.mu.Unlock()
-		defer func() {
-			a.mu.Lock()
-			delete(a.holds, p.SessionID)
-			a.mu.Unlock()
-		}()
+	case "hold", "askhold":
+		if word == "askhold" {
+			params := map[string]any{"sessionId": p.SessionID}
+			for k, v := range QuestionForms["claude"] {
+				params[k] = v
+			}
+			params["_meta"] = map[string]any{"codex": map[string]any{"delivery": "async"}}
+			go func() { _ = a.c().Call(context.Background(), acp.MethodElicitationCreate, params, nil) }()
+		}
 		select {
 		case <-ctx.Done():
 			return end(acp.StopCancelled)

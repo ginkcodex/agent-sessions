@@ -3,8 +3,13 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -100,6 +105,125 @@ func useChatEngine(t *testing.T, a *App) *chatLog {
 	a.backendMu.Unlock()
 	t.Cleanup(func() { _ = eng.Close() })
 	return log
+}
+
+func TestChatStartEarlyCancellation(t *testing.T) {
+	a := NewAppWithService(chatTestService())
+	useChatEngine(t, a)
+	a.ChatStartCancel("early")
+	_, err := a.ChatStart(engine.ChatStartRequest{Agent: model.AgentClaude, Dir: t.TempDir(), StartToken: "early"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("early cancel = %v", err)
+	}
+	if a.localEngine.Chats().Any() {
+		t.Fatal("early cancellation launched a chat")
+	}
+	if len(a.chatStarts.running) != 0 || len(a.chatStarts.cancelled) != 0 {
+		t.Fatal("early cancellation retained token")
+	}
+}
+
+func TestChatStartCancellationBounds(t *testing.T) {
+	var starts chatStarts
+	for i := 0; i < maxCancelledStarts+20; i++ {
+		starts.cancel(strconv.Itoa(i))
+	}
+	if len(starts.cancelled) != maxCancelledStarts {
+		t.Fatalf("tombstones = %d", len(starts.cancelled))
+	}
+	starts.prune(time.Now().Add(2 * time.Minute))
+	if len(starts.cancelled) != 0 {
+		t.Fatal("expired cancellations retained")
+	}
+	ctx, done := starts.start(context.Background(), "normal")
+	starts.cancel("normal")
+	if !errors.Is(ctx.Err(), context.Canceled) {
+		t.Fatalf("registered cancel = %v", ctx.Err())
+	}
+	done()
+	if len(starts.running) != 0 {
+		t.Fatal("finished start retained")
+	}
+	ctx, done = starts.start(context.Background(), "normal")
+	defer done()
+	if ctx.Err() != nil {
+		t.Fatal("registered cancellation left a tombstone")
+	}
+}
+
+func TestChatStartDeadlineAndCancel(t *testing.T) {
+	for _, method := range []string{acp.MethodInitialize, acp.MethodSessionNew, acp.MethodSessionLoad, acp.MethodSessionResume} {
+		for _, cancelled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cancel=%v", method, cancelled), func(t *testing.T) {
+				a := NewAppWithService(chatTestService())
+				a.chatStartTimeout = time.Second
+				pidFile := filepath.Join(t.TempDir(), "pid")
+				eng := engine.NewEngine(engine.WithService(a.svc), engine.WithCacheEnabled(false), engine.WithChatLaunch(
+					func(_ context.Context, _ model.AgentID, dir string) (acp.Command, error) {
+						env := []string{"ACPTEST_HANG_METHOD=" + method, "ACPTEST_PID_FILE=" + pidFile}
+						if method == acp.MethodSessionLoad {
+							env = append(env, "ACPTEST_NO_RESUME=1")
+						}
+						return acptest.Command(dir, env...), nil
+					}))
+				a.localEngine, a.backend = eng, eng
+				t.Cleanup(func() { _ = eng.Close() })
+				req := engine.ChatStartRequest{Agent: model.AgentClaude, Dir: t.TempDir(), StartToken: "start-1"}
+				if method == acp.MethodSessionLoad || method == acp.MethodSessionResume {
+					req.Resume = &model.SessionRef{Agent: model.AgentClaude, ID: "saved"}
+				}
+				result := make(chan error, 1)
+				go func() { _, err := a.ChatStart(req); result <- err }()
+				var pidBytes []byte
+				deadline := time.Now().Add(5 * time.Second)
+				for len(pidBytes) == 0 && time.Now().Before(deadline) {
+					pidBytes, _ = os.ReadFile(pidFile)
+					time.Sleep(5 * time.Millisecond)
+				}
+				if len(pidBytes) == 0 {
+					t.Fatal("agent did not reach the hung method")
+				}
+				want := context.DeadlineExceeded
+				if cancelled {
+					a.ChatStartCancel("not-this-start")
+					select {
+					case err := <-result:
+						t.Fatalf("unrelated token cancelled start: %v", err)
+					default:
+					}
+					a.ChatStartCancel(req.StartToken)
+					want = context.Canceled
+				}
+				select {
+				case err := <-result:
+					if !errors.Is(err, want) {
+						t.Fatalf("start error = %v, want %v", err, want)
+					}
+				case <-time.After(3 * time.Second):
+					t.Fatal("start did not stop promptly")
+				}
+				if runtime.GOOS == "linux" {
+					pid, err := strconv.Atoi(string(pidBytes))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, err := os.Stat(fmt.Sprintf("/proc/%d", pid)); !errors.Is(err, os.ErrNotExist) {
+						t.Fatalf("agent %d still exists: %v", pid, err)
+					}
+				}
+				if eng.Chats().Any() {
+					t.Fatal("failed start still registered")
+				}
+				a.chatStarts.mu.Lock()
+				remaining := len(a.chatStarts.running)
+				a.chatStarts.mu.Unlock()
+				if remaining != 0 {
+					t.Fatalf("%d start tokens retained", remaining)
+				}
+				a.ChatStartCancel(req.StartToken) // finished tokens are harmless
+			})
+		}
+	}
 }
 
 func TestChatBindingsLocal(t *testing.T) {

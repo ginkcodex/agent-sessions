@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -381,7 +380,7 @@ func (a *App) SetTerminalOpen(mode string) (LaunchInfo, error) {
 		return LaunchInfo{}, err
 	}
 	err = configfile.Update(path, func(data []byte) []byte {
-		return configfile.SetValue(data, "terminal", "open", strconv.Quote(mode))
+		return configfile.SetValue(data, "terminal", "open", configfile.Quote(mode))
 	})
 	if err != nil {
 		return LaunchInfo{}, fmt.Errorf("save terminal: %w", err)

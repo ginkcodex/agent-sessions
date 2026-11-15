@@ -30,9 +30,14 @@ func TestForwardCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(cmd.Args, " ")
-	for _, want := range []string{"-N -v -L 127.0.0.1:15432:[::1]:5432 -- server", "GatewayPorts=no", "ControlPath=none", "ExitOnForwardFailure=yes", "ForkAfterAuthentication=no", "-F /test/config"} {
+	for _, want := range []string{"-N -v -L 127.0.0.1:15432:[::1]:5432 -- server", "GatewayPorts=no", "ControlPath=none", "ExitOnForwardFailure=yes", "PermitLocalCommand=no", "RemoteCommand=none", "RequestTTY=no", "-F /test/config"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing %s in %s", want, joined)
+		}
+	}
+	for _, arg := range cmd.Args {
+		if strings.HasPrefix(arg, "ForkAfterAuthentication=") || arg == "-f" {
+			t.Errorf("forward must remain compatible with pre-8.7 clients without requesting background mode: %v", cmd.Args)
 		}
 	}
 	if !reflect.DeepEqual(cmd.Args[len(cmd.Args)-2:], []string{"--", "server"}) {

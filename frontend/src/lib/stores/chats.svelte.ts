@@ -112,6 +112,8 @@ export interface ChatInspection {
 
 interface Internal {
   seq: ChatSequence<ChatEvent>;
+  startToken?: string;
+  startCancelled?: boolean;
   /** An inspection's turn: pending until its turn_start, open until its turn_end. */
   capture?: 'pending' | 'open';
   /** The prompt sent and waiting for its turn_start. */
@@ -248,10 +250,16 @@ export class ChatsStore {
    */
   async start(req: ChatStartRequest): Promise<Chat> {
     const key = this.add(req.agent, req.dir, { chatId: '', phase: 'starting', session: req.resume }, newSequence(1));
+    const state = this.internal.get(key)!;
+    state.startToken = crypto.randomUUID();
     this.starting++;
     let st: ChatState;
     try {
-      st = await api.chatStart(req);
+      st = await api.chatStart({ ...req, startToken: state.startToken });
+      if (state.startCancelled) {
+        await api.chatClose(st.chatId);
+        throw new Error('The chat start was cancelled.');
+      }
     } catch (e) {
       this.remove(key);
       throw e;
@@ -273,6 +281,20 @@ export class ChatsStore {
     for (const e of early) this.receive(e);
     if (this.starting === 0) this.dropEarly();
     return this.byKey(key)!;
+  }
+
+  /** Cancels a start before the backend has named the chat. */
+  async cancelStart(key: string): Promise<void> {
+    const chat = this.byKey(key);
+    const state = this.internal.get(key);
+    if (chat?.phase !== 'starting' || !state?.startToken) return;
+    state.startCancelled = true;
+    try {
+      await api.chatStartCancel(state.startToken);
+    } catch (err) {
+      state.startCancelled = false;
+      throw err;
+    }
   }
 
   /**
@@ -607,10 +629,9 @@ export class ChatsStore {
           }));
           return;
         }
-        // Permission requests end with their turn; the backend has answered
-        // them. A question goes only with its question_resolved: the agent
-        // may still wait for it (Codex's async questions outlive the prompt
-        // until the adapter withdraws them), and a late one stays.
+        // The backend resolves unanswered questions as withdrawn before this
+        // event. Keep their late cards so answers can go as a new message.
+        // Permission requests have also been answered by now.
         this.update(key, (c) => ({
           ...c,
           phase: c.phase === 'exited' ? c.phase : 'idle',

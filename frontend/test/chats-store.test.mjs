@@ -51,6 +51,58 @@ async function until(what, ok) {
 
 const DIR = '/home/user/projects/web-app';
 
+test('a starting chat cancels with its token and removes the placeholder', async () => {
+  await withChats(async ({ store, mock }) => {
+    const real = mock.chatStart.bind(mock);
+    let reject;
+    let request;
+    mock.chatStart = (req) => { request = req; return new Promise((_, no) => { reject = no; }); };
+    mock.chatStartCancel = async (token) => {
+      assert.equal(token, request.startToken);
+      reject(new Error('context canceled'));
+    };
+    const starting = store.start({ agent: 'codex', dir: DIR });
+    const failed = assert.rejects(starting, /context canceled/);
+    assert.equal(store.chats[0].phase, 'starting');
+    assert.match(request.startToken, /^[0-9a-f-]{36}$/);
+    await store.cancelStart(store.chats[0].key);
+    await failed;
+    assert.equal(store.chats.length, 0);
+    mock.chatStart = real;
+    assert.equal((await store.start({ agent: 'codex', dir: DIR })).phase, 'idle');
+  });
+});
+
+test('a failed cancel request does not discard a later successful start', async () => {
+  await withChats(async ({ store, mock }) => {
+    const real = mock.chatStart.bind(mock);
+    let release;
+    mock.chatStart = (req) => new Promise((resolve) => { release = async () => resolve(await real(req)); });
+    mock.chatStartCancel = async () => { throw new Error('cancel transport failed'); };
+    const starting = store.start({ agent: 'codex', dir: DIR });
+    await assert.rejects(store.cancelStart(store.chats[0].key), /cancel transport failed/);
+    await release();
+    const chat = await starting;
+    assert.equal(chat.phase, 'idle');
+    assert.equal((await mock.chatList()).length, 1);
+  });
+});
+
+test('a cancellation racing a successful start closes the new chat', async () => {
+  await withChats(async ({ store, mock }) => {
+    const real = mock.chatStart.bind(mock);
+    let release;
+    mock.chatStart = (req) => new Promise((resolve) => { release = async () => resolve(await real(req)); });
+    const starting = store.start({ agent: 'codex', dir: DIR });
+    const failed = assert.rejects(starting, /cancelled/);
+    await store.cancelStart(store.chats[0].key);
+    await release();
+    await failed;
+    assert.equal(store.chats.length, 0);
+    assert.deepEqual(await mock.chatList(), []);
+  });
+});
+
 test('a prompt streams into the live tail, and the saved turn replaces it', async () => {
   await withChats(async ({ store, mock }) => {
     const chat = await store.start({ agent: 'claude-code', dir: DIR });
@@ -690,24 +742,23 @@ test("Codex's async question outlives the streamed reply, goes late at the turn'
   });
 });
 
-test('a question still open at turn_end stays until its resolution, then goes late', async () => {
+test('an unanswered question resolves late before turn_end, matching the engine', async () => {
   await withChats(async ({ store, mock }) => {
     const chat = await store.start({ agent: 'codex', dir: DIR, questions: true });
-    // The agent's events as the backend sends them: Codex's adapter may end
-    // the prompt before it withdraws an async question.
+    // The adapter ends the prompt without withdrawing its question. The
+    // engine resolves it as withdrawn before emitting turn_end.
     const agent = mock.chat.chats.get(chat.chatId);
     const send = (fields) => mock.chat.update(agent, fields);
     const q = { id: 'question-9', message: 'Codex keeps working while you answer.', fields: [{ key: 'a', type: 'string', title: 'Why?' }], meta: { codex: { delivery: 'async' } } };
     send({ kind: 'turn_start' });
     send({ kind: 'question', question: q });
-    send({ kind: 'turn_end', stopReason: 'end_turn' });
-    let c = store.byChatId(chat.chatId);
-    assert.equal(c.phase, 'idle');
-    assert.deepEqual(c.questions, [q], 'the end of the turn does not take a pending question');
-
     send({ kind: 'question_resolved', question: { id: q.id, outcome: 'withdrawn' } });
-    c = store.byChatId(chat.chatId);
-    assert.deepEqual(c.questions, [{ ...q, late: true }]);
+    assert.equal(store.byChatId(chat.chatId).phase, 'working');
+    assert.deepEqual(store.byChatId(chat.chatId).questions, [{ ...q, late: true }]);
+    send({ kind: 'turn_end', stopReason: 'end_turn' });
+    const c = store.byChatId(chat.chatId);
+    assert.equal(c.phase, 'idle');
+    assert.deepEqual(c.questions, [{ ...q, late: true }], 'the end of the turn keeps the late card');
     assert.equal(c.tail.items.find((i) => i.type === 'answer').summary, 'The agent went on without an answer');
 
     send({ kind: 'turn_start' });

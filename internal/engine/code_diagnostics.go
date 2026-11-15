@@ -549,6 +549,11 @@ func (e *Engine) RunCodeDiagnostics(ctx context.Context, c cd.Context, ids []str
 	if err != nil {
 		return CodeDiagnosticsRuns{}, err
 	}
+	if len(ids) == 1 {
+		if live, err := o.manager.RetryLive(c, ids[0]); live || err != nil {
+			return CodeDiagnosticsRuns{c, []cd.RunIdentity{}}, err
+		}
+	}
 	runs, err := o.manager.Run(c, ids, false)
 	return CodeDiagnosticsRuns{c, runs}, err
 }

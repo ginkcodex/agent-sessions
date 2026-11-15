@@ -1,11 +1,12 @@
 # Review fixes — tasks
 
 - **Plan:** [review-fixes.md](../../plan/review-fixes.md)
-- **Progress:** 11/28 done
+- **Progress:** 27/35 done
 
 From the architecture and feature review of 2026-11-14. RF-01 to RF-10 are
 security and privacy; RF-11 to RF-23 are reliability; RF-24 and RF-25 are CI
-and docs. RF-26 to RF-28 were found during RF-21 and RF-26.
+and docs. RF-26 to RF-35 are reliability follow-ups found during RF-21,
+RF-26, RF-27, RF-20, final integration and cross-platform CI.
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -22,18 +23,25 @@ and docs. RF-26 to RF-28 were found during RF-21 and RF-26.
 | [RF-11](RF-11.md) | ✅ Done | Decode the reply ID as an integer, not `any` | 1 h | None |
 | [RF-12](RF-12.md) | ✅ Done | Watch a missing root's nearest directory only for the root's creation; no trees outside recursive roots | 2.5 h | None |
 | [RF-13](RF-13.md) | ✅ Done | `ErrEventOverflow` rescan; a provider in fallback retries its watches with backoff | 3 h | RF-12 |
-| [RF-14](RF-14.md) | ⬜ Not started | One running scan plus a dirty flag per provider; `Close` waits for refreshes | 3.5 h | None |
-| [RF-15](RF-15.md) | ⬜ Not started | An unreadable source keeps its previous state; it neither blocks the provider nor drops sessions | 3 h | None |
+| [RF-14](RF-14.md) | ✅ Done | One running scan plus a dirty flag per provider; `Close` waits for refreshes | 3.5 h | None |
+| [RF-15](RF-15.md) | ✅ Done | An unreadable source keeps its previous state; it neither blocks the provider nor drops sessions | 3 h | None |
 | [RF-16](RF-16.md) | ✅ Done | The client kills the agent when the connection ends with an error it did not cause | 2 h | None |
-| [RF-17](RF-17.md) | ⬜ Not started | A start deadline and a cancel path while the frontend has no chat ID yet | 3 h | RF-16 |
-| [RF-18](RF-18.md) | ⬜ Not started | Decide whether `turn_end` waits for questions; make the engine, store and tests agree | 3 h | None |
-| [RF-19](RF-19.md) | ⬜ Not started | Lstat (or open non-blocking) before reading in Read, Blame, diff and external | 1.5 h | None |
-| [RF-20](RF-20.md) | ⬜ Not started | Wire `SessionManager.Retry` into a production path with backoff | 3 h | None |
+| [RF-17](RF-17.md) | ✅ Done | A start deadline and a cancel path while the frontend has no chat ID yet | 3 h | RF-16 |
+| [RF-18](RF-18.md) | ✅ Done | Decide whether `turn_end` waits for questions; make the engine, store and tests agree | 3 h | None |
+| [RF-19](RF-19.md) | ✅ Done | Lstat (or open non-blocking) before reading in Read, Blame, diff and external | 1.5 h | None |
+| [RF-20](RF-20.md) | ✅ Done | Wire `SessionManager.Retry` into a production path with backoff | 3 h | None |
 | [RF-21](RF-21.md) | ✅ Done | Run remote probe, deploy and serve scripts through `/bin/sh`, as panels do | 3 h | None |
-| [RF-22](RF-22.md) | ⬜ Not started | Drop or version-gate `ForkAfterAuthentication=no` | 2 h | None |
-| [RF-23](RF-23.md) | ⬜ Not started | Unescape on read, TOML-valid quoting on write, check `Scanner.Err` | 2 h | None |
+| [RF-22](RF-22.md) | ✅ Done | Drop or version-gate `ForkAfterAuthentication=no` | 2 h | None |
+| [RF-23](RF-23.md) | ✅ Done | Unescape on read, TOML-valid quoting on write, check `Scanner.Err` | 2 h | None |
 | [RF-24](RF-24.md) | ⬜ Not started | Run the existing `.golangci.yml` and govulncheck in CI; fix `nilerr` hits | 3 h | None |
 | [RF-25](RF-25.md) | ⬜ Not started | AUR-07, LR-19, M5-04, M5-06, M8-07 and the code-diagnostics count | 1 h | None |
 | [RF-26](RF-26.md) | ✅ Done | Run agent panel tabs under csh and tcsh, which reject `-ilc` | 2 h | None |
-| [RF-27](RF-27.md) | ⬜ Not started | Run the fish panel startup test in a pty; without one fish never prompts | 2 h | None |
+| [RF-27](RF-27.md) | ✅ Done | Run the fish panel startup test in a pty; without one fish never prompts | 2 h | None |
 | [RF-28](RF-28.md) | ✅ Done | Read `/etc/csh.login` and `~/.login` in remote connect's csh and tcsh line | 1 h | RF-21 |
+| [RF-29](RF-29.md) | ✅ Done | Run fish prompt-cwd tests in the existing PTY harness | 1 h | RF-27 |
+| [RF-30](RF-30.md) | ✅ Done | Serialize live recovery and current-session failure status publication | 1 h | RF-20 |
+| [RF-31](RF-31.md) | ✅ Done | Clear new reliability lint findings without absorbing the existing backlog | 1 h | RF-15, RF-19, RF-23, RF-27 |
+| [RF-32](RF-32.md) | ✅ Done | Preserve search through aliased project roots | 1 h | RF-19 |
+| [RF-33](RF-33.md) | ✅ Done | Publish fake ACP hold turns and their steering channels atomically | 1 h | None |
+| [RF-34](RF-34.md) | ✅ Done | Preserve managed-install cancellation during disconnect | 1–2 h | None |
+| [RF-35](RF-35.md) | ✅ Done | Accept cancelled ACP prompt replies during shutdown | 1 h | None |

@@ -69,26 +69,34 @@ Share-safe bundles leave the manifest's `CWD`, `RepoRoot`, `GitBranch` and
 sees a JSON key next to its value, and the home-path rules miss Windows
 profiles.
 
-### Reliability (RF-11 to RF-23, RF-26 to RF-28)
+### Reliability (RF-11 to RF-23, RF-26 to RF-35)
 
 | Task | Finding | Checked |
 |---|---|---|
 | RF-11 | RPC replies are matched by `%v` of a float64; from ID 1,000,000 that prints `1e+06` and no call gets its answer (`internal/rpc/client.go:267`) | ✅ |
 | RF-12 | A missing watch root falls back to `$HOME`. New directories there are then watched recursively, and each change queues a full rescan (`internal/watch/watch.go:390`) | ✅ |
 | RF-13 | One fsnotify error moves every provider to polling for the rest of the process | reviewer |
-| RF-14 | Watcher refreshes queue without coalescing; `Close` races background readers of `d.db` | reviewer |
-| RF-15 | One unreadable Codex rollout blocks all Codex indexing; an unreadable Claude project drops its sessions until the next scan | reviewer |
+| RF-14 | Watcher refreshes queue without coalescing; `Close` races background readers of `d.db` | ✅ (2026-11-15) |
+| RF-15 | One unreadable Codex rollout blocks all Codex indexing; an unreadable Claude project drops its sessions until the next scan | ✅ (2026-11-15) |
 | RF-16 | When the ACP connection fails (frame over 64 MiB, read error) the agent is not killed, so the chat never ends (`internal/acp/conn.go:264`) | ✅ |
-| RF-17 | `ChatStart` has no timeout and can't be cancelled; a hung start blocks every other chat open in the window | ✅ (context) |
-| RF-18 | A question still open when the prompt returns holds back `turn_end`; the store and its test assume the opposite | reviewer |
-| RF-19 | Reading a FIFO opens it before the regular-file check and hangs (`internal/files/files.go:615`) | ✅ |
-| RF-20 | A crashed language server can't restart before the app does; `SessionManager.Retry` has no production caller | reviewer |
+| RF-17 | `ChatStart` has no timeout and can't be cancelled; a hung start blocks every other chat open in the window | ✅ (2026-11-15) |
+| RF-18 | A question still open when the prompt returns holds back `turn_end`; the store and its test assume the opposite | ✅ (2026-11-15) |
+| RF-19 | Reading a FIFO opens it before the regular-file check and hangs (`internal/files/files.go:615`) | ✅ (2026-11-15) |
+| RF-20 | A crashed language server can't restart before the app does; `SessionManager.Retry` has no production caller | ✅ (2026-11-15) |
 | RF-21 | Remote probe, deploy and serve run POSIX scripts under `$SHELL -lc`, which fails with fish, csh and tcsh | ✅ |
-| RF-22 | Port forwards use `ForkAfterAuthentication=no`, which needs OpenSSH 8.7 | reviewer |
-| RF-23 | `configfile` values are not unescaped on read, so backslashes grow on every save; a line over 64 KiB truncates the rewrite | reviewer |
+| RF-22 | Port forwards use `ForkAfterAuthentication=no`, which needs OpenSSH 8.7 | ✅ (2026-11-15) |
+| RF-23 | `configfile` values are not unescaped on read, so backslashes grow on every save; a line over 64 KiB truncates the rewrite | ✅ (2026-11-15) |
 | RF-26 | Agent panel tabs on a csh or tcsh host run `$SHELL -ilc`, which those shells reject (`internal/launch/panel_shell.go`) | ✅ (found in RF-21) |
 | RF-27 | The fish cases of the panel startup test run without a terminal, so fish never prompts and they fail wherever fish is installed | ✅ (found in RF-26) |
 | RF-28 | Remote connect under csh and tcsh reads the rc file but not `.login`, so PATH set there is missing; panel tabs read it | ✅ (found in RF-26) |
+| RF-29 | Fish prompt-cwd tests also start without a PTY and never prompt | ✅ (found in RF-27, 2026-11-15) |
+| RF-30 | Refresh can publish an old session failure after recovery finishes, leaving healthy diagnostics falsely failed | ✅ (found in RF-20, 2026-11-15) |
+| RF-31 | Reliability changes introduce ten lint findings; keep new changes lint-clean independently of RF-24 | ✅ (integration, 2026-11-15) |
+| RF-32 | Search rejects files under aliased project roots after RF-19; Windows and macOS CI return no matches | ✅ (CI 43690937665, 2026-11-15) |
+| RF-33 | Fake ACP hold turn becomes visible before its steering channel, losing the completion signal | ✅ (CI 43690937665, 2026-11-15) |
+
+| RF-34 | Owner cancellation can finish installation before job cancellation propagates, reporting failed instead of cancelled | ✅ (CI 43694948130, 2026-11-15) |
+| RF-35 | ACP shutdown test rejects a valid cancelled prompt reply racing connection close | ✅ (CI 43694948130, 2026-11-15) |
 
 ### CI and docs (RF-24, RF-25)
 

@@ -6,13 +6,13 @@
 package configfile
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/BurntSushi/toml"
 
 	"github.com/ginkcode/agent-sessions/internal/filelock"
 )
@@ -114,10 +114,9 @@ func WriteAtomic(path string, data []byte) error {
 // Value returns the string value of key in [table]: quoted or bare, with a
 // trailing comment removed.
 func Value(data []byte, table, key string) (string, bool) {
-	scanner := bufio.NewScanner(bytes.NewReader(data))
 	in := false
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	for _, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(raw)
 		if name, ok := tableName(line); ok {
 			in = name == table
 			continue
@@ -129,22 +128,31 @@ func Value(data []byte, table, key string) (string, bool) {
 		if !ok || strings.TrimSpace(k) != key {
 			continue
 		}
-		return parseValue(strings.TrimSpace(v)), true
+		return parseValue(strings.TrimSpace(v))
 	}
 	return "", false
 }
 
-func parseValue(v string) string {
+func parseValue(v string) (string, bool) {
 	if len(v) > 0 && (v[0] == '"' || v[0] == '\'') {
-		if end := strings.IndexByte(v[1:], v[0]); end >= 0 {
-			return v[1 : 1+end]
+		var decoded struct{ Value string }
+		if _, err := toml.Decode("value = "+v, &decoded); err != nil {
+			return "", false
 		}
-		return v[1:]
+		return decoded.Value, true
 	}
 	if i := strings.IndexAny(v, "#;"); i >= 0 {
 		v = v[:i]
 	}
-	return strings.TrimSpace(v)
+	return strings.TrimSpace(v), true
+}
+
+// Quote encodes a string as a single-line TOML basic string.
+func Quote(value string) string {
+	var out strings.Builder
+	// Encoding a string to a strings.Builder cannot fail.
+	_ = toml.NewEncoder(&out).Encode(value)
+	return out.String()
 }
 
 // SetValue returns data with key in [table] set to value, a TOML literal
@@ -154,9 +162,8 @@ func parseValue(v string) string {
 func SetValue(data []byte, table, key, value string) []byte {
 	entry := key + " = " + value
 	var lines []string
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+	if len(data) > 0 {
+		lines = strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 	}
 
 	var out []string

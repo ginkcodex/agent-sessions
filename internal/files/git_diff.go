@@ -245,18 +245,11 @@ func readGitWorking(root, rel string) (Content, error) {
 	if err != nil {
 		return Content{}, err
 	}
-	f, err := os.Open(full)
+	f, info, err := openRegular(root, full)
 	if err != nil {
 		return Content{}, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return Content{}, err
-	}
-	if !info.Mode().IsRegular() {
-		return Content{}, ErrEditTarget
-	}
 	out := Content{Path: rel, Size: info.Size()}
 	data, err := readText(f, &out)
 	if err != nil {

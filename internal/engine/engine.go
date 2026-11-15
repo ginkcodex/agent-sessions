@@ -308,7 +308,7 @@ func (e *Engine) startWatcher(ctx context.Context) func() error {
 		if !ok {
 			return
 		}
-		go e.refreshProvider(ctx, p)
+		e.refreshProvider(ctx, p)
 	}
 	done := startupObservation(ctx).begin("watcher_setup")
 	closeWatch, err := watch.Start(ctx, e.svc.Providers(), onChange)
@@ -323,13 +323,15 @@ func (e *Engine) startWatcher(ctx context.Context) func() error {
 // because a reader swaps it when promoted.
 func (e *Engine) refreshProvider(ctx context.Context, p provider.Provider) {
 	e.mu.Lock()
+	defer e.mu.Unlock()
 	refresher := e.refresher
-	e.mu.Unlock()
-	if refresher == nil {
+	if e.closed || refresher == nil || ctx.Err() != nil {
 		return
 	}
-	_, _, _ = refresher.Refresh(ctx, p)
-	e.svc.ApplyReport(refresher.Report())
+	e.bg.Go(func() {
+		_, _, _ = refresher.Refresh(ctx, p)
+		e.svc.ApplyReport(refresher.Report())
+	})
 }
 
 // refreshAgent starts a rescan of agent's sessions, as the watcher would on
@@ -343,7 +345,7 @@ func (e *Engine) refreshAgent(agent model.AgentID) {
 		return
 	}
 	if p, ok := e.svc.Providers().Get(agent); ok {
-		go e.refreshProvider(ctx, p)
+		e.refreshProvider(ctx, p)
 	}
 }
 
@@ -435,7 +437,10 @@ func (e *Engine) Close() error {
 	if closeWatch != nil {
 		_ = closeWatch()
 	}
-	// Bootstrap scans, the promoter and cleanup.
+	if refresher != nil {
+		refresher.Retire()
+	}
+	// Bootstrap, watcher refreshes, the promoter and cleanup.
 	e.bg.Wait()
 	if indexer != nil {
 		indexer.Close()

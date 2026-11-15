@@ -601,9 +601,7 @@ func TestIdFromRolloutPath(t *testing.T) {
 	}
 }
 
-// A discovered source that becomes unreadable (chmod 0000) must produce a
-// provider error rather than a false removal, and a later healthy scan must
-// still see the session.
+// An unreadable source retains its state without blocking healthy sources.
 func TestScan_UnreadableSourceRetainsState(t *testing.T) {
 	root := platform.TempDir(t)
 	path := writeBasic(t, root)
@@ -627,18 +625,22 @@ func TestScan_UnreadableSourceRetainsState(t *testing.T) {
 		t.Skip("running as privileged user; chmod 0000 did not make the file unreadable")
 	}
 
+	writeRollout(t, root, "healthy", line("2026-09-28T12:00:00Z", "session_meta", `{"id":"healthy","cwd":"/tmp"}`), true)
 	res, err := p.Scan(ctx, first.State)
-	if err == nil {
-		t.Fatalf("Scan with unreadable source returned nil error: %+v", res)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(res.Changed) != 0 || len(res.Removed) != 0 {
-		t.Errorf("failed scan Changed/Removed = %+v/%+v, want empty", res.Changed, res.Removed)
+	if len(res.Changed) != 1 || res.Changed[0].Ref.ID != "healthy" || len(res.Removed) != 0 {
+		t.Fatalf("partial scan = %+v", res)
+	}
+	if len(res.Diag.Warnings) == 0 || string(res.State.Sources[path].Checkpoint) != string(first.State.Sources[path].Checkpoint) {
+		t.Fatal("missing warning or retained state")
 	}
 
 	if err := os.Chmod(path, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	again, err := p.Scan(ctx, first.State)
+	again, err := p.Scan(ctx, res.State)
 	if err != nil {
 		t.Fatalf("Scan after restoring permissions: %v", err)
 	}
@@ -648,8 +650,8 @@ func TestScan_UnreadableSourceRetainsState(t *testing.T) {
 }
 
 // A previously scanned path replaced by a directory still exists, so removal
-// cannot be proven: Scan must fail instead of reporting a false removal.
-func TestScan_SourceReplacedByDirectoryFails(t *testing.T) {
+// cannot be proven: retain its state and warn instead of a false removal.
+func TestScan_SourceReplacedByDirectoryRetainsState(t *testing.T) {
 	root := platform.TempDir(t)
 	path := writeBasic(t, root)
 	p := New(root, nil)
@@ -666,8 +668,11 @@ func TestScan_SourceReplacedByDirectoryFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, err := p.Scan(ctx, first.State)
-	if err == nil {
-		t.Fatalf("Scan with path replaced by directory returned nil error: %+v", res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Diag.Warnings) == 0 || len(res.State.Sources) != 1 {
+		t.Fatal("missing warning or retained state")
 	}
 	if len(res.Removed) != 0 {
 		t.Errorf("Removed = %+v, want empty (not provably deleted)", res.Removed)

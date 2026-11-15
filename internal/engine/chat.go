@@ -149,6 +149,8 @@ type ChatStartRequest struct {
 	Agent  model.AgentID     `json:"agent"`
 	Dir    string            `json:"dir"`
 	Resume *model.SessionRef `json:"resume,omitempty"`
+	// StartToken lets the desktop cancel a start before it has a chat ID.
+	StartToken string `json:"startToken,omitempty"`
 	// Questions says the caller shows questions (ChatQuestionAsked). Only
 	// then is the agent offered form elicitation; otherwise each agent
 	// falls back to not asking.
@@ -921,6 +923,7 @@ type chat struct {
 	commands    []acp.AvailableCommand
 	started     bool
 	working     bool
+	ending      bool // prompt returned; no new questions belong to this turn
 	closing     bool
 	exited      bool
 	replaying   bool
@@ -978,16 +981,23 @@ func (ch *chat) queuedIndexLocked(id string) int {
 // beginTurnLocked marks a turn running and returns what it sends to. Call
 // it with mu held on a live chat, then emit the turn's start and run it.
 func (ch *chat) beginTurnLocked() (*acp.Client, string) {
+	ch.ending = false
 	ch.working = true
 	ch.work.Add(1)
 	return ch.client, ch.ref.ID
 }
 
-// endTurn emits the turn's end after every permission, question and
-// steering in flight, then takes the next queued message when the turn
-// ended normally and emits its start. It returns that message, or nil when
-// the chat is now idle.
+// endTurn makes unanswered questions late, waits for their resolutions and
+// other calls in flight, then emits the end and starts the next queued turn.
 func (ch *chat) endTurn(ev ChatUpdate, normal bool) *queuedPrompt {
+	ch.mu.Lock()
+	ch.ending = true
+	for id, q := range ch.questions {
+		q.late = true
+		delete(ch.questions, id)
+		q.answer <- acp.ElicitationCancelled()
+	}
+	ch.mu.Unlock()
 	for {
 		ch.awaitAnswers()
 		// The next turn's start must follow this end.
@@ -1006,6 +1016,9 @@ func (ch *chat) endTurn(ev ChatUpdate, normal bool) *queuedPrompt {
 		ch.queue = slices.Delete(ch.queue, 0, 1)
 	}
 	ch.working = next != nil
+	if next != nil {
+		ch.ending = false
+	}
 	queue := ch.queueLocked()
 	ch.mu.Unlock()
 	ch.emitLocked(ev)
@@ -1019,7 +1032,8 @@ func (ch *chat) endTurn(ev ChatUpdate, normal bool) *queuedPrompt {
 }
 
 type pendingQuestion struct {
-	n      int // the order asked
+	late   bool // the prompt returned without taking the answer; guarded by mu
+	n      int  // the order asked
 	q      ChatQuestion
 	schema *acp.ElicitationSchema
 	answer chan acp.CreateElicitationResponse // buffered; one send
@@ -1243,7 +1257,7 @@ func (ch *chat) onPermission(ctx context.Context, req acp.RequestPermissionReque
 // agent withdrawing it or the agent's exit.
 func (ch *chat) onQuestion(ctx context.Context, req acp.CreateElicitationRequest) acp.CreateElicitationResponse {
 	ch.mu.Lock()
-	if ch.closing || ch.exited {
+	if ch.closing || ch.exited || ch.ending {
 		ch.mu.Unlock()
 		return acp.ElicitationCancelled()
 	}
@@ -1269,10 +1283,11 @@ func (ch *chat) onQuestion(ctx context.Context, req acp.CreateElicitationRequest
 	}
 	ch.mu.Lock()
 	delete(ch.questions, id)
+	late := q.late
 	ch.mu.Unlock()
 	outcome := r.Action
 	switch {
-	case errors.Is(context.Cause(ctx), acp.ErrWithdrawn):
+	case errors.Is(context.Cause(ctx), acp.ErrWithdrawn) || late && ctx.Err() == nil && ch.ctx.Err() == nil:
 		r, outcome = acp.ElicitationCancelled(), ChatQuestionWithdrawn
 	case r.Action == "" || ctx.Err() != nil || ch.ctx.Err() != nil:
 		r = acp.ElicitationCancelled() // what the client sends then

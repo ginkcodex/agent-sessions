@@ -153,7 +153,8 @@ func (e *Engine) ManagedTool(ctx context.Context, p ManagedToolRequest) (Managed
 			if installErr != nil {
 				job.state.State = "failed"
 				job.state.Message = "Installation failed; request fresh approval to retry"
-				if jobCtx.Err() != nil {
+				// Owner cancellation can reach the install request before jobCtx.
+				if jobCtx.Err() != nil || o.ctx.Err() != nil {
 					job.state.State = "canceled"
 					job.state.Message = "Installation canceled"
 				} else if errors.Is(installErr, mt.ErrPrerequisite) {

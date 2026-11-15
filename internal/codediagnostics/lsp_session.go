@@ -431,10 +431,10 @@ func (m *SessionManager) Attach(ctx context.Context, root AuthorizedRoot, cfg Se
 	if err != nil {
 		return SessionInfo{}, err
 	}
-	return m.attach(ctx, root, cfg, tool, lease, false)
+	return m.attach(ctx, root, cfg, tool, lease, false, false)
 }
 
-func (m *SessionManager) attach(ctx context.Context, root AuthorizedRoot, cfg ServerConfig, tool ToolInput, lease *Lease, restart bool) (SessionInfo, error) {
+func (m *SessionManager) attach(ctx context.Context, root AuthorizedRoot, cfg ServerConfig, tool ToolInput, lease *Lease, restart, reset bool) (SessionInfo, error) {
 	key := keyOf(root, cfg)
 	for {
 		m.mu.Lock()
@@ -493,8 +493,15 @@ func (m *SessionManager) attach(ctx context.Context, root AuthorizedRoot, cfg Se
 		if e == nil {
 			e = &sessionEntry{key: key}
 			m.entries[key] = e
-		} else if !restart {
+		} else if !restart || reset {
 			e.restarted = 0 // a deliberate new start, not a crash retry
+		}
+		if restart {
+			if e.restarted >= m.options.MaxRestarts {
+				m.mu.Unlock()
+				return SessionInfo{}, ErrSessionRestart
+			}
+			e.restarted++ // preflight passed and this caller owns the new generation
 		}
 		s := newLSPSession(m, e, root, cfg, tool, lease)
 		e.session = s
@@ -637,8 +644,13 @@ func (m *SessionManager) stopWhere(match func(sessionKey) bool, phase string, ca
 
 // Retry starts a fresh generation after failure or disconnect, at most
 // MaxRestarts times per server. The failed generation is already invalid and can
-// never publish again. Exhaustion is permanent until a deliberate new Attach.
+// never publish again. Automatic recovery stops at the cap; manual recovery
+// starts a new bounded series through retry with reset=true.
 func (m *SessionManager) Retry(ctx context.Context, root AuthorizedRoot, cfg ServerConfig) (SessionInfo, error) {
+	return m.retry(ctx, root, cfg, false)
+}
+
+func (m *SessionManager) retry(ctx context.Context, root AuthorizedRoot, cfg ServerConfig, reset bool) (SessionInfo, error) {
 	cfg = cloneServer(cfg)
 	tool := cfg.Tool()
 	if m.trust == nil || m.options.Launch == nil {
@@ -653,17 +665,16 @@ func (m *SessionManager) Retry(ctx context.Context, root AuthorizedRoot, cfg Ser
 		m.mu.Unlock()
 		return SessionInfo{}, ErrSessionNotRetryable
 	}
-	if e.restarted >= m.options.MaxRestarts {
+	if !reset && e.restarted >= m.options.MaxRestarts {
 		m.mu.Unlock()
 		return SessionInfo{}, ErrSessionRestart
 	}
-	e.restarted++
 	m.mu.Unlock()
 	lease, err := m.trust.Preflight(root, cfg.approvalTools())
 	if err != nil {
 		return SessionInfo{}, err
 	}
-	return m.attach(ctx, root, cfg, tool, lease, true)
+	return m.attach(ctx, root, cfg, tool, lease, true, reset)
 }
 
 // Info reports the current generation, or a stopped placeholder.

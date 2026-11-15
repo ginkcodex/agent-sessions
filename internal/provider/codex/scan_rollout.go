@@ -537,17 +537,16 @@ feed:
 		return provider.ScanResult{}, nil, err
 	}
 
-	present := make(map[string]bool, len(paths))
 	byID := make(map[string]sourceScan, len(paths))
 	// Checkpoints of unchanged sources, already decoded from both the previous
 	// and the new state's bytes, which are the same slice.
 	decoded := make(map[string]*checkpoint, len(paths))
 
 	for i, path := range paths {
-		present[path] = true
 		out := outcomes[i]
 		if out.err != nil {
-			return provider.ScanResult{}, nil, out.err
+			result.Diag.Warn(path, 0, "scan rollout: %v", out.err)
+			continue
 		}
 		result.Diag.Merge(out.diag)
 		result.State.Sources[path] = out.state
@@ -659,12 +658,14 @@ feed:
 
 	previous := make(map[string]sourceScan, len(prev.Sources))
 	for path, old := range prev.Sources {
-		if !present[path] {
-			// Discovery can skip an unreadable file (or a new symlink escape).
-			// Only a genuinely missing path proves deletion; otherwise retain
-			// prior catalog/state instead of reporting false removals.
-			if _, err := os.Lstat(path); err == nil || !os.IsNotExist(err) {
-				return provider.ScanResult{}, nil, fmt.Errorf("codex: previously scanned rollout %q is no longer discoverable: %w", path, err)
+		_, scanned := result.State.Sources[path]
+		retain := false
+		if !scanned {
+			// Only absence proves deletion; a failed source must not block others.
+			if _, err := os.Lstat(path); !os.IsNotExist(err) {
+				retain = true
+				result.State.Sources[path] = old
+				result.Diag.Warn(path, 0, "previous rollout unavailable; retaining previous scan state")
 			}
 		}
 		cp, reused := decoded[path]
@@ -695,6 +696,11 @@ feed:
 			}
 		}
 		candidate := sourceScan{path: path, meta: meta}
+		if retain {
+			if existing, ok := byID[meta.Ref.ID]; !ok || preferRollout(candidate, existing) {
+				byID[meta.Ref.ID] = candidate
+			}
+		}
 		if existing, ok := previous[meta.Ref.ID]; !ok || preferRollout(candidate, existing) {
 			previous[meta.Ref.ID] = candidate
 		}

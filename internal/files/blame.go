@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -36,18 +35,11 @@ func BlameFile(ctx context.Context, dir, path string, line int) (BlameLine, erro
 	if err != nil {
 		return BlameLine{}, err
 	}
-	f, err := os.Open(full)
+	f, _, err := openRegular(dir, full)
 	if err != nil {
 		return BlameLine{}, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return BlameLine{}, err
-	}
-	if !info.Mode().IsRegular() {
-		return BlameLine{}, fmt.Errorf("blame: not a regular file: %s", path)
-	}
 	data, err := io.ReadAll(io.LimitReader(f, MaxReadBytes+1))
 	if err != nil {
 		return BlameLine{}, err

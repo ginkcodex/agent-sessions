@@ -550,6 +550,14 @@ func walkPaths(ctx context.Context, root string, repoFound func(string, string))
 				return fs.SkipDir
 			}
 		}
+		if !d.IsDir() && !d.Type().IsRegular() {
+			if d.Type()&os.ModeSymlink == 0 {
+				return nil
+			}
+			if info, err := os.Stat(p); err != nil || !info.Mode().IsRegular() {
+				return nil //nolint:nilerr // Unreadable or special symlink targets are omitted from listings.
+			}
+		}
 		if len(out.Files)+len(out.Directories)+len(out.Ignored) >= fileCap {
 			out.Truncated = true
 			return errFull
@@ -615,18 +623,11 @@ func Read(ctx context.Context, root, rel string) (Content, error) {
 	if err != nil {
 		return Content{}, err
 	}
-	f, err := os.Open(full)
+	f, info, err := openRegular(root, full)
 	if err != nil {
 		return Content{}, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return Content{}, err
-	}
-	if !info.Mode().IsRegular() {
-		return Content{}, fmt.Errorf("%s is not a regular file", rel)
-	}
 	out := Content{Path: filepath.ToSlash(filepath.Clean(filepath.FromSlash(rel))), Size: info.Size()}
 	if mime, ok := imageTypes[strings.ToLower(filepath.Ext(full))]; ok {
 		return readImage(f, out, mime)

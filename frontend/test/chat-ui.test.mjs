@@ -307,6 +307,8 @@ async function renderComposer(c, props = {}) {
 
 async function renderLiveTail(c, props = {}) {
   liveTailModule ??= await loadServerComponent(LIVE_TAIL_URL, [
+    ["import { chats } from '../../stores/chats.svelte';", 'const chats = {};'],
+    ["'../../manage'", lib('../../manage.ts', LIVE_TAIL_URL)],
     ["'../../chat'", lib('../../chat.ts', LIVE_TAIL_URL)],
     ["'../../chatQuestions'", lib('../../chatQuestions.ts', LIVE_TAIL_URL)],
     ["'../../portable'", lib('../../portable.ts', LIVE_TAIL_URL)],
@@ -426,7 +428,9 @@ test('the live tail shows the streamed messages, then the chat state under them'
   assert.match(working, /Codex waits for your answer\./);
   assert.match(await renderLiveTail(chat({ phase: 'working', tail })), /Codex is working…/);
 
-  assert.match(await renderLiveTail(chat({ phase: 'starting', session: undefined })), /Starting Codex…/);
+  const starting = await renderLiveTail(chat({ phase: 'starting', session: undefined }));
+  assert.match(starting, /Starting Codex…/);
+  assert.match(starting, /<button[^>]*type="button"[^>]*>Cancel<\/button>/);
   assert.match(await renderLiveTail(chat({ phase: 'starting' })), /Opening the session in Codex…/, 'a resume');
 
   const idle = await renderLiveTail(chat({ phase: 'idle', stopReason: 'end_turn' }));
@@ -610,6 +614,24 @@ test('opening starts a chat, a new one selects its session, and a failed start s
   });
   await withOpener({ connectionStore: { canChat: false } }, async ({ opener }) => {
     assert.equal(opener.canChat('codex'), false, 'not on this host');
+  });
+});
+
+test('a cancelled or timed-out start frees the opener for another chat', async () => {
+  await withOpener({}, async ({ opener }) => {
+    const real = globalThis.__openerFixture.chats.start;
+    for (const message of ['context canceled', 'context deadline exceeded']) {
+      let reject;
+      globalThis.__openerFixture.chats.start = () => new Promise((_, no) => { reject = no; });
+      const first = opener.startNew('codex', '/p');
+      assert.equal(opener.opening, true);
+      assert.equal(await opener.startNew('codex', '/other'), false);
+      reject(new Error(message));
+      assert.equal(await first, false);
+      assert.equal(opener.opening, false);
+      globalThis.__openerFixture.chats.start = real;
+      assert.equal(await opener.startNew('codex', '/other'), true);
+    }
   });
 });
 
