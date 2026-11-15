@@ -10,7 +10,7 @@ import {
   isMcpListing,
   parseMcpStatus,
   isPluginListing,
-  PLUGIN_COMMAND,
+  pluginCommand,
   pluginRows,
   MAX_CHAT_ATTACHMENTS,
   pendingChatMeta,
@@ -229,12 +229,19 @@ test("parseMcpStatus reads Codex's statuses and notes, and refuses other shapes"
 });
 
 test('/plugin is the app\'s listing unless the agent has its own, and a plugin is loaded only by its commands', () => {
-  assert.equal(isPluginListing('/plugin', []), true);
-  assert.equal(isPluginListing(' /plugin\n', [{ name: 'mcp' }]), true);
-  assert.equal(isPluginListing('/plugin list', []), false);
-  assert.equal(isPluginListing('/plugins', []), false);
-  assert.equal(isPluginListing('/plugin', [{ name: 'plugin' }]), false, 'the agent answers its own');
-  assert.deepEqual(commandChoices([PLUGIN_COMMAND], '/plug').map((c) => c.text), ['/plugin']);
+  assert.equal(isPluginListing('/plugin', [], 'claude-code'), true);
+  assert.equal(isPluginListing(' /plugin\n', [{ name: 'mcp' }], 'claude-code'), true);
+  assert.equal(isPluginListing('/plugin list', [], 'claude-code'), false);
+  assert.equal(isPluginListing('/plugins', [], 'claude-code'), false);
+  assert.equal(isPluginListing('/plugin', [{ name: 'plugin' }], 'claude-code'), false, 'the agent answers its own');
+  assert.deepEqual(commandChoices([pluginCommand('claude-code')], '/plug').map((c) => c.text), ['/plugin']);
+  assert.deepEqual(commandChoices([pluginCommand('codex')], '/plug').map((c) => c.text), ['/plugins']);
+  for (const text of ['/plugins', ' /plugins\n', '/plugin']) {
+    assert.equal(isPluginListing(text, [{ name: 'plugins' }, { name: 'plugin' }], 'codex'), true, text);
+  }
+  for (const text of ['/plugins list', '/plugin install x', '/plugins:skill', '/pluginx']) {
+    assert.equal(isPluginListing(text, [], 'codex'), false, text);
+  }
 
   const plugins = [
     { id: 'ponytail@ponytail', name: 'ponytail', enabled: true },

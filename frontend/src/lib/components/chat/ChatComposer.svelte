@@ -8,12 +8,12 @@
   // the agent works a message is queued, and the queue shows above the card.
   // A / (or Codex's $) word lists the agent's commands above the card: Enter
   // or Tab puts the chosen one in the text, and only sending runs it. The
-  // app answers /plugin itself, above the card, without asking the agent.
+  // app answers /plugin (Codex: /plugins) in a modal, without asking the agent.
   import { onMount } from 'svelte';
   import type { Chat } from '../../stores/chats.svelte';
   import type { ChatAttachment, ChatAttachResult, ChatDraft } from '../../types';
   import { api } from '../../api';
-  import { addAttachments, canSendPrompt, commandChoices, endChatQuestion, isMcpListing, isPluginListing, PLUGIN_COMMAND, skippedToast, switchToTerminalQuestion } from '../../chat';
+  import { addAttachments, canSendPrompt, commandChoices, endChatQuestion, isMcpListing, isPluginListing, pluginCommand, skippedToast, switchToTerminalQuestion } from '../../chat';
   import AttachmentChips from './AttachmentChips.svelte';
   import { chats } from '../../stores/chats.svelte';
   import { toast } from '../../stores/toast.svelte';
@@ -87,9 +87,11 @@
   );
   let hintId = $derived(`chat-hint-${chat.key}`);
   let commands = $derived(chat.commands ?? []);
-  let choices = $derived(
-    chat.phase === 'starting' || closed ? [] : commandChoices(commands.some((c) => c.name === PLUGIN_COMMAND.name) ? commands : [...commands, PLUGIN_COMMAND], text),
-  );
+  let inventoryCommand = $derived(pluginCommand(chat.agent));
+  let pickerCommands = $derived(chat.agent === 'codex'
+    ? [...commands.filter((c) => c.name !== 'plugin' && c.name !== 'plugins'), inventoryCommand]
+    : commands.some((c) => c.name === inventoryCommand.name) ? commands : [...commands, inventoryCommand]);
+  let choices = $derived(chat.phase === 'starting' || closed ? [] : commandChoices(pickerCommands, text));
   let picking = $derived(choices.length > 0 && dismissed !== text);
   let listId = $derived(`chat-commands-${chat.key}`);
   // WebKit (macOS and Linux) reads autocorrect on a textarea; Svelte's types
@@ -118,7 +120,7 @@
   });
 
   async function send(): Promise<void> {
-    if (chat.phase !== 'starting' && !closed && attachments.length === 0 && isPluginListing(text, commands)) {
+    if (chat.phase !== 'starting' && !closed && attachments.length === 0 && isPluginListing(text, commands, chat.agent)) {
       text = '';
       pluginListing = { chatId: chat.chatId, n: (pluginListing?.n ?? 0) + 1 };
       return;

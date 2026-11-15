@@ -655,6 +655,54 @@ test('/plugin lists the installed plugins in the Plugins modal without sending a
   own.close();
 });
 
+test('Codex /plugins opens the complete installed inventory, not a model turn or just loaded skills', async () => {
+  const listed = [];
+  globalThis.__endMenu.api.chatPlugins = async (chatId) => {
+    listed.push(chatId);
+    return { supported: true, plugins: [
+      { id: 'sites@curated', name: 'sites', enabled: true },
+      { id: 'visualize@curated', name: 'visualize', enabled: true },
+      { id: 'disabled@curated', name: 'disabled', enabled: false },
+    ] };
+  };
+  const c = await openComposer({ phase: 'idle', agent: 'codex', commands: [
+    { name: '$sites:sites' }, { name: 'plugins', input: { hint: '[list|install]' } }, { name: 'plugin' },
+  ] });
+  const box = c.target.querySelector('textarea');
+  const type = (value) => {
+    box.value = value;
+    box.dispatchEvent(new window.Event('input', { bubbles: true }));
+    flushSync();
+  };
+  const submit = async () => {
+    c.target.querySelector('form').requestSubmit();
+    await settle();
+    flushSync();
+  };
+  type('/plug');
+  assert.deepEqual([...c.target.querySelectorAll('[role="option"] .command-name')].map((o) => o.textContent), ['/plugins']);
+  c.target.querySelector('[role="option"]').click();
+  flushSync();
+  assert.equal(box.value, '/plugins', 'the inventory choice is bare even if the adapter advertises arguments');
+  for (const spelling of ['/plugins', '/plugin']) {
+    type(spelling);
+    await submit();
+    const dialog = c.target.querySelector('[data-command-result]');
+    assert.ok(dialog, spelling);
+    assert.deepEqual([...dialog.querySelectorAll('li .name')].map((n) => n.textContent), ['sites', 'visualize', 'disabled']);
+    assert.equal(dialog.querySelectorAll('.badge.loaded').length, 1, 'commandless and disabled installed plugins are still listed');
+    assert.deepEqual(calls, [], 'no prompt or inspection reaches the model');
+    dialog.querySelector('button').click();
+    flushSync();
+    assert.equal(document.activeElement, box);
+  }
+  assert.deepEqual(listed, ['c1', 'c1']);
+  type('/plugins install something');
+  await submit();
+  assert.deepEqual(calls, [['prompt', 'c1', '/plugins install something']], 'arguments retain ordinary prompt behavior');
+  c.close();
+});
+
 test('a bare /mcp answers in the MCP servers modal: grouped rows, a filter, every end state, Escape', async () => {
   const { MOCK_MCP_STATUS } = await import('../src/lib/mock/mockChat.ts');
   const c = await openComposer({ phase: 'idle', agent: 'claude', commands: [{ name: 'mcp', input: { hint: '[reconnect]' } }] });
