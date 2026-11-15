@@ -1,7 +1,7 @@
 # Review fixes — tasks
 
 - **Plan:** [review-fixes.md](../../plan/review-fixes.md)
-- **Progress:** 26/35 done
+- **Progress:** 27/35 done
 
 From the architecture and feature review of 2026-11-14. RF-01 to RF-10 are
 security and privacy; RF-11 to RF-23 are reliability; RF-24 and RF-25 are CI
@@ -43,5 +43,5 @@ RF-26, RF-27, RF-20, final integration and cross-platform CI.
 | [RF-31](RF-31.md) | ✅ Done | Clear new reliability lint findings without absorbing the existing backlog | 1 h | RF-15, RF-19, RF-23, RF-27 |
 | [RF-32](RF-32.md) | ✅ Done | Preserve search through aliased project roots | 1 h | RF-19 |
 | [RF-33](RF-33.md) | ✅ Done | Publish fake ACP hold turns and their steering channels atomically | 1 h | None |
-| [RF-34](RF-34.md) | ⬜ Not started | Preserve managed-install cancellation during disconnect | 1 h | None |
+| [RF-34](RF-34.md) | ✅ Done | Preserve managed-install cancellation during disconnect | 1–2 h | None |
 | [RF-35](RF-35.md) | ✅ Done | Accept cancelled ACP prompt replies during shutdown | 1 h | None |

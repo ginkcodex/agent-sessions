@@ -95,7 +95,7 @@ profiles.
 | RF-32 | Search rejects files under aliased project roots after RF-19; Windows and macOS CI return no matches | ✅ (CI 43690937665, 2026-11-15) |
 | RF-33 | Fake ACP hold turn becomes visible before its steering channel, losing the completion signal | ✅ (CI 43690937665, 2026-11-15) |
 
-| RF-34 | Managed-install disconnect can report failed instead of cancelled under race CI | Investigating (CI 43694948130) |
+| RF-34 | Owner cancellation can finish installation before job cancellation propagates, reporting failed instead of cancelled | ✅ (CI 43694948130, 2026-11-15) |
 | RF-35 | ACP shutdown test rejects a valid cancelled prompt reply racing connection close | ✅ (CI 43694948130, 2026-11-15) |
 
 ### CI and docs (RF-24, RF-25)

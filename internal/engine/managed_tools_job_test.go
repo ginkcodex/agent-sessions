@@ -48,6 +48,11 @@ func TestManagedJobSuccessNoPathOrExecutionGrant(t *testing.T) {
 
 func TestManagedJobDisconnectJoinsAndDropsConsent(t *testing.T) {
 	e, f, o := fakeManagedEngine(t)
+	// Fan-out exposes request cancellation arriving before job cancellation.
+	for range 1000 {
+		_, cancel := context.WithCancel(o.ctx)
+		defer cancel()
+	}
 	e.roots = paths.Roots{Config: t.TempDir()}
 	host, err := e.CodeDiagnosticsHostID(context.Background())
 	if err != nil {
