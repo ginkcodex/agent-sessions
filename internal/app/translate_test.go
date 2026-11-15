@@ -97,6 +97,28 @@ func TestTranslateSettingsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTranslateSettingsKeepEscapedKey(t *testing.T) {
+	a, _, _ := setupHandoffTest(t)
+	a.roots.Config = t.TempDir()
+	path := filepath.Join(a.roots.Config, "config.toml")
+	const key = "legacy\\key\"with\x01unicode-秘密"
+	if err := os.WriteFile(path, configfile.SetValue(nil, "translate", "api_key", configfile.Quote(key)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if _, err := a.SetTranslateSettings(TranslateSettingsRequest{BaseURL: "https://api.example.com/v1", Model: "m"}); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := a.translateConfig()
+		if err != nil || cfg.APIKey != key {
+			t.Fatalf("saved key changed: %q, %v", cfg.APIKey, err)
+		}
+		if _, err := manage.NewConfigStore(path).Load(); err != nil {
+			t.Fatalf("saved config is invalid TOML: %v", err)
+		}
+	}
+}
+
 func TestTranslateUsesSettings(t *testing.T) {
 	a, _, _ := setupHandoffTest(t)
 	a.roots.Config = t.TempDir()

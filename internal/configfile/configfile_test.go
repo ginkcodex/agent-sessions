@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
@@ -72,6 +74,74 @@ func TestValue(t *testing.T) {
 	}
 	if _, ok := Value(nil, "terminal", "app"); ok {
 		t.Error("key found in empty data")
+	}
+}
+
+func TestStringRoundTrip(t *testing.T) {
+	for _, value := range []string{
+		"", `C:\keys\secret`, `a\"b#;c`, "\x00\x01\x07\b\t\n\v\f\r\x1f\x7f", "Tiếng Việt 日本語 😀", `literal \x01 and \u263A`,
+	} {
+		t.Run(fmt.Sprintf("%q", value), func(t *testing.T) {
+			data := SetValue(nil, "translate", "api_key", Quote(value))
+			for range 3 {
+				got, ok := Value(data, "translate", "api_key")
+				if !ok || got != value {
+					t.Fatalf("Value = %q, %v; want %q", got, ok, value)
+				}
+				var parsed struct {
+					Translate struct {
+						APIKey string `toml:"api_key"`
+					}
+				}
+				if _, err := toml.Decode(string(data), &parsed); err != nil || parsed.Translate.APIKey != value {
+					t.Fatalf("TOML decode = %q, %v; want %q", parsed.Translate.APIKey, err, value)
+				}
+				data = SetValue(data, "translate", "api_key", Quote(got))
+			}
+		})
+	}
+}
+
+func TestValueQuotedStrings(t *testing.T) {
+	for _, tc := range []struct{ literal, want string }{
+		{`"a\\b\"c#;d" # comment`, `a\b"c#;d`},
+		{`'a\b"c#;d' # comment`, `a\b"c#;d`},
+		{`"\u263A\U0001F600"`, "☺😀"},
+	} {
+		data := []byte("[t]\nk = " + tc.literal + "\n")
+		if got, ok := Value(data, "t", "k"); !ok || got != tc.want {
+			t.Errorf("%s: Value = %q, %v; want %q", tc.literal, got, ok, tc.want)
+		}
+	}
+	for _, literal := range []string{`"unterminated`, `"bad\q"`} {
+		if _, ok := Value([]byte("[t]\nk = "+literal+"\n"), "t", "k"); ok {
+			t.Errorf("accepted invalid string %s", literal)
+		}
+	}
+}
+
+func TestUpdateKeepsLongLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	long := strings.Repeat("x", 128*1024)
+	original := "# " + long + "\n[other]\nlong = '" + long + "'\n\n[translate]\napi_key = '" + long + "'\n# after long lines\n[terminal]\napp = 'kitty'\n\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := Value([]byte(original), "translate", "api_key"); !ok || got != long {
+		t.Fatalf("long value: length %d, found %v", len(got), ok)
+	}
+	if err := Update(path, func(data []byte) []byte {
+		return SetValue(data, "translate", "api_key", Quote("new"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(original, "api_key = '"+long+"'", `api_key = "new"`, 1)
+	if string(data) != want {
+		t.Fatalf("rewrite lost or changed unrelated lines: got %d bytes, want %d", len(data), len(want))
 	}
 }
 

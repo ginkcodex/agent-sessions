@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 
 	"github.com/ginkcode/agent-sessions/internal/configfile"
 	"github.com/ginkcode/agent-sessions/internal/launch"
@@ -70,7 +69,7 @@ func (a *App) SetTerminal(id string) (TerminalSettings, error) {
 		return TerminalSettings{}, err
 	}
 	err = configfile.Update(path, func(data []byte) []byte {
-		return configfile.SetValue(data, "terminal", "app", strconv.Quote(id))
+		return configfile.SetValue(data, "terminal", "app", configfile.Quote(id))
 	})
 	if err != nil {
 		return TerminalSettings{}, fmt.Errorf("save terminal: %w", err)

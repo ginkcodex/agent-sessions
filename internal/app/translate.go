@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/ginkcode/agent-sessions/internal/configfile"
@@ -73,10 +72,10 @@ func (a *App) SetTranslateSettings(req TranslateSettingsRequest) (TranslateSetti
 		case next.APIKey != "":
 			key = next.APIKey
 		}
-		data = configfile.SetValue(data, translateTable, "base_url", strconv.Quote(next.BaseURL))
-		data = configfile.SetValue(data, translateTable, "api_key", strconv.Quote(key))
-		data = configfile.SetValue(data, translateTable, "model", strconv.Quote(next.Model))
-		data = configfile.SetValue(data, translateTable, "language", strconv.Quote(next.Language))
+		data = configfile.SetValue(data, translateTable, "base_url", configfile.Quote(next.BaseURL))
+		data = configfile.SetValue(data, translateTable, "api_key", configfile.Quote(key))
+		data = configfile.SetValue(data, translateTable, "model", configfile.Quote(next.Model))
+		data = configfile.SetValue(data, translateTable, "language", configfile.Quote(next.Language))
 		saved = next
 		saved.APIKey = key
 		return data
