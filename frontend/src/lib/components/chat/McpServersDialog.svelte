@@ -48,10 +48,13 @@
           <ul>
             {#each g.servers as s, i (i)}
               <li>
-                <span class="name">{s.name}</span>
-                {#if s.scope}<span class="meta">{s.scope}</span>{/if}
-                {#if s.detail}<span class="meta detail">{s.detail}</span>{/if}
-                <span class="spacer"></span>
+                <div class="identity">
+                  <div class="heading">
+                    <span class="name">{s.name}</span>
+                    {#if s.scope}<span class="meta scope">{s.scope}</span>{/if}
+                  </div>
+                  {#if s.detail}<div class="meta detail">{s.detail}</div>{/if}
+                </div>
                 <span class="badge {tone(g.title)}">{g.title === 'Connected' ? '✓ ' : ''}{g.title}</span>
               </li>
             {/each}
@@ -66,19 +69,67 @@
 </CommandResultDialog>
 
 <style>
-  .status, .summary { margin: 4px 0; color: var(--text-secondary); }
+  .status, .notes {
+    margin: 0;
+    padding: 18px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+  }
   .status.error { color: var(--danger); }
-  h3 { margin: 12px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-muted); }
-  ul { margin: 0; padding: 0; list-style: none; }
-  li { display: flex; align-items: baseline; gap: 8px; padding: 5px 6px; border-radius: var(--radius-md); }
-  li:hover { background: var(--hover-bg); }
-  .name { font-family: var(--font-mono); color: var(--text-primary); }
-  .meta { font-size: 12px; color: var(--text-muted); }
-  .detail { min-width: 0; overflow-wrap: anywhere; }
-  .spacer { flex: 1; }
-  .badge { flex: none; padding: 0 6px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
-  .badge.ok { color: var(--status-live); border-color: currentColor; }
-  .badge.bad { color: var(--danger); border-color: currentColor; }
-  .badge.needs { color: var(--status-needs); border-color: currentColor; }
-  .notes { margin-top: 12px; font-size: 12px; color: var(--text-secondary); }
+  .summary { margin: 0 0 18px; color: var(--text-secondary); }
+  section + section { margin-top: 22px; }
+
+  h3 {
+    margin: 0 0 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  ul { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 16px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--bg-secondary) 55%, var(--bg-primary));
+  }
+
+  .identity { flex: 1 1 240px; min-width: 0; }
+  .heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+  .name { min-width: 0; font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); }
+  .meta { min-width: 0; font-size: 12px; color: var(--text-muted); }
+  .scope { padding: 1px 6px; border-radius: var(--radius-sm); background: var(--bg-secondary); }
+  .detail { margin-top: 6px; overflow-wrap: anywhere; }
+
+  .badge {
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 3px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .badge.ok { --badge-tone: var(--status-live); }
+  .badge.bad { --badge-tone: var(--danger); }
+  .badge.needs { --badge-tone: var(--status-needs); }
+  .badge.ok, .badge.bad, .badge.needs {
+    color: var(--badge-tone);
+    border-color: color-mix(in srgb, var(--badge-tone) 25%, transparent);
+    background: color-mix(in srgb, var(--badge-tone) 10%, var(--bg-primary));
+  }
+
+  .notes { margin-top: 18px; font-size: 12px; }
 </style>

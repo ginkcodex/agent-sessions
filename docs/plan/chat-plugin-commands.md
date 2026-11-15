@@ -34,6 +34,14 @@ of this first release.
   explicitly: transient inspection results must not masquerade as saved agent
   messages or be written into the agent's session store.
 
+### Provider-specific inventory commands (CPC-15)
+
+- Offer only `/plugins` for Codex, matching its native UI; keep `/plugin` for other agents. CPC-16 removes the Codex singular alias at the user's request.
+- Route bare Codex `/plugins` to the read-only installed-plugin dialog, never to a model-generated answer. `/plugin` is not an inventory alias in Codex. Keep commands with arguments as ordinary turns and preserve provider-owned command handling outside Codex's inventory command.
+- Verify the existing Codex native listing and parser before changing its data source. Inventory must include commandless and disabled installed plugins, not just skills the session advertises.
+- Scope reaches the shared frontend command helper, composer, command/unit/interaction tests and provider documentation. Backend inventory changes, if needed after investigation, require their own tracked task and regression coverage. No new dependency, plugin mutation or credential/config scraping.
+- Release criteria: Codex's picker offers `/plugins`, only the plural opens its inventory without sending a prompt, other agents retain their behavior, and installed inventory remains distinct from loaded skill state. Record any native verification not run.
+
 ### Plugin command discovery and invocation
 
 - Retain ACP `available_commands_update` as per-chat capability state, separate

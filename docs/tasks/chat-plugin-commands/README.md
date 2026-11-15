@@ -1,7 +1,7 @@
 # Chat MCP and plugin commands — tasks
 
 - **Plan:** [chat-plugin-commands.md](../../plan/chat-plugin-commands.md)
-- **Progress:** 12/14 done
+- **Progress:** 14/16 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -19,3 +19,5 @@
 | [CPC-12](CPC-12.md) | ✅ Done | MCP servers modal: parsed status rows, filter, Markdown fallback | 4 h | CPC-11 |
 | [CPC-13](CPC-13.md) | ✅ Done | `/plugin` in the same modal | 2 h | CPC-10, CPC-12 |
 | [CPC-14](CPC-14.md) | ✅ Done | `cmd` tag and mono font on slash-command user messages | 1 h | CPC-07 |
+| [CPC-15](CPC-15.md) | ✅ Done | Codex `/plugins` routing to complete installed inventory | 2 h | CPC-04, CPC-13 |
+| [CPC-16](CPC-16.md) | ✅ Done | Remove Codex `/plugin` compatibility alias | 0.5 h | CPC-15 |

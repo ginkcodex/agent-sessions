@@ -594,6 +594,13 @@ test('/plugin lists the installed plugins in the Plugins modal without sending a
   const rows = [...panel().querySelectorAll('li')].map((li) => li.textContent.trim().replace(/\s+/g, ' '));
   assert.deepEqual(rows, ['ponytail @ponytail 5.3.3 user enabled loaded', 'gopls-lsp @official disabled']);
   assert.equal(panel().querySelector('h2').textContent, 'Plugins');
+  const note = panel().querySelector('.note');
+  assert.equal(panel().getAttribute('aria-describedby'), note.id, 'the dialog exposes its explanatory note');
+  assert.match(note.textContent, /Not sent to the agent/);
+  const firstRow = panel().querySelector('li');
+  assert.equal(firstRow.querySelector('.identity .name').textContent, 'ponytail');
+  assert.deepEqual([...firstRow.querySelectorAll('.metadata .meta')].map((m) => m.textContent), ['@ponytail', '5.3.3', 'user']);
+  assert.deepEqual([...firstRow.querySelectorAll('.badges .badge')].map((b) => b.textContent), ['enabled', 'loaded']);
   assert.deepEqual([...panel().querySelectorAll('button')].map((b) => b.getAttribute('aria-label')), ['Close Plugins'], 'no install or enable actions');
   const filter = panel().querySelector('input[type="search"]');
   assert.equal(document.activeElement, filter);
@@ -648,6 +655,54 @@ test('/plugin lists the installed plugins in the Plugins modal without sending a
   own.close();
 });
 
+test('Codex /plugins opens the complete installed inventory, not a model turn or just loaded skills', async () => {
+  const listed = [];
+  globalThis.__endMenu.api.chatPlugins = async (chatId) => {
+    listed.push(chatId);
+    return { supported: true, plugins: [
+      { id: 'sites@curated', name: 'sites', enabled: true },
+      { id: 'visualize@curated', name: 'visualize', enabled: true },
+      { id: 'disabled@curated', name: 'disabled', enabled: false },
+    ] };
+  };
+  const c = await openComposer({ phase: 'idle', agent: 'codex', commands: [
+    { name: '$sites:sites' }, { name: 'plugins', input: { hint: '[list|install]' } }, { name: 'plugin' },
+  ] });
+  const box = c.target.querySelector('textarea');
+  const type = (value) => {
+    box.value = value;
+    box.dispatchEvent(new window.Event('input', { bubbles: true }));
+    flushSync();
+  };
+  const submit = async () => {
+    c.target.querySelector('form').requestSubmit();
+    await settle();
+    flushSync();
+  };
+  type('/plug');
+  assert.deepEqual([...c.target.querySelectorAll('[role="option"] .command-name')].map((o) => o.textContent), ['/plugins']);
+  c.target.querySelector('[role="option"]').click();
+  flushSync();
+  assert.equal(box.value, '/plugins', 'the inventory choice is bare even if the adapter advertises arguments');
+  await submit();
+  const dialog = c.target.querySelector('[data-command-result]');
+  assert.ok(dialog);
+  assert.deepEqual([...dialog.querySelectorAll('li .name')].map((n) => n.textContent), ['sites', 'visualize', 'disabled']);
+  assert.equal(dialog.querySelectorAll('.badge.loaded').length, 1, 'commandless and disabled installed plugins are still listed');
+  assert.deepEqual(calls, [], 'no prompt or inspection reaches the model');
+  dialog.querySelector('button').click();
+  flushSync();
+  assert.equal(document.activeElement, box);
+  for (const text of ['/plugin', '/plugins install something']) {
+    type(text);
+    await submit();
+    assert.equal(c.target.querySelector('[data-command-result]'), null, 'only /plugins opens inventory');
+  }
+  assert.deepEqual(listed, ['c1'], 'the singular spelling is not an inventory alias');
+  assert.deepEqual(calls, [['prompt', 'c1', '/plugin'], ['prompt', 'c1', '/plugins install something']], 'other text retains ordinary prompt behavior');
+  c.close();
+});
+
 test('a bare /mcp answers in the MCP servers modal: grouped rows, a filter, every end state, Escape', async () => {
   const { MOCK_MCP_STATUS } = await import('../src/lib/mock/mockChat.ts');
   const c = await openComposer({ phase: 'idle', agent: 'claude', commands: [{ name: 'mcp', input: { hint: '[reconnect]' } }] });
@@ -686,6 +741,12 @@ test('a bare /mcp answers in the MCP servers modal: grouped rows, a filter, ever
   assert.match(dialog().querySelector('.summary').textContent, /3 \(1 failed, 1 connected, 1 disabled\)/);
   assert.deepEqual([...dialog().querySelectorAll('h3')].map((h) => h.textContent), ['Failed (1)', 'Connected (1)', 'Disabled (1)']);
   assert.deepEqual(rows(), ['docs connection refused Failed', 'super-fetch 2 tools ✓ Connected', 'old-search Disabled']);
+  const firstRow = dialog().querySelector('li');
+  assert.equal(firstRow.querySelector('.identity .heading .name').textContent, 'docs');
+  assert.equal(firstRow.querySelector('.identity .detail').textContent, 'connection refused');
+  assert.equal(firstRow.querySelector('.badge.bad').textContent, 'Failed');
+  assert.equal(dialog().querySelector('.badge.ok').textContent, '✓ Connected');
+  assert.equal(dialog().querySelector('.note').id, dialog().getAttribute('aria-describedby'));
   assert.match(dialog().querySelector('[data-markdown]').textContent, /mcp reconnect/, 'the hint is a note');
   assert.deepEqual([...dialog().querySelectorAll('button')].map((b) => b.getAttribute('aria-label')), ['Close MCP servers'], 'read-only');
 

@@ -275,15 +275,16 @@ export function commandChoices(commands: readonly ChatCommand[], text: string): 
   return out.sort((a, b) => Number(b.exact) - Number(a.exact)).map(({ exact: _, ...c }) => c);
 }
 
-/**
- * The app's own /plugin: no adapter advertises it, so the composer lists the
- * installed plugins itself instead of sending it to the agent.
- */
-export const PLUGIN_COMMAND: ChatCommand = { name: 'plugin', description: 'List the installed plugins (shown here, not sent to the agent)', input: null };
+/** The app's installed-plugin listing, using the provider's native UI spelling. */
+export function pluginCommand(agent: string): ChatCommand {
+  return { name: agent === 'codex' ? 'plugins' : 'plugin', description: 'List the installed plugins (shown here, not sent to the agent)', input: null };
+}
 
-/** Whether text is /plugin for the app: the agent does not have its own. */
-export function isPluginListing(text: string, commands: readonly ChatCommand[]): boolean {
-  return text.trim() === '/plugin' && !commands.some((c) => c.name === 'plugin');
+/** Codex uses only /plugins; other agents keep their own /plugin commands. */
+export function isPluginListing(text: string, commands: readonly ChatCommand[], agent: string): boolean {
+  const command = text.trim();
+  if (agent === 'codex') return command === '/plugins';
+  return command === '/plugin' && !commands.some((c) => c.name === 'plugin');
 }
 
 /**

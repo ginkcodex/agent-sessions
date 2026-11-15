@@ -61,9 +61,11 @@ and notes. Claude's groups are Failed, Needs authentication, Connecting and
 Connected. `/mcp` with arguments stays an ordinary agent turn. We write
 nothing about it to any session store.
 
-## `/plugin`: app-side native listing
+## `/plugin` (Codex: `/plugins`): app-side native listing
 
-Neither adapter advertises `plugin`. The app runs a fixed argv in the
+CPC-15/CPC-16 route only Codex's bare `/plugins` to the app inventory, even if the adapter advertises it. `/plugin` is not a Codex inventory alias and follows ordinary prompt handling. Other agents retain `/plugin` and defer to an advertised provider-owned command. Codex's picker offers only the native plural spelling, without argument hints. Arguments remain ordinary turns.
+
+The inspected adapters did not advertise `plugin`. The app runs a fixed argv in the
 session's cwd, login environment and host, with no shell and no user input
 in the argv.
 

@@ -12,6 +12,7 @@ Provide a project-local skill for affordable Understand-Anything updates, includ
 - Integrate deterministic source evidence into both merge-time and save-time symbol validation. Do not accept fabricated reports, suppress unknown symbols or copy old semantic nodes to satisfy validation.
 - Allow incremental processing beyond the stock 30-file cutoff. Preserve missing-baseline and incompatible-format safeguards. Use local, version-checked integration rather than editing plugin cache files.
 - Reuse the current pending batch outputs when they remain valid; graph, fingerprints and metadata only advance after validation succeeds.
+- Expose the installed deterministic `normalize-tour.mjs` through the same version-checked wrapper for architecture updates; test path resolution, missing-input failure and no publication during normalization.
 
 ## Decisions
 

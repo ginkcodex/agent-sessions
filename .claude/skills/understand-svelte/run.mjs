@@ -16,6 +16,7 @@ const scripts = {
   validate: 'validate-incremental-symbols.mjs',
   retry: 'prepare-symbol-retry.mjs',
   merge: 'merge-batch-graphs.py',
+  'normalize-tour': 'normalize-tour.mjs',
   finalize: 'finalize-incremental.mjs',
   fingerprints: 'build-fingerprints.mjs',
   prune: 'prune-code-lessons.mjs',
