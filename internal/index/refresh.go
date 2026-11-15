@@ -67,6 +67,9 @@ type Refresher struct {
 	locksMu sync.Mutex
 	locks   map[model.AgentID]*sync.Mutex
 
+	refreshMu sync.Mutex
+	refreshes map[model.AgentID]*refreshFlight
+
 	stateMu sync.RWMutex
 	diag    map[model.AgentID]provider.Diagnostics
 	errs    map[model.AgentID]error
@@ -136,14 +139,59 @@ func (r *Refresher) Catalog() *scan.Catalog {
 	return r.catalog
 }
 
-// Refresh performs an incremental scan for a single provider.
-// One Refresh invocation per provider at a time; scan.Provider remains M0.
-// On success, changed and removed session refs are returned.
+type refreshFlight struct {
+	done    chan struct{}
+	pending bool
+	changed []model.SessionRef
+	removed []model.SessionRef
+	err     error
+}
+
+// Refresh scans a provider, coalescing concurrent requests into one pending scan.
+// Callers wait for the flight's combined results, or their own cancellation.
 func (r *Refresher) Refresh(ctx context.Context, p provider.Provider) ([]model.SessionRef, []model.SessionRef, error) {
 	if p == nil {
 		return nil, nil, errors.New("index: provider is nil")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	r.refreshMu.Lock()
+	if f := r.refreshes[p.ID()]; f != nil {
+		f.pending = true
+		r.refreshMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-f.done:
+			return f.changed, f.removed, f.err
+		}
+	}
+	f := &refreshFlight{done: make(chan struct{})}
+	if r.refreshes == nil {
+		r.refreshes = make(map[model.AgentID]*refreshFlight)
+	}
+	r.refreshes[p.ID()] = f
+	r.refreshMu.Unlock()
+	for {
+		changed, removed, err := r.refresh(ctx, p)
+		f.changed = append(f.changed, changed...)
+		f.removed = append(f.removed, removed...)
+		f.err = errors.Join(f.err, err)
+		r.refreshMu.Lock()
+		if f.pending && ctx.Err() == nil && !r.retired.Load() {
+			f.pending = false
+			r.refreshMu.Unlock()
+			continue
+		}
+		delete(r.refreshes, p.ID())
+		close(f.done)
+		r.refreshMu.Unlock()
+		return f.changed, f.removed, f.err
+	}
+}
 
+func (r *Refresher) refresh(ctx context.Context, p provider.Provider) ([]model.SessionRef, []model.SessionRef, error) {
 	// 1. Enforce single-flight per provider.
 	pMu := r.getProviderLock(p.ID())
 	pMu.Lock()
@@ -550,6 +598,7 @@ func (r *Refresher) States() map[model.AgentID]provider.ScanState {
 
 // Close closes the underlying cache database if present.
 func (r *Refresher) Close() error {
+	r.Retire()
 	if r.db != nil {
 		return r.db.Close()
 	}

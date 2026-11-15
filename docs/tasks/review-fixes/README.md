@@ -1,7 +1,7 @@
 # Review fixes — tasks
 
 - **Plan:** [review-fixes.md](../../plan/review-fixes.md)
-- **Progress:** 11/28 done
+- **Progress:** 12/28 done
 
 From the architecture and feature review of 2026-11-14. RF-01 to RF-10 are
 security and privacy; RF-11 to RF-23 are reliability; RF-24 and RF-25 are CI
@@ -22,7 +22,7 @@ and docs. RF-26 to RF-28 were found during RF-21 and RF-26.
 | [RF-11](RF-11.md) | ✅ Done | Decode the reply ID as an integer, not `any` | 1 h | None |
 | [RF-12](RF-12.md) | ✅ Done | Watch a missing root's nearest directory only for the root's creation; no trees outside recursive roots | 2.5 h | None |
 | [RF-13](RF-13.md) | ✅ Done | `ErrEventOverflow` rescan; a provider in fallback retries its watches with backoff | 3 h | RF-12 |
-| [RF-14](RF-14.md) | ⬜ Not started | One running scan plus a dirty flag per provider; `Close` waits for refreshes | 3.5 h | None |
+| [RF-14](RF-14.md) | ✅ Done | One running scan plus a dirty flag per provider; `Close` waits for refreshes | 3.5 h | None |
 | [RF-15](RF-15.md) | ⬜ Not started | An unreadable source keeps its previous state; it neither blocks the provider nor drops sessions | 3 h | None |
 | [RF-16](RF-16.md) | ✅ Done | The client kills the agent when the connection ends with an error it did not cause | 2 h | None |
 | [RF-17](RF-17.md) | ⬜ Not started | A start deadline and a cancel path while the frontend has no chat ID yet | 3 h | RF-16 |
