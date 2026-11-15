@@ -21,7 +21,7 @@ func panelPTYOutput(t *testing.T, ctx context.Context, spec *exec.Cmd, input str
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer terminal.Close()
+	defer func() { _ = terminal.Close() }()
 	stopClose := context.AfterFunc(ctx, func() { _ = terminal.Close() })
 	defer stopClose()
 	cmd := terminal.CommandContext(ctx, spec.Path, spec.Args[1:]...)
@@ -66,17 +66,17 @@ func TestRemotePanelAgentStartup(t *testing.T) {
 				dir := filepath.Join(home, "project ' space")
 				tmp := filepath.Join(home, "tmp")
 				for _, d := range []string{dir, tmp} {
-					if err := os.Mkdir(d, 0700); err != nil {
+					if err := os.Mkdir(d, 0o700); err != nil {
 						t.Fatal(err)
 					}
 				}
 				write := func(name, text string) {
 					t.Helper()
 					p := filepath.Join(home, name)
-					if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+					if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 						t.Fatal(err)
 					}
-					if err := os.WriteFile(p, []byte(text), 0600); err != nil {
+					if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -111,7 +111,7 @@ func TestRemotePanelAgentStartup(t *testing.T) {
 				}
 				agent := filepath.Join(home, "agent")
 				out := filepath.Join(home, "result")
-				if err := os.WriteFile(agent, []byte("#!/bin/sh\ntest -t 0 && test -t 1 && test -t 2 || exit 99\nprintf '%s\\n' \"$ACTIVATED\" \"$PROJECT_READY\" \"$PWD\" \"$1\" > "+ShellEscape(out)+"\nexit 7\n"), 0700); err != nil {
+				if err := os.WriteFile(agent, []byte("#!/bin/sh\ntest -t 0 && test -t 1 && test -t 2 || exit 99\nprintf '%s\\n' \"$ACTIVATED\" \"$PROJECT_READY\" \"$PWD\" \"$1\" > "+ShellEscape(out)+"\nexit 7\n"), 0o700); err != nil {
 					t.Fatal(err)
 				}
 				script := posixPanelAgentScript([]string{agent, "argument ' $ quoted"}, dir)

@@ -41,7 +41,7 @@ func ListDirectory(ctx context.Context, root, rel string) (DirectoryEntries, err
 	if err != nil {
 		return DirectoryEntries{}, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	name, err := filepath.Rel(realRoot, full)
 	if err != nil {
 		return DirectoryEntries{}, err

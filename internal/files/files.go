@@ -555,7 +555,7 @@ func walkPaths(ctx context.Context, root string, repoFound func(string, string))
 				return nil
 			}
 			if info, err := os.Stat(p); err != nil || !info.Mode().IsRegular() {
-				return nil
+				return nil //nolint:nilerr // Unreadable or special symlink targets are omitted from listings.
 			}
 		}
 		if len(out.Files)+len(out.Directories)+len(out.Ignored) >= fileCap {

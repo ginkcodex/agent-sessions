@@ -69,7 +69,7 @@ Share-safe bundles leave the manifest's `CWD`, `RepoRoot`, `GitBranch` and
 sees a JSON key next to its value, and the home-path rules miss Windows
 profiles.
 
-### Reliability (RF-11 to RF-23, RF-26 to RF-29)
+### Reliability (RF-11 to RF-23, RF-26 to RF-31)
 
 | Task | Finding | Checked |
 |---|---|---|
@@ -90,6 +90,8 @@ profiles.
 | RF-27 | The fish cases of the panel startup test run without a terminal, so fish never prompts and they fail wherever fish is installed | ✅ (found in RF-26) |
 | RF-28 | Remote connect under csh and tcsh reads the rc file but not `.login`, so PATH set there is missing; panel tabs read it | ✅ (found in RF-26) |
 | RF-29 | Fish prompt-cwd tests also start without a PTY and never prompt | ✅ (found in RF-27, 2026-11-15) |
+| RF-30 | Refresh can publish an old session failure after recovery finishes, leaving healthy diagnostics falsely failed | ✅ (found in RF-20, 2026-11-15) |
+| RF-31 | Reliability changes introduce ten lint findings; keep new changes lint-clean independently of RF-24 | ✅ (integration, 2026-11-15) |
 
 ### CI and docs (RF-24, RF-25)
 

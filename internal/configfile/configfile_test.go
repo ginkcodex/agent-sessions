@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
 	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 

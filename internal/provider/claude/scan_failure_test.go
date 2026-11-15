@@ -27,7 +27,7 @@ func TestScanUnreadableSourceRetainsState(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Force an incremental read rather than the unchanged-source fast path.
-			if err := os.WriteFile(path, append(data, '\n'), 0600); err != nil {
+			if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			blocked := path
@@ -37,7 +37,7 @@ func TestScanUnreadableSourceRetainsState(t *testing.T) {
 			if err := os.Chmod(blocked, 0); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = os.Chmod(blocked, 0700) })
+			t.Cleanup(func() { _ = os.Chmod(blocked, 0o700) })
 			if directory {
 				if _, err := os.ReadDir(blocked); err == nil {
 					t.Skip("permissions not enforced")
@@ -47,10 +47,10 @@ func TestScanUnreadableSourceRetainsState(t *testing.T) {
 				t.Skip("permissions not enforced")
 			}
 			healthy := filepath.Join(root, "projects", "healthy", "healthy.jsonl")
-			if err := os.MkdirAll(filepath.Dir(healthy), 0700); err != nil {
+			if err := os.MkdirAll(filepath.Dir(healthy), 0o700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(healthy, data, 0600); err != nil {
+			if err := os.WriteFile(healthy, data, 0o600); err != nil {
 				t.Fatal(err)
 			}
 			partial, err := p.Scan(t.Context(), first.State)
@@ -63,7 +63,7 @@ func TestScanUnreadableSourceRetainsState(t *testing.T) {
 			if !reflect.DeepEqual(partial.State.Sources[path], first.State.Sources[path]) || len(partial.Diag.Warnings) == 0 {
 				t.Fatal("missing retained state/warning")
 			}
-			if err := os.Chmod(blocked, 0700); err != nil {
+			if err := os.Chmod(blocked, 0o700); err != nil {
 				t.Fatal(err)
 			}
 			recovered, err := p.Scan(t.Context(), partial.State)

@@ -20,7 +20,7 @@ func openRegular(root, full string) (*os.File, os.FileInfo, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	return openRegularAt(r, name)
 }
 
@@ -42,7 +42,7 @@ func openRegularAt(root *os.Root, name string) (*os.File, os.FileInfo, error) {
 		err = fmt.Errorf("%w: %s changed while opening", ErrEditTarget, name)
 	}
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, nil, err
 	}
 	return f, opened, nil

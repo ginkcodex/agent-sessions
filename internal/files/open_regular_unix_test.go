@@ -26,7 +26,7 @@ func TestSpecialFileReadsDoNotBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer socket.Close()
+	defer func() { _ = socket.Close() }()
 	if err := os.Symlink("fifo", filepath.Join(root, "link")); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestRegularOpenSurvivesSymlinkAndFIFOSwaps(t *testing.T) {
 				continue
 			}
 			data, err := io.ReadAll(f)
-			f.Close()
+			_ = f.Close()
 			if err != nil {
 				done <- err
 				return

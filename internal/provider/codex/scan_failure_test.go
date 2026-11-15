@@ -21,7 +21,7 @@ func TestScanUnreadableDayRetainsState(t *testing.T) {
 	if err := os.Chmod(day, 0); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(day, 0700) })
+	t.Cleanup(func() { _ = os.Chmod(day, 0o700) })
 	if _, err := os.ReadDir(day); err == nil {
 		t.Skip("permissions not enforced")
 	}
@@ -36,7 +36,7 @@ func TestScanUnreadableDayRetainsState(t *testing.T) {
 	if len(partial.Diag.Warnings) == 0 || !reflect.DeepEqual(partial.State.Sources[path], first.State.Sources[path]) {
 		t.Fatal("missing warning/retained state")
 	}
-	if err := os.Chmod(day, 0700); err != nil {
+	if err := os.Chmod(day, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	recovered, err := p.Scan(t.Context(), partial.State)

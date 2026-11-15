@@ -1,12 +1,12 @@
 # Review fixes — tasks
 
 - **Plan:** [review-fixes.md](../../plan/review-fixes.md)
-- **Progress:** 21/29 done
+- **Progress:** 22/31 done
 
 From the architecture and feature review of 2026-11-14. RF-01 to RF-10 are
 security and privacy; RF-11 to RF-23 are reliability; RF-24 and RF-25 are CI
-and docs. RF-26 to RF-29 are reliability follow-ups found during RF-21,
-RF-26 and RF-27.
+and docs. RF-26 to RF-31 are reliability follow-ups found during RF-21,
+RF-26, RF-27, RF-20 and final integration.
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -39,3 +39,5 @@ RF-26 and RF-27.
 | [RF-27](RF-27.md) | ✅ Done | Run the fish panel startup test in a pty; without one fish never prompts | 2 h | None |
 | [RF-28](RF-28.md) | ✅ Done | Read `/etc/csh.login` and `~/.login` in remote connect's csh and tcsh line | 1 h | RF-21 |
 | [RF-29](RF-29.md) | ✅ Done | Run fish prompt-cwd tests in the existing PTY harness | 1 h | RF-27 |
+| [RF-30](RF-30.md) | ⬜ Not started | Serialize live recovery and current-session failure status publication | 1 h | RF-20 |
+| [RF-31](RF-31.md) | ✅ Done | Clear new reliability lint findings without absorbing the existing backlog | 1 h | RF-15, RF-19, RF-23, RF-27 |
