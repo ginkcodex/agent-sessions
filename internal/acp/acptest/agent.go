@@ -402,12 +402,21 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	var steered chan struct{}
+	if word == "hold" || word == "askhold" {
+		steered = make(chan struct{}, 1)
+	}
 	a.mu.Lock()
 	a.turns[p.SessionID] = cancel
+	// Steering must see the hold's signal as soon as it sees a running turn.
+	if steered != nil {
+		a.holds[p.SessionID] = steered
+	}
 	a.mu.Unlock()
 	defer func() {
 		a.mu.Lock()
 		delete(a.turns, p.SessionID)
+		delete(a.holds, p.SessionID)
 		a.mu.Unlock()
 	}()
 
@@ -468,10 +477,6 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 		<-ctx.Done()
 		return end(acp.StopCancelled)
 	case "hold", "askhold":
-		steered := make(chan struct{}, 1)
-		a.mu.Lock()
-		a.holds[p.SessionID] = steered
-		a.mu.Unlock()
 		if word == "askhold" {
 			params := map[string]any{"sessionId": p.SessionID}
 			for k, v := range QuestionForms["claude"] {
@@ -480,11 +485,6 @@ func (a *agent) prompt(p acp.PromptRequest) (any, error) {
 			params["_meta"] = map[string]any{"codex": map[string]any{"delivery": "async"}}
 			go func() { _ = a.c().Call(context.Background(), acp.MethodElicitationCreate, params, nil) }()
 		}
-		defer func() {
-			a.mu.Lock()
-			delete(a.holds, p.SessionID)
-			a.mu.Unlock()
-		}()
 		select {
 		case <-ctx.Done():
 			return end(acp.StopCancelled)
