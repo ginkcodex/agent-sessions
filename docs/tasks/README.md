@@ -32,6 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Chat command picker | [chat-command-picker](../plan/chat-command-picker.md) | [chat-command-picker/](chat-command-picker/README.md) | 1/1 ✅ |
 | Understand Svelte | [understand-svelte](../plan/understand-svelte.md) | [understand-svelte/](understand-svelte/README.md) | 3/3 ✅ |
 | Large file view | [large-file-view](../plan/large-file-view.md) | [large-file-view/](large-file-view/README.md) | 4/7 ✅ · 3 ⬜ |
 | Chat MCP and plugin commands | [chat-plugin-commands](../plan/chat-plugin-commands.md) | [chat-plugin-commands/](chat-plugin-commands/README.md) | 12/14 ✅ · 2 ⬜ |

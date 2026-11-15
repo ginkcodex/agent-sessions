@@ -487,15 +487,16 @@
   /* The command list opens upward, over the transcript, as the end menu. */
   .commands {
     position: absolute;
-    bottom: calc(100% + 4px);
+    bottom: calc(100% + 8px);
     left: 0;
     right: 0;
     z-index: 100;
     max-height: min(320px, 40vh);
     overflow-y: auto;
-    padding: 4px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    padding: 8px;
+    scroll-padding-block: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
     background: var(--bg-primary);
     box-shadow: var(--shadow-popover);
   }
@@ -504,33 +505,53 @@
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 2px 8px;
-    padding: 6px 10px;
-    border-radius: 6px;
+    gap: 6px 10px;
+    padding: 12px 14px;
+    border-radius: 10px;
     font-size: 0.8rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
     color: var(--text-secondary);
     cursor: pointer;
   }
 
-  .command.active,
+  .command + .command {
+    margin-top: 4px;
+  }
+
   .command:hover {
     background: var(--hover-bg);
-    color: var(--text-primary);
+  }
+
+  .command.active {
+    background: color-mix(in srgb, var(--accent-color) 10%, var(--bg-primary));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color) 30%, transparent);
   }
 
   .command-name {
+    min-width: 0;
     font-family: var(--font-mono);
+    font-weight: 600;
     color: var(--text-primary);
   }
 
-  .command-hint,
-  .command-description {
+  .command-hint {
+    min-width: 0;
+    padding: 2px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
     color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
   }
 
   .command-description {
     flex-basis: 100%;
+    min-width: 0;
+    color: var(--text-secondary);
     font-size: 0.74rem;
+    line-height: 1.6;
   }
 
   textarea {
