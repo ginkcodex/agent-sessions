@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
 type source struct {
@@ -21,6 +22,10 @@ type source struct {
 // discover scans root/projects/*/*.jsonl for main sessions
 // and root/projects/*/<uuid>/subagents/agent-*.jsonl for subagents.
 func (p *Provider) discover(ctx context.Context) ([]source, error) {
+	return p.discoverWithDiagnostics(ctx, nil)
+}
+
+func (p *Provider) discoverWithDiagnostics(ctx context.Context, diag *provider.Diagnostics) ([]source, error) {
 	projRoot := filepath.Join(p.root, "projects")
 	entries, err := os.ReadDir(projRoot)
 	if err != nil {
@@ -44,6 +49,9 @@ func (p *Provider) discover(ctx context.Context) ([]source, error) {
 		projDir := filepath.Join(projRoot, entry.Name())
 		files, err := os.ReadDir(projDir)
 		if err != nil {
+			if diag != nil {
+				diag.Warn(projDir, 0, "read project directory: %v", err)
+			}
 			continue
 		}
 
@@ -64,6 +72,9 @@ func (p *Provider) discover(ctx context.Context) ([]source, error) {
 			subDir := filepath.Join(projDir, name, "subagents")
 			subFiles, err := os.ReadDir(subDir)
 			if err != nil {
+				if diag != nil && !os.IsNotExist(err) {
+					diag.Warn(subDir, 0, "read subagent directory: %v", err)
+				}
 				continue
 			}
 			parentUUID := name

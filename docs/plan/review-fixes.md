@@ -77,7 +77,7 @@ profiles.
 | RF-12 | A missing watch root falls back to `$HOME`. New directories there are then watched recursively, and each change queues a full rescan (`internal/watch/watch.go:390`) | ✅ |
 | RF-13 | One fsnotify error moves every provider to polling for the rest of the process | reviewer |
 | RF-14 | Watcher refreshes queue without coalescing; `Close` races background readers of `d.db` | ✅ (2026-11-15) |
-| RF-15 | One unreadable Codex rollout blocks all Codex indexing; an unreadable Claude project drops its sessions until the next scan | reviewer |
+| RF-15 | One unreadable Codex rollout blocks all Codex indexing; an unreadable Claude project drops its sessions until the next scan | ✅ (2026-11-15) |
 | RF-16 | When the ACP connection fails (frame over 64 MiB, read error) the agent is not killed, so the chat never ends (`internal/acp/conn.go:264`) | ✅ |
 | RF-17 | `ChatStart` has no timeout and can't be cancelled; a hung start blocks every other chat open in the window | ✅ (context) |
 | RF-18 | A question still open when the prompt returns holds back `turn_end`; the store and its test assume the opposite | reviewer |

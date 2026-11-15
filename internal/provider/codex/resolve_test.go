@@ -251,22 +251,19 @@ func TestResolverCapAndFallback(t *testing.T) {
 		t.Fatal("retained resolution not accounted")
 	}
 
-	// A previously scanned rollout replaced by a directory fails the warm scan,
-	// which cannot prove removal. Resolution then matches a cold scan.
+	// A temporarily unavailable rollout retains resolution metadata, but Load
+	// still validates the actual source and refuses a directory.
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Mkdir(path, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := New(root, nil).Scan(ctx, p.resolver.state); err == nil {
-		t.Fatal("fixture did not fail a warm scan")
+	if _, err := p.Load(ctx, ref); err == nil {
+		t.Fatal("Load accepted unavailable source")
 	}
-	if _, err := p.Load(ctx, ref); err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Fatalf("missing session after fallback: %v", err)
-	}
-	if !reflect.DeepEqual(p.resolver.canonical, coldCanonical(t, root)) {
-		t.Fatal("fallback differs from cold scan")
+	if _, ok := p.resolver.canonical[ref]; !ok {
+		t.Fatal("partial scan dropped retained metadata")
 	}
 	if _, err := p.Load(ctx, model.SessionRef{Agent: model.AgentCodex, ID: childID}); err != nil {
 		t.Fatal(err)

@@ -97,11 +97,9 @@ func TestCheckpointCacheIdentityAndLifecycle(t *testing.T) {
 	if err := os.Mkdir(path, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Scan(ctx, first.State); err == nil {
-		t.Fatal("expected failed scan")
-	}
-	if fmt.Sprintf("%p", before) != fmt.Sprintf("%p", p.checkpoints.entries) || p.checkpoints.entries[path].cp != beforeCP {
-		t.Fatal("failed scan published")
+	partial, err := p.Scan(ctx, first.State)
+	if err != nil || len(partial.Diag.Warnings) == 0 || !reflect.DeepEqual(partial.State.Sources[path], first.State.Sources[path]) {
+		t.Fatalf("partial scan lost unavailable state: %v", err)
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)

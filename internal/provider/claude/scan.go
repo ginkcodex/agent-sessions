@@ -422,19 +422,13 @@ type sourceScan struct {
 // Work is parallelized by file; results and diagnostics are merged in source
 // order so scheduling does not affect the output.
 func (p *Provider) Scan(ctx context.Context, prev provider.ScanState) (provider.ScanResult, error) {
-	sources, err := p.discover(ctx)
+	var diag provider.Diagnostics
+	sources, err := p.discoverWithDiagnostics(ctx, &diag)
 	if err != nil {
 		return provider.ScanResult{}, err
 	}
 	p.checkpointReuse.prune(sources, prev)
-	result := provider.ScanResult{State: provider.ScanState{Sources: make(map[string]provider.SourceState, len(sources))}}
-	if len(sources) == 0 {
-		for path, old := range prev.Sources {
-			result.Removed = append(result.Removed, removedRef(path, old))
-		}
-		sort.Slice(result.Removed, func(i, j int) bool { return result.Removed[i].Key() < result.Removed[j].Key() })
-		return result, nil
-	}
+	result := provider.ScanResult{Diag: diag, State: provider.ScanState{Sources: make(map[string]provider.SourceState, len(sources))}}
 
 	workers := min(8, runtime.GOMAXPROCS(0))
 	jobs := make(chan int)
@@ -461,7 +455,10 @@ func (p *Provider) Scan(ctx context.Context, prev provider.ScanState) (provider.
 		present[src.Path] = true
 		out := outcomes[i]
 		if out.err != nil {
-			return provider.ScanResult{}, out.err
+			if ctx.Err() != nil {
+				return provider.ScanResult{}, ctx.Err()
+			}
+			out.diag.Warn(src.Path, 0, "scan transcript: %v", out.err)
 		}
 		result.Diag.Merge(out.diag)
 		if out.changed {
@@ -473,6 +470,11 @@ func (p *Provider) Scan(ctx context.Context, prev provider.ScanState) (provider.
 	}
 	for path, old := range prev.Sources {
 		if !present[path] {
+			if _, err := os.Lstat(path); !os.IsNotExist(err) {
+				result.State.Sources[path] = old
+				result.Diag.Warn(path, 0, "previous transcript unavailable; retaining previous scan state")
+				continue
+			}
 			result.Removed = append(result.Removed, removedRef(path, old))
 		}
 	}

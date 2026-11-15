@@ -64,8 +64,8 @@ func (r *resolver) resolveAfter(ctx context.Context, p *Provider, ref model.Sess
 }
 
 // refresh replaces the retained state only after a successful scan. A failed
-// warm scan, e.g. a previously scanned rollout that became unreadable, falls
-// back to a cold scan; cancellation leaves the previous state intact.
+// warm scan falls back to a cold scan; per-source warnings retain previous
+// metadata, while cancellation leaves the previous state intact.
 func (r *resolver) refresh(ctx context.Context, p *Provider) (map[model.SessionRef]model.SessionMeta, error) {
 	warm := r.state.Sources != nil
 	result, byID, err := p.scan(ctx, r.state)
