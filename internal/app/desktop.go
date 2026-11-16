@@ -70,6 +70,9 @@ type Desktop struct {
 	SaveFile      func(ctx context.Context, opts SaveDialogOptions) (string, error)
 	Message       func(ctx context.Context, opts MessageDialogOptions) (string, error)
 
+	// SetWindowTheme applies system/light/dark to this window's native chrome.
+	SetWindowTheme func(ctx context.Context, mode string) error
+
 	IsFullscreen func(ctx context.Context) bool
 	IsMaximised  func(ctx context.Context) bool
 	Fullscreen   func(ctx context.Context)
