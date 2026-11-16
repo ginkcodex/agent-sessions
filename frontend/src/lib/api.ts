@@ -421,6 +421,7 @@ export interface WailsAppBinding {
   /** Absent on older desktop apps; CSS page setup still applies there. */
   PrintWindowWithSetup?(setup: PrintPageSetup): Promise<void>;
   ToggleFullscreen?(): Promise<void>;
+  SetWindowTheme?(mode: 'system' | 'light' | 'dark'): Promise<void>;
   NewWindow(): Promise<void>;
   ShowAbout(): Promise<void>;
   CheckForUpdate(): Promise<UpdateInfo>;

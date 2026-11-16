@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import PortForwardDialog from './lib/components/common/PortForwardDialog.svelte';
   import { portForward } from './lib/stores/portForward.svelte';
   import { wslDistro } from './lib/hosts';
   import { isFullscreenShortcut, toggleFullscreen, preventDesktopEscapeFullscreen } from './lib/fullscreen';
   import { toast } from './lib/stores/toast.svelte';
   import Splitter from './lib/components/common/Splitter.svelte';
+  import Icon from './lib/components/common/Icon.svelte';
   import ModeSelector from './lib/components/sidebar/ModeSelector.svelte';
   import PathFilter from './lib/components/sidebar/PathFilter.svelte';
   import GroupTree from './lib/components/sidebar/GroupTree.svelte';
@@ -400,8 +401,50 @@
   // On the left the panel sits below the sidebar and the session list, as
   // wide as both, and the transcript keeps the full height.
   let panelMaximized = $derived(launcher.info.panel && terminals.open && terminals.maximized);
-  let panelLeft = $derived(launcher.info.panel && terminals.position === 'left' && !panelMaximized);
+  // With the left side collapsed a left panel has no column: it goes below the content.
+  let panelLeft = $derived(
+    launcher.info.panel && terminals.position === 'left' && !panelMaximized && !preferences.navigationCollapsed,
+  );
+
+  // The clicked toggle disappears, so focus moves to the other one.
+  let collapseButton: HTMLButtonElement | undefined = $state();
+  let expandButton: HTMLButtonElement | undefined = $state();
+  function setNavigationCollapsed(on: boolean) {
+    preferences.setNavigationCollapsed(on);
+    void tick().then(() => (on ? expandButton : collapseButton)?.focus());
+  }
 </script>
+
+<!-- In the sidebar footer and, while it is collapsed, the rail. -->
+{#snippet terminalButton()}
+  <button
+    type="button"
+    class="icon-button terminal-button"
+    class:active={terminals.open}
+    title={terminalButtonTitle}
+    aria-label={terminals.open ? 'Hide terminal' : 'Open terminal'}
+    aria-pressed={terminals.open}
+    onclick={() => void terminals.toggle(shellCwd)}
+  >
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" y1="19" x2="20" y2="19" />
+    </svg>
+    {#if panelAttention}
+      <span class="terminal-attention"><AttentionDot state={panelAttention} announce /></span>
+    {/if}
+  </button>
+{/snippet}
 
 <div class="app-layout">
   <ReconnectBanner />
@@ -409,11 +452,31 @@
     class="workspace"
     class:panel-left={panelLeft}
     class:panel-maximized={panelMaximized}
+    class:navigation-collapsed={preferences.navigationCollapsed}
     style:grid-template-columns={panelLeft
       ? `${preferences.widths.sidebar}px 0 ${preferences.widths.sessionList}px 0 minmax(0, 1fr)`
       : undefined}
   >
   <div class="shell">
+    {#if preferences.navigationCollapsed}
+      <nav class="pane nav-rail" aria-label="Collapsed navigation">
+        <button
+          type="button"
+          class="icon-button"
+          title="Show sidebar"
+          aria-label="Show sidebar"
+          aria-expanded="false"
+          bind:this={expandButton}
+          onclick={() => setNavigationCollapsed(false)}
+        >
+          <Icon name="panel-left-open" size={16} />
+        </button>
+        <div class="rail-bottom">
+          {#if launcher.info.panel}{@render terminalButton()}{/if}
+          <HostSelector dotOnly />
+        </div>
+      </nav>
+    {/if}
     <!-- Pane 1: Sidebar -->
     <aside
       class="pane sidebar"
@@ -529,6 +592,17 @@
             {/if}
           </svg>
         </button>
+        <button
+          type="button"
+          class="icon-button"
+          title="Hide sidebar"
+          aria-label="Hide sidebar"
+          aria-expanded="true"
+          bind:this={collapseButton}
+          onclick={() => setNavigationCollapsed(true)}
+        >
+          <Icon name="panel-left-close" size={16} />
+        </button>
       </div>
     </header>
 
@@ -557,35 +631,7 @@
         {/if}
       </div>
       <div class="footer-actions">
-        {#if launcher.info.panel}
-          <button
-            type="button"
-            class="icon-button terminal-button"
-            class:active={terminals.open}
-            title={terminalButtonTitle}
-            aria-label={terminals.open ? 'Hide terminal' : 'Open terminal'}
-            aria-pressed={terminals.open}
-            onclick={() => void terminals.toggle(shellCwd)}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <polyline points="4 17 10 11 4 5" />
-              <line x1="12" y1="19" x2="20" y2="19" />
-            </svg>
-            {#if panelAttention}
-              <span class="terminal-attention"><AttentionDot state={panelAttention} announce /></span>
-            {/if}
-          </button>
-        {/if}
+        {#if launcher.info.panel}{@render terminalButton()}{/if}
         <button
           type="button"
           class="icon-button forwarding-button"
@@ -760,6 +806,32 @@
   .panel-maximized .shell > :global(.splitter),
   .panel-maximized .stale-overlay {
     display: none;
+  }
+
+  /* Hidden, not unmounted: filters, the tree and the list keep their state. */
+  .navigation-collapsed .sidebar,
+  .navigation-collapsed .sidebar + :global(.splitter),
+  .navigation-collapsed .session-list-container,
+  .navigation-collapsed .session-list-container + :global(.splitter) {
+    display: none;
+  }
+
+  .nav-rail {
+    flex-shrink: 0;
+    align-items: center;
+    width: 40px;
+    padding-top: 10px;
+    background-color: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
+  }
+
+  .rail-bottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-top: auto;
+    padding-bottom: 8px;
   }
 
   .panel-splitter {

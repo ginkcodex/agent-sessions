@@ -79,13 +79,14 @@ func newDesktop(desktop *application.App, window *application.WebviewWindow) app
 			return "", nil
 		},
 
-		IsFullscreen: func(context.Context) bool { return window.IsFullscreen() },
-		IsMaximised:  func(context.Context) bool { return window.IsMaximised() },
-		Fullscreen:   func(context.Context) { window.Fullscreen() },
-		Unfullscreen: func(context.Context) { window.UnFullscreen() },
-		Maximise:     func(context.Context) { window.Maximise() },
-		Unmaximise:   func(context.Context) { window.UnMaximise() },
-		Raise:        func(context.Context) { raise(window) },
+		SetWindowTheme: func(_ context.Context, mode string) error { return setWindowTheme(window, mode) },
+		IsFullscreen:   func(context.Context) bool { return window.IsFullscreen() },
+		IsMaximised:    func(context.Context) bool { return window.IsMaximised() },
+		Fullscreen:     func(context.Context) { window.Fullscreen() },
+		Unfullscreen:   func(context.Context) { window.UnFullscreen() },
+		Maximise:       func(context.Context) { window.Maximise() },
+		Unmaximise:     func(context.Context) { window.UnMaximise() },
+		Raise:          func(context.Context) { raise(window) },
 		// Close emits WindowClosing, so the close guard decides.
 		RequestClose: func(context.Context) { window.Close() },
 		Print: func(context.Context) error {

@@ -168,6 +168,7 @@ export const APP_METHODS = [
   'SetTerminal',
   'SetTerminalOpen',
   'SetTranslateSettings',
+  'SetWindowTheme',
   'ShowAbout',
   'StartPortForward',
   'StopPortForward',
