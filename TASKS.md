@@ -58,7 +58,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| macOS native window theme | [macos-window-theme](docs/plan/macos-window-theme.md) | [macos-window-theme/](docs/tasks/macos-window-theme/README.md) | 1/2 ✅ · 1 ⛔ |
+| macOS native window theme | [macos-window-theme](docs/plan/macos-window-theme.md) | [macos-window-theme/](docs/tasks/macos-window-theme/README.md) | 1/2 ✅ · 1 🟡 |
 | Codex skills dialog | [codex-skills-dialog](docs/plan/codex-skills-dialog.md) | [codex-skills-dialog/](docs/tasks/codex-skills-dialog/README.md) | 1/1 ✅ |
 | Chat inventory dialog | [chat-inventory-dialog](docs/plan/chat-inventory-dialog.md) | [chat-inventory-dialog/](docs/tasks/chat-inventory-dialog/README.md) | 2/2 ✅ |
 | Chat command picker | [chat-command-picker](docs/plan/chat-command-picker.md) | [chat-command-picker/](docs/tasks/chat-command-picker/README.md) | 2/2 ✅ |

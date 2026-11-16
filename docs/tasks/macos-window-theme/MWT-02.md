@@ -1,6 +1,6 @@
 # MWT-02 — Verify native appearance on macOS
 
-- **Status:** ⛔ Blocked — requires macOS/AppKit; implementation environment is Linux/WSL
+- **Status:** 🟡 Partial — user confirmed theme matching works on macOS; detailed regression checks below are not individually confirmed
 - **Estimate:** 1 h
 - **Depends on:** MWT-01
 - **Plan:** [macos-window-theme.md](../../plan/macos-window-theme.md)
@@ -20,5 +20,7 @@ Build the desktop client on macOS and record actual native results here. No extr
 
 ## Evidence
 
-2026-11-16: No macOS build or native visual checks ran. This environment is Linux/WSL without AppKit or a macOS SDK. Linux desktop compilation and Windows cross-compilation validate only the shared bridge and other-platform no-op, not the Objective-C implementation. All acceptance checks above remain pending on macOS.
+2026-11-16 (implementation): No macOS build or native visual checks ran in the Linux/WSL implementation environment. Linux desktop compilation and Windows cross-compilation validated only the shared bridge and other-platform no-op, not the Objective-C implementation.
+
+2026-11-16 (user validation): The user tested on macOS and reported: “it works well.” This confirms the native title-bar theme matching works in their test. The macOS version, build command and individual scenarios were not specified. Live OS changes/return to System, restart/second-window persistence, rapid toggles, fullscreen/restore, native controls/dialogs and unsaved-file close protection remain unconfirmed individually; this report is not recorded as a pass for that full matrix.
 
