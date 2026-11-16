@@ -32,6 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Linux native window theme | [linux-window-theme](../plan/linux-window-theme.md) | [linux-window-theme/](linux-window-theme/README.md) | 1/2 ✅ · 1 ⛔ |
 | macOS native window theme | [macos-window-theme](../plan/macos-window-theme.md) | [macos-window-theme/](macos-window-theme/README.md) | 1/2 ✅ · 1 🟡 |
 | Codex skills dialog | [codex-skills-dialog](../plan/codex-skills-dialog.md) | [codex-skills-dialog/](codex-skills-dialog/README.md) | 1/1 ✅ |
 | Chat inventory dialog | [chat-inventory-dialog](../plan/chat-inventory-dialog.md) | [chat-inventory-dialog/](chat-inventory-dialog/README.md) | 2/2 ✅ |

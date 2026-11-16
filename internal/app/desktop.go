@@ -70,7 +70,8 @@ type Desktop struct {
 	SaveFile      func(ctx context.Context, opts SaveDialogOptions) (string, error)
 	Message       func(ctx context.Context, opts MessageDialogOptions) (string, error)
 
-	// SetWindowTheme applies system/light/dark to this window's native chrome.
+	// SetWindowTheme requests system/light/dark native chrome. GTK applies it
+	// across this process's windows on the same display.
 	SetWindowTheme func(ctx context.Context, mode string) error
 
 	IsFullscreen func(ctx context.Context) bool
