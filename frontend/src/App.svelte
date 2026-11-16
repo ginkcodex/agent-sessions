@@ -31,6 +31,7 @@
   import AskpassDialog from './lib/components/common/AskpassDialog.svelte';
   import ReconnectBanner from './lib/components/common/ReconnectBanner.svelte';
   import HostSelector from './lib/components/sidebar/HostSelector.svelte';
+  import SessionSwitcher from './lib/components/sidebar/SessionSwitcher.svelte';
   import Toaster from './lib/components/common/Toaster.svelte';
   import TerminalPanel from './lib/components/terminal/TerminalPanel.svelte';
   import { theme } from './lib/stores/theme.svelte';
@@ -471,6 +472,7 @@
         >
           <Icon name="panel-left-open" size={16} />
         </button>
+        <SessionSwitcher disabled={stale} />
         <div class="rail-bottom">
           {#if launcher.info.panel}{@render terminalButton()}{/if}
           <HostSelector dotOnly />
@@ -819,6 +821,7 @@
   .nav-rail {
     flex-shrink: 0;
     align-items: center;
+    gap: 4px;
     width: 40px;
     padding-top: 10px;
     background-color: var(--bg-secondary);

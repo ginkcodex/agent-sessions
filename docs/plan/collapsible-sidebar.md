@@ -33,6 +33,28 @@ full width, and bring it back with one click. The choice survives restarts.
   it to the left.
 - A maximized terminal hides the rail like the other panes.
 
+### Session switcher in the rail
+
+While collapsed, a Sessions button under the expand button opens a floating
+panel beside the rail, so the user can change session without expanding.
+
+- It lists the workspaces (the directory groups, whatever the sidebar's
+  Dir/Agent/Flat mode), with the sidebar's filters: search, Live, Archived,
+  agent, path, starred-only and the age filter. Workspaces with no matching
+  session are left out. Subagent sessions are left out, as the list tucks
+  them under their parents.
+- Each workspace is a toggle row; its sessions load when it opens, in the
+  list's sort order. The workspace holding the open session starts open and
+  the open session is marked.
+- Picking a session opens it as a click in the session list does (the
+  terminal follows its directory, back/forward records it) and closes the
+  panel. The sidebar's group selection is left alone.
+- The panel is a non-modal dialog: Escape or a click outside closes it and
+  focus returns to the button. It loads fresh each time it opens; a reply
+  that arrives after it closed or after a host switch is dropped.
+- The button is disabled while the window shows stale data, like the
+  sidebar's other actions.
+
 ## Decisions
 
 - One click target per state, no keyboard shortcut: Ctrl+B and similar keys
@@ -42,6 +64,8 @@ full width, and bring it back with one click. The choice survives restarts.
   actions (search, settings, refresh) keep their keyboard shortcuts (`/`,
   Cmd/Ctrl+`,`) while collapsed.
 - No animation: the panes have pixel widths driven by the splitters.
+- The switcher is a dialog with buttons, not an ARIA menu: Tab moves through
+  rows. Arrow-key movement can come later.
 
 ## Risks
 
@@ -58,6 +82,8 @@ full width, and bring it back with one click. The choice survives restarts.
   `aria-expanded`.
 - Terminal at the bottom, on the left and maximized all lay out correctly in
   both states.
+- The switcher lists filtered workspaces and sessions, opens the picked
+  session and closes on Escape, outside click and selection.
 - Frontend tests, `npm run check` and the build pass.
 
 ## Tasks
