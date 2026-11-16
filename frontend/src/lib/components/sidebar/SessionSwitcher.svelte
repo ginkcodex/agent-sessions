@@ -130,6 +130,7 @@
     tabindex="-1"
     aria-label="Switch session"
     style:top="{top}px"
+    style:max-height="calc(100vh - {top}px - 8px)"
     bind:this={panel}
     onkeydown={handleKeydown}
   >
@@ -214,7 +215,8 @@
     position: fixed;
     left: 44px;
     width: 320px;
-    max-height: calc(100vh - 16px);
+    /* The panel starts 44px from the left; keep an 8px margin on the right. */
+    max-width: calc(100vw - 52px);
     overflow-y: auto;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);

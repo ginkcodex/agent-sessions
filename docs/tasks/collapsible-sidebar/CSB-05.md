@@ -49,5 +49,11 @@ the button becomes disabled (host switch).
   and on reopen that session was current. Light and dark looked right. No
   page errors.
 
+- Fix: the panel overflowed the window (its height cap ignored its top
+  offset; its width ignored narrow windows). It is now capped at
+  `100vh - top - 8px` and `100vw - 52px` and scrolls inside. Measured in the
+  mock with all workspaces open: 600×220 → 320×170 at (44, 42); 300×500 →
+  248×188; 1400×800 → 320×188; all inside the viewport.
+
 Not checked: the desktop app (CSB-02), a real host switch while the panel is
-open, load errors (the mock does not fail), long lists on a small window.
+open, load errors (the mock does not fail).
