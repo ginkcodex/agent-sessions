@@ -415,6 +415,37 @@
   }
 </script>
 
+<!-- In the sidebar footer and, while it is collapsed, the rail. -->
+{#snippet terminalButton()}
+  <button
+    type="button"
+    class="icon-button terminal-button"
+    class:active={terminals.open}
+    title={terminalButtonTitle}
+    aria-label={terminals.open ? 'Hide terminal' : 'Open terminal'}
+    aria-pressed={terminals.open}
+    onclick={() => void terminals.toggle(shellCwd)}
+  >
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" y1="19" x2="20" y2="19" />
+    </svg>
+    {#if panelAttention}
+      <span class="terminal-attention"><AttentionDot state={panelAttention} announce /></span>
+    {/if}
+  </button>
+{/snippet}
+
 <div class="app-layout">
   <ReconnectBanner />
   <div
@@ -440,6 +471,9 @@
         >
           <Icon name="panel-left-open" size={16} />
         </button>
+        {#if launcher.info.panel}
+          <div class="rail-bottom">{@render terminalButton()}</div>
+        {/if}
       </nav>
     {/if}
     <!-- Pane 1: Sidebar -->
@@ -596,35 +630,7 @@
         {/if}
       </div>
       <div class="footer-actions">
-        {#if launcher.info.panel}
-          <button
-            type="button"
-            class="icon-button terminal-button"
-            class:active={terminals.open}
-            title={terminalButtonTitle}
-            aria-label={terminals.open ? 'Hide terminal' : 'Open terminal'}
-            aria-pressed={terminals.open}
-            onclick={() => void terminals.toggle(shellCwd)}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <polyline points="4 17 10 11 4 5" />
-              <line x1="12" y1="19" x2="20" y2="19" />
-            </svg>
-            {#if panelAttention}
-              <span class="terminal-attention"><AttentionDot state={panelAttention} announce /></span>
-            {/if}
-          </button>
-        {/if}
+        {#if launcher.info.panel}{@render terminalButton()}{/if}
         <button
           type="button"
           class="icon-button forwarding-button"
@@ -816,6 +822,11 @@
     padding-top: 10px;
     background-color: var(--bg-secondary);
     border-right: 1px solid var(--border-color);
+  }
+
+  .rail-bottom {
+    margin-top: auto;
+    padding-bottom: 8px;
   }
 
   .panel-splitter {

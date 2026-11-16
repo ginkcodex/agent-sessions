@@ -16,7 +16,9 @@ full width, and bring it back with one click. The choice survives restarts.
   header's actions.
 - While collapsed, a narrow rail (`nav.nav-rail`) at the left edge of the
   window holds the expand button (`panel-left-open`), so it is reachable in
-  every transcript state (empty, loading, error, session, chat).
+  every transcript state (empty, loading, error, session, chat). Where the
+  app has a terminal panel, the rail's bottom holds the same terminal button
+  as the sidebar footer (one Svelte snippet for both).
 - The sidebar, the session list and both splitters are hidden with CSS
   (`display: none`), not unmounted: filters, tree expansion and list state stay
   as they were. Hidden panes leave the tab order and the accessibility tree.
@@ -33,9 +35,9 @@ full width, and bring it back with one click. The choice survives restarts.
 
 - One click target per state, no keyboard shortcut: Ctrl+B and similar keys
   belong to shells and editors inside the app. A shortcut can be added later.
-- The rail shows only the expand button. Actions that live in the sidebar
-  (search, settings, terminal, refresh) keep their keyboard shortcuts (`/`,
-  Cmd/Ctrl+`,`, Ctrl+`` ` ``) while collapsed.
+- The rail shows the expand button and the terminal button. Other sidebar
+  actions (search, settings, refresh) keep their keyboard shortcuts (`/`,
+  Cmd/Ctrl+`,`) while collapsed.
 - No animation: the panes have pixel widths driven by the splitters.
 
 ## Risks
