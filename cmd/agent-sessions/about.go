@@ -33,7 +33,8 @@ const checkUpdatesEvent = "update:check"
 
 // useAboutWindow points the macOS app menu's About item at the About window
 // instead of the standard About panel, keeping the rest of the default
-// menu, and adds Check for Updates… below it. Windows and Linux have no app
+// menu, and adds Check for Updates… below it. The Help menu gets the
+// keyboard diagnostics controls (keylog_menu.go). Windows and Linux have no app
 // menu: the sidebar's logo opens About there (App.ShowAbout), and Settings
 // has the update check.
 func (s *shell) useAboutWindow() {
@@ -41,7 +42,11 @@ func (s *shell) useAboutWindow() {
 		return
 	}
 	menu := application.DefaultApplicationMenu()
-	if replaceAboutItem(menu, s.showAbout, s.checkForUpdates) {
+	changed := replaceAboutItem(menu, s.showAbout, s.checkForUpdates)
+	if addKeyboardLogItems(menu, s.windows.KeyLog(), s.saveKeyboardLog) {
+		changed = true
+	}
+	if changed {
 		s.desktop.Menu.Set(menu)
 	}
 }

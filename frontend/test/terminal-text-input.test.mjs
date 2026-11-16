@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { installTerminalCompositionText, terminalReplacementText } from '../src/lib/terminalTextInput.ts';
 
@@ -85,4 +86,22 @@ test('other input events, intentional NBSP, cancellation and disposal', () => {
   assert.deepEqual(f.sent, ['a\u00a0']);
   assert.equal(f.textarea.value, 'nam,');
   installTerminalCompositionText(undefined, () => {}).dispose();
+});
+
+test('macOS keeps the xterm input textarea zero-sized so Apple Telex and VNI use marked text', () => {
+  // A cell-sized textarea makes Apple's Vietnamese input methods rewrite the
+  // word with insertReplacementText, which xterm drops (MTI-04). The input
+  // method switches to marked text only when the box has no size, padding or
+  // border, so pin all three conditions.
+  const view = readFileSync(new URL('../src/lib/components/terminal/TerminalView.svelte', import.meta.url), 'utf8');
+  assert.match(view, /<div class="xterm-host" class:mac=\{isMac\}/);
+  const rule = view.match(/\.xterm-host\.mac :global\(\.xterm \.xterm-helper-textarea\) \{([^}]*)\}/);
+  assert.ok(rule, 'macOS helper textarea rule');
+  assert.match(rule[1], /width: 0 !important;/);
+  assert.match(rule[1], /height: 0 !important;/);
+  const xtermCss = readFileSync(new URL('../node_modules/@xterm/xterm/css/xterm.css', import.meta.url), 'utf8');
+  const helper = xtermCss.match(/\.xterm \.xterm-helper-textarea \{([^}]*)\}/);
+  assert.ok(helper, 'xterm.css helper textarea rule');
+  assert.match(helper[1], /padding: 0;/);
+  assert.match(helper[1], /border: 0;/);
 });

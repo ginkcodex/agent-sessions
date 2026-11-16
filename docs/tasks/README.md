@@ -32,6 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Keyboard diagnostics | [keyboard-diagnostics](../plan/keyboard-diagnostics.md) | [keyboard-diagnostics/](keyboard-diagnostics/README.md) | 2/4 ✅ · 1 🟡 · 1 ⬜ |
 | Collapsible sidebar | [collapsible-sidebar](../plan/collapsible-sidebar.md) | [collapsible-sidebar/](collapsible-sidebar/README.md) | 4/5 ✅ · 1 ⬜ |
 | Linux native window theme | [linux-window-theme](../plan/linux-window-theme.md) | [linux-window-theme/](linux-window-theme/README.md) | 1/2 ✅ · 1 ⛔ |
 | macOS native window theme | [macos-window-theme](../plan/macos-window-theme.md) | [macos-window-theme/](macos-window-theme/README.md) | 1/2 ✅ · 1 🟡 |
@@ -66,7 +67,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Conversation PDF | [conversation-pdf](../plan/conversation-pdf.md) | [conversation-pdf/](conversation-pdf/README.md) | 1/1 ✅ |
 | Terminal file path detection | [terminal-file-paths](../plan/terminal-file-paths.md) | [terminal-file-paths/](terminal-file-paths/README.md) | 1/1 ✅ |
 | Workspace stars | [workspace-stars](../plan/workspace-stars.md) | [workspace-stars/](workspace-stars/README.md) | 3/3 ✅ |
-| macOS terminal Vietnamese input | [macos-terminal-input](../plan/macos-terminal-input.md) | [macos-terminal-input/](macos-terminal-input/README.md) | 1/3 ✅ · 1 🟡 · 1 ➖ |
+| macOS terminal Vietnamese input | [macos-terminal-input](../plan/macos-terminal-input.md) | [macos-terminal-input/](macos-terminal-input/README.md) | 1/4 ✅ · 2 🟡 · 1 ➖ |
 | Manual Bash transcript | [manual-bash-transcript](../plan/manual-bash-transcript.md) | [manual-bash-transcript/](manual-bash-transcript/README.md) | 2/2 ✅ |
 | Java/PHP code intelligence | [code-diagnostics-java-php](../plan/code-diagnostics-java-php.md) | [code-diagnostics-java-php/](code-diagnostics-java-php/README.md) | 5/5 ✅ |
 | Session scrollbar stability | [session-scrollbar](../plan/session-scrollbar.md) | [session-scrollbar/](session-scrollbar/README.md) | 9/10 ✅ · 1 🟡 |

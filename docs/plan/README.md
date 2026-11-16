@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [keyboard-diagnostics.md](keyboard-diagnostics.md) | [keyboard-diagnostics](../tasks/keyboard-diagnostics/README.md) | Opt-in in-app recorder of native and page keyboard events, to find where OpenKey input gets lost on macOS |
 | [collapsible-sidebar.md](collapsible-sidebar.md) | [collapsible-sidebar](../tasks/collapsible-sidebar/README.md) | Collapse the sidebar and session list so the session content gets the full width |
 | [linux-window-theme.md](linux-window-theme.md) | [linux-window-theme](../tasks/linux-window-theme/README.md) | Native Linux chrome follows Light/Dark/System using GTK, subject to desktop decoration support |
 | [macos-window-theme.md](macos-window-theme.md) | [macos-window-theme](../tasks/macos-window-theme/README.md) | Native macOS title-bar appearance follows the app's Light/Dark/System mode |
