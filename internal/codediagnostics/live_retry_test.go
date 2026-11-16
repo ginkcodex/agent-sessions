@@ -86,6 +86,9 @@ func TestLiveAutomaticRestartBackoffCapAndManualRetry(t *testing.T) {
 		if doc["text"] != "draft" || doc["version"] != float64(1) {
 			t.Fatalf("replay: %+v", doc)
 		}
+		// Crashing the server while the replay's Notify is still returning can
+		// report the delivered open as dropped and break the document for good.
+		m.workers.Wait()
 		if d.Sessions.CurrentGeneration(root, cfg, old) {
 			t.Fatal("old generation current")
 		}
