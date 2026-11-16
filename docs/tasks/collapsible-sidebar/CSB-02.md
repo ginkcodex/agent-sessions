@@ -17,4 +17,6 @@ Run the desktop app and record what was seen. No new features.
   rail's terminal button and its attention dot; the rail's connection dot
   while connecting, connected, reconnecting and on Local.
 - Tab order skips the hidden panes; the toggles work from the keyboard.
+- The rail's session switcher: lists, opens a session, closes on Escape,
+  outside click and selection; closes on a host switch.
 - Light and dark themes; the sidebar at its minimum width.

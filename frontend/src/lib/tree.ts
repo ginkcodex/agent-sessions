@@ -12,6 +12,18 @@ export function nodeKind(node: GroupNode): GroupNodeKind {
   return 'session';
 }
 
+/**
+ * The workspaces the collapsed rail's session switcher lists: the outermost
+ * directory nodes that still hold a session, in tree order.
+ */
+export function switcherWorkspaces(groups: GroupNode[]): GroupNode[] {
+  return groups.flatMap((node) =>
+    nodeKind(node) === 'directory'
+      ? node.sessionCount > 0 ? [node] : []
+      : switcherWorkspaces(node.children ?? [])
+  );
+}
+
 /** The workspace of a tree row, inherited by agents and topics under a directory. */
 export function nodeDirectory(groups: GroupNode[], key: string): string | undefined {
   function walk(nodes: GroupNode[], inherited?: string): string | undefined {

@@ -20,6 +20,7 @@ import {
   BASE_COLLAPSED_STORAGE_KEY,
   loadCollapsedKeys,
   saveCollapsedKeys,
+  switcherWorkspaces,
 } from '../src/lib/tree.ts';
 import { WINDOWS_DIRS, fixtureStore, loadServerComponent, renderWithFixture } from './helpers.mjs';
 
@@ -339,4 +340,15 @@ test('the empty tree offers to clear only the directory filter', async () => {
   const byQuery = await renderGroupTree({ query: 'deploy' });
   assert.match(byQuery, /No sessions match current filter/);
   assert.doesNotMatch(byQuery, /Clear directory filter|Clear filters/);
+});
+
+test('the session switcher lists outermost directories that hold sessions', () => {
+  const app = { key: 'app', cwd: '/app', sessionCount: 2, children: [{ key: 'nested', cwd: '/app/sub', sessionCount: 1 }] };
+  const groups = [
+    app,
+    { key: 'empty', kind: 'directory', cwd: '/empty', sessionCount: 0 },
+    { key: 'claude', kind: 'agent', agent: 'claude-code', sessionCount: 1, children: [{ key: 'lib', kind: 'directory', cwd: '/lib', sessionCount: 1 }] },
+  ];
+  assert.deepEqual(switcherWorkspaces(groups).map((n) => n.key), ['app', 'lib']);
+  assert.deepEqual(switcherWorkspaces([]), []);
 });
