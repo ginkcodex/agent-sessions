@@ -422,6 +422,9 @@ export interface WailsAppBinding {
   PrintWindowWithSetup?(setup: PrintPageSetup): Promise<void>;
   ToggleFullscreen?(): Promise<void>;
   SetWindowTheme?(mode: 'system' | 'light' | 'dark'): Promise<void>;
+  /** Keyboard diagnostics (docs/plan/keyboard-diagnostics.md); absent on older desktop apps. */
+  KeyboardLogEnabled?(): Promise<boolean>;
+  RecordKeyboardEvents?(events: Record<string, unknown>[]): Promise<void>;
   NewWindow(): Promise<void>;
   ShowAbout(): Promise<void>;
   CheckForUpdate(): Promise<UpdateInfo>;

@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ginkcode/agent-sessions/internal/keylog"
 	"github.com/ginkcode/agent-sessions/internal/update"
 )
 
@@ -36,6 +37,9 @@ type Windows struct {
 	// updater is shared by every window's App; Shutdown hands it the
 	// quit.
 	updater *update.Manager
+	// keylog records keyboard events of every window while the user has it
+	// on (see KeyLog).
+	keylog *keylog.Recorder
 
 	mu      sync.Mutex
 	entries map[string]*windowEntry
@@ -70,13 +74,38 @@ type windowEntry struct {
 // windows' Apps, open opens another window and quit quits the app through
 // ShouldQuit; any may be nil.
 func NewWindows(hub *NotificationHub, open func() error, quit func()) *Windows {
-	return &Windows{
+	w := &Windows{
 		hub:     hub,
 		open:    open,
 		quit:    quit,
 		newApp:  NewApp,
 		updater: newUpdateManager(),
+		keylog:  keylog.New(keylog.DefaultCapacity),
 		entries: map[string]*windowEntry{},
+	}
+	w.keylog.OnChange(func(on bool) { w.emitAll(KeyboardLogStateEvent, on) })
+	return w
+}
+
+// KeyLog is the keyboard event recorder the windows share. The shell turns
+// it on and off and saves it; the pages and the native monitor feed it.
+func (w *Windows) KeyLog() *keylog.Recorder {
+	return w.keylog
+}
+
+// emitAll sends an event to every started window that is still open.
+func (w *Windows) emitAll(name string, payload any) {
+	w.mu.Lock()
+	open := append([]*windowEntry(nil), w.order...)
+	w.mu.Unlock()
+	for _, e := range open {
+		e.mu.Lock()
+		emit := e.desktop.Emit
+		live := e.started && !e.closed
+		e.mu.Unlock()
+		if live && emit != nil {
+			emit(name, payload)
+		}
 	}
 }
 
@@ -95,6 +124,7 @@ func (w *Windows) Reserve() string {
 		gone:  make(chan struct{}),
 	}
 	e.app.updater = w.updater
+	e.app.keylog = keyLogger{rec: w.keylog, window: e.name}
 	w.entries[e.name] = e
 	w.order = append(w.order, e)
 	return e.name

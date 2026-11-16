@@ -389,7 +389,7 @@
   onkeydowncapture={handlePaneKeydown}
   role="presentation"
 >
-  <div class="xterm-host" bind:this={host} onmousedowncapture={keepSelection} onmousemovecapture={keepSelection}></div>
+  <div class="xterm-host" class:mac={isMac} bind:this={host} onmousedowncapture={keepSelection} onmousemovecapture={keepSelection}></div>
   {#if find.open}
     <!-- The terminal's own menu would hide the input's Cut, Copy and Paste. -->
     <div class="find-bar" role="search" aria-label="Find in terminal" oncontextmenu={(e) => e.stopPropagation()}>
@@ -481,6 +481,18 @@
      element inside it, which stops at the last whole row. */
   .xterm-host :global(.xterm .xterm-viewport) {
     background-color: var(--bg-primary);
+  }
+
+  /* macOS: keep xterm's input textarea zero-sized at the cursor. Given a
+     cell-sized box, Apple's Vietnamese Telex and VNI rewrite the word in the
+     textarea (insertReplacementText), which xterm ignores, so only each
+     word's first letter reached the shell. With no box they use marked text,
+     as in iTerm2 and Ghostty, and xterm commits each word through its
+     composition path. The textarea keeps its position, so candidate windows
+     still follow the cursor. */
+  .xterm-host.mac :global(.xterm .xterm-helper-textarea) {
+    width: 0 !important;
+    height: 0 !important;
   }
 
   /* Native-terminal style preedit: normal theme colors with an underline,

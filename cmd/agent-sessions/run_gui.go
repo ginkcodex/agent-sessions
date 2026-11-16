@@ -82,6 +82,7 @@ func run() {
 		// GTK is initialized by now and the window exists.
 		disableFontHinting()
 		hookMouseNavigation()
+		hookKeyboardLog(s.windows.KeyLog())
 		s.start()
 		hookWindowCycling(func(forward bool) {
 			if w := s.desktop.Window.Current(); w != nil {

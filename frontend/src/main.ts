@@ -9,6 +9,7 @@ import { mount } from 'svelte'
 import App from './App.svelte'
 import { api } from './lib/api'
 import { isDesktop, loadDesktopRuntime } from './lib/desktopRuntime'
+import { startKeyboardDiagnostics } from './lib/keyboardDiagnostics'
 import { startLiveDocuments } from './lib/liveDocumentsWiring'
 import { setupDropGuard, setupLinkInterceptor } from './lib/navigation'
 import { showStartupError } from './lib/startupError'
@@ -18,6 +19,8 @@ import { showStartupError } from './lib/startupError'
 // replaced by the browser demo's mock data.
 if (isDesktop()) {
   loadDesktopRuntime().catch((err: unknown) => showStartupError(err));
+  // Records keyboard events only while the Help menu says so.
+  startKeyboardDiagnostics();
 }
 
 setupLinkInterceptor(api);

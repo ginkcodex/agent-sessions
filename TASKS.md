@@ -58,6 +58,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Keyboard diagnostics | [keyboard-diagnostics](docs/plan/keyboard-diagnostics.md) | [keyboard-diagnostics/](docs/tasks/keyboard-diagnostics/README.md) | 2/4 ✅ · 1 🟡 · 1 ⬜ |
 | Collapsible sidebar | [collapsible-sidebar](docs/plan/collapsible-sidebar.md) | [collapsible-sidebar/](docs/tasks/collapsible-sidebar/README.md) | 4/5 ✅ · 1 ⬜ |
 | Linux native window theme | [linux-window-theme](docs/plan/linux-window-theme.md) | [linux-window-theme/](docs/tasks/linux-window-theme/README.md) | 1/2 ✅ · 1 ⛔ |
 | macOS native window theme | [macos-window-theme](docs/plan/macos-window-theme.md) | [macos-window-theme/](docs/tasks/macos-window-theme/README.md) | 1/2 ✅ · 1 🟡 |
@@ -92,7 +93,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Conversation PDF | [conversation-pdf](docs/plan/conversation-pdf.md) | [conversation-pdf/](docs/tasks/conversation-pdf/README.md) | 1/1 ✅ |
 | Terminal file path detection | [terminal-file-paths](docs/plan/terminal-file-paths.md) | [terminal-file-paths/](docs/tasks/terminal-file-paths/README.md) | 1/1 ✅ |
 | Workspace stars | [workspace-stars](docs/plan/workspace-stars.md) | [workspace-stars/](docs/tasks/workspace-stars/README.md) | 3/3 ✅ |
-| macOS terminal Vietnamese input | [macos-terminal-input](docs/plan/macos-terminal-input.md) | [macos-terminal-input/](docs/tasks/macos-terminal-input/README.md) | 1/3 ✅ · 1 🟡 · 1 ➖ |
+| macOS terminal Vietnamese input | [macos-terminal-input](docs/plan/macos-terminal-input.md) | [macos-terminal-input/](docs/tasks/macos-terminal-input/README.md) | 1/4 ✅ · 2 🟡 · 1 ➖ |
 | Manual Bash transcript | [manual-bash-transcript](docs/plan/manual-bash-transcript.md) | [manual-bash-transcript/](docs/tasks/manual-bash-transcript/README.md) | 2/2 ✅ |
 | Java/PHP code intelligence | [code-diagnostics-java-php](docs/plan/code-diagnostics-java-php.md) | [code-diagnostics-java-php/](docs/tasks/code-diagnostics-java-php/README.md) | 5/5 ✅ |
 | Session scrollbar stability | [session-scrollbar](docs/plan/session-scrollbar.md) | [session-scrollbar/](docs/tasks/session-scrollbar/README.md) | 9/10 ✅ · 1 🟡 |

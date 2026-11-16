@@ -75,6 +75,9 @@ type App struct {
 	// update.
 	updater     *update.Manager
 	stopUpdates func()
+	// keylog feeds the shared keyboard recorder; empty outside the desktop
+	// app.
+	keylog keyLogger
 
 	events            *catalogBus
 	desktopEvents     engine.Emitter
