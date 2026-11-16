@@ -21,6 +21,7 @@ const TIME_ZONE_KEY = 'agent-sessions:time-zone';
 const TRANSCRIPT_MODE_KEY = 'agent-sessions:transcript-mode';
 const AUTO_INSTALL_KEY = 'agent-sessions:auto-install-language-servers';
 const DISABLED_LANGUAGES_KEY = 'agent-sessions:disabled-code-languages';
+const NAVIGATION_COLLAPSED_KEY = 'agent-sessions:navigation-collapsed';
 
 export interface PaneWidths {
   sidebar: number;
@@ -59,6 +60,8 @@ export class PreferencesStore {
   autoInstallLanguageServers = $state(true);
   // Languages that get no code checks or navigation; every language is on by default.
   disabledLanguages = $state.raw<CodeLanguageId[]>([]);
+  // The sidebar and the session list are hidden; the session content takes the width.
+  navigationCollapsed = $state(false);
 
   init(): void {
     if (typeof localStorage === 'undefined') return;
@@ -131,6 +134,12 @@ export class PreferencesStore {
       if (Array.isArray(saved)) this.disabledLanguages = codeLanguageIds(saved);
     } catch {
       // Unreadable or disabled storage; keep every language on.
+    }
+
+    try {
+      this.navigationCollapsed = localStorage.getItem(NAVIGATION_COLLAPSED_KEY) === 'on';
+    } catch {
+      // Storage disabled; keep the panes shown.
     }
 
     if (typeof window !== 'undefined') {
@@ -245,6 +254,16 @@ export class PreferencesStore {
     this.disabledLanguages = codeLanguageIds(on ? off : [...off, id]);
     try {
       localStorage.setItem(DISABLED_LANGUAGES_KEY, JSON.stringify(this.disabledLanguages));
+    } catch {
+      // Storage disabled; the choice still applies for this run.
+    }
+  }
+
+  setNavigationCollapsed(on: boolean): void {
+    this.navigationCollapsed = on;
+    try {
+      if (on) localStorage.setItem(NAVIGATION_COLLAPSED_KEY, 'on');
+      else localStorage.removeItem(NAVIGATION_COLLAPSED_KEY);
     } catch {
       // Storage disabled; the choice still applies for this run.
     }

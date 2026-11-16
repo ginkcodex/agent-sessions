@@ -137,6 +137,28 @@ test('the editor font for session content persists and resets', async () => {
   } finally { globalThis.localStorage = previous; }
 });
 
+test('the collapsed sidebar persists, resets and survives failing storage', async () => {
+  const previous = globalThis.localStorage;
+  const values = new Map();
+  try {
+    let PreferencesStore = await storeWith(values);
+    const prefs = new PreferencesStore();
+    assert.equal(prefs.navigationCollapsed, false);
+    prefs.setNavigationCollapsed(true);
+    assert.equal(values.get('agent-sessions:navigation-collapsed'), 'on');
+    const restored = new PreferencesStore();
+    restored.init();
+    assert.equal(restored.navigationCollapsed, true);
+    restored.setNavigationCollapsed(false);
+    assert.equal(values.has('agent-sessions:navigation-collapsed'), false);
+
+    PreferencesStore = await storeWith(new Map(), { failWrites: true });
+    const failing = new PreferencesStore();
+    failing.setNavigationCollapsed(true);
+    assert.equal(failing.navigationCollapsed, true, 'the choice applies for this run');
+  } finally { globalThis.localStorage = previous; }
+});
+
 test('the terminal size persists, validates and resets, and sets no root property', async () => {
   const previous = globalThis.localStorage;
   const values = new Map([['agent-sessions:terminal-font-size', 'abc']]);

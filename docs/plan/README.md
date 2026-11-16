@@ -25,6 +25,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 | Plan | Tasks | Covers |
 |---|---|---|
+| [collapsible-sidebar.md](collapsible-sidebar.md) | [collapsible-sidebar](../tasks/collapsible-sidebar/README.md) | Collapse the sidebar and session list so the session content gets the full width |
 | [linux-window-theme.md](linux-window-theme.md) | [linux-window-theme](../tasks/linux-window-theme/README.md) | Native Linux chrome follows Light/Dark/System using GTK, subject to desktop decoration support |
 | [macos-window-theme.md](macos-window-theme.md) | [macos-window-theme](../tasks/macos-window-theme/README.md) | Native macOS title-bar appearance follows the app's Light/Dark/System mode |
 | [codex-skills-dialog.md](codex-skills-dialog.md) | [codex-skills-dialog](../tasks/codex-skills-dialog/README.md) | Codex skills inventory without model turns |

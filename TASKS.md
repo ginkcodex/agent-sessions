@@ -58,6 +58,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
+| Collapsible sidebar | [collapsible-sidebar](docs/plan/collapsible-sidebar.md) | [collapsible-sidebar/](docs/tasks/collapsible-sidebar/README.md) | 1/2 ✅ · 1 ⬜ |
 | Linux native window theme | [linux-window-theme](docs/plan/linux-window-theme.md) | [linux-window-theme/](docs/tasks/linux-window-theme/README.md) | 1/2 ✅ · 1 ⛔ |
 | macOS native window theme | [macos-window-theme](docs/plan/macos-window-theme.md) | [macos-window-theme/](docs/tasks/macos-window-theme/README.md) | 1/2 ✅ · 1 🟡 |
 | Codex skills dialog | [codex-skills-dialog](docs/plan/codex-skills-dialog.md) | [codex-skills-dialog/](docs/tasks/codex-skills-dialog/README.md) | 1/1 ✅ |

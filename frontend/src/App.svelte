@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import PortForwardDialog from './lib/components/common/PortForwardDialog.svelte';
   import { portForward } from './lib/stores/portForward.svelte';
   import { wslDistro } from './lib/hosts';
   import { isFullscreenShortcut, toggleFullscreen, preventDesktopEscapeFullscreen } from './lib/fullscreen';
   import { toast } from './lib/stores/toast.svelte';
   import Splitter from './lib/components/common/Splitter.svelte';
+  import Icon from './lib/components/common/Icon.svelte';
   import ModeSelector from './lib/components/sidebar/ModeSelector.svelte';
   import PathFilter from './lib/components/sidebar/PathFilter.svelte';
   import GroupTree from './lib/components/sidebar/GroupTree.svelte';
@@ -400,7 +401,18 @@
   // On the left the panel sits below the sidebar and the session list, as
   // wide as both, and the transcript keeps the full height.
   let panelMaximized = $derived(launcher.info.panel && terminals.open && terminals.maximized);
-  let panelLeft = $derived(launcher.info.panel && terminals.position === 'left' && !panelMaximized);
+  // With the left side collapsed a left panel has no column: it goes below the content.
+  let panelLeft = $derived(
+    launcher.info.panel && terminals.position === 'left' && !panelMaximized && !preferences.navigationCollapsed,
+  );
+
+  // The clicked toggle disappears, so focus moves to the other one.
+  let collapseButton: HTMLButtonElement | undefined = $state();
+  let expandButton: HTMLButtonElement | undefined = $state();
+  function setNavigationCollapsed(on: boolean) {
+    preferences.setNavigationCollapsed(on);
+    void tick().then(() => (on ? expandButton : collapseButton)?.focus());
+  }
 </script>
 
 <div class="app-layout">
@@ -409,11 +421,27 @@
     class="workspace"
     class:panel-left={panelLeft}
     class:panel-maximized={panelMaximized}
+    class:navigation-collapsed={preferences.navigationCollapsed}
     style:grid-template-columns={panelLeft
       ? `${preferences.widths.sidebar}px 0 ${preferences.widths.sessionList}px 0 minmax(0, 1fr)`
       : undefined}
   >
   <div class="shell">
+    {#if preferences.navigationCollapsed}
+      <nav class="pane nav-rail" aria-label="Collapsed navigation">
+        <button
+          type="button"
+          class="icon-button"
+          title="Show sidebar"
+          aria-label="Show sidebar"
+          aria-expanded="false"
+          bind:this={expandButton}
+          onclick={() => setNavigationCollapsed(false)}
+        >
+          <Icon name="panel-left-open" size={16} />
+        </button>
+      </nav>
+    {/if}
     <!-- Pane 1: Sidebar -->
     <aside
       class="pane sidebar"
@@ -528,6 +556,17 @@
               />
             {/if}
           </svg>
+        </button>
+        <button
+          type="button"
+          class="icon-button"
+          title="Hide sidebar"
+          aria-label="Hide sidebar"
+          aria-expanded="true"
+          bind:this={collapseButton}
+          onclick={() => setNavigationCollapsed(true)}
+        >
+          <Icon name="panel-left-close" size={16} />
         </button>
       </div>
     </header>
@@ -760,6 +799,23 @@
   .panel-maximized .shell > :global(.splitter),
   .panel-maximized .stale-overlay {
     display: none;
+  }
+
+  /* Hidden, not unmounted: filters, the tree and the list keep their state. */
+  .navigation-collapsed .sidebar,
+  .navigation-collapsed .sidebar + :global(.splitter),
+  .navigation-collapsed .session-list-container,
+  .navigation-collapsed .session-list-container + :global(.splitter) {
+    display: none;
+  }
+
+  .nav-rail {
+    flex-shrink: 0;
+    align-items: center;
+    width: 40px;
+    padding-top: 10px;
+    background-color: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
   }
 
   .panel-splitter {
