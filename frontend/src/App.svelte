@@ -471,9 +471,10 @@
         >
           <Icon name="panel-left-open" size={16} />
         </button>
-        {#if launcher.info.panel}
-          <div class="rail-bottom">{@render terminalButton()}</div>
-        {/if}
+        <div class="rail-bottom">
+          {#if launcher.info.panel}{@render terminalButton()}{/if}
+          <HostSelector dotOnly />
+        </div>
       </nav>
     {/if}
     <!-- Pane 1: Sidebar -->
@@ -825,6 +826,10 @@
   }
 
   .rail-bottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
     margin-top: auto;
     padding-bottom: 8px;
   }

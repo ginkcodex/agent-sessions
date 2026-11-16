@@ -14,6 +14,7 @@ Run the desktop app and record what was seen. No new features.
 - Collapse and expand with a session selected, with none, and with a chat.
 - Restart the app collapsed; it opens collapsed with the old widths on expand.
 - Terminal at the bottom, on the left, and maximized, in both states; the
-  rail's terminal button and its attention dot.
+  rail's terminal button and its attention dot; the rail's connection dot
+  while connecting, connected, reconnecting and on Local.
 - Tab order skips the hidden panes; the toggles work from the keyboard.
 - Light and dark themes; the sidebar at its minimum width.

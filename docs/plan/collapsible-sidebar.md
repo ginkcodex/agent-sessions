@@ -18,7 +18,9 @@ full width, and bring it back with one click. The choice survives restarts.
   window holds the expand button (`panel-left-open`), so it is reachable in
   every transcript state (empty, loading, error, session, chat). Where the
   app has a terminal panel, the rail's bottom holds the same terminal button
-  as the sidebar footer (one Svelte snippet for both).
+  as the sidebar footer (one Svelte snippet for both). Below it, the host
+  selector's status dot and tooltip (`HostSelector dotOnly`) tell Local from
+  a remote host and show the connection phase.
 - The sidebar, the session list and both splitters are hidden with CSS
   (`display: none`), not unmounted: filters, tree expansion and list state stay
   as they were. Hidden panes leave the tab order and the accessibility tree.
@@ -35,7 +37,8 @@ full width, and bring it back with one click. The choice survives restarts.
 
 - One click target per state, no keyboard shortcut: Ctrl+B and similar keys
   belong to shells and editors inside the app. A shortcut can be added later.
-- The rail shows the expand button and the terminal button. Other sidebar
+- The rail shows the expand button, the terminal button and the connection
+  dot (an indicator, not the host menu, which would not fit the rail). Other sidebar
   actions (search, settings, refresh) keep their keyboard shortcuts (`/`,
   Cmd/Ctrl+`,`) while collapsed.
 - No animation: the panes have pixel widths driven by the splitters.

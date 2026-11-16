@@ -4,6 +4,9 @@
   import HostEnvDialog from '../common/HostEnvDialog.svelte';
   import { filterHosts } from '../../link';
 
+  // dotOnly: just the status dot and its tooltip, for the collapsed sidebar's rail.
+  let { dotOnly = false }: { dotOnly?: boolean } = $props();
+
   let menuOpen = $state(false);
   let manualHost = $state('');
   // The alias being typed also narrows the SSH host list.
@@ -103,6 +106,11 @@
 
 <svelte:window onclick={handleWindowClick} onkeydown={handleKeydown} />
 
+{#if dotOnly}
+  <span class="dot-only" role="img" title={statusTitle} aria-label={statusTitle}>
+    <span class="status-dot {statusClass}"></span>
+  </span>
+{:else}
 <div class="host-selector" bind:this={menuEl}>
   <button
     type="button"
@@ -287,6 +295,7 @@
   host={envDialogHost}
   onClose={() => (envDialogOpen = false)}
 />
+{/if}
 
 <style>
   .host-selector {
@@ -321,6 +330,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* The 28px button size, so the tooltip has something to hover. */
+  .dot-only {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
   }
 
   .status-dot {
