@@ -27,10 +27,12 @@ full width, and bring it back with one click. The choice survives restarts.
 - Saved widths are kept, so expanding restores the previous layout.
 - Focus moves to the other toggle after a click, since the clicked one
   disappears.
-- Terminal panel placed on the left: its column sits under the sidebar and the
-  list, which are gone. While collapsed it is laid out at the bottom, under
-  the session content, so an open terminal never disappears. Expanding returns
-  it to the left.
+- Terminal panel placed on the left: it belongs to the left side, so
+  collapsing hides it with the sidebar and the list, and expanding shows it
+  again (CSB-06). While collapsed, the rail's terminal button (or Ctrl+`)
+  opens it at the bottom, under the session content; expanding then moves it
+  to the left. If the user opens it from the rail and closes it again,
+  expanding leaves it closed.
 - A maximized terminal hides the rail like the other panes.
 
 ### Session switcher in the rail
@@ -71,6 +73,8 @@ panel beside the rail, so the user can change session without expanding.
 
 - A scrolled list or tree may return at the top after being hidden; the
   selection is kept.
+- The "hidden by collapse" mark lives only for this run: after a restart in
+  the collapsed state, expanding does not reopen the left terminal.
 - At the sidebar's minimum width the header has one more button; the title
   already truncates there.
 

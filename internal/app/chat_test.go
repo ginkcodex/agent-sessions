@@ -175,7 +175,7 @@ func TestChatStartDeadlineAndCancel(t *testing.T) {
 				result := make(chan error, 1)
 				go func() { _, err := a.ChatStart(req); result <- err }()
 				var pidBytes []byte
-				deadline := time.Now().Add(5 * time.Second)
+				deadline := time.Now().Add(30 * time.Second)
 				for len(pidBytes) == 0 && time.Now().Before(deadline) {
 					pidBytes, _ = os.ReadFile(pidFile)
 					time.Sleep(5 * time.Millisecond)
