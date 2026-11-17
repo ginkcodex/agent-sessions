@@ -315,8 +315,9 @@
           <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
-      {#if terminals.maximized}
-        <!-- Maximized, the panel has no dock to move to: it lays split panes out either way. -->
+      {#if terminals.layoutChosen}
+        <!-- Maximized or with the sidebar collapsed, the panel spans the window and has no
+             dock to move to: it lays split panes out either way. -->
         <button
           type="button"
           class="icon-button"

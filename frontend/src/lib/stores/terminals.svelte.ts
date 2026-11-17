@@ -145,7 +145,16 @@ export class TerminalsStore {
   height = $state(PANEL_HEIGHT.default);
   /** Docked left, below the session list, until the user moves it. */
   position = $state<PanelPosition>('left');
-  /** Whether a maximized panel stacks split panes rather than setting them side by side. */
+  /**
+   * The left dock is out of the layout (the sidebar is collapsed), so a
+   * panel docked left shows at the bottom. Not saved: the app sets it.
+   */
+  leftDockHidden = $state(false);
+  /**
+   * Whether a panel with no dock layout (see `layoutChosen`) stacks split
+   * panes rather than setting them side by side. Named for the maximized
+   * panel, the first to use it; the saved key keeps the name.
+   */
   maximizedStacked = $state(false);
   /** A running agent tab whose close waits for confirmation. */
   confirming = $state<string | null>(null);
@@ -809,6 +818,15 @@ export class TerminalsStore {
     this.save();
   }
 
+  setLeftDockHidden(hidden: boolean): void {
+    this.leftDockHidden = hidden;
+  }
+
+  /** Where the docked panel shows: its position, unless the left dock is hidden. */
+  get placement(): PanelPosition {
+    return this.position === 'left' && !this.leftDockHidden ? 'left' : 'bottom';
+  }
+
   setMaximizedStacked(stacked: boolean): void {
     this.maximizedStacked = stacked;
     this.save();
@@ -819,9 +837,18 @@ export class TerminalsStore {
     this.save();
   }
 
-  /** Whether split panes stack: docked left, or maximized with stacking chosen. */
+  /**
+   * Maximized, or with the left dock hidden (the sidebar collapsed), the panel
+   * spans the window and has no dock to move to: split panes take the layout
+   * the user chose rather than the dock's.
+   */
+  get layoutChosen(): boolean {
+    return this.maximized || this.leftDockHidden;
+  }
+
+  /** Whether split panes stack: shown on the left, or stacking chosen where the layout is chosen. */
   get stacked(): boolean {
-    return this.maximized ? this.maximizedStacked : this.position === 'left';
+    return this.layoutChosen ? this.maximizedStacked : this.placement === 'left';
   }
 
   /**

@@ -4,10 +4,15 @@
   import HostEnvDialog from '../common/HostEnvDialog.svelte';
   import { filterHosts } from '../../link';
 
-  // dotOnly: just the status dot and its tooltip, for the collapsed sidebar's rail.
-  let { dotOnly = false }: { dotOnly?: boolean } = $props();
+  // rail: the collapsed sidebar's rail shows only the status dot, as a button
+  // that opens the same menu beside the rail.
+  let { rail = false }: { rail?: boolean } = $props();
 
   let menuOpen = $state(false);
+  // Rail menu: its bottom edge, in px from the window's bottom, lines up with
+  // the trigger's. The rail clips overflow, so the menu is fixed, not absolute.
+  let railMenuBottom = $state(8);
+  let trigger = $state<HTMLButtonElement | null>(null);
   let manualHost = $state('');
   // The alias being typed also narrows the SSH host list.
   let visibleHosts = $derived(filterHosts(connectionStore.hosts, manualHost));
@@ -49,6 +54,9 @@
   function toggleMenu() {
     menuOpen = !menuOpen;
     if (menuOpen) {
+      if (rail && trigger) {
+        railMenuBottom = Math.max(8, window.innerHeight - trigger.getBoundingClientRect().bottom);
+      }
       manualHost = '';
       void connectionStore.refreshHosts();
       // Typing a name is the last resort, so the field is ready first.
@@ -100,34 +108,53 @@
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape' && menuOpen) {
       closeMenu();
+      // Focus was in the menu, which is gone; give it back to the trigger.
+      trigger?.focus();
     }
   }
 </script>
 
 <svelte:window onclick={handleWindowClick} onkeydown={handleKeydown} />
 
-{#if dotOnly}
-  <span class="dot-only" role="img" title={statusTitle} aria-label={statusTitle}>
-    <span class="status-dot {statusClass}"></span>
-  </span>
-{:else}
 <div class="host-selector" bind:this={menuEl}>
-  <button
-    type="button"
-    class="host-chip"
-    title={statusTitle}
-    aria-label={statusTitle}
-    aria-expanded={menuOpen}
-    aria-haspopup="true"
-    onclick={toggleMenu}
-  >
-    <span class="status-dot {statusClass}"></span>
-    <span class="host-name">{connectionStore.currentHost}</span>
-    <Icon name="chevron-down" size={12} strokeWidth={2.25} class="caret-icon" />
-  </button>
+  {#if rail}
+    <button
+      type="button"
+      class="rail-trigger"
+      title={statusTitle}
+      aria-label={statusTitle}
+      aria-expanded={menuOpen}
+      aria-haspopup="true"
+      bind:this={trigger}
+      onclick={toggleMenu}
+    >
+      <span class="status-dot {statusClass}"></span>
+    </button>
+  {:else}
+    <button
+      type="button"
+      class="host-chip"
+      title={statusTitle}
+      aria-label={statusTitle}
+      aria-expanded={menuOpen}
+      aria-haspopup="true"
+      bind:this={trigger}
+      onclick={toggleMenu}
+    >
+      <span class="status-dot {statusClass}"></span>
+      <span class="host-name">{connectionStore.currentHost}</span>
+      <Icon name="chevron-down" size={12} strokeWidth={2.25} class="caret-icon" />
+    </button>
+  {/if}
 
   {#if menuOpen}
-    <div class="host-menu" role="menu">
+    <div
+      class="host-menu"
+      class:rail-menu={rail}
+      role="menu"
+      style:bottom={rail ? `${railMenuBottom}px` : undefined}
+      style:max-height={rail ? `calc(100vh - ${railMenuBottom}px - 8px)` : undefined}
+    >
       <div class="menu-section-header">Target Machine</div>
 
       <button
@@ -295,7 +322,6 @@
   host={envDialogHost}
   onClose={() => (envDialogOpen = false)}
 />
-{/if}
 
 <style>
   .host-selector {
@@ -332,13 +358,32 @@
     white-space: nowrap;
   }
 
-  /* The 28px button size, so the tooltip has something to hover. */
-  .dot-only {
+  /* The footer chip shrunk to its dot: same fill, border and hover, as a
+     circle. 25px, not the chip's 24px: the rail's content is 39px wide, so an
+     odd size keeps the border and the dot on whole pixels. */
+  .rail-trigger {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 25px;
+    height: 25px;
+    padding: 0;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .rail-trigger:hover,
+  .rail-trigger[aria-expanded='true'] {
+    background: var(--bg-hover);
+    border-color: var(--border-hover, var(--border-color));
+  }
+
+  .rail-trigger:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
   }
 
   .status-dot {
@@ -393,6 +438,15 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     padding: 6px 0;
     z-index: 105;
+  }
+
+  /* Beside the 40px rail, like the session switcher; `bottom` and
+     `max-height` are set inline from the trigger's position. */
+  .host-menu.rail-menu {
+    position: fixed;
+    left: 44px;
+    max-width: calc(100vw - 52px);
+    overflow-y: auto;
   }
 
   .menu-section-header {

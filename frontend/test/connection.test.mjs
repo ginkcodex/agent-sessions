@@ -717,14 +717,14 @@ let hostSelectorModule;
 
 // Server-renders the real HostSelector with its menu open: the compiled
 // initial state is flipped here, in the test, not by a production prop.
-async function renderHostSelector(connectionStore) {
+async function renderHostSelector(connectionStore, props = {}) {
   hostSelectorModule ??= await loadServerComponent(HOST_SELECTOR_URL, [
     ["import { connectionStore } from '../../stores/connection.svelte';", fixtureStore('connectionStore')],
     ["import HostEnvDialog from '../common/HostEnvDialog.svelte';", 'const HostEnvDialog = () => {};'],
     ["'../../link'", JSON.stringify(new URL('../../link.ts', HOST_SELECTOR_URL).href)],
     ['let menuOpen = false;', 'let menuOpen = true;'],
   ]);
-  return renderWithFixture(hostSelectorModule, { connectionStore });
+  return renderWithFixture(hostSelectorModule, { connectionStore }, props);
 }
 
 // A real ConnectionStore whose lists come from the mock backend.
@@ -765,6 +765,30 @@ test('HostSelector shows a connected distribution by label and checks its row', 
   assert.match(textOf(html), /Local WSL Ubuntu Default distribution Debian ✓ SSH Hosts/);
   assert.equal(textOf(html).split('✓').length - 1, 1, 'only the connected distribution is checked');
   assert.match(textOf(html), /Disconnect/);
+});
+
+test('HostSelector in the rail is a dot button that opens the same host menu', async () => {
+  const store = await hostSelectorStore(new MockBackendAPI(), { phase: 'connected', host: 'prod-server' });
+  const html = await renderHostSelector(store, { rail: true });
+  const trigger = html.match(/<button\b[^>]*class="rail-trigger[^"]*"[^>]*>/)?.[0];
+  assert.ok(trigger, html);
+  assert.match(trigger, /title="Connected to prod-server"/);
+  assert.match(trigger, /aria-label="Connected to prod-server"/);
+  assert.match(trigger, /aria-haspopup="true"/);
+  assert.match(trigger, /aria-expanded="true"/);
+  assert.match(html, /<span class="status-dot status-connected[^"]*">/);
+  assert.doesNotMatch(html, /class="host-chip|class="host-name/, 'no chip or host name in the rail');
+
+  // The full menu, placed beside the rail.
+  assert.match(html, /<div class="host-menu[^"]*rail-menu[^"]*" role="menu" style="bottom: 8px; max-height: calc\(100vh - 8px - 8px\);"/);
+  assert.match(textOf(html), /Target Machine Local WSL Ubuntu Default distribution Debian SSH Hosts/);
+  assert.match(textOf(html), /prod-server admin@prod.example.com ✓/);
+  assert.match(html, /placeholder="Connect to SSH alias…"/);
+  assert.match(textOf(html), /Disconnect/);
+
+  // The footer's chip keeps its own menu placement.
+  const footer = await renderHostSelector(store);
+  assert.doesNotMatch(footer, /rail-menu|rail-trigger|style="bottom/);
 });
 
 test('HostSelector leaves out the WSL section when there are no distributions', async () => {

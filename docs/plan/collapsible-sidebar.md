@@ -19,8 +19,12 @@ full width, and bring it back with one click. The choice survives restarts.
   every transcript state (empty, loading, error, session, chat). Where the
   app has a terminal panel, the rail's bottom holds the same terminal button
   as the sidebar footer (one Svelte snippet for both). Below it, the host
-  selector's status dot and tooltip (`HostSelector dotOnly`) tell Local from
-  a remote host and show the connection phase.
+  selector's status dot and tooltip (`HostSelector rail`) tell Local from
+  a remote host and show the connection phase. The dot sits in a round
+  button styled like the footer chip (its fill and border), which opens
+  the footer chip's host menu (same component and items) beside the rail,
+  its bottom edge level with the dot, fitting the window height and
+  scrolling when the window is short (CSB-07).
 - The sidebar, the session list and both splitters are hidden with CSS
   (`display: none`), not unmounted: filters, tree expansion and list state stay
   as they were. Hidden panes leave the tab order and the accessibility tree.
@@ -33,6 +37,13 @@ full width, and bring it back with one click. The choice survives restarts.
   opens it at the bottom, under the session content; expanding then moves it
   to the left. If the user opens it from the rail and closes it again,
   expanding leaves it closed.
+- While collapsed, the terminal panel spans the window's width whatever its
+  saved dock, so its toolbar matches the maximized one (CSB-08): no dock
+  button, and the "Stack split panes / Place split panes side by side"
+  toggle, which shares the maximized panel's saved choice. The terminal
+  store's `placement` is `bottom` and `layoutChosen` is true while the left
+  dock is hidden. The saved dock is kept, so expanding brings a left terminal
+  back to the left with the dock's layout.
 - A maximized terminal hides the rail like the other panes.
 
 ### Session switcher in the rail
@@ -62,7 +73,9 @@ panel beside the rail, so the user can change session without expanding.
 - One click target per state, no keyboard shortcut: Ctrl+B and similar keys
   belong to shells and editors inside the app. A shortcut can be added later.
 - The rail shows the expand button, the terminal button and the connection
-  dot (an indicator, not the host menu, which would not fit the rail). Other sidebar
+  dot. The dot opens the host menu as a floating panel beside the rail, so
+  the target machine can change without expanding; the chip itself (host
+  name and caret) would not fit the rail. Other sidebar
   actions (search, settings, refresh) keep their keyboard shortcuts (`/`,
   Cmd/Ctrl+`,`) while collapsed.
 - No animation: the panes have pixel widths driven by the splitters.
@@ -88,6 +101,8 @@ panel beside the rail, so the user can change session without expanding.
   both states.
 - The switcher lists filtered workspaces and sessions, opens the picked
   session and closes on Escape, outside click and selection.
+- The rail's dot opens the host menu; picking a target switches it as the
+  footer chip does.
 - Frontend tests, `npm run check` and the build pass.
 
 ## Tasks

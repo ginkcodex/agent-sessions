@@ -402,10 +402,10 @@
   // On the left the panel sits below the sidebar and the session list, as
   // wide as both, and the transcript keeps the full height.
   let panelMaximized = $derived(launcher.info.panel && terminals.open && terminals.maximized);
-  // With the left side collapsed a left panel has no column: it goes below the content.
-  let panelLeft = $derived(
-    launcher.info.panel && terminals.position === 'left' && !panelMaximized && !preferences.navigationCollapsed,
-  );
+  // With the left side collapsed a left panel has no column: it goes below the
+  // content. The store knows, so the panel's toolbar and split layout follow.
+  $effect.pre(() => terminals.setLeftDockHidden(preferences.navigationCollapsed));
+  let panelLeft = $derived(launcher.info.panel && terminals.placement === 'left' && !panelMaximized);
 
   // The clicked toggle disappears, so focus moves to the other one.
   let collapseButton: HTMLButtonElement | undefined = $state();
@@ -424,6 +424,7 @@
       void terminals.toggle(shellCwd);
     }
     preferences.setNavigationCollapsed(on);
+    terminals.setLeftDockHidden(on);
     void tick().then(() => (on ? expandButton : collapseButton)?.focus());
   }
 </script>
@@ -487,7 +488,7 @@
         <SessionSwitcher disabled={stale} />
         <div class="rail-bottom">
           {#if launcher.info.panel}{@render terminalButton()}{/if}
-          <HostSelector dotOnly />
+          <HostSelector rail />
         </div>
       </nav>
     {/if}

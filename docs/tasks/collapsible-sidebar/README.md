@@ -1,7 +1,7 @@
 # Collapsible sidebar — tasks
 
 - **Plan:** [collapsible-sidebar.md](../../plan/collapsible-sidebar.md)
-- **Progress:** 5/6 done
+- **Progress:** 7/8 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -10,4 +10,6 @@
 | [CSB-04](CSB-04.md) | ✅ Done | Connection status dot below the rail's terminal button | 1 h | CSB-03 |
 | [CSB-05](CSB-05.md) | ✅ Done | Session switcher in the rail | 4 h | CSB-01 |
 | [CSB-06](CSB-06.md) | ✅ Done | Hide a left terminal with the collapsed sidebar | 1 h | CSB-03 |
+| [CSB-07](CSB-07.md) | ✅ Done | Change the target machine from the rail's status dot | 1 h | CSB-04 |
+| [CSB-08](CSB-08.md) | ✅ Done | Terminal toolbar and split layout while collapsed | 1 h | CSB-06 |
 | [CSB-02](CSB-02.md) | ⬜ Not started | Visual check in the desktop app | 1 h | CSB-01 |
