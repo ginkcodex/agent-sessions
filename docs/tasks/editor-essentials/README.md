@@ -1,7 +1,7 @@
 # Editor essentials — tasks
 
 - **Plan:** [editor-essentials.md](../../plan/editor-essentials.md)
-- **Progress:** 25/25 done
+- **Progress:** 26/26 done
 
 Project search and replace, new agent sessions and alerts, code navigation
 and Git changes.
@@ -39,6 +39,7 @@ and Git changes.
 | [NAV-05](NAV-05.md) | ✅ Done | Navigation in the editor; HD-01/02 hover formatting follow-up complete | 3 h |
 | [NAV-06](NAV-06.md) | ✅ Done | References list | 3 h |
 | [NAV-07](NAV-07.md) | ✅ Done | Hide unavailable source/editor navigation menu entries | 1 h |
+| [NAV-08](NAV-08.md) | ✅ Done | Pyright definitions inside the project (found in manual testing) | 1 h |
 
 ## Git changes
 

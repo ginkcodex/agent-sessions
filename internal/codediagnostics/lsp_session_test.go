@@ -291,8 +291,11 @@ func TestSessionAdvertisesNoLiveCapability(t *testing.T) {
 	if len(td) != 3 || definition["linkSupport"] != true || td["references"] == nil || len(hover["contentFormat"].([]any)) != 2 {
 		t.Fatalf("textDocument capabilities %v", td)
 	}
-	if params["workspaceFolders"] != nil {
-		t.Fatal("workspace folders must not be advertised")
+	// The root is still named as the one workspace folder: Pyright resolves
+	// project imports only from workspace folders, not from rootUri.
+	folders, _ := params["workspaceFolders"].([]any)
+	if len(folders) != 1 || folders[0].(map[string]any)["uri"] != params["rootUri"] {
+		t.Fatalf("workspace folders %v, rootUri %v", params["workspaceFolders"], params["rootUri"])
 	}
 }
 

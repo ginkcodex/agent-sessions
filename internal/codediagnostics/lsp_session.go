@@ -965,9 +965,9 @@ func (s *lspSession) initialize() (ServerCapabilities, error) {
 // the client sends; they say what answers it can read, start nothing and are
 // not part of the approval policy. No other textDocument or window
 // capability, no edits, and no dynamic registration except an adapter's
-// AcknowledgeWatchers (acknowledged, never delivered). A scoped
-// workspace folder and rootUri name only the validated contained Directory,
-// never a broader project root.
+// AcknowledgeWatchers (acknowledged, never delivered). The one workspace
+// folder and rootUri name only the validated contained Directory (the root
+// when empty), never a broader project root.
 func (s *lspSession) initializeParams() map[string]any {
 	dir, err := commandDirectory(s.root, s.config.Directory)
 	if err != nil {
@@ -1006,9 +1006,9 @@ func (s *lspSession) initializeParams() map[string]any {
 		}
 		params["initializationOptions"] = options
 	}
-	if s.config.Directory != "" {
-		params["workspaceFolders"] = []map[string]string{{"uri": fileURI(dir), "name": filepath.Base(dir)}}
-	}
+	// Sent for the root too: Pyright resolves project imports only from
+	// workspace folders, not from rootUri.
+	params["workspaceFolders"] = []map[string]string{{"uri": fileURI(dir), "name": filepath.Base(dir)}}
 	return params
 }
 
