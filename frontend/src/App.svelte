@@ -77,7 +77,9 @@
     isSplitShortcut,
     isNewWindowShortcut,
     isPanelToggle,
+    isSidebarToggleShortcut,
     newWindowShortcutLabel,
+    sidebarToggleShortcutLabel,
     terminalTabShortcut,
     windowCycleShortcut,
   } from './lib/terminal';
@@ -271,6 +273,14 @@
         if (!launcher.info.panel || hasOpenModal()) return;
         event.preventDefault();
         void terminals.toggle(shellCwd);
+        return;
+      }
+      // Cmd+B on macOS, Ctrl+B elsewhere: hides or shows the sidebar. Text
+      // fields, the terminal and the editor keep the key.
+      if (isSidebarToggleShortcut(event, isMac)) {
+        if (isEditableTarget(event.target) || hasOpenModal() || panelMaximized) return;
+        event.preventDefault();
+        if (!event.repeat) setNavigationCollapsed(!preferences.navigationCollapsed);
         return;
       }
       // Cmd+T on macOS, Ctrl+Shift+T elsewhere: a new shell tab, showing the panel.
@@ -477,7 +487,7 @@
         <button
           type="button"
           class="icon-button"
-          title="Show sidebar"
+          title={`Show sidebar (${sidebarToggleShortcutLabel(isMac)})`}
           aria-label="Show sidebar"
           aria-expanded="false"
           bind:this={expandButton}
@@ -610,7 +620,7 @@
         <button
           type="button"
           class="icon-button"
-          title="Hide sidebar"
+          title={`Hide sidebar (${sidebarToggleShortcutLabel(isMac)})`}
           aria-label="Hide sidebar"
           aria-expanded="true"
           bind:this={collapseButton}

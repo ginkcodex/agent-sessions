@@ -70,8 +70,11 @@ panel beside the rail, so the user can change session without expanding.
 
 ## Decisions
 
-- One click target per state, no keyboard shortcut: Ctrl+B and similar keys
-  belong to shells and editors inside the app. A shortcut can be added later.
+- One click target per state, plus Cmd+B on macOS and Ctrl+B elsewhere
+  (CSB-09), as in editors. The key is ignored in text fields, the terminal
+  and the editor, where Ctrl+B belongs to tmux, readline and editors, while
+  a modal is open and while the terminal is maximized. The toggles' tooltips
+  name the key.
 - The rail shows the expand button, the terminal button and the connection
   dot. The dot opens the host menu as a floating panel beside the rail, so
   the target machine can change without expanding; the chip itself (host

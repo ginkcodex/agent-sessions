@@ -33,7 +33,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
 | Keyboard diagnostics | [keyboard-diagnostics](../plan/keyboard-diagnostics.md) | [keyboard-diagnostics/](keyboard-diagnostics/README.md) | 3/6 ✅ · 3 🟡 |
-| Collapsible sidebar | [collapsible-sidebar](../plan/collapsible-sidebar.md) | [collapsible-sidebar/](collapsible-sidebar/README.md) | 7/8 ✅ · 1 ⬜ |
+| Collapsible sidebar | [collapsible-sidebar](../plan/collapsible-sidebar.md) | [collapsible-sidebar/](collapsible-sidebar/README.md) | 8/9 ✅ · 1 ⬜ |
 | Linux native window theme | [linux-window-theme](../plan/linux-window-theme.md) | [linux-window-theme/](linux-window-theme/README.md) | 1/2 ✅ · 1 ⛔ |
 | macOS native window theme | [macos-window-theme](../plan/macos-window-theme.md) | [macos-window-theme/](macos-window-theme/README.md) | 1/2 ✅ · 1 🟡 |
 | Codex skills dialog | [codex-skills-dialog](../plan/codex-skills-dialog.md) | [codex-skills-dialog/](codex-skills-dialog/README.md) | 1/1 ✅ |

@@ -13,6 +13,8 @@ import {
   terminalTabShortcut,
   isNewShellShortcut,
   isNewWindowShortcut,
+  isSidebarToggleShortcut,
+  sidebarToggleShortcutLabel,
   isSplitShortcut,
   isTerminalFindShortcut,
   splitShortcutLabel,
@@ -1583,6 +1585,24 @@ test('new window: Cmd+N on macOS, Ctrl+Shift+N elsewhere, kept from the terminal
   assert.equal(terminalKeyAction(key('n', { metaKey: true }), true), 'app');
   assert.equal(newWindowShortcutLabel(true), '⌘N');
   assert.equal(newWindowShortcutLabel(false), 'Ctrl+Shift+N');
+});
+
+test('sidebar toggle: Cmd+B on macOS, Ctrl+B elsewhere, left to the terminal', () => {
+  const key = (k, mods = {}) => ({ type: 'keydown', key: k, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.ok(isSidebarToggleShortcut(key('b', { metaKey: true }), true));
+  assert.ok(!isSidebarToggleShortcut(key('b', { ctrlKey: true }), true));
+  assert.ok(isSidebarToggleShortcut(key('b', { ctrlKey: true }), false));
+  assert.ok(!isSidebarToggleShortcut(key('b', { metaKey: true }), false));
+  assert.ok(!isSidebarToggleShortcut(key('B', { ctrlKey: true, shiftKey: true }), false));
+  assert.ok(!isSidebarToggleShortcut(key('b', { ctrlKey: true, altKey: true }), false));
+  assert.ok(!isSidebarToggleShortcut(key('b'), false));
+  // Layouts without Latin letters use the key in B's place.
+  assert.ok(isSidebarToggleShortcut({ ...key('и', { ctrlKey: true }), code: 'KeyB' }, false));
+  assert.ok(!isSidebarToggleShortcut({ ...key('x', { ctrlKey: true }), code: 'KeyB' }, false));
+  // tmux's prefix stays with the shell.
+  assert.equal(terminalKeyAction(key('b', { ctrlKey: true }), false), null);
+  assert.equal(sidebarToggleShortcutLabel(true), '⌘B');
+  assert.equal(sidebarToggleShortcutLabel(false), 'Ctrl+B');
 });
 
 test('window cycling: Alt+` on Windows and Linux, kept from the terminal', () => {
