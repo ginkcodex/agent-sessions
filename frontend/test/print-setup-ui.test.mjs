@@ -101,7 +101,7 @@ const sheetURL = new URL('../src/lib/components/common/PrintSheet.svelte', impor
 const Sheet = await component(readFileSync(sheetURL, 'utf8'), fileURLToPath(sheetURL), [
   ["import { loadImage } from '../transcript/parts/ImagePart.svelte';", 'const loadImage = async () => ({});'],
   ["import { api } from '../../api';", 'const api = { printWindow: (...args) => globalThis.__printUI.nativePrint(...args) };'],
-  ["import { printTitle, setPrinter } from '../../print';", 'const { printTitle, setPrinter } = globalThis.__printUI;'],
+  ["import { fitTables, printTitle, setPrinter } from '../../print';", 'const { fitTables, printTitle, setPrinter } = globalThis.__printUI;'],
   ["import { DEFAULT_PRINT_PAGE_SETUP, installPrintPageSetup, printPageDimensions, printPageSetup } from '../../printPageSetup';", 'const { DEFAULT_PRINT_PAGE_SETUP, installPrintPageSetup, printPageDimensions, printPageSetup } = globalThis.__printUI;'],
   ["import { toast } from '../../stores/toast.svelte';", 'const toast = { show: notice => globalThis.__printUI.notices.push(notice) };'],
   ["import PrintPage from './PrintPage.svelte';", 'const PrintPage = globalThis.__printUI.page;'],

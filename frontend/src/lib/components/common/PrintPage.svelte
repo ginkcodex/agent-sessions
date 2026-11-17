@@ -2,7 +2,7 @@
   import type { LoadedImage } from '../../images';
   import { renderMarkdown } from '../../markdown';
   import { diagramSvg } from '../../mermaid';
-  import { printBlocks } from '../../print';
+  import { fitTables, printBlocks } from '../../print';
   import type { ResolvedTheme } from '../../theme';
 
   // A print document laid out as on paper: the title, then the Markdown with
@@ -33,6 +33,16 @@
   $effect(() => {
     void blocks;
     if (root) drawing = drawDiagrams(root, shade);
+  });
+
+  // The preview's tables refit as its page width or content changes. Fitting
+  // resizes the page, so it waits a frame to keep the observer out of a loop.
+  $effect(() => {
+    const el = root;
+    if (!el) return;
+    const observer = new ResizeObserver(() => requestAnimationFrame(() => fitTables(el)));
+    observer.observe(el);
+    return () => observer.disconnect();
   });
 
   // Diagrams that fail to draw keep showing their source.
@@ -147,6 +157,12 @@
 
   .print-page :global(.table-container) {
     overflow: visible;
+  }
+
+  /* A table too wide for the page wraps its short cells (see fitTables). */
+  .print-page :global(.table-container.wrap-head th.nowrap),
+  .print-page :global(.table-container.wrap-cells .nowrap) {
+    white-space: normal;
   }
 
   /* Short code blocks keep to one page. */

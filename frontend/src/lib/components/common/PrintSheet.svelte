@@ -19,7 +19,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { api } from '../../api';
-  import { printTitle, setPrinter, type PrintDocument } from '../../print';
+  import { fitTables, printTitle, setPrinter, type PrintDocument } from '../../print';
   import { DEFAULT_PRINT_PAGE_SETUP, installPrintPageSetup, printPageDimensions, printPageSetup } from '../../printPageSetup';
   import { toast } from '../../stores/toast.svelte';
   import PrintPage from './PrintPage.svelte';
@@ -65,6 +65,7 @@
       if (!sheet) { restoreTitle(); return; }
       await Promise.all([page?.drawn(), ...[...sheet.querySelectorAll('img')].map((img) => img.decode().catch(() => {}))]);
       if (id !== generation) return;
+      fitTables(sheet);
 
       // The dialog offers the title as the PDF's file name. macOS reports no
       // afterprint, so the next click or key restores title and page setup too.
@@ -105,17 +106,27 @@
 </div>
 
 <style>
+  /* Unseen on screen, but laid out at the paper's width (max-width caps the
+     width) so its tables can be fitted to the page before printing. */
   .print-sheet {
-    display: none;
+    position: fixed;
+    top: 0;
+    left: -10000px;
+    width: 10000px;
+    visibility: hidden;
+    pointer-events: none;
+    /* macOS's WebKit cuts up to about a pixel and a half off the right of
+       each page, where the page width falls between pixels; content kept
+       2px in from the edge prints whole. */
+    padding-right: 2px;
   }
 
   @media print {
     .print-sheet {
-      display: block;
-      /* macOS's WebKit cuts up to about a pixel and a half off the right of
-         each page, where the page width falls between pixels; content kept
-         2px in from the edge prints whole. */
-      padding-right: 2px;
+      position: static;
+      width: auto;
+      visibility: visible;
+      pointer-events: auto;
       print-color-adjust: exact;
       -webkit-print-color-adjust: exact;
     }
