@@ -10,6 +10,8 @@ import App from './App.svelte'
 import { api } from './lib/api'
 import { isDesktop, loadDesktopRuntime } from './lib/desktopRuntime'
 import { startKeyboardDiagnostics } from './lib/keyboardDiagnostics'
+import { installKeyOrderGuard } from './lib/keyOrderGuard'
+import { installTextInputDefaults } from './lib/textInputDefaults'
 import { startLiveDocuments } from './lib/liveDocumentsWiring'
 import { setupDropGuard, setupLinkInterceptor } from './lib/navigation'
 import { showStartupError } from './lib/startupError'
@@ -23,6 +25,9 @@ if (isDesktop()) {
   startKeyboardDiagnostics();
 }
 
+// Spellcheck, autocorrect and inline predictions stay off in every field
+// (KD-06).
+installTextInputDefaults();
 setupLinkInterceptor(api);
 setupDropGuard();
 startLiveDocuments();
@@ -31,6 +36,10 @@ startLiveDocuments();
 // they show through dialogs and floating buttons. style.css replaces them
 // with CSS scrollbars on Linux only; macOS keeps its native overlay ones.
 export const isMac = /Mac/.test(navigator.userAgent) && !/iPhone/.test(navigator.userAgent) && !/iPad/.test(navigator.userAgent);
+
+// WebKit on macOS sometimes hands OpenKey's Backspaces to the page after its
+// replacement text; the guard puts them back in order (KD-05).
+if (isDesktop() && isMac) installKeyOrderGuard();
 
 if (/Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent)) {
   document.documentElement.dataset.platform = 'linux';

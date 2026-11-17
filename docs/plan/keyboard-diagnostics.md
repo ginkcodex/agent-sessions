@@ -146,6 +146,93 @@ From the 2026-11-16 live session:
 - The Press-and-Hold popup; terminal output load; Apple's Vietnamese input
   method (only ABC is enabled).
 
+## Finding from the first fault log
+
+The log saved on 2026-11-16 at 23:23 (app 1.6.9, chat composer, ABC selected)
+matches none of the four cases above. OpenKey's events reach AppKit in the
+right order, and the page gets all of them, but the page gets them in a
+different order:
+
+- Natively, each word is OpenKey's spacer, N Backspaces, then the
+  replacement, for example `ông` as one key code 0 event.
+- In the page, the Backspace keyups arrive first, the replacement's keydown
+  and `insertText` come next, and some or all Backspace keydowns come after
+  it. Their `deleteContentBackward` then removes the text just inserted.
+  `cong` plus `6` becomes `cong ông` minus four characters, which is `cong`.
+  In the same way, `aa` becomes `a` + `â` minus one, which is `a`.
+- 18 of the 19 replacements in the log had Backspace keydowns after the
+  replacement text.
+
+Keyups are not routed through the input context, while keydowns are, so the
+likely cause is WebKit's input-context step finishing out of order for this
+process. That would also explain why switching apps or quitting clears it.
+This is inferred, not proven. A plain WKWebView in a harness keeps the same
+burst in order. See [KD-04](../tasks/keyboard-diagnostics/KD-04.md); the fix is
+[KD-05](../tasks/keyboard-diagnostics/KD-05.md).
+
+## Fix: key order guard (KD-05)
+
+The user confirmed that, while the fault is present, other apps type
+Vietnamese normally, and that switching to another app and back clears it.
+The page cannot reach WebKit's queue, but it can see the symptom: a Backspace
+keyup that arrives before its keydown. On macOS a capture listener on the
+window (`keyOrderGuard.ts`) pairs Backspace keydowns with their keyups:
+
+- A keyup with no open keydown is counted as early.
+- A later Backspace keydown that matches an early keyup arrived before any
+  text, so it passes as usual.
+- If typed text arrives while early keyups are counted, the guard cancels
+  the text's keydown and applies the missing deletes first, then the text.
+  In a text field it uses `execCommand('delete')` and
+  `execCommand('insertText')`, so undo and `input` events still work. In the
+  terminal it sends DELs, then the text. The late Backspace keydowns for
+  those deletes are cancelled when they arrive.
+- OpenKey's U+202F spacer comes before its Backspaces, so it never starts a
+  repair.
+- Counts expire after 100 ms and reset when the window loses focus. A stray
+  keyup, for example from a key released after switching windows, cannot
+  delete text later.
+
+The guard calls `stopPropagation`, not `stopImmediatePropagation`, so the
+keyboard recorder still sees the cancelled events. It also fires a
+`keyorderguard` event that the recorder logs, so a fault log shows each
+repair. Key events in the normal order never change the counts, so ordinary
+typing and held Backspace are untouched. A native reset of the input context
+(what switching apps does) was considered, but there is no known API for it
+and no way to test it without the fault. It stays an option if the guard is
+not enough.
+
+## Text checking off everywhere (KD-06)
+
+The user asked to turn off autocorrect and spellcheck in every text input,
+on a report that they can upset the Backspace order. The KD-04 fault was in
+the chat composer, which already has `spellcheck="false"`,
+`autocorrect="off"` and `autocapitalize="off"` (ACP-17), so those three did
+not cause that log. They are still off in only some fields. Some macOS
+features have no HTML attribute: text replacement, smart quotes and dashes,
+smart insert and delete, link detection, and grammar checking. Inline
+predictions are off only with `writingsuggestions="false"`. Two layers:
+
+- **Page, all platforms** (`textInputDefaults.ts`). `<html>` gets
+  `spellcheck="false"` and `writingsuggestions="false"`, which descendants
+  inherit. A capture `focusin` listener sets `spellcheck="false"`,
+  `autocorrect="off"`, `autocapitalize="off"` and `writingsuggestions="false"`
+  on each text field (textarea, text-like input, contenteditable) as it gets
+  focus, before any typing. Fields that set these themselves keep working,
+  because the values are the same.
+- **WebKit, macOS** (`textcheck_darwin.go`). Before any web view exists, the
+  app registers `NO` for WebKit's text-checking user defaults:
+  `WebContinuousSpellCheckingEnabled`, `WebGrammarCheckingEnabled`,
+  `WebAutomaticSpellingCorrectionEnabled`, `WebAutomaticTextReplacementEnabled`,
+  `WebAutomaticQuoteSubstitutionEnabled`, `WebAutomaticDashSubstitutionEnabled`,
+  `WebAutomaticLinkDetectionEnabled`, `WebSmartInsertDeleteEnabled` and
+  `WebSmartListsEnabled`. WebKit's `TextCheckerMac.mm` uses these keys before
+  falling back to the system settings. They go in the registration domain,
+  so nothing is written to the user's preferences. If the user turns a
+  feature back on from the context menu, WebKit saves that choice and it
+  wins. The page attributes still keep spelling and autocorrect off in each
+  field.
+
 ## Release criteria
 
 - With recording off, nothing is recorded and no page listeners are attached.

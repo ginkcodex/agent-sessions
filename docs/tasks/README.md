@@ -32,7 +32,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| Keyboard diagnostics | [keyboard-diagnostics](../plan/keyboard-diagnostics.md) | [keyboard-diagnostics/](keyboard-diagnostics/README.md) | 2/4 ✅ · 1 🟡 · 1 ⬜ |
+| Keyboard diagnostics | [keyboard-diagnostics](../plan/keyboard-diagnostics.md) | [keyboard-diagnostics/](keyboard-diagnostics/README.md) | 3/6 ✅ · 3 🟡 |
 | Collapsible sidebar | [collapsible-sidebar](../plan/collapsible-sidebar.md) | [collapsible-sidebar/](collapsible-sidebar/README.md) | 4/5 ✅ · 1 ⬜ |
 | Linux native window theme | [linux-window-theme](../plan/linux-window-theme.md) | [linux-window-theme/](linux-window-theme/README.md) | 1/2 ✅ · 1 ⛔ |
 | macOS native window theme | [macos-window-theme](../plan/macos-window-theme.md) | [macos-window-theme/](macos-window-theme/README.md) | 1/2 ✅ · 1 🟡 |

@@ -71,6 +71,17 @@ test('password inputs keep the event but drop the key and the text', () => {
   assert.ok(!('data' in i));
 });
 
+test('key order guard corrections are recorded with their action and delete count', () => {
+  const win = page();
+  assert.ok(RECORDED_EVENTS.includes('keyorderguard'));
+  const e = new win.CustomEvent('keyorderguard', { detail: { action: 'repair', deletes: 4 } });
+  Object.defineProperty(e, 'target', { value: win });
+  Object.defineProperty(e, 'timeStamp', { value: 2 });
+  assert.deepEqual(keyboardRecord(e, 1000, true), {
+    t: 1002, type: 'keyorderguard', target: 'window', focus: true, action: 'repair', deletes: 4,
+  });
+});
+
 // A fake desktop: records calls, delivers state events, runs timers by hand.
 function harness({ enabled = false, failSend = false } = {}) {
   const win = page();

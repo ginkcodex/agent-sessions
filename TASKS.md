@@ -58,7 +58,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| Keyboard diagnostics | [keyboard-diagnostics](docs/plan/keyboard-diagnostics.md) | [keyboard-diagnostics/](docs/tasks/keyboard-diagnostics/README.md) | 2/4 ✅ · 1 🟡 · 1 ⬜ |
+| Keyboard diagnostics | [keyboard-diagnostics](docs/plan/keyboard-diagnostics.md) | [keyboard-diagnostics/](docs/tasks/keyboard-diagnostics/README.md) | 3/6 ✅ · 3 🟡 |
 | Collapsible sidebar | [collapsible-sidebar](docs/plan/collapsible-sidebar.md) | [collapsible-sidebar/](docs/tasks/collapsible-sidebar/README.md) | 4/5 ✅ · 1 ⬜ |
 | Linux native window theme | [linux-window-theme](docs/plan/linux-window-theme.md) | [linux-window-theme/](docs/tasks/linux-window-theme/README.md) | 1/2 ✅ · 1 ⛔ |
 | macOS native window theme | [macos-window-theme](docs/plan/macos-window-theme.md) | [macos-window-theme/](docs/tasks/macos-window-theme/README.md) | 1/2 ✅ · 1 🟡 |

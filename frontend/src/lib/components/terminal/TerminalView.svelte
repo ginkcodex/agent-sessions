@@ -24,6 +24,7 @@
   import { installTerminalColorScheme } from '../../terminalColorScheme';
   import { installTerminalClipboard, installTerminalPaste, pasteInto } from '../../terminalClipboard';
   import { installTerminalCompositionText, terminalReplacementText } from '../../terminalTextInput';
+  import { registerKeyOrderTerminal } from '../../keyOrderGuard';
   import { files } from '../../stores/files.svelte';
   import { link } from '../../stores/link.svelte';
   import { epoch, isStaleReply } from '../../link';
@@ -188,6 +189,8 @@
     colorScheme = scheme;
     const clipboard = installTerminalClipboard(t, (text) => void copyToClipboard(text));
     const nativePaste = installTerminalPaste(host, t);
+    // The key order guard (KD-05) sends a repaired OpenKey burst here.
+    const keyOrder = isMac ? registerKeyOrderTerminal(t.textarea, (data) => t.input(data, true)) : () => {};
     processSize = new TerminalResize(async (cols, rows) => {
       if (tab.status !== 'running') { processSize?.dispose(); return; }
       terminals.resized(id);
@@ -224,6 +227,7 @@
       colorScheme = null;
       clipboard.dispose();
       nativePaste.dispose();
+      keyOrder();
       fileLinks.dispose();
       results.dispose();
       opener.dispose();
