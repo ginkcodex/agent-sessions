@@ -410,7 +410,19 @@
   // The clicked toggle disappears, so focus moves to the other one.
   let collapseButton: HTMLButtonElement | undefined = $state();
   let expandButton: HTMLButtonElement | undefined = $state();
+  // A terminal docked left collapses with the sidebar and returns with it,
+  // unless the user opened it from the rail meanwhile.
+  let terminalHiddenByCollapse = false;
+  $effect(() => {
+    if (terminals.open) terminalHiddenByCollapse = false;
+  });
   function setNavigationCollapsed(on: boolean) {
+    if (on && panelLeft && terminals.open) {
+      terminals.setOpen(false);
+      terminalHiddenByCollapse = true;
+    } else if (!on && terminalHiddenByCollapse) {
+      void terminals.toggle(shellCwd);
+    }
     preferences.setNavigationCollapsed(on);
     void tick().then(() => (on ? expandButton : collapseButton)?.focus());
   }
