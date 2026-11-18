@@ -82,8 +82,9 @@ any command a completion item carries.
   and converts LSP placeholders (`$1`, `${1:name}`, `$0`) to CodeMirror
   snippets with tab stops.
 - **Ruby completion and Python auto-imports are switched on in CC-08.**
-  ruby-lsp runs with `completion: false` and Pyright with
-  `autoImportCompletions: false` (`ruby_lsp.go`, `pyright_lsp.go`). The
+  ruby-lsp ran with `completion: false` and Pyright with
+  `autoImportCompletions: false` (`ruby_lsp.go`, `pyright_lsp.go`); both are
+  on since CC-08. The
   settings are part of the server's fingerprint, but a project's grant
   carries over to a new fingerprint (`GrantStore.lookup`), so nobody is
   asked again. Running Ruby and Python servers restart once with the new

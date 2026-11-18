@@ -316,8 +316,9 @@ export const codeSuggestions: CompletionSource = context => {
     const options = items.map((item, index) => serverOption(item, index, boosts[index], answer, askedDoc, pos, start));
     if (words && words.from === start) options.push(...words.options.filter(option => !offered.has(option.label)));
     if (!options.length) return null;
-    // An incomplete answer is asked again as the user types on.
-    return { from: start, options, ...(answer.incomplete ? {} : { validFor: IDENTIFIER }) };
+    // An incomplete answer is asked again as the user types on, and so is an
+    // empty one: a server still indexing (ruby-lsp) answers nothing at first.
+    return { from: start, options, ...(answer.incomplete || !items.length ? {} : { validFor: IDENTIFIER }) };
   });
 };
 

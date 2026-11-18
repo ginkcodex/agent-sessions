@@ -203,7 +203,7 @@ test('Ruby: RuboCop setup text and install hints, never an app download or a Rub
   // Approval names RuboCop as giving no navigation, unless Ruby is off.
   const approval = await render({ providers: [live('gopls', ['.go'], 'approvalRequired'), rubocop('approvalRequired')], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [{ providerId: 'rubocop', executable: '/r/bin/ruby', configPaths: ['Gemfile'] }] } } });
   assert.match(approval, /Ruff alone does not provide navigation\. RuboCop alone does not provide navigation for Ruby\./);
-  assert.doesNotMatch(/hover with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? 'missing RuboCop', /RuboCop/);
+  assert.doesNotMatch(/suggestions with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? 'missing RuboCop', /RuboCop/);
   const rubyOff = await render({ languagesOff: ['ruby'], providers: [live('gopls', ['.go'], 'approvalRequired'), rubocop('disabled')], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [] } } });
   assert.doesNotMatch(rubyOff, /RuboCop alone does not provide navigation|RuboCop is never downloaded|gem install rubocop|ruby-lsp/);
   assert.match(rubyOff, /Ruby is off in Settings/);
@@ -218,7 +218,7 @@ test('Ruby: ruby-lsp row, setup text and install hint; navigation names it, neve
   const missing = await render({ providers: [saved, rubocop('available'), rubyLsp('missingTool', 'ruby-lsp is not installed for Ruby 4.0.9. Run gem install ruby-lsp, then refresh.')], managed: { hostId: 'local:actual', state: 'idle' } });
   assert.match(missing, /<span class="name[^"]*">Ruby language server \(ruby-lsp\)<\/span> <span class="pill tone-bad[^"]*">Not installed<\/span>/);
   assert.match(missing, /ruby-lsp is not installed for Ruby 4\.0\.9\. Run gem install ruby-lsp, then refresh\./);
-  assert.match(missing, /ruby-lsp, also never downloaded, answers go to definition, references and hover in opened Ruby files with the same Ruby\./);
+  assert.match(missing, /ruby-lsp, also never downloaded, answers go to definition, references, hover and code suggestions in opened Ruby files with the same Ruby\./);
   assert.match(missing, /without add-ons; it reads the project's Ruby files, Ruby's standard library and installed gems, evaluates the project's Gemfile, and reports no problems\. Right after it starts it may answer nothing while it indexes the project\./);
   assert.doesNotMatch(missing, /Install ruby-lsp|Ruby, a missing/);
   assert.ok(!renderedButtons(missing).some(b => /^Install /.test(b.text)));
@@ -229,9 +229,9 @@ test('Ruby: ruby-lsp row, setup text and install hint; navigation names it, neve
   // A Ruby project with only ruby-lsp registered still gets the Ruby setup text.
   assert.match(old, /ruby-lsp, also never downloaded/);
   // Approval lists ruby-lsp among the navigation servers, and its approval notice.
-  const notice = "ruby-lsp reads the project's Ruby files, Ruby's standard library and the gems in Gemfile.lock to answer Go to Definition, references and hover; it reports no problems. Add-ons are not loaded. It evaluates the project's Gemfile. Ruby navigation covers opened documents only.";
+  const notice = "ruby-lsp reads the project's Ruby files, Ruby's standard library and the gems in Gemfile.lock to answer Go to Definition, references, hover and code suggestions; it reports no problems. Add-ons are not loaded. It evaluates the project's Gemfile. Ruby navigation covers opened documents only.";
   const approval = await render({ providers: [rubocop('approvalRequired'), rubyLsp('approvalRequired', notice)], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [{ providerId: 'ruby-lsp', executable: '/r/bin/ruby', configPaths: ['Gemfile', 'Gemfile.lock'] }] } } });
-  assert.match(/hover with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? '', /ruby-lsp for Ruby, JDT LS for Java \(JDK 25\+\) and Intelephense for PHP \(Node\.js\)$/);
+  assert.match(/suggestions with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? '', /ruby-lsp for Ruby, JDT LS for Java \(JDK 25\+\) and Intelephense for PHP \(Node\.js\)$/);
   assert.match(approval, /Ruby language server \(ruby-lsp\)/);
   assert.ok(approval.includes(notice.replaceAll("'", '&#39;')) || approval.includes(notice), 'approval notice');
 });

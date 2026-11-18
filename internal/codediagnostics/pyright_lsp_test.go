@@ -142,7 +142,7 @@ func TestDiscoverPyrightAvailability(t *testing.T) {
 	py, _ := s["python"].(map[string]any)
 	an, _ := py["analysis"].(map[string]any)
 	pr, _ := s["pyright"].(map[string]any)
-	if py["pythonPath"] != nil || an["diagnosticMode"] != "openFilesOnly" || an["typeCheckingMode"] != "basic" || pr["disableLanguageServices"] != false ||
+	if py["pythonPath"] != nil || an["diagnosticMode"] != "openFilesOnly" || an["typeCheckingMode"] != "basic" || pr["disableLanguageServices"] != false || an["autoImportCompletions"] != true ||
 		an["diagnosticSeverityOverrides"].(map[string]any)["reportMissingImports"] != "none" {
 		t.Fatalf("settings %s", cfg.Settings)
 	}

@@ -59,7 +59,7 @@ func TestDiscoverRubyLsp(t *testing.T) {
 		cfg.Reindex != "textDocument/documentSymbol" ||
 		!slices.Equal(cfg.ExternalRoots, []string{filepath.Join(rt.Prefix, "lib/ruby"), user, interpreterGems}) ||
 		cfg.Settings != nil || cfg.DeclareDiagnostics || cfg.AcknowledgeWatchers || cfg.ValidateStart != nil || cfg.Directory != "" ||
-		cfg.AdapterPolicy != "ruby-lsp-v1:min-0.26:"+runtime.GOOS+"/"+runtime.GOARCH+":ruby-wrapper:no-addons:navigation-only:no-edits:opened-documents" ||
+		cfg.AdapterPolicy != "ruby-lsp-v1:min-0.26:"+runtime.GOOS+"/"+runtime.GOARCH+":ruby-wrapper:no-addons:navigation-completion:no-edits:opened-documents" ||
 		!reflect.DeepEqual(cfg.ExitFailures, map[int]string{3: "ruby-lsp 0.26.11 is not compatible with this app: the app cannot start it without add-ons."}) {
 		t.Fatalf("%+v", cfg)
 	}
@@ -79,7 +79,7 @@ func TestDiscoverRubyLsp(t *testing.T) {
 	st := p.Provider()
 	if st.ProviderID != rubyLspProviderID || st.Availability != "available" || st.Coverage.Kind != "openedDocuments" || st.Coverage.Partial ||
 		!slices.Equal(st.Coverage.Roots, []string{""}) || !slices.Equal(st.DocumentExtensions, []string{".rb", ".rake", ".gemspec", ".ru"}) || st.MissingTool ||
-		st.Notice != "ruby-lsp reads the project's Ruby files, Ruby's standard library and the gems in Gemfile.lock to answer Go to Definition, references and hover; it reports no problems. Add-ons are not loaded. It evaluates the project's Gemfile. Ruby navigation covers opened documents only." {
+		st.Notice != "ruby-lsp reads the project's Ruby files, Ruby's standard library and the gems in Gemfile.lock to answer Go to Definition, references, hover and code suggestions; it reports no problems. Add-ons are not loaded. It evaluates the project's Gemfile. Ruby navigation covers opened documents only." {
 		t.Fatalf("%+v", st)
 	}
 	if !p.covers("lib/a.rb") {
@@ -177,8 +177,8 @@ func TestRubyLspWrapperAndOptions(t *testing.T) {
 		t.Fatal("wrapper")
 	}
 
-	// Every feature RL-00 saw in ruby-lsp 0.26.11 is named; only navigation
-	// and the documentSymbol re-index stay on.
+	// Every feature RL-00 saw in ruby-lsp 0.26.11 is named; only navigation,
+	// completion (CC-08) and the documentSymbol re-index stay on.
 	var opts struct {
 		EnabledFeatures map[string]bool
 		Linters         []string
@@ -197,8 +197,8 @@ func TestRubyLspWrapperAndOptions(t *testing.T) {
 	}
 	slices.Sort(on)
 	slices.Sort(off)
-	if !slices.Equal(on, []string{"definition", "documentSymbols", "hover"}) || !slices.Equal(off, []string{
-		"codeActions", "codeLens", "completion", "diagnostics", "documentHighlights", "documentLink", "foldingRanges", "formatting",
+	if !slices.Equal(on, []string{"completion", "definition", "documentSymbols", "hover"}) || !slices.Equal(off, []string{
+		"codeActions", "codeLens", "diagnostics", "documentHighlights", "documentLink", "foldingRanges", "formatting",
 		"inlayHint", "onTypeFormatting", "selectionRanges", "semanticHighlighting", "signatureHelp", "typeHierarchy", "workspaceSymbol",
 	}) {
 		t.Fatal(on, off)
@@ -215,7 +215,7 @@ func TestRubyLspWrapperAndOptions(t *testing.T) {
 	wrapper.Args = slices.Clone(cfg.Args)
 	wrapper.Args[1] = strings.Replace(rubyLspWrapper, "def load_addons(*, **); end", "def load_addons(*, **) = super", 1)
 	options := cfg
-	options.InitializationOptions = json.RawMessage(strings.Replace(rubyLspOptions, `"completion":false`, `"completion":true`, 1))
+	options.InitializationOptions = json.RawMessage(strings.Replace(rubyLspOptions, `"completion":true`, `"completion":false`, 1))
 	exits := cfg
 	exits.ExitFailures = nil
 	if wrapper.Policy() == cfg.Policy() || options.Policy() == cfg.Policy() || exits.Policy() != cfg.Policy() {

@@ -1411,7 +1411,9 @@ test('words alone, at once, when no server can be asked; asked again next time w
     assert.equal(words.validFor, undefined, 'the next keystroke asks the server again');
   }
   h.reply = async () => ({ items: [], incomplete: false });
-  assert.deepEqual((await h.suggest()).options.map(o => o.label), ['alpha', 'alphabet']);
+  const empty = await h.suggest();
+  assert.deepEqual(empty.options.map(o => o.label), ['alpha', 'alphabet']);
+  assert.equal(empty.validFor, undefined, 'nothing yet (ruby-lsp indexing): the next keystroke asks again');
   assert.equal(await h.suggest(6), null, 'after a space with nothing to offer');
 
   // Words from another start than the server's edits are left out.
