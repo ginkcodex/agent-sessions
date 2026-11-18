@@ -60,7 +60,9 @@ any command a completion item carries.
   positions match. Navigation's polling wait is too slow for this.
 - **One request at a time per editor.** A new request cancels the previous
   one, locally and over SSH/WSL, through an explicit cancel binding like
-  `CancelCodeDiagnostics`. A request times out after 5 s.
+  `CancelSearch`: the app cancels the request's context. Over SSH/WSL the
+  client then sends `$/cancelRequest`, which cancels the server's request in
+  turn, so no cancel RPC method is needed. A request times out after 5 s.
 - **Filtering is local when the server allows it.** When an answer is
   complete (`isIncomplete` false), CodeMirror filters it as the user types
   more and does not ask again. An incomplete or truncated answer is asked
@@ -121,8 +123,10 @@ Completion follows navigation's path:
   `resyncRequired`, `unsupported`, `timeout`, `canceled`, `busy`,
   `toolFailed`).
 - Wire: app bindings `CompleteCode`, `ResolveCodeCompletion` and
-  `CancelCodeCompletion`; RPC methods of the same names in the live method
-  list; a `codeCompletion` capability set only with `liveCodeDiagnostics`.
+  `CancelCodeCompletion(requestId)`; RPC methods `completeCode` and
+  `resolveCodeCompletion` in the live method list (cancel is
+  `$/cancelRequest`); a `codeCompletion` capability set only with
+  `liveCodeDiagnostics`.
 
 ### Frontend (CC-01, CC-05, CC-06, CC-07)
 

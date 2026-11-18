@@ -284,6 +284,60 @@ func (c *Client) NavigateCode(ctx context.Context, token cd.Context, documentID 
 	return out, nil
 }
 
+// completionCall checks the codeCompletion capability and the sizes before
+// anything is written, so an older server never sees a completion request.
+func (c *Client) completionCall(ctx context.Context, method string, p codeDiagnosticsParams, out any) error {
+	c.mu.Lock()
+	complete := c.caps.CodeCompletion && c.caps.LiveCodeDiagnostics
+	c.mu.Unlock()
+	if !complete {
+		return cdError("unsupported", "Code completion unavailable")
+	}
+	if err := checkLiveParams(p); err != nil {
+		return err
+	}
+	return c.diagnosticsCall(ctx, method, p, out)
+}
+
+// CompleteCode asks the server's language server for completions in a live
+// document. The answer must be for the document and version asked about, and
+// within the bounds a local answer keeps. Canceling ctx sends
+// $/cancelRequest, which cancels the server's request in turn.
+func (c *Client) CompleteCode(ctx context.Context, token cd.Context, documentID string, version int64, pos cd.Position, trigger cd.CompletionTrigger) (cd.CompletionResult, error) {
+	var out cd.CompletionResult
+	p := codeDiagnosticsParams{Context: token, DocumentID: documentID, Version: version, Position: &pos, Trigger: &trigger}
+	if err := c.completionCall(ctx, "completeCode", p, &out); err != nil {
+		return cd.CompletionResult{}, err
+	}
+	if out.DocumentID != documentID || out.Version != version {
+		return cd.CompletionResult{}, cdError("staleContext", "Completion answer does not match the request")
+	}
+	if err := out.Validate(); err != nil {
+		return cd.CompletionResult{}, err
+	}
+	if out.Items == nil {
+		out.Items = []cd.CompletionItem{}
+	}
+	return out, nil
+}
+
+// ResolveCodeCompletion asks for an item's detail and documentation. The
+// answer must name the item asked about.
+func (c *Client) ResolveCodeCompletion(ctx context.Context, token cd.Context, documentID, resultID string, index int) (cd.CompletionDetails, error) {
+	var out cd.CompletionDetails
+	p := codeDiagnosticsParams{Context: token, DocumentID: documentID, ResultID: resultID, Index: index}
+	if err := c.completionCall(ctx, "resolveCodeCompletion", p, &out); err != nil {
+		return cd.CompletionDetails{}, err
+	}
+	if out.DocumentID != documentID || out.ResultID != resultID || out.Index != index {
+		return cd.CompletionDetails{}, cdError("staleContext", "Completion details do not match the request")
+	}
+	if err := out.Validate(); err != nil {
+		return cd.CompletionDetails{}, err
+	}
+	return out, nil
+}
+
 // ReadNavigationFile reads, for viewing only, an external file a navigation
 // answer pointed to. The answer must be the file asked for, within the read
 // limits, and never editable.

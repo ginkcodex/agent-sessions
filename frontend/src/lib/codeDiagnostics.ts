@@ -95,6 +95,56 @@ export interface CodeNavigationResult {
   truncated?: boolean;
 }
 
+/**
+ * Why completion was asked: on request, after one of the server's trigger
+ * characters, or again after an incomplete answer.
+ */
+export type CodeCompletionTrigger = { kind: 'invoked' | 'incomplete' } | { kind: 'character'; character: string };
+export interface CodeTextEdit { range: CodeDiagnosticRange; newText: string }
+export interface CodeMarkupText { kind: 'markdown' | 'plaintext'; value: string }
+/**
+ * One suggestion. `edit` replaces a range on the asked line (otherwise
+ * `insertText`, or the label, goes in at the word); `extraEdits` change other
+ * lines (imports). `kind` is the LSP CompletionItemKind (1-25).
+ */
+export interface CodeCompletionItem {
+  label: string;
+  labelDetail?: string;
+  labelDescription?: string;
+  kind?: number;
+  detail?: string;
+  documentation?: CodeMarkupText;
+  sortText?: string;
+  filterText?: string;
+  insertText?: string;
+  edit?: CodeTextEdit;
+  snippet?: boolean;
+  extraEdits?: CodeTextEdit[];
+  deprecated?: boolean;
+}
+/**
+ * The answer for the document at `version`. `resultId` names it for
+ * resolveCodeCompletion while it is the document's last answer; an
+ * incomplete answer is asked again as the user types on.
+ */
+export interface CodeCompletionResult {
+  documentId: string;
+  version: number;
+  resultId?: string;
+  items: CodeCompletionItem[];
+  isIncomplete?: boolean;
+  truncated?: boolean;
+}
+/** An item's detail and documentation, from completionItem/resolve. */
+export interface CodeCompletionDetails {
+  documentId: string;
+  resultId: string;
+  index: number;
+  detail?: string;
+  documentation?: CodeMarkupText;
+  truncated?: boolean;
+}
+
 /** What the bridge confirmed for a displayed document; the store keeps no text. */
 export interface LiveDocumentBasis { documentId: string; version: number; synced: boolean }
 
@@ -141,6 +191,16 @@ export interface CodeDiagnosticsAPI {
    * path) a navigation answer of this attachment pointed to. Never editable.
    */
   readNavigationFile(context: CodeDiagnosticsContext, path: string, expectedHostId: string): Promise<FileContent>;
+  /**
+   * codeCompletion only: suggestions for the open document at exactly
+   * `version`. `requestId` names the request for cancelCodeCompletion; a new
+   * request under the same ID cancels the old one.
+   */
+  completeCode(context: CodeDiagnosticsContext, requestId: string, documentId: string, version: number, position: CodeDiagnosticPosition, trigger: CodeCompletionTrigger, expectedHostId: string): Promise<CodeCompletionResult>;
+  /** codeCompletion only: item `index` of the document's last answer, `resultId`. */
+  resolveCodeCompletion(context: CodeDiagnosticsContext, documentId: string, resultId: string, index: number, expectedHostId: string): Promise<CodeCompletionDetails>;
+  /** Ends the request started under `requestId`, which rejects with `canceled`. A finished or unknown ID is a no-op. */
+  cancelCodeCompletion(requestId: string): Promise<void>;
 }
 
 export const CODE_DIAGNOSTICS_EVENT = 'codeDiagnostics:updated';

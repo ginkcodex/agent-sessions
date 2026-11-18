@@ -464,7 +464,8 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 	case "chatAgents", "chatStart", "chatPrompt", "chatCancel", "chatRespond", "chatAnswer", "chatSetOption", "chatClose", "chatList", "chatSendNow", "chatUnqueue", "chatPlugins", "chatInventory":
 		return s.dispatchChat(ctx, backend, req)
 	case "invalidateCodeDiagnosticsPath", "attachCodeDiagnostics", "detachCodeDiagnostics", "getCodeDiagnosticsSnapshot", "approveCodeDiagnostics", "revokeCodeDiagnostics", "runCodeDiagnostics", "cancelCodeDiagnostics",
-		"openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument", "navigateCode", "readNavigationFile":
+		"openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument", "navigateCode", "readNavigationFile",
+		"completeCode", "resolveCodeCompletion":
 		return s.dispatchDiagnostics(ctx, req)
 	case "ping":
 		var p PingParams

@@ -1286,6 +1286,8 @@ export interface HostCapabilities {
   liveCodeDiagnostics?: boolean;
   /** Definition, references and hover for live documents; only with liveCodeDiagnostics. */
   codeNavigation?: boolean;
+  /** Completion and item details for live documents; only with liveCodeDiagnostics. */
+  codeCompletion?: boolean;
   /** The host honors the languages turned off in Settings. */
   codeDiagnosticsLanguages?: boolean;
   /** Absent on older servers; editing requires an explicit true. */

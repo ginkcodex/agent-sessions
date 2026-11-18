@@ -18,6 +18,7 @@ type diagnosticsRPC struct {
 	host           string
 	live           bool
 	navigation     bool
+	completion     bool
 	owned          map[string]cd.Context
 	closed         bool
 	queue          chan Notification
@@ -41,6 +42,10 @@ type codeDiagnosticsParams struct {
 	Revision        string           `json:"revision"`
 	Op              string           `json:"op,omitempty"`
 	Position        *cd.Position     `json:"position,omitempty"`
+	// Trigger, ResultID and Index: completion only.
+	Trigger  *cd.CompletionTrigger `json:"trigger,omitempty"`
+	ResultID string                `json:"resultId,omitempty"`
+	Index    int                   `json:"index,omitempty"`
 	// DisabledLanguages: language IDs turned off in Settings, attach only.
 	DisabledLanguages []string `json:"disabledLanguages,omitempty"`
 }
@@ -58,7 +63,7 @@ func cdError(code, message string) error { return &cd.Error{Code: code, Message:
 // (engine.WithRemoteCodeDiagnostics). Any other server, including an older
 // one, stays unsupported. Neither picker labels nor client assertions count.
 func (s *Server) initializeDiagnostics(ctx context.Context, caps *Capabilities) string {
-	caps.CodeDiagnostics, caps.LiveCodeDiagnostics, caps.CodeNavigation, caps.CodeDiagnosticsLanguages = false, false, false, false
+	caps.CodeDiagnostics, caps.LiveCodeDiagnostics, caps.CodeNavigation, caps.CodeCompletion, caps.CodeDiagnosticsLanguages = false, false, false, false, false
 	if _, ok := s.backend.(engine.CodeDiagnosticsBackend); !ok {
 		return ""
 	}
@@ -83,9 +88,11 @@ func (s *Server) initializeDiagnostics(ctx context.Context, caps *Capabilities) 
 		if _, ok := s.backend.(engine.LiveCodeDiagnosticsBackend); ok {
 			caps.LiveCodeDiagnostics = true
 			_, caps.CodeNavigation = s.backend.(engine.CodeNavigationBackend)
+			_, caps.CodeCompletion = s.backend.(engine.CodeCompletionBackend)
 			s.diagnostics.mu.Lock()
 			s.diagnostics.live = true
 			s.diagnostics.navigation = caps.CodeNavigation
+			s.diagnostics.completion = caps.CodeCompletion
 			s.diagnostics.mu.Unlock()
 		}
 	}

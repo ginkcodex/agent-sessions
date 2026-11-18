@@ -407,6 +407,16 @@ func TestCompletionResultValidate(t *testing.T) {
 	if err := (CompletionResult{Items: make([]CompletionItem, maxCompletionItems+1)}).Validate(); err == nil {
 		t.Fatal("too many items")
 	}
+	for _, id := range []string{"", "r1"} {
+		if err := (CompletionResult{ResultID: id, Items: []CompletionItem{}}).Validate(); err != nil {
+			t.Fatal(id, err)
+		}
+	}
+	for _, id := range []string{strings.Repeat("r", 65), "r\n1"} {
+		if err := (CompletionResult{ResultID: id}).Validate(); errCode(err) != "toolFailed" {
+			t.Fatal(id, err)
+		}
+	}
 }
 
 func TestCompletionResolveAgainstFakeServer(t *testing.T) {
@@ -421,7 +431,9 @@ func TestCompletionResolveAgainstFakeServer(t *testing.T) {
 	if err != nil || got.ResultID == "" || len(got.Items) != 2 {
 		t.Fatal(got, err)
 	}
-	resolve := func(id string, index int) (CompletionDetails, error) { return m.ResolveCompletion(ctx, c, "d1", id, index) }
+	resolve := func(id string, index int) (CompletionDetails, error) {
+		return m.ResolveCompletion(ctx, c, "d1", id, index)
+	}
 
 	// The kept item goes back with its data; the index is in the kept items.
 	srv.set("completionItem/resolve", `"result":{"label":"alpha","detail":"func alpha()","documentation":{"kind":"markdown","value":"Alpha does."},"data":{"id":7},`+

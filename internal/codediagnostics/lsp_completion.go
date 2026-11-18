@@ -520,7 +520,7 @@ func overlapsAny(r Range, taken []Range) bool {
 // local server would.
 func (r CompletionResult) Validate() error {
 	invalid := failure("toolFailed", "The completion answer is invalid")
-	if len(r.Items) > maxCompletionItems {
+	if len(r.Items) > maxCompletionItems || r.ResultID != "" && !bounded(r.ResultID, 64) {
 		return invalid
 	}
 	total := 0

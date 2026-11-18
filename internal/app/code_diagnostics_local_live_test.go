@@ -37,6 +37,8 @@ type localLSP struct {
 	// external is a file URI outside the project: the definition of
 	// anything asked about on line 1, as a dependency's would be.
 	external string
+	// held gets a completion request on line 1, which is never answered.
+	held chan struct{}
 }
 
 func (f *localLSP) Wait() (int, error) { <-f.exited; return 0, nil }
@@ -77,7 +79,7 @@ func (f *localLSP) serve() {
 		id, _ := json.Marshal(m["id"])
 		switch m["method"] {
 		case "initialize":
-			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"capabilities":{"textDocumentSync":{"openClose":true,"change":2,"save":true},"definitionProvider":true}}}`)
+			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"capabilities":{"textDocumentSync":{"openClose":true,"change":2,"save":true},"definitionProvider":true,"completionProvider":{"triggerCharacters":["."],"resolveProvider":true}}}}`)
 		case "shutdown":
 			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":null}`)
 		case "exit":
@@ -98,6 +100,15 @@ func (f *localLSP) serve() {
 				uri, _ = json.Marshal(f.external)
 			}
 			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"uri":` + string(uri) + `,"range":{"start":` + string(at) + `,"end":` + string(at) + `}}}`)
+		case "textDocument/completion":
+			params, _ := m["params"].(map[string]any)
+			if pos, _ := params["position"].(map[string]any); pos["line"] == float64(1) {
+				f.held <- struct{}{}
+				continue
+			}
+			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":[{"label":"alpha","kind":3,"data":{"n":1}}]}`)
+		case "completionItem/resolve":
+			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"label":"alpha","detail":"func alpha()","documentation":"Alpha does."}}`)
 		}
 	}
 }
@@ -144,7 +155,7 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 		inR, inW := io.Pipe()
 		outR, outW := io.Pipe()
 		errR, errW := io.Pipe()
-		f := &localLSP{in: bufio.NewReader(inR), out: outW, errW: errW, exited: make(chan struct{}), opened: make(chan string, 4), external: depURI}
+		f := &localLSP{in: bufio.NewReader(inR), out: outW, errW: errW, exited: make(chan struct{}), opened: make(chan string, 4), external: depURI, held: make(chan struct{}, 4)}
 		go f.serve()
 		servers <- f
 		return f, cd.SessionStreams{Stdin: inW, Stdout: outR, Stderr: errR}, nil
@@ -272,6 +283,48 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 	checkDiagnosticsError(t, err, "staleContext")
 	_, err = a.ReadNavigationFile(att.Context, filepath.Join(dir, "a.go"), host)
 	checkDiagnosticsError(t, err, "notFound")
+
+	// Completion goes to the same session, for the version it has, and the
+	// server's item data stays here.
+	if !a.ConnectionState().Capabilities.CodeCompletion {
+		t.Fatal("codeCompletion not advertised")
+	}
+	invoked := cd.CompletionTrigger{Kind: cd.CompletionInvoked}
+	end := cd.Position{Line: 0, Character: 9}
+	got, err := a.CompleteCode(att.Context, "q1", "d1", 2, end, invoked, host)
+	if err != nil || got.Version != 2 || got.ResultID == "" || len(got.Items) != 1 || got.Items[0].Label != "alpha" {
+		t.Fatal(got, err)
+	}
+	details, err := a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, host)
+	if err != nil || details.Detail != "func alpha()" || details.Documentation == nil || details.Documentation.Value != "Alpha does." {
+		t.Fatal(details, err)
+	}
+	_, err = a.CompleteCode(att.Context, "q1", "d1", 1, end, invoked, host)
+	checkDiagnosticsError(t, err, "staleVersion")
+	_, err = a.CompleteCode(att.Context, "q1", "d1", 2, end, invoked, "other-host")
+	checkDiagnosticsError(t, err, "staleContext")
+	_, err = a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, "other-host")
+	checkDiagnosticsError(t, err, "staleContext")
+	// Cancel ends a request the server has not answered; an unknown ID is a
+	// no-op.
+	a.CancelCodeCompletion("nothing")
+	errs := make(chan error, 1)
+	go func() {
+		_, err := a.CompleteCode(att.Context, "q2", "d1", 2, cd.Position{Line: 1}, invoked, host)
+		errs <- err
+	}()
+	select {
+	case <-srv.held:
+	case <-time.After(15 * time.Second):
+		t.Fatal("completion never reached the server")
+	}
+	a.CancelCodeCompletion("q2")
+	select {
+	case err = <-errs:
+		checkDiagnosticsError(t, err, "canceled")
+	case <-time.After(15 * time.Second):
+		t.Fatal("cancel did not end the request")
+	}
 	if launches.Load() != 1 {
 		t.Fatal("unexpected launches", launches.Load())
 	}
@@ -285,7 +338,7 @@ func TestLocalCapabilitiesWithoutLiveRoute(t *testing.T) {
 	t.Cleanup(func() { _ = eng.Close() })
 	a := &App{localEngine: eng, backend: eng, roots: paths.Roots{Config: config}}
 	state := a.ConnectionState()
-	if state.HostID == "" || !state.Capabilities.CodeDiagnostics || state.Capabilities.LiveCodeDiagnostics || state.Capabilities.CodeNavigation {
+	if state.HostID == "" || !state.Capabilities.CodeDiagnostics || state.Capabilities.LiveCodeDiagnostics || state.Capabilities.CodeNavigation || state.Capabilities.CodeCompletion {
 		t.Fatalf("live advertised without a route: %+v", state)
 	}
 	if NewAppWithService(nil).localLive {

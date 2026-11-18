@@ -197,6 +197,11 @@ func TestLiveCodeDiagnosticsRouting(t *testing.T) {
 			return e
 		},
 		func() error { _, e := a.ReadNavigationFile(c, "/go/src/fmt/print.go", "local-id"); return e },
+		func() error {
+			_, e := a.CompleteCode(c, "q", "d", 1, cd.Position{}, cd.CompletionTrigger{Kind: cd.CompletionInvoked}, "local-id")
+			return e
+		},
+		func() error { _, e := a.ResolveCodeCompletion(c, "d", "1", 0, "local-id"); return e },
 	} {
 		checkDiagnosticsError(t, call(), "unsupported")
 	}
@@ -217,6 +222,11 @@ func TestLiveCodeDiagnosticsRouting(t *testing.T) {
 			return e
 		},
 		func() error { _, e := a.ReadNavigationFile(c, "/go/src/fmt/print.go", "local-id"); return e },
+		func() error {
+			_, e := a.CompleteCode(c, "q", "d", 1, cd.Position{}, cd.CompletionTrigger{Kind: cd.CompletionInvoked}, "local-id")
+			return e
+		},
+		func() error { _, e := a.ResolveCodeCompletion(c, "d", "1", 0, "local-id"); return e },
 	} {
 		checkDiagnosticsError(t, call(), "disconnected")
 	}

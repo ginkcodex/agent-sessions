@@ -1,4 +1,4 @@
-import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsSnapshot, CodeDiagnosticsRun, CodeDiagnosticsDocumentReceipt, CodeDiagnosticPosition, CodeNavigationLocation, CodeNavigationOp, CodeNavigationResult } from '../codeDiagnostics';
+import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsSnapshot, CodeDiagnosticsRun, CodeDiagnosticsDocumentReceipt, CodeDiagnosticPosition, CodeNavigationLocation, CodeNavigationOp, CodeNavigationResult, CodeCompletionTrigger, CodeCompletionResult, CodeCompletionDetails, CodeCompletionItem } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CodeDiagnosticsError, sameContext } from '../codeDiagnostics';
 import type { FileContent } from '../types';
 import { CODE_LANGUAGES } from '../codeLanguages';
@@ -19,6 +19,8 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
   private closed = new Set<string>();
   /** External paths navigation answers pointed to, per attachment. */
   private grants = new Map<string, Set<string>>();
+  /** Each document's last completion answer, by document ID. */
+  private answers = new Map<string, { resultId: string; version: number; items: { item: CodeCompletionItem; path: string; declared?: string }[] }>();
   /** The languages the last attach turned off. */
   disabledLanguages: string[] = [];
   constructor(publishEvent: (name: string, event: unknown) => void) { this.publishEvent = publishEvent; }
@@ -75,8 +77,52 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
   async closeCodeDiagnosticDocument(c: CodeDiagnosticsContext, documentId: string, host: string): Promise<CodeDiagnosticsDocumentReceipt> {
     const m = this.docs(c, host);
     if (m.delete(documentId)) this.closed.add(documentId);
+    this.answers.delete(documentId);
     return { context: c, documentId };
   }
+  /**
+   * Suggests the words of the open mirrors that start with the word before
+   * the position, replacing that word. A declared name resolves to its
+   * declaring line, as navigateCode finds it.
+   */
+  async completeCode(c: CodeDiagnosticsContext, _requestId: string, documentId: string, version: number, position: CodeDiagnosticPosition, _trigger: CodeCompletionTrigger, host: string): Promise<CodeCompletionResult> {
+    const m = this.docs(c, host), d = m.get(documentId);
+    if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
+    if (version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The document changed since this request');
+    const line = d.text.split('\n')[position.line];
+    if (line === undefined || position.character > line.length) throw new CodeDiagnosticsError('invalidArgument', 'Position is outside the document');
+    const prefix = /\w*$/.exec(line.slice(0, position.character))![0];
+    const range = { start: { line: position.line, character: position.character - prefix.length }, end: position };
+    const found = new Map<string, { path: string; declared?: string }>();
+    for (const doc of m.values()) {
+      for (const text of doc.text.split('\n')) {
+        for (const [word] of text.matchAll(/\b[A-Za-z_]\w{2,}\b/g)) {
+          if (word === prefix || !word.toLowerCase().startsWith(prefix.toLowerCase())) continue;
+          const declared = new RegExp(`\\b(?:func|function|const|let|var|def|class|type)\\s+${word}\\b`).test(text) ? text.trim() : undefined;
+          const seen = found.get(word);
+          if (!seen || (declared && !seen.declared)) found.set(word, { path: doc.path, declared });
+        }
+      }
+    }
+    const words = [...found.keys()].sort();
+    const items = words.slice(0, 100).map(word => {
+      const { path, declared } = found.get(word)!;
+      return { item: { label: word, kind: declared ? 3 : 1, edit: { range, newText: word } }, path, declared };
+    });
+    const resultId = `mock-completion-${++this.serial}`;
+    this.answers.set(documentId, { resultId, version, items });
+    return { documentId, version, resultId, items: items.map(i => structuredClone(i.item)), ...(words.length > items.length ? { isIncomplete: true } : {}) };
+  }
+  async resolveCodeCompletion(c: CodeDiagnosticsContext, documentId: string, resultId: string, index: number, host: string): Promise<CodeCompletionDetails> {
+    const d = this.docs(c, host).get(documentId);
+    if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
+    const answer = this.answers.get(documentId);
+    if (!answer || answer.resultId !== resultId || answer.version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The completion answer is no longer kept');
+    const kept = answer.items[index];
+    if (!kept) throw new CodeDiagnosticsError('invalidArgument', 'No such completion item');
+    return { documentId, resultId, index, detail: kept.path, ...(kept.declared ? { documentation: { kind: 'markdown', value: '```\n' + kept.declared + '\n```' } } : {}) };
+  }
+  async cancelCodeCompletion(_requestId: string): Promise<void> {}
   /**
    * Answers from the open mirrors: the word at the position, its declaring line
    * (`func`, `function`, `const`, `let`, `var`, `def`, `class`, `type`) and every use.

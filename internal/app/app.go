@@ -87,6 +87,7 @@ type App struct {
 	fullscreen        fullscreenController
 	searches          fileSearches
 	gitSyncs          fileSearches // fetch/pull/push in progress, by sync ID
+	completions       fileSearches // code completion requests in progress, by request ID
 
 	// chatsOpen is what the frontend last said: whether the window has an
 	// open chat, on this computer or on the host it shows (SetChatsOpen).

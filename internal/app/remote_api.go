@@ -54,6 +54,7 @@ func (a *App) Connect(alias string) error {
 	if err == nil {
 		// Results from the old host would land in the new host's views.
 		a.searches.cancelAll()
+		a.completions.cancelAll()
 		if a.localEngine != nil {
 			a.localEngine.ResetCodeDiagnostics()
 		}
@@ -66,6 +67,7 @@ func (a *App) Disconnect() {
 	a.ensureConn()
 	a.conn.Disconnect()
 	a.searches.cancelAll()
+	a.completions.cancelAll()
 	if a.localEngine != nil {
 		a.localEngine.ResetCodeDiagnostics()
 	}
@@ -101,6 +103,8 @@ func (a *App) ConnectionState() ConnectionState {
 			state.Capabilities.LiveCodeDiagnostics = docs && ready.LiveCodeDiagnosticsReady()
 			_, nav := local.(engine.CodeNavigationBackend)
 			state.Capabilities.CodeNavigation = state.Capabilities.LiveCodeDiagnostics && nav
+			_, complete := local.(engine.CodeCompletionBackend)
+			state.Capabilities.CodeCompletion = state.Capabilities.LiveCodeDiagnostics && complete
 		}
 	}
 	return state
