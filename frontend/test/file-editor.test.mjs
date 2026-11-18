@@ -1680,6 +1680,27 @@ test('typing while the import is awaited stays, and the item still goes in witho
   h.editor.destroy();
 });
 
+test('an awaited item does not go in once the editor is read-only', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const settle of ['resolve', 'timeout']) {
+    let answer;
+    const h = await resolvingEditor(() => new Promise(resolve => { answer = resolve; }));
+    const { view } = h, text = view.state.doc.toString();
+    h.accept();
+    // A file action starts while the import is awaited.
+    h.editor.update({ ...h.options, text, disabled: true });
+    assert.equal(view.state.readOnly, true);
+    if (settle === 'resolve') { answer([helperImport]); await settled(); }
+    else t.mock.timers.tick(RESOLVE_ACCEPT_WAIT);
+    assert.equal(view.state.doc.toString(), text, `${settle}: nothing went in`);
+    h.editor.update({ ...h.options, text, disabled: false });
+    answer([helperImport]);
+    await settled();
+    assert.equal(view.state.doc.toString(), text, `${settle}: nor once editable again`);
+    h.editor.destroy();
+  }
+});
+
 test('an awaited item at an empty range (after a trigger character) goes before what is typed meanwhile', async () => {
   let answer;
   const resolves = [];

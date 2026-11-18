@@ -80,6 +80,11 @@ test('snippets read as plain text with the caret at the first tab stop', () => {
   assert.deepEqual(snippetText('\\$1 costs \\}'), { text: '$1 costs }', caret: 10 });
   assert.deepEqual(snippetText('$TM_FILENAME ${TM_SELECTED_TEXT:none}'), { text: ' none', caret: 5 });
   assert.deepEqual(snippetText('plain'), { text: 'plain', caret: 5 });
+  // A mirror repeats its stop's placeholder text, also one written before it.
+  assert.deepEqual(snippetText('${1:name} = $1'), { text: 'name = name', caret: 0 });
+  assert.deepEqual(snippetText('$1 := ${1:v}; ${2}'), { text: 'v := v; ', caret: 0 });
+  assert.deepEqual(snippetText('for ${1:i} := 0; $1 < ${2:n}; $1++ {$0}'), { text: 'for i := 0; i < n; i++ {}', caret: 4 });
+  assert.deepEqual(snippetText('${1|a,b|}-$1'), { text: 'a-a', caret: 0 });
   assert.deepEqual(snippetText('${2:b} ${1:a}'), { text: 'b a', caret: 2 }, '$1 first, wherever it is');
   assert.deepEqual(snippetText('$'), { text: '$', caret: 1 });
 });

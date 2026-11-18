@@ -387,7 +387,8 @@ function settleEarlierPick(view: EditorView, from: number, to: number): [number,
  * the import when it is known for the text shown. Otherwise the popup
  * closes and the item goes in once its import is resolved, or without it
  * after RESOLVE_ACCEPT_WAIT, a failure, or typing meanwhile; what was typed
- * stays. Accepting again puts an awaited item in at once.
+ * stays. Nothing goes in once the editor is read-only. Accepting again puts
+ * an awaited item in at once.
  */
 function acceptResolving(view: EditorView, completion: Completion, item: CodeCompletionItem, index: number, answer: EditorCompletionAnswer, askedDoc: Text, pos: number, start: number, from: number, to: number): void {
   const owner = owners.get(view), shown = view.state.doc;
@@ -408,6 +409,8 @@ function acceptResolving(view: EditorView, completion: Completion, item: CodeCom
     if (pendingPicks.get(view) === now) pendingPicks.delete(view);
     const pick = view.state.field(pendingPick, false), still = owners.get(view);
     // Another file or tab in the editor, or the editor gone: nothing goes in.
+    // Nor in a read-only editor, which a dispatch would still change: it has
+    // no suggestion extensions, so no pending pick.
     if (!pick || pick.id !== id || !owner || still?.id !== owner.id || still.path !== owner.path) return undefined;
     // The word it was to replace was deleted or typed over meanwhile: nothing goes in.
     if (pick.gone) {

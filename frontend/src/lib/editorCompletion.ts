@@ -203,20 +203,33 @@ function transformEnd(snippet: string, i: number): number {
 const partsText = (parts: readonly SnippetPart[]): string => parts.map(p => (typeof p === 'string' ? p : partsText(p.parts))).join('');
 
 /**
- * Plain text for an LSP snippet: placeholders keep their default text, and
- * the caret goes to the first tab stop ($1, else $0, else the end).
+ * Plain text for an LSP snippet: placeholders keep their default text, a
+ * mirror (`$1` again) repeats its stop's, and the caret goes to the first
+ * tab stop ($1, else $0, else the end).
  */
 export function snippetText(snippet: string): { text: string; caret: number } {
+  const parts = parseSnippet(snippet);
+  // A stop's first placeholder text, wherever it is.
+  const defaults = new Map<number, string>();
+  const collect = (parts: readonly SnippetPart[]): void => {
+    for (const p of parts) {
+      if (typeof p === 'string') continue;
+      if (p.parts.length && !defaults.has(p.stop)) defaults.set(p.stop, partsText(p.parts));
+      collect(p.parts);
+    }
+  };
+  collect(parts);
   let out = '';
   const stops: { n: number; at: number }[] = [];
   const walk = (parts: readonly SnippetPart[]): void => {
     for (const p of parts) {
       if (typeof p === 'string') { out += p; continue; }
       stops.push({ n: p.stop, at: out.length });
-      walk(p.parts);
+      if (p.parts.length) walk(p.parts);
+      else out += defaults.get(p.stop) ?? '';
     }
   };
-  walk(parseSnippet(snippet));
+  walk(parts);
   const first = stops.filter(s => s.n > 0).sort((a, b) => a.n - b.n)[0] ?? stops.find(s => s.n === 0);
   return { text: out, caret: first?.at ?? out.length };
 }
@@ -321,7 +334,11 @@ export function completionChanges(askedDoc: Text, asked: number, start: number, 
   };
   if (!clean) return { changes: [typedOnly], main: 0, caret: typedCaret, ...template(typedOnly) };
   // Asked offsets to now: up to the filter text as they were, after the caret shifted with it.
-  const map = (x: number) => (x <= start ? x : x >= asked ? x + (to - asked) : undefined);
+  const map = (x: number): number | undefined => {
+    if (x <= start) return x;
+    if (x >= asked) return x + (to - asked);
+    return undefined;
+  };
   let main = typedOnly, mainCaret = typedCaret;
   if (range) {
     const ms = range[0] === start ? from : map(range[0]), me = range[1] === asked ? to : map(range[1]);
