@@ -1,7 +1,7 @@
 # Code completion — tasks
 
 - **Plan:** [code-completion.md](../../plan/code-completion.md)
-- **Progress:** 17/23 done (CC-01 and CC-09 partial)
+- **Progress:** 18/23 done (CC-01 and CC-09 partial)
 
 Suggestions while typing in the Go to File editor: first from the file and
 the language, then from the project's language server.
@@ -28,6 +28,6 @@ the language, then from the project's language server.
 | [CC-18](CC-18.md) | ✅ Done | Second review: one shortcut label, mock positions, test cleanups | 3 h | CC-01, CC-15 |
 | [CC-19](CC-19.md) | ✅ Done | Third review: answers stay resolvable while typing and asking again | 3 h | CC-03, CC-10, CC-13 |
 | [CC-20](CC-20.md) | ✅ Done | Third review: say which answers resolve, an empty trigger list | 3 h | CC-04, CC-06, CC-12 |
-| [CC-21](CC-21.md) | ⬜ Not started | Third review: an awaited item at an empty range, language sources run once | 3 h | CC-12, CC-17 |
+| [CC-21](CC-21.md) | ✅ Done | Third review: an awaited item at an empty range, language sources run once | 3 h | CC-12, CC-17 |
 | [CC-22](CC-22.md) | ⬜ Not started | Third review: cancel resolves, drop resolves for old versions | 3 h | CC-04, CC-12 |
 | [CC-23](CC-23.md) | ⬜ Not started | Third review: one check for completion edits | 2 h | CC-02, CC-10, CC-13 |

@@ -16,7 +16,7 @@ import type { FileLineSelection } from './fileSelection';
 import { fileLanguage } from './files';
 import { textChanges } from './searchReplace';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
-import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completionKeymap, hasNextSnippetField, hasPrevSnippetField, pickedCompletion, selectedCompletion, snippet, startCompletion, CompletionContext, type Completion, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete';
+import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completeFromList, completionKeymap, hasNextSnippetField, hasPrevSnippetField, pickedCompletion, selectedCompletion, snippet, startCompletion, CompletionContext, type Completion, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete';
 import type { CodeCompletionItem, CodeCompletionTrigger, CodeDiagnosticPosition, CodeTextEdit } from './codeDiagnostics';
 import { SUGGEST_KEY, SUGGEST_KEY_MAC } from './editorKeys';
 import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, serverOrder, snippetText, withExtraEdits, type CompletionAccept, type CompletionEdit, type EditorCompleter, type EditorCompletionAnswer, type EditorCompletionDetails } from './editorCompletion';
@@ -127,24 +127,70 @@ export const completionKeys: readonly KeyBinding[] = [
   { key: 'Tab', run: acceptCompletion },
 ];
 
-// Language sources seen to answer with a promise. They are not run again for
-// their labels: that run would do the whole work and could not be cancelled.
+// Language sources seen to answer with a promise. They are not run for their
+// labels: that run would do the whole work and could not be cancelled.
 const asyncSources = new WeakSet<CompletionSource>();
+// A word list a language gives (rather than a function), as a source.
+const listSources = new WeakMap<readonly (string | Completion)[], CompletionSource>();
+// Per state, the language's sources at one position.
+const languageAt = new WeakMap<EditorState, { pos: number; sources: CompletionSource[] }>();
+
+/**
+ * The language's own sources at pos (keywords, CSS properties, local names),
+ * in its order. The editor runs them in its own slots (languageSlots), so
+ * each runs once per query, also for the words left out beside them.
+ */
+function languageSources(state: EditorState, pos: number): CompletionSource[] {
+  const known = languageAt.get(state);
+  if (known?.pos === pos) return known.sources;
+  const sources: CompletionSource[] = [];
+  for (const source of state.languageDataAt<CompletionSource | readonly (string | Completion)[]>('autocomplete', pos)) {
+    if (typeof source === 'function') { sources.push(source); continue; }
+    let list = listSources.get(source);
+    if (!list) listSources.set(source, list = completeFromList(source));
+    sources.push(list);
+  }
+  languageAt.set(state, { pos, sources });
+  return sources;
+}
+
+// Per state, what each language source answered at once, for one query.
+const languageRuns = new WeakMap<EditorState, Map<CompletionSource, { pos: number; explicit: boolean; result: CompletionResult | null }>>();
+
+/** Runs a language source, or gives its answer from earlier in the same query. */
+function runLanguageSource(source: CompletionSource, context: CompletionContext): ReturnType<CompletionSource> {
+  let runs = languageRuns.get(context.state);
+  const known = runs?.get(source);
+  if (known && known.pos === context.pos && known.explicit === context.explicit) return known.result;
+  const result = source(context);
+  if (result instanceof Promise) { asyncSources.add(source); return result; }
+  if (!runs) languageRuns.set(context.state, runs = new Map());
+  runs.set(source, { pos: context.pos, explicit: context.explicit, result });
+  return result;
+}
+
+/**
+ * The slots CodeMirror runs the language's sources in, by their place at the
+ * position: the editor lists its sources itself (`override`), so that the
+ * words can share the language's answers. No language has more than two.
+ */
+export const LANGUAGE_SLOTS = 8;
+const languageSlots: CompletionSource[] = Array.from({ length: LANGUAGE_SLOTS }, (_, i) => (context: CompletionContext) => {
+  const source = languageSources(context.state, context.pos)[i];
+  return source ? runLanguageSource(source, context) : null;
+});
 
 // What the language's own sources offer here, so words do not repeat them.
 // Only answers given at once count; CodeMirror merges the rest as they come.
 function languageLabels(context: CompletionContext): Set<string> {
   const labels = new Set<string>();
-  const add = (option: string | Completion) => labels.add(typeof option === 'string' ? option : option.label);
-  for (const source of context.state.languageDataAt<CompletionSource | readonly (string | Completion)[]>('autocomplete', context.pos)) {
-    if (source === documentWords || source === codeSuggestions) continue;
-    if (typeof source !== 'function') { source.forEach(add); continue; }
+  for (const source of languageSources(context.state, context.pos)) {
     if (asyncSources.has(source)) continue;
     try {
-      const result = source(new CompletionContext(context.state, context.pos, context.explicit, context.view));
+      const result = runLanguageSource(source, new CompletionContext(context.state, context.pos, context.explicit, context.view));
       // Not waited for: a rejection is CodeMirror's to report when it runs the source.
-      if (result instanceof Promise) { asyncSources.add(source); result.catch(() => {}); }
-      else if (result) result.options.forEach(add);
+      if (result instanceof Promise) result.catch(() => {});
+      else if (result) for (const option of result.options) labels.add(option.label);
     } catch { /* A failing source offers nothing; CodeMirror reports it when it runs it. */ }
   }
   return labels;
@@ -317,8 +363,10 @@ const pendingPick = StateField.define<PendingPick | null>({
     if (!value || !tr.docChanged) return value;
     let gone = value.gone;
     if (value.from < value.to) tr.changes.iterChangedRanges((fromA, toA) => { if (fromA <= value.from && toA >= value.to) gone = true; });
-    // Text typed at either end stays outside it.
-    const from = tr.changes.mapPos(value.from, 1), to = tr.changes.mapPos(value.to, -1);
+    // Text typed at either end stays outside it. An empty range (an item
+    // after `obj.`) stays before what is typed there, as the item came first.
+    const empty = value.from === value.to;
+    const from = tr.changes.mapPos(value.from, empty ? -1 : 1), to = tr.changes.mapPos(value.to, -1);
     return { ...value, from, to: Math.max(from, to), gone };
   },
 });
@@ -453,12 +501,14 @@ export const codeSuggestions: CompletionSource = context => {
 const completionParts: Extension = [
   pendingPick,
   Prec.highest(keymap.of(completionKeys)),
-  EditorState.languageData.of(() => [{ autocomplete: codeSuggestions }]),
 ];
 const optionClass = (option: Completion) => (deprecatedOptions.has(option) ? 'cm-completion-deprecated' : '');
+/** What CodeMirror runs per query: the language's sources in their slots, then the server's and the words. */
+export const completionSources: readonly CompletionSource[] = [...languageSlots, codeSuggestions];
+const override = [...completionSources];
 const suggestionModes = {
-  typing: [autocompletion({ defaultKeymap: false, activateOnTyping: true, optionClass }), completionParts],
-  shortcut: [autocompletion({ defaultKeymap: false, activateOnTyping: false, optionClass }), completionParts],
+  typing: [autocompletion({ defaultKeymap: false, activateOnTyping: true, optionClass, override }), completionParts],
+  shortcut: [autocompletion({ defaultKeymap: false, activateOnTyping: false, optionClass, override }), completionParts],
 };
 // Read-only text gets no popup at all.
 const suggestions = (options: Pick<FileEditorOptions, 'disabled' | 'suggest'>): Extension =>

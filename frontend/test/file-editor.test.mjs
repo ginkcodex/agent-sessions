@@ -156,7 +156,7 @@ async function loadEditorModule() {
   return import(`data:text/javascript,${encodeURIComponent(js)}`);
 }
 
-const { createFileEditor, acceptOrBreakLine, completionKeys, documentWords, codeSuggestions, completionTrigger, SERVER_SUGGESTION_WAIT, RESOLVE_ACCEPT_WAIT, navigationKeymap, symbolMouseDown, symbolContextMenu, symbolPress, symbolKeyDown, symbolHover, editorPosition, wordAtSide } = await loadEditorModule();
+const { createFileEditor, acceptOrBreakLine, completionKeys, documentWords, codeSuggestions, completionSources, LANGUAGE_SLOTS, completionTrigger, SERVER_SUGGESTION_WAIT, RESOLVE_ACCEPT_WAIT, navigationKeymap, symbolMouseDown, symbolContextMenu, symbolPress, symbolKeyDown, symbolHover, editorPosition, wordAtSide } = await loadEditorModule();
 
 const isMac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 
@@ -1239,8 +1239,29 @@ test('document words: a language source that answers later is run for its labels
   const now = () => { syncRuns++; return null; };
   const state = EditorState.create({ doc: 'alpha alphabet\nalp', extensions: EditorState.languageData.of(() => [{ autocomplete: later }, { autocomplete: now }]) });
   for (let i = 0; i < 3; i++) assert.deepEqual(wordsAt(state).options.map(o => o.label).sort(), ['alpha', 'alphabet']);
+  assert.equal(syncRuns, 1, 'the same text and position: its answer is reused');
+  const next = state.update({ changes: { from: state.doc.length, insert: 'h' } }).state;
+  for (let i = 0; i < 3; i++) assert.deepEqual(wordsAt(next).options.map(o => o.label).sort(), ['alpha', 'alphabet']);
   assert.equal(runs, 1, 'seen to answer later: not run again');
-  assert.equal(syncRuns, 3, 'a source that answers at once still is');
+  assert.equal(syncRuns, 2, 'a source that answers at once still is, once per text');
+});
+
+test('each language source runs once per query, and its names still stay out of the words', async () => {
+  let runs = 0;
+  const counting = (context) => { runs++; return { from: context.pos - 3, options: [{ label: 'alphabet', type: 'keyword' }] }; };
+  const state = EditorState.create({ doc: 'alpha alphabet beta\nalp', extensions: EditorState.languageData.of(() => [{ autocomplete: counting }]) });
+  // As CodeMirror runs a query (the editor's override): each source with its own context, in order.
+  const query = (s, explicit) => Promise.all(completionSources.map(source => source(new CompletionContext(s, s.doc.length, explicit))));
+  const results = (await query(state, true)).filter(Boolean);
+  assert.equal(runs, 1, 'once, shared by its slot and the words');
+  const labels = results.flatMap(r => r.options.map(o => `${o.label}:${o.type}`));
+  assert.deepEqual(labels.filter(l => l.startsWith('alphabet')), ['alphabet:keyword'], 'the language item only');
+  assert.ok(labels.includes('alpha:text'), 'the other words');
+  // The next keystroke is a new query.
+  await query(state.update({ changes: { from: state.doc.length, insert: 'h' } }).state, false);
+  assert.equal(runs, 2);
+  // A slot past the language's sources answers nothing; no language has as many.
+  assert.equal(completionSources.length, LANGUAGE_SLOTS + 1);
 });
 
 test('document words: prefix matches, the whole typed word and language items left out, none past the highlight limit', () => {
@@ -1275,7 +1296,6 @@ test('document words: prefix matches, the whole typed word and language items le
 
 test('typing opens suggestions when the setting is on; off, only the shortcut does; read-only never', () => {
   const { view, editor, options } = mount({ text: 'alpha\n', path: 'notes.txt' });
-  assert.ok(view.state.languageDataAt('autocomplete', 0).includes(codeSuggestions));
   typed(view, 'al');
   assert.equal(completionStatus(view.state), 'pending');
   // Options are applied on every keystroke; the same mode leaves an open popup alone.
@@ -1292,7 +1312,6 @@ test('typing opens suggestions when the setting is on; off, only the shortcut do
 
   editor.update({ ...options, text: view.state.doc.toString(), suggest: false, disabled: true });
   assert.equal(startCompletion(view), false, 'read-only: no completion at all');
-  assert.ok(!view.state.languageDataAt('autocomplete', 0).includes(codeSuggestions));
   assert.equal(editor.handleKey(key('Escape')), false);
 
   editor.update({ ...options, text: view.state.doc.toString(), disabled: false });
@@ -1328,9 +1347,7 @@ test('a CSS file offers its properties beside the words, and a property is not r
     const { view, editor } = mount({ text: 'a { color: red; } .collapsed {}\nb { col', path: 'site.css' });
     await languageOf(view, 'site.css');
     const end = view.state.doc.length;
-    const sources = view.state.languageDataAt('autocomplete', end);
-    assert.ok(sources.includes(codeSuggestions));
-    const css = sources.filter(s => s !== codeSuggestions);
+    const css = view.state.languageDataAt('autocomplete', end);
     assert.ok(css.length > 0, 'the CSS package brings its own completions');
     const results = await Promise.all(css.map(s => s(new CompletionContext(view.state, end, false))));
     const labels = results.filter(Boolean).flatMap(r => r.options.map(o => o.label));
@@ -1660,6 +1677,26 @@ test('typing while the import is awaited stays, and the item still goes in witho
   assert.equal(view.state.selection.main.head, view.state.doc.length, 'the caret stays after the typing');
   undo(view);
   assert.equal(view.state.doc.toString(), '// note\nexport {};\nhelperVa(');
+  h.editor.destroy();
+});
+
+test('an awaited item at an empty range (after a trigger character) goes before what is typed meanwhile', async () => {
+  let answer;
+  const resolves = [];
+  const h = serverEditor('obj.', 'a.ts', async () => ({ incomplete: false, items: [{ label: 'foo', kind: 5 }],
+    resolveEdits: (index) => { resolves.push(index); return new Promise(resolve => { answer = resolve; }); } }));
+  const { view } = h, end = view.state.doc.length;
+  view.dispatch({ selection: { anchor: end } });
+  const result = await h.suggest(end);
+  assert.equal(result.from, end, 'it replaces nothing');
+  const o = result.options[0];
+  o.apply(view, o, result.from, end);
+  assert.deepEqual(resolves, [0]);
+  typed(view, 'x', end);
+  answer([]);
+  await settled();
+  assert.equal(view.state.doc.toString(), 'obj.foox');
+  assert.equal(view.state.selection.main.head, view.state.doc.length, 'the caret stays after the typing');
   h.editor.destroy();
 });
 

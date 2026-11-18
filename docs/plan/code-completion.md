@@ -161,7 +161,9 @@ Completion follows navigation's path:
   merges equal items of the same type and apply, so the word source itself
   leaves out names the language's sources already answer with at once
   (keywords, CSS properties, which lang-css offers as `name: `). It also
-  leaves out the word being typed once it is complete.
+  leaves out the word being typed once it is complete. The editor lists
+  its sources itself, so it reads those names from the language's own run
+  in the same query rather than running its sources again (CC-21).
 - The word source skips documents over the highlighting limit
   (`HIGHLIGHT_LIMIT`), so large files stay fast. A read-only editor shows
   no popup.
