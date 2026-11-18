@@ -1,7 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import v8 from 'node:v8';
-import vm from 'node:vm';
 import { fixtureStore, loadServerModule, loadServerComponent, renderWithFixture } from './helpers.mjs';
 import { projectSourceDiagnostics } from '../src/lib/sourceDiagnostics.ts';
 import { problemLocation } from '../src/lib/problemNavigation.ts';
@@ -629,8 +627,10 @@ test('a resolve nobody waits for is cancelled on the host; one an accept waits f
   one.abort();
   assert.equal(asked.length, 3);
   assert.equal(cancels.length, 1, 'still waited for');
+  // The caller that moved on stops waiting at once, with the listed details.
+  assert.deepEqual(await both[0], { detail: undefined, documentation: undefined });
   held.get(request(1)).release();
-  assert.deepEqual((await Promise.all(both)).map(d => d.detail), ['item 1', 'item 1']);
+  assert.equal((await both[1]).detail, 'item 1');
 
   // Accepting item 2 while the info panel waits for it: closing the popup
   // does not cancel the resolve the accept waits for.
@@ -656,46 +656,29 @@ test('a resolve nobody waits for is cancelled on the host; one an accept waits f
 });
 
 test('an answer keeps resolves for version 0 and the latest version only', async () => {
-  // The store's maps are private: what they hold is seen by what can be collected.
-  v8.setFlagsFromString('--expose-gc');
-  const gc = vm.runInNewContext('gc');
+  // What is kept is checked in completion-resolves.test.mjs; here, through the store.
   const h = await harness(true, { completion: true });
-  h.api.completeCode = async (c, requestId, documentId, version) => ({ documentId, version, resultId: 'r7', resolves: true, items: [{ label: 'a' }, { label: 'b' }, { label: 'c' }] });
-  const results = [];
-  let asked = 0, release;
-  const slow = new Promise(r => { release = r; });
+  h.api.completeCode = async (c, requestId, documentId, version) => ({ documentId, version, resultId: 'r7', resolves: true, items: [{ label: 'a' }, { label: 'b' }] });
+  let asked = 0;
   h.api.resolveCodeCompletion = async (c, requestId, documentId, resultId, index, version) => {
     asked++;
-    const d = { documentId, resultId, index, detail: `${index}@${version}`, ...(version > 0 ? { version, extraEdits: [] } : {}) };
-    results.push(new WeakRef(d));
-    if (index === 2) await slow;
-    return d;
+    return { documentId, resultId, index, detail: `${index}@${version}`, ...(version > 0 ? { version, extraEdits: [] } : {}) };
   };
   h.files.openFile('a.go', { keep: true }); await tick();
   h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'a\n'); await tick();
   const got = await h.checks.complete('a.go', { line: 0, character: 1 }, { kind: 'invoked' });
   const v1 = got.result.version;
   assert.equal((await got.details(0)).detail, `0@${v1}`);
-  let answering = got.details(2);
   // Typing not yet sent: version 0, details only.
   h.files.updateDraft('a.go', 'ab\n'); await tick();
   assert.equal((await got.details(1)).detail, '1@0');
-  // Sent: the item resolves at the new version, and the old version's
-  // resolves go, also one still answering.
+  // Sent: the item resolves at the new version.
   assert.deepEqual(await got.extraEdits(0, { current: () => true }), []);
-  const v2 = h.bridge.basis('a.go').version;
-  assert.ok(v2 > v1);
-  release();
-  assert.equal((await answering).detail, `2@${v1}`);
-  answering = undefined;
-  assert.equal(asked, 4);
-  await new Promise(r => setTimeout(r, 0));
-  gc();
-  assert.deepEqual(results.map(r => r.deref()?.detail), [undefined, undefined, '1@0', `0@${v2}`]);
+  assert.equal(asked, 3);
   // Version 0's is still read without asking again.
   h.files.updateDraft('a.go', 'abc\n'); await tick();
   assert.equal((await got.details(1)).detail, '1@0');
-  assert.equal(asked, 4);
+  assert.equal(asked, 3);
   h.off();
 });
 

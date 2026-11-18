@@ -69,6 +69,11 @@ async function importCompiled(filename, code, replacements) {
   if (code.includes(editorHistoryImport) && !replacements.some(([from]) => from === editorHistoryImport)) {
     replacements.push([editorHistoryImport, JSON.stringify(new URL('../src/lib/editorHistory.ts', import.meta.url).href)]);
   }
+  // The code-checks store keeps a completion answer's resolves in a plain module.
+  const resolvesImport = "'../completionResolves'";
+  if (code.includes(resolvesImport) && !replacements.some(([from]) => from === resolvesImport)) {
+    replacements.push([resolvesImport, JSON.stringify(new URL('../src/lib/completionResolves.ts', import.meta.url).href)]);
+  }
   const tabIdImport = "import { tabId } from '../../../stores/files.svelte';";
   if (code.includes(tabIdImport)) replacements.push([tabIdImport, 'const tabId = t => t.id ?? t.path;']);
   // Dialog fixtures render the real shared close control, not a markup stub.
