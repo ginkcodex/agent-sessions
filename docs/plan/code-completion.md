@@ -71,7 +71,9 @@ any command a completion item carries.
   item's replacement range and its extra edits (`additionalTextEdits`, such
   as gopls and vtsls adding an import) are mapped through the edits typed
   since. Extra edits that touch text changed since are dropped, and the
-  main edit still applies. All of it is one undoable step.
+  main edit still applies. All of it is one undoable step. vtsls sends its
+  import edits only when the item is resolved, whatever the client
+  advertises (found in CC-09); CC-10 resolves such items on accept.
 - **Item details come later and stay on the host.** The backend keeps the
   last answer per document and resolves an item (`completionItem/resolve`)
   by result and index, so the server's opaque `data` never crosses the wire.
@@ -174,6 +176,10 @@ Completion follows navigation's path:
   CC-09 checks each one for real.
 - **A restart** of running Ruby and Python servers after CC-08, which may
   briefly show Code checks as starting.
+- **Python imports from unopened files.** With `diagnosticMode:
+  openFilesOnly`, Pyright does not load project files that are not open,
+  so it cannot suggest their names with an import (found in CC-09). CC-11
+  decides whether to change that.
 
 ## Release criteria
 
