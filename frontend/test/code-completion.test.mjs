@@ -13,7 +13,7 @@ test('the Wails binding gets the exact arguments; an old binding is unsupported'
   useDesktopApp(binding);
   const api = desktopAPI();
   await assert.rejects(api.completeCode(context, 'q1', 'd1', 3, at, invoked, 'host'), e => e.code === 'unsupported');
-  await assert.rejects(api.resolveCodeCompletion(context, 'd1', 'r1', 0, 0, 'host'), e => e.code === 'unsupported');
+  await assert.rejects(api.resolveCodeCompletion(context, 'q2', 'd1', 'r1', 0, 0, 'host'), e => e.code === 'unsupported');
   await api.cancelCodeCompletion('q1'); // an old binding has nothing to cancel
 
   let args;
@@ -23,12 +23,12 @@ test('the Wails binding gets the exact arguments; an old binding is unsupported'
   assert.deepEqual(args, [context, 'q1', 'd1', 3, at, dot, 'host']);
   assert.deepEqual(got.items, [], 'a Go nil list is an empty list');
   binding.ResolveCodeCompletion = async (...a) => { args = a; return { documentId: 'd1', resultId: 'r1', index: 2, detail: 'func f()' }; };
-  assert.equal((await api.resolveCodeCompletion(context, 'd1', 'r1', 2, 0, 'host')).detail, 'func f()');
-  assert.deepEqual(args, [context, 'd1', 'r1', 2, 0, 'host']);
+  assert.equal((await api.resolveCodeCompletion(context, 'q2', 'd1', 'r1', 2, 0, 'host')).detail, 'func f()');
+  assert.deepEqual(args, [context, 'q2', 'd1', 'r1', 2, 0, 'host']);
   const imports = [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: 'import a\n' }];
   binding.ResolveCodeCompletion = async (...a) => { args = a; return { documentId: 'd1', resultId: 'r1', index: 2, version: 4, extraEdits: imports }; };
-  const resolved = await api.resolveCodeCompletion(context, 'd1', 'r1', 2, 4, 'host');
-  assert.deepEqual(args, [context, 'd1', 'r1', 2, 4, 'host'], 'the version is passed through');
+  const resolved = await api.resolveCodeCompletion(context, 'q2', 'd1', 'r1', 2, 4, 'host');
+  assert.deepEqual(args, [context, 'q2', 'd1', 'r1', 2, 4, 'host'], 'the version is passed through');
   assert.deepEqual([resolved.version, resolved.extraEdits], [4, imports]);
   binding.CancelCodeCompletion = async (...a) => { args = a; };
   await api.cancelCodeCompletion('q7');
@@ -39,7 +39,7 @@ test('the Wails binding gets the exact arguments; an old binding is unsupported'
     await assert.rejects(api.completeCode(context, 'q1', 'd1', 3, at, invoked, 'host'), e => e.code === code);
   }
   binding.ResolveCodeCompletion = async () => { throw 'staleVersion: The completion answer is no longer kept'; };
-  await assert.rejects(api.resolveCodeCompletion(context, 'd1', 'r1', 0, 0, 'host'), e => e.code === 'staleVersion');
+  await assert.rejects(api.resolveCodeCompletion(context, 'q2', 'd1', 'r1', 0, 0, 'host'), e => e.code === 'staleVersion');
 });
 
 test('the mock suggests words of its open documents and resolves its last answer', async () => {
@@ -57,25 +57,25 @@ test('the mock suggests words of its open documents and resolves its last answer
   assert.deepEqual(got.items[1].edit, { range: { start: { line: 1, character: 0 }, end }, newText: 'helper()$0' }, 'a function: a snippet');
   assert.equal(got.items[1].snippet, true);
   assert.equal(got.items[2].edit.newText, 'helping(${1:a}, ${2:\\$b})$0', 'parameters are tab stops, escaped');
-  const details = await mock.resolveCodeCompletion(c, 'd1', got.resultId, 1, 0, 'mock:local');
+  const details = await mock.resolveCodeCompletion(c, 'q2', 'd1', got.resultId, 1, 0, 'mock:local');
   assert.equal(details.detail, 'a.ts');
   assert.match(details.documentation.value, /function helper\(\) \{\}/);
   assert.equal(details.extraEdits, undefined);
-  await assert.rejects(mock.resolveCodeCompletion(c, 'd1', got.resultId, 5, 0, 'mock:local'), e => codeDiagnosticsError(e).code === 'invalidArgument');
+  await assert.rejects(mock.resolveCodeCompletion(c, 'q2', 'd1', got.resultId, 5, 0, 'mock:local'), e => codeDiagnosticsError(e).code === 'invalidArgument');
   // At the current version, a name declared in another document imports it.
   const top = { line: 0, character: 0 };
-  const helping = await mock.resolveCodeCompletion(c, 'd1', got.resultId, 2, 1, 'mock:local');
+  const helping = await mock.resolveCodeCompletion(c, 'q2', 'd1', got.resultId, 2, 1, 'mock:local');
   assert.deepEqual([helping.version, helping.extraEdits], [1, [{ range: { start: top, end: top }, newText: "import { helping } from './b';\n" }]]);
-  assert.equal((await mock.resolveCodeCompletion(c, 'd1', got.resultId, 1, 1, 'mock:local')).extraEdits, undefined, 'declared here: no import');
-  assert.equal((await mock.resolveCodeCompletion(c, 'd1', got.resultId, 2, 0, 'mock:local')).extraEdits, undefined, 'version 0: details only');
+  assert.equal((await mock.resolveCodeCompletion(c, 'q2', 'd1', got.resultId, 1, 1, 'mock:local')).extraEdits, undefined, 'declared here: no import');
+  assert.equal((await mock.resolveCodeCompletion(c, 'q2', 'd1', got.resultId, 2, 0, 'mock:local')).extraEdits, undefined, 'version 0: details only');
 
   // A newer answer replaces it; a change keeps it, at its new version; a close ends it.
   const next = await mock.completeCode(c, 'q1', 'd1', 1, end, invoked, 'mock:local');
-  await assert.rejects(mock.resolveCodeCompletion(c, 'd1', got.resultId, 0, 0, 'mock:local'), e => codeDiagnosticsError(e).code === 'staleVersion');
+  await assert.rejects(mock.resolveCodeCompletion(c, 'q2', 'd1', got.resultId, 0, 0, 'mock:local'), e => codeDiagnosticsError(e).code === 'staleVersion');
   await mock.changeCodeDiagnosticDocument(c, 'd1', 2, 'function helper() {}\nhelp\n', 'mock:local');
-  assert.equal((await mock.resolveCodeCompletion(c, 'd1', next.resultId, 1, 0, 'mock:local')).detail, 'a.ts');
-  await assert.rejects(mock.resolveCodeCompletion(c, 'd1', next.resultId, 2, 1, 'mock:local'), e => codeDiagnosticsError(e).code === 'staleVersion');
-  assert.equal((await mock.resolveCodeCompletion(c, 'd1', next.resultId, 2, 2, 'mock:local')).version, 2);
+  assert.equal((await mock.resolveCodeCompletion(c, 'q2', 'd1', next.resultId, 1, 0, 'mock:local')).detail, 'a.ts');
+  await assert.rejects(mock.resolveCodeCompletion(c, 'q2', 'd1', next.resultId, 2, 1, 'mock:local'), e => codeDiagnosticsError(e).code === 'staleVersion');
+  assert.equal((await mock.resolveCodeCompletion(c, 'q2', 'd1', next.resultId, 2, 2, 'mock:local')).version, 2);
   await assert.rejects(mock.completeCode(c, 'q1', 'd1', 1, end, invoked, 'mock:local'), e => codeDiagnosticsError(e).code === 'staleVersion');
   // Positions as a server checks them: whole, not negative, inside the text.
   for (const bad of [{ line: 9, character: 0 }, { line: 0, character: 21 }, { line: 0, character: -1 }, { line: -1, character: 0 }, { line: 0, character: 1.5 }, { line: 0.5, character: 0 }, { line: 0, character: NaN }]) {

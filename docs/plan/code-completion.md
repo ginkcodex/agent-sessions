@@ -80,7 +80,11 @@ any command a completion item carries.
   popup closes, and the item goes in with its import once resolved, or
   alone after 500 ms, a failure, or typing meanwhile; nothing goes in when
   the word it replaces was deleted or typed over meanwhile (CC-17). The info panel's
-  resolve is shared, so a selected item's import is usually ready.
+  resolve is shared, so a selected item's import is usually ready. A
+  resolve runs under its own request ID and is cancelled on the host once
+  nobody waits for it: the info panel moved to another item or closed, and
+  no accept waits for it. An answer keeps its resolves for version 0
+  (details only) and the latest version asked, not older ones (CC-22).
 - **Item details come later and stay on the host.** The backend keeps the
   last answer per document, through later typing (also typing sent while
   the server answers) and while a newer request runs, and resolves an item
@@ -141,8 +145,9 @@ Completion follows navigation's path:
 - Error codes are navigation's (`staleVersion`, `notRunning`,
   `resyncRequired`, `unsupported`, `timeout`, `canceled`, `busy`,
   `toolFailed`).
-- Wire: app bindings `CompleteCode`, `ResolveCodeCompletion` and
-  `CancelCodeCompletion(requestId)`; RPC methods `completeCode` and
+- Wire: app bindings `CompleteCode`, `ResolveCodeCompletion` (both with a
+  request ID) and `CancelCodeCompletion(requestId)`, which cancels either;
+  RPC methods `completeCode` and
   `resolveCodeCompletion` in the live method list (cancel is
   `$/cancelRequest`); a `codeCompletion` capability set only with
   `liveCodeDiagnostics`.

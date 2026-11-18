@@ -1063,8 +1063,8 @@
       const shown = () => files.activeTab === tab && files.selectedPath === path;
       return {
         items: result.items, incomplete: Boolean(result.isIncomplete), triggerCharacters: result.triggerCharacters,
-        details: async (index: number) => {
-          const d = await details(index);
+        details: async (index: number, signal?: AbortSignal) => {
+          const d = await details(index, signal);
           if (!d) return undefined;
           return { detail: d.detail, html: d.documentation?.value ? hoverHtml(d.documentation) : undefined, truncated: d.truncated };
         },

@@ -40,10 +40,13 @@ export interface CompletionItemDetails { detail?: string; documentation?: CodeMa
  */
 export interface CompletionAnswer {
   result: CodeCompletionResult;
-  details(index: number): Promise<CompletionItemDetails | undefined>;
+  /** Item `index`'s details; its resolve is cancelled on the host once `signal` aborts and nobody else waits for it. */
+  details(index: number, signal?: AbortSignal): Promise<CompletionItemDetails | undefined>;
   extraEdits(index: number, ask?: CompletionAsk): CodeTextEdit[] | Promise<CodeTextEdit[] | undefined>;
 }
 let completionRequests = 0;
+// A resolve in flight: its request ID, to cancel it, and how many callers wait for it.
+interface Resolving { promise: Promise<CodeCompletionDetails>; requestId: string; waiters: number; done: boolean }
 
 /** Whether an opened-documents provider declares path by extension and coverage root. */
 function declares(p: CodeDiagnosticsProvider, path: string): boolean {
@@ -354,21 +357,60 @@ export class CodeDiagnosticsStore {
    * by the time it is accepted; else at version 0, which gives details only.
    */
   private completionAnswer(path: string, c: CodeDiagnosticsContext, host: string, result: CodeCompletionResult, life: number): CompletionAnswer {
-    const resolves = new Map<string, Promise<CodeCompletionDetails>>();
+    // By `index@version`. Only version 0 and the latest version asked are
+    // kept: the editor reads no other version again.
+    const resolves = new Map<string, Resolving>();
     const settled = new Map<string, CodeCompletionDetails>();
-    const resolveAt = (index: number, version: number): Promise<CodeCompletionDetails> => {
+    let latest = 0;
+    const dropOtherVersions = (version: number) => {
+      const old = (key: string) => !key.endsWith('@0') && !key.endsWith(`@${version}`);
+      for (const key of [...resolves.keys()]) if (old(key)) resolves.delete(key);
+      for (const key of [...settled.keys()]) if (old(key)) settled.delete(key);
+    };
+    /**
+     * Item index resolved at version, asked once and shared. Each caller
+     * waits until its signal aborts (one without a signal, until it settles);
+     * once no caller waits, the request is cancelled on the host, and the next
+     * ask starts another.
+     */
+    const resolveAt = (index: number, version: number, signal?: AbortSignal): Promise<CodeCompletionDetails> => {
+      if (signal?.aborted) return Promise.reject(new Error('aborted'));
+      if (version > 0 && version !== latest) {
+        latest = version;
+        dropOtherVersions(version);
+      }
       const key = `${index}@${version}`;
-      let p = resolves.get(key);
-      if (p) return p;
-      p = this.backend.resolveCodeCompletion(c, result.documentId, result.resultId!, index, version, host).then(d => {
-        if (!this.active(life) || d.documentId !== result.documentId || d.resultId !== result.resultId || d.index !== index) throw new Error('another answer');
-        settled.set(key, d);
-        return d;
-      });
-      // A failure is asked again next time.
-      p.catch(() => { if (resolves.get(key) === p) resolves.delete(key); });
-      resolves.set(key, p);
-      return p;
+      let entry = resolves.get(key);
+      if (!entry) {
+        const requestId = `completion-${++completionRequests}`;
+        const asked: Resolving = {
+          requestId, waiters: 0, done: false,
+          promise: this.backend.resolveCodeCompletion(c, requestId, result.documentId, result.resultId!, index, version, host).then(d => {
+            if (!this.active(life) || d.documentId !== result.documentId || d.resultId !== result.resultId || d.index !== index) throw new Error('another answer');
+            if (resolves.get(key) === asked) settled.set(key, d);
+            return d;
+          }),
+        };
+        // A failure is asked again next time.
+        asked.promise.then(() => { asked.done = true; }, () => {
+          asked.done = true;
+          if (resolves.get(key) === asked) resolves.delete(key);
+        });
+        resolves.set(key, entry = asked);
+      }
+      const waited = entry;
+      waited.waiters++;
+      if (signal) {
+        const leave = () => {
+          if (--waited.waiters > 0 || waited.done) return;
+          if (resolves.get(key) === waited) resolves.delete(key);
+          this.backend.cancelCodeCompletion(waited.requestId).catch(() => { /* finished or gone */ });
+        };
+        signal.addEventListener('abort', leave, { once: true });
+        const stop = () => signal.removeEventListener('abort', leave);
+        waited.promise.then(stop, stop);
+      }
+      return waited.promise;
     };
     // The confirmed version when the document is this answer's and synced.
     const synced = (): number | undefined => {
@@ -378,7 +420,7 @@ export class CodeDiagnosticsStore {
     const editsAt = (d: CodeCompletionDetails, version: number) => d.version === version ? d.extraEdits ?? [] : [];
     return {
       result,
-      details: async index => {
+      details: async (index, signal) => {
         const item = result.items[index];
         if (!item) return undefined;
         const listed: CompletionItemDetails = { detail: item.detail, documentation: item.documentation };
@@ -386,7 +428,8 @@ export class CodeDiagnosticsStore {
         const version = synced();
         let d: CodeCompletionDetails;
         try {
-          d = await (version !== undefined ? resolveAt(index, version).catch(() => resolveAt(index, 0)) : resolveAt(index, 0));
+          const atZero = () => resolveAt(index, 0, signal);
+          d = await (version !== undefined ? resolveAt(index, version, signal).catch(e => { if (signal?.aborted) throw e; return atZero(); }) : atZero());
         } catch {
           return listed;
         }
@@ -401,12 +444,15 @@ export class CodeDiagnosticsStore {
         const known = synced();
         const done = known !== undefined && current() ? settled.get(`${index}@${known}`) : undefined;
         if (done) return editsAt(done, known!);
+        // Asked, or joined, at once: the info panel's resolve of this item is
+        // not cancelled when accepting closes the popup.
+        const early = known !== undefined && current() ? resolveAt(index, known, ask.signal) : undefined;
         return (async () => {
           const at = await this.completionBasis(path, ask.wait);
           if (!at || ask.signal?.aborted || !current() || !this.active(life) || !sameContext(at.context, c) || at.basis.documentId !== result.documentId) return undefined;
           const version = at.basis.version;
           let d: CodeCompletionDetails;
-          try { d = await resolveAt(index, version); } catch { return undefined; }
+          try { d = await (early && version === known ? early : resolveAt(index, version, ask.signal)); } catch { return undefined; }
           // The edits fit only the version they were resolved at, still shown.
           if (ask.signal?.aborted || !current() || synced() !== version) return undefined;
           return editsAt(d, version);

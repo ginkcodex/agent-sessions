@@ -16,8 +16,8 @@ export interface EditorCompletionAnswer {
   incomplete: boolean;
   /** The server's trigger characters, when the answer says. */
   triggerCharacters?: string;
-  /** Item `index`'s details; undefined shows none. */
-  details?(index: number): Promise<EditorCompletionDetails | undefined>;
+  /** Item `index`'s details; undefined shows none. `signal` aborts once the info panel would not show them. */
+  details?(index: number, signal?: AbortSignal): Promise<EditorCompletionDetails | undefined>;
   /**
    * Item `index`'s extra edits (imports) that its server gives only on
    * resolve (CC-12), in the offsets of the text the editor shows when asked;

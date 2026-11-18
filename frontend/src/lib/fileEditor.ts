@@ -5,7 +5,7 @@ import type { AttributedCodeDiagnostic, LiveDocumentBasis } from './codeDiagnost
 import { EditorView, GutterMarker, closeHoverTooltips, drawSelection, hasHoverTooltips, highlightActiveLine, hoverTooltip, keymap, lineNumberMarkers, lineNumbers, tooltips, type KeyBinding, type Tooltip } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from '@codemirror/commands';
 import { LanguageDescription, indentOnInput, indentUnit } from '@codemirror/language';
-import { Decoration, type DecorationSet } from '@codemirror/view';
+import { Decoration, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { HIGHLIGHT_LIMIT, loadFileHighlighter, highlightFileWith } from './codeHighlight';
 import type { HLJSApi } from 'highlight.js';
 import { keyHandled } from './fullscreen';
@@ -16,7 +16,7 @@ import type { FileLineSelection } from './fileSelection';
 import { fileLanguage } from './files';
 import { textChanges } from './searchReplace';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
-import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completeFromList, completionKeymap, hasNextSnippetField, hasPrevSnippetField, pickedCompletion, selectedCompletion, snippet, startCompletion, CompletionContext, type Completion, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete';
+import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completeFromList, completionKeymap, completionStatus, hasNextSnippetField, hasPrevSnippetField, pickedCompletion, selectedCompletion, snippet, startCompletion, CompletionContext, type Completion, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete';
 import type { CodeCompletionItem, CodeCompletionTrigger, CodeDiagnosticPosition, CodeTextEdit } from './codeDiagnostics';
 import { SUGGEST_KEY, SUGGEST_KEY_MAC } from './editorKeys';
 import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, serverOrder, snippetText, withExtraEdits, type CompletionAccept, type CompletionEdit, type EditorCompleter, type EditorCompletionAnswer, type EditorCompletionDetails } from './editorCompletion';
@@ -425,8 +425,41 @@ function acceptResolving(view: EditorView, completion: Completion, item: CodeCom
   got.then(settle, () => settle());
 }
 
-/** A CodeMirror option for server item index of an answer asked at pos in askedDoc. */
-function serverOption(item: CodeCompletionItem, index: number, { boost, sortText }: { boost: number; sortText: string }, answer: EditorCompletionAnswer, askedDoc: Text, pos: number, start: number): Completion {
+// Per view, the details the info panel waits for, and the state it asked in.
+// CodeMirror shows them only while its completion state stays the same, so
+// they are aborted, which cancels their resolve on the host, once another
+// item is selected, the text, selection or popup changes, or the editor's
+// state is replaced.
+interface InfoWait { controller: AbortController; state: EditorState }
+const infoWaits = new WeakMap<EditorView, InfoWait>();
+
+function endInfoWait(view: EditorView): void {
+  infoWaits.get(view)?.controller.abort();
+  infoWaits.delete(view);
+}
+
+/** Item index's details for the info panel in view. */
+function waitInfo(view: EditorView, answer: EditorCompletionAnswer, index: number): Promise<HTMLElement | null> {
+  const was = infoWaits.get(view), controller = new AbortController();
+  infoWaits.set(view, { controller, state: view.state });
+  const shown = answer.details!(index, controller.signal);
+  // Only after asking: the same item asked again keeps its resolve.
+  was?.controller.abort();
+  return shown.then(completionInfo);
+}
+
+const infoWatch = ViewPlugin.define(view => ({
+  update(u: ViewUpdate) {
+    const wait = infoWaits.get(view);
+    // Asked in this update: the panel waits for it.
+    if (!wait || wait.state === u.state) return;
+    if (u.docChanged || u.selectionSet || selectedCompletion(u.state) !== selectedCompletion(u.startState) || completionStatus(u.state) !== completionStatus(u.startState)) endInfoWait(view);
+  },
+  destroy() { endInfoWait(view); },
+}));
+
+/** A CodeMirror option for server item index of an answer asked at pos in askedDoc, shown in view. */
+function serverOption(view: EditorView, item: CodeCompletionItem, index: number, { boost, sortText }: { boost: number; sortText: string }, answer: EditorCompletionAnswer, askedDoc: Text, pos: number, start: number): Completion {
   const label = item.filterText || item.label;
   const option: Completion = {
     label,
@@ -441,7 +474,7 @@ function serverOption(item: CodeCompletionItem, index: number, { boost, sortText
       if (!item.extraEdits?.length && answer.resolveEdits) acceptResolving(view, completion, item, index, answer, askedDoc, pos, start, from, to);
       else applyAccept(view, completion, completionChanges(askedDoc, pos, start, view.state.doc, from, to, item));
     },
-    ...(answer.details ? { info: async () => completionInfo(await answer.details!(index)) } : {}),
+    ...(answer.details ? { info: () => waitInfo(view, answer, index) } : {}),
   };
   if (item.deprecated) deprecatedOptions.add(option);
   const plain = itemText(item, answer);
@@ -487,7 +520,7 @@ export const codeSuggestions: CompletionSource = context => {
     else unfinished.delete(view);
     const items = answer.items, start = answerStart(askedDoc, pos, items), placed = serverOrder(items);
     const offered = new Set(items.map(item => item.label));
-    const options = items.map((item, index) => serverOption(item, index, placed[index], answer, askedDoc, pos, start));
+    const options = items.map((item, index) => serverOption(view, item, index, placed[index], answer, askedDoc, pos, start));
     if (words && words.from === start) options.push(...words.options.filter(option => !offered.has(option.label)));
     if (!options.length) return null;
     // An incomplete answer is asked again as the user types on, and so is an
@@ -500,6 +533,7 @@ export const codeSuggestions: CompletionSource = context => {
 // and the same extension again changes nothing (an open popup stays).
 const completionParts: Extension = [
   pendingPick,
+  infoWatch,
   Prec.highest(keymap.of(completionKeys)),
 ];
 const optionClass = (option: Completion) => (deprecatedOptions.has(option) ? 'cm-completion-deprecated' : '');

@@ -222,9 +222,11 @@ export interface CodeDiagnosticsAPI {
    * `resultId`, kept through later changes. `version` 0 asks for details
    * only; the document's current version also asks for the item's extra
    * edits, and rejects with `staleVersion` when the document is at another.
+   * `requestId` names the request for cancelCodeCompletion, as for
+   * completeCode.
    */
-  resolveCodeCompletion(context: CodeDiagnosticsContext, documentId: string, resultId: string, index: number, version: number, expectedHostId: string): Promise<CodeCompletionDetails>;
-  /** Ends the request started under `requestId`, which rejects with `canceled`. A finished or unknown ID is a no-op. */
+  resolveCodeCompletion(context: CodeDiagnosticsContext, requestId: string, documentId: string, resultId: string, index: number, version: number, expectedHostId: string): Promise<CodeCompletionDetails>;
+  /** Ends the completion or resolve started under `requestId`, which rejects with `canceled`. A finished or unknown ID is a no-op. */
   cancelCodeCompletion(requestId: string): Promise<void>;
 }
 

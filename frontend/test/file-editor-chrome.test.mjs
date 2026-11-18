@@ -411,3 +411,39 @@ test('Chrome: Enter on an item whose import comes on resolve adds it with the it
     assert.deepEqual(await evaluate('window.resolves'), [0, 0, 0], 'no resolve');
   });
 });
+
+test('Chrome: the details panel stops waiting for an item once another is selected or the popup closes', { skip: !process.env.AS_TEST_CHROME, timeout: 120000 }, async () => {
+  await withEditor('package main\n\nfunc f() {\n\t', 'a.go', async ({ evaluate, press, type, popup }) => {
+    // Details that never come, each recording whether its wait was aborted.
+    await evaluate(`(() => {
+      window.infos = [];
+      const items = [{ label: 'Println', kind: 3, sortText: 'a' }, { label: 'Printf', kind: 3, sortText: 'b' }];
+      const symbols = { ask() {}, hover: async () => undefined, complete() {
+        return Promise.resolve({ items, incomplete: false, triggerCharacters: '.',
+          details: (i, signal) => {
+            const info = { index: i, aborted: false };
+            signal.addEventListener('abort', () => { info.aborted = true; });
+            window.infos.push(info);
+            return new Promise(() => {});
+          } });
+      } };
+      window.probe.editor.update(window.probe.opts({ text: window.probe.state.text, symbols }));
+    })()`);
+    const infos = () => evaluate('window.infos');
+    await caretToEnd(evaluate);
+
+    await type('fmt.');
+    await acceptable(popup, items => /^Println/.test(items[0] ?? '') && items.length === 2, 'both items');
+    await until(infos, all => all.some(i => i.index === 0), 'the first item\'s details asked');
+    assert.ok((await infos()).every(i => !i.aborted), 'still waited for');
+    await press('ArrowDown');
+    await until(infos, all => all.at(-1).index === 1, 'the second item\'s details asked');
+    let all = await infos();
+    assert.ok(all.filter(i => i.index === 0).every(i => i.aborted), 'the first item\'s wait ends');
+    assert.equal(all.at(-1).aborted, false);
+    await press('Escape');
+    await until(popup, items => items.length === 0, 'Escape closes the popup');
+    all = await until(infos, all => all.every(i => i.aborted), 'closing ends the last wait');
+    assert.equal(all.at(-1).index, 1);
+  });
+});

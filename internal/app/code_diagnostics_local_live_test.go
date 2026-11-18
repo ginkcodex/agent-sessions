@@ -39,6 +39,11 @@ type localLSP struct {
 	external string
 	// held gets a completion request on line 1, which is never answered.
 	held chan struct{}
+	// heldResolve gets the ID of a resolve of "beta", the item a completion
+	// at 0:0 gives, which is never answered; cancels gets the IDs the client
+	// cancels.
+	heldResolve chan string
+	cancels     chan string
 }
 
 func (f *localLSP) Wait() (int, error) { <-f.exited; return 0, nil }
@@ -106,8 +111,20 @@ func (f *localLSP) serve() {
 				f.held <- struct{}{}
 				continue
 			}
+			if pos, _ := params["position"].(map[string]any); pos["line"] == float64(0) && pos["character"] == float64(0) {
+				f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":[{"label":"beta","kind":3,"data":{"n":2}}]}`)
+				continue
+			}
 			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":[{"label":"alpha","kind":3,"data":{"n":1}}]}`)
+		case "$/cancelRequest":
+			params, _ := m["params"].(map[string]any)
+			cancelled, _ := json.Marshal(params["id"])
+			f.cancels <- string(cancelled)
 		case "completionItem/resolve":
+			if params, _ := m["params"].(map[string]any); params["label"] == "beta" {
+				f.heldResolve <- string(id)
+				continue
+			}
 			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"label":"alpha","detail":"func alpha()","documentation":"Alpha does.",` +
 				`"additionalTextEdits":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"newText":"// a\n"}]}}`)
 		}
@@ -156,7 +173,7 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 		inR, inW := io.Pipe()
 		outR, outW := io.Pipe()
 		errR, errW := io.Pipe()
-		f := &localLSP{in: bufio.NewReader(inR), out: outW, errW: errW, exited: make(chan struct{}), opened: make(chan string, 4), external: depURI, held: make(chan struct{}, 4)}
+		f := &localLSP{in: bufio.NewReader(inR), out: outW, errW: errW, exited: make(chan struct{}), opened: make(chan string, 4), external: depURI, held: make(chan struct{}, 4), heldResolve: make(chan string, 4), cancels: make(chan string, 8)}
 		go f.serve()
 		servers <- f
 		return f, cd.SessionStreams{Stdin: inW, Stdout: outR, Stderr: errR}, nil
@@ -296,22 +313,22 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 	if err != nil || got.Version != 2 || got.ResultID == "" || len(got.Items) != 1 || got.Items[0].Label != "alpha" {
 		t.Fatal(got, err)
 	}
-	details, err := a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, 0, host)
+	details, err := a.ResolveCodeCompletion(att.Context, "r1", "d1", got.ResultID, 0, 0, host)
 	if err != nil || details.Detail != "func alpha()" || details.Documentation == nil || details.Documentation.Value != "Alpha does." || details.ExtraEdits != nil {
 		t.Fatal(details, err)
 	}
 	// At the current version the resolved import edit comes too.
-	details, err = a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, 2, host)
+	details, err = a.ResolveCodeCompletion(att.Context, "r1", "d1", got.ResultID, 0, 2, host)
 	if err != nil || details.Version != 2 || len(details.ExtraEdits) != 1 || details.ExtraEdits[0].NewText != "// a\n" {
 		t.Fatal(details, err)
 	}
-	_, err = a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, 1, host)
+	_, err = a.ResolveCodeCompletion(att.Context, "r1", "d1", got.ResultID, 0, 1, host)
 	checkDiagnosticsError(t, err, "staleVersion")
 	_, err = a.CompleteCode(att.Context, "q1", "d1", 1, end, invoked, host)
 	checkDiagnosticsError(t, err, "staleVersion")
 	_, err = a.CompleteCode(att.Context, "q1", "d1", 2, end, invoked, "other-host")
 	checkDiagnosticsError(t, err, "staleContext")
-	_, err = a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, 0, "other-host")
+	_, err = a.ResolveCodeCompletion(att.Context, "r1", "d1", got.ResultID, 0, 0, "other-host")
 	checkDiagnosticsError(t, err, "staleContext")
 	// Cancel ends a request the server has not answered; an unknown ID is a
 	// no-op.
@@ -332,6 +349,38 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 		checkDiagnosticsError(t, err, "canceled")
 	case <-time.After(15 * time.Second):
 		t.Fatal("cancel did not end the request")
+	}
+	// A resolve under a request ID is cancelled the same way, and the
+	// language server is told.
+	beta, err := a.CompleteCode(att.Context, "q3", "d1", 2, cd.Position{}, invoked, host)
+	if err != nil || len(beta.Items) != 1 || beta.Items[0].Label != "beta" {
+		t.Fatal(beta, err)
+	}
+	go func() {
+		_, err := a.ResolveCodeCompletion(att.Context, "r2", "d1", beta.ResultID, 0, 2, host)
+		errs <- err
+	}()
+	var resolveID string
+	select {
+	case resolveID = <-srv.heldResolve:
+	case <-time.After(15 * time.Second):
+		t.Fatal("resolve never reached the server")
+	}
+	a.CancelCodeCompletion("r2")
+	// Well before the 5 s resolve timeout, which would end it too.
+	select {
+	case err = <-errs:
+		checkDiagnosticsError(t, err, "canceled")
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancel did not end the resolve")
+	}
+	for told := false; !told; {
+		select {
+		case id := <-srv.cancels:
+			told = id == resolveID
+		case <-time.After(15 * time.Second):
+			t.Fatal("the server was not told the resolve was cancelled")
+		}
 	}
 	if launches.Load() != 1 {
 		t.Fatal("unexpected launches", launches.Load())

@@ -142,7 +142,7 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
    * The kept answer survives changes. At the current version, a name declared
    * in another open document also resolves to an import of it, at the top.
    */
-  async resolveCodeCompletion(c: CodeDiagnosticsContext, documentId: string, resultId: string, index: number, version: number, host: string): Promise<CodeCompletionDetails> {
+  async resolveCodeCompletion(c: CodeDiagnosticsContext, _requestId: string, documentId: string, resultId: string, index: number, version: number, host: string): Promise<CodeCompletionDetails> {
     const d = this.docs(c, host).get(documentId);
     if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
     if (!Number.isInteger(version) || version < 0) throw new CodeDiagnosticsError('invalidArgument', 'Invalid document version');
