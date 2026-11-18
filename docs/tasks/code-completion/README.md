@@ -1,7 +1,7 @@
 # Code completion — tasks
 
 - **Plan:** [code-completion.md](../../plan/code-completion.md)
-- **Progress:** 13/18 done (CC-01 and CC-09 partial)
+- **Progress:** 14/18 done (CC-01 and CC-09 partial)
 
 Suggestions while typing in the Go to File editor: first from the file and
 the language, then from the project's language server.
@@ -24,5 +24,5 @@ the language, then from the project's language server.
 | [CC-14](CC-14.md) | ✅ Done | Review fixes in the editor, store and texts | 3 h | CC-06, CC-12 |
 | [CC-15](CC-15.md) | ✅ Done | Review fixes in the completion tests and the Chrome harness | 2 h | CC-12 |
 | [CC-16](CC-16.md) | ✅ Done | Second review: server order past 99 items, snippet choices and transforms | 2 h | CC-06, CC-07 |
-| [CC-17](CC-17.md) | ⬜ Not started | Second review: late answers, awaited items whose word is gone, language labels | 3 h | CC-06, CC-12, CC-14 |
+| [CC-17](CC-17.md) | ✅ Done | Second review: late answers, awaited items whose word is gone, language labels | 3 h | CC-06, CC-12, CC-14 |
 | [CC-18](CC-18.md) | ⬜ Not started | Second review: one shortcut label, mock positions, test cleanups | 3 h | CC-01, CC-15 |

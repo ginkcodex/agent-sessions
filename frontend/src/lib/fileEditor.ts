@@ -126,6 +126,10 @@ export const completionKeys: readonly KeyBinding[] = [
   { key: 'Tab', run: acceptCompletion },
 ];
 
+// Language sources seen to answer with a promise. They are not run again for
+// their labels: that run would do the whole work and could not be cancelled.
+const asyncSources = new WeakSet<CompletionSource>();
+
 // What the language's own sources offer here, so words do not repeat them.
 // Only answers given at once count; CodeMirror merges the rest as they come.
 function languageLabels(context: CompletionContext): Set<string> {
@@ -134,10 +138,11 @@ function languageLabels(context: CompletionContext): Set<string> {
   for (const source of context.state.languageDataAt<CompletionSource | readonly (string | Completion)[]>('autocomplete', context.pos)) {
     if (source === documentWords || source === codeSuggestions) continue;
     if (typeof source !== 'function') { source.forEach(add); continue; }
+    if (asyncSources.has(source)) continue;
     try {
       const result = source(new CompletionContext(context.state, context.pos, context.explicit, context.view));
       // Not waited for: a rejection is CodeMirror's to report when it runs the source.
-      if (result instanceof Promise) result.catch(() => {});
+      if (result instanceof Promise) { asyncSources.add(source); result.catch(() => {}); }
       else if (result) result.options.forEach(add);
     } catch { /* A failing source offers nothing; CodeMirror reports it when it runs it. */ }
   }
@@ -202,6 +207,14 @@ export function completionTrigger(context: CompletionContext, view: EditorView, 
 function wordsOnly(context: CompletionContext): CompletionResult | null {
   const words = documentWords(context);
   return words instanceof Promise ? null : words;
+}
+
+/**
+ * Whether the word asked about (from start to pos in asked) is still at the
+ * same place in doc: the same document, or one typed on after the word.
+ */
+function sameWord(doc: Text, asked: Text, start: number, pos: number): boolean {
+  return doc === asked || (pos <= doc.length && doc.sliceString(start, pos) === asked.sliceString(start, pos) && identifierStart(doc, pos) === start);
 }
 
 /** Resolves undefined, and aborts the request, when the server takes longer than wait. */
@@ -292,17 +305,20 @@ function applyAccept(view: EditorView, completion: Completion, accept: Completio
 /** How long accepting an item waits for the import its server gives only on resolve (CC-12). */
 export const RESOLVE_ACCEPT_WAIT = 500;
 
-// An accepted item awaiting its import: the text it replaces, followed through typing.
-interface PendingPick { id: number; from: number; to: number }
+// An accepted item awaiting its import: the text it replaces, followed through
+// typing; gone once a change removed or replaced all of that text.
+interface PendingPick { id: number; from: number; to: number; gone?: boolean }
 const setPendingPick = StateEffect.define<PendingPick | null>();
 const pendingPick = StateField.define<PendingPick | null>({
   create: () => null,
   update(value, tr) {
     for (const e of tr.effects) if (e.is(setPendingPick)) value = e.value;
     if (!value || !tr.docChanged) return value;
+    let gone = value.gone;
+    if (value.from < value.to) tr.changes.iterChangedRanges((fromA, toA) => { if (fromA <= value.from && toA >= value.to) gone = true; });
     // Text typed at either end stays outside it.
     const from = tr.changes.mapPos(value.from, 1), to = tr.changes.mapPos(value.to, -1);
-    return { id: value.id, from, to: Math.max(from, to) };
+    return { ...value, from, to: Math.max(from, to), gone };
   },
 });
 let pickIds = 0;
@@ -344,6 +360,11 @@ function acceptResolving(view: EditorView, completion: Completion, item: CodeCom
     const pick = view.state.field(pendingPick, false), still = owners.get(view);
     // Another file or tab in the editor, or the editor gone: nothing goes in.
     if (!pick || pick.id !== id || !owner || still?.id !== owner.id || still.path !== owner.path) return undefined;
+    // The word it was to replace was deleted or typed over meanwhile: nothing goes in.
+    if (pick.gone) {
+      view.dispatch({ effects: setPendingPick.of(null) });
+      return undefined;
+    }
     const doc = view.state.doc, typed = doc !== shown;
     let changes = accept(doc, pick.from, pick.to);
     if (!typed && edits?.length) changes = withExtraEdits(changes, doc, edits);
@@ -406,11 +427,14 @@ export const codeSuggestions: CompletionSource = context => {
   const pending = complete(editorPosition(context.state, pos), trigger, () => view.state.doc === askedDoc, controller.signal);
   if (!pending) return wordsOnly(context);
   return answerWithin(pending, SERVER_SUGGESTION_WAIT, controller).then(answer => {
+    // CodeMirror dropped the query (another edit, the popup closed): its answer changes nothing.
+    if (context.aborted) return null;
     const words = wordsOnly(context);
     // Asked again on the next keystroke: the server may answer then.
     if (!answer) return words && { ...words, validFor: undefined };
     if (answer.triggerCharacters !== undefined) learnedTriggers.set(view, { path, triggers: answer.triggerCharacters });
-    if (answer.incomplete) unfinished.set(view, { path, start: identifierStart(askedDoc, pos) });
+    const word = identifierStart(askedDoc, pos);
+    if (answer.incomplete && sameWord(view.state.doc, askedDoc, word, pos)) unfinished.set(view, { path, start: word });
     else unfinished.delete(view);
     const items = answer.items, start = answerStart(askedDoc, pos, items), placed = serverOrder(items);
     const offered = new Set(items.map(item => item.label));

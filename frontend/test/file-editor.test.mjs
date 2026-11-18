@@ -1228,6 +1228,17 @@ test('document words: a language source that answers later and fails leaves no u
   assert.deepEqual(unhandled, []);
 });
 
+test('document words: a language source that answers later is run for its labels once, not on every query', () => {
+  let runs = 0;
+  const later = () => { runs++; return new Promise(() => {}); };
+  let syncRuns = 0;
+  const now = () => { syncRuns++; return null; };
+  const state = EditorState.create({ doc: 'alpha alphabet\nalp', extensions: EditorState.languageData.of(() => [{ autocomplete: later }, { autocomplete: now }]) });
+  for (let i = 0; i < 3; i++) assert.deepEqual(wordsAt(state).options.map(o => o.label).sort(), ['alpha', 'alphabet']);
+  assert.equal(runs, 1, 'seen to answer later: not run again');
+  assert.equal(syncRuns, 3, 'a source that answers at once still is');
+});
+
 test('document words: prefix matches, the whole typed word and language items left out, none past the highlight limit', () => {
   const state = EditorState.create({ doc: 'alpha alphabet beta\nalp' });
   const result = wordsAt(state);
@@ -1473,6 +1484,38 @@ test('a slow server is canceled and the words show; CodeMirror ending the query 
   h.editor.destroy();
 });
 
+test('an answer to a query CodeMirror aborted changes neither the trigger characters nor the unfinished word', async () => {
+  const h = serverEditor('fmt:\nal', 'a.go');
+  let answer;
+  h.reply = () => new Promise(resolve => { answer = resolve; });
+  const { view } = h, end = view.state.doc.length;
+  const aborted = h.at(end);
+  const pending = codeSuggestions(aborted);
+  // As CodeMirror aborts a query: its listeners, then no more.
+  for (const listener of aborted.abortListeners) listener();
+  aborted.abortListeners = null;
+  answer({ items: [{ label: 'alpha' }], incomplete: true, triggerCharacters: '.' });
+  assert.equal(await pending, null);
+  typed(view, 'p', end);
+  assert.deepEqual(completionTrigger(h.at(end + 1), view, 'a.go'), { kind: 'invoked' }, 'not asked again as incomplete');
+  assert.deepEqual(completionTrigger(h.at(4), view, 'a.go'), { kind: 'character', character: ':' }, 'the likely triggers still apply');
+
+  // Typed on in the same word while the server answered: asked again as incomplete.
+  const typedOn = codeSuggestions(h.at(end + 1));
+  typed(view, 'h', end + 1);
+  answer({ items: [{ label: 'alpha' }], incomplete: true });
+  await typedOn;
+  assert.deepEqual(completionTrigger(h.at(end + 2), view, 'a.go'), { kind: 'incomplete' });
+
+  // The word changed before the answer came: not.
+  const changed = codeSuggestions(h.at(end + 2));
+  view.dispatch({ changes: { from: end - 2, insert: 'x' } });
+  answer({ items: [{ label: 'alpha' }], incomplete: true });
+  await changed;
+  assert.deepEqual(completionTrigger(h.at(end + 3), view, 'a.go'), { kind: 'invoked' });
+  h.editor.destroy();
+});
+
 test('accepting applies the edit and its import as one undo step, with the snippet\'s first field selected', async () => {
   const text = 'package main\n\nfunc f() {\n\tfmt.Pr\n}\n';
   const h = serverEditor(text, 'a.go', async () => ({ incomplete: false, items: [{
@@ -1597,6 +1640,29 @@ test('typing while the import is awaited stays, and the item still goes in witho
   undo(view);
   assert.equal(view.state.doc.toString(), '// note\nexport {};\nhelperVa(');
   h.editor.destroy();
+});
+
+test('an awaited item whose word was deleted or typed over goes nowhere; a shortened word is still replaced', async () => {
+  const backspace = (view, at) => view.dispatch({ changes: { from: at - 1, to: at }, userEvent: 'delete.backward' });
+  const cases = [
+    ['deleted', (view, w) => view.dispatch({ changes: { from: w.from, to: w.to }, userEvent: 'delete.selection' }), 'export {};\n'],
+    ['typed over', (view, w) => view.dispatch({ changes: { from: w.from, to: w.to, insert: 'x' }, userEvent: 'input.type' }), 'export {};\nx'],
+    ['deleted one by one', (view, w) => { for (let at = w.to; at > w.from; at--) backspace(view, at); }, 'export {};\n'],
+    ['shortened', (view, w) => backspace(view, w.to), 'export {};\nhelperValue'],
+  ];
+  for (const [what, edit, expected] of cases) {
+    let answer;
+    const h = await resolvingEditor(() => new Promise(resolve => { answer = resolve; }));
+    const { view } = h;
+    h.accept();
+    edit(view, view.state.doc.line(2));
+    const depth = undoDepth(view.state);
+    answer([helperImport]);
+    await settled();
+    assert.equal(view.state.doc.toString(), expected, what);
+    assert.equal(undoDepth(view.state), depth + (what === 'shortened' ? 1 : 0), `${what}: undo history`);
+    h.editor.destroy();
+  }
 });
 
 test('accepting again puts an awaited item in first; another file in the editor gets nothing', async () => {

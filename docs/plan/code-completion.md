@@ -76,7 +76,8 @@ any command a completion item carries.
   advertises (found in CC-09). CC-10 returns them from a resolve at the
   document's current version. CC-12 resolves such items on accept: the
   popup closes, and the item goes in with its import once resolved, or
-  alone after 500 ms, a failure, or typing meanwhile. The info panel's
+  alone after 500 ms, a failure, or typing meanwhile; nothing goes in when
+  the word it replaces was deleted or typed over meanwhile (CC-17). The info panel's
   resolve is shared, so a selected item's import is usually ready.
 - **Item details come later and stay on the host.** The backend keeps the
   last answer per document, through later typing, and resolves an item (`completionItem/resolve`)
