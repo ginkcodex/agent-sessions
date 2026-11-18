@@ -18,12 +18,24 @@ func edit(r string, text string) string {
 	return `{"range":` + r + `,"newText":` + string(quoted) + `}`
 }
 
-func TestCompletionAgainstFakeServer(t *testing.T) {
+// completionFixture is a fake gopls answering with init, and a Manager with
+// source.go open as d1 at version 1.
+type completionFixture struct {
+	e    *sessionEnv
+	srv  *navServer
+	root AuthorizedRoot
+	docs SessionDocuments
+	m    *Manager
+	c    Context
+}
+
+func newCompletionFixture(t *testing.T, init, text string) completionFixture {
+	t.Helper()
 	e := newEnv(t, SessionOptions{})
 	root, cfg := e.project()
 	cfg.ProviderID = goplsProviderID
 	e.approve(root, cfg)
-	srv := &navServer{answers: map[string]string{}, init: completionInit}
+	srv := &navServer{answers: map[string]string{}, init: init}
 	e.script = srv.script
 	if err := os.WriteFile(filepath.Join(root.Project().Root, "source.go"), []byte("package a\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -37,11 +49,15 @@ func TestCompletionAgainstFakeServer(t *testing.T) {
 	e.next()
 	m := NewManagerForTest(t, root)
 	m.SetDocumentProvider(docs)
-	ctx, c := context.Background(), m.snap.Context
-	text := "package a\n\nfunc main() { fmt.Pr }\n"
-	if _, err := m.OpenDocument(ctx, c, "source.go", "d1", 1, text, ""); err != nil {
+	if _, err := m.OpenDocument(context.Background(), m.snap.Context, "source.go", "d1", 1, text, ""); err != nil {
 		t.Fatal(err)
 	}
+	return completionFixture{e: e, srv: srv, root: root, docs: docs, m: m.Manager, c: m.snap.Context}
+}
+
+func TestCompletionAgainstFakeServer(t *testing.T) {
+	f := newCompletionFixture(t, completionInit, "package a\n\nfunc main() { fmt.Pr }\n")
+	e, srv, root, m, ctx, c := f.e, f.srv, f.root, f.m, context.Background(), f.c
 	at := Position{Line: 2, Character: 20} // after "fmt.Pr"
 	invoked := CompletionTrigger{Kind: CompletionInvoked}
 	complete := func(trigger CompletionTrigger) (CompletionResult, error) {
@@ -64,7 +80,7 @@ func TestCompletionAgainstFakeServer(t *testing.T) {
 		`{"label":"Print","textEdit":{"insert":` + navRange(2, 18, 2, 20) + `,"replace":` + navRange(2, 18, 2, 21) + `,"newText":"Print"}}`,
 		// Left out: another line, not covering the position, inverted,
 		// past the end of the line, no label, label over 1 KiB, too many extra
-		// edits, an extra edit without text.
+		// edits, an extra edit without text or outside the text.
 		`{"label":"line","textEdit":` + edit(navRange(1, 0, 1, 0), "x") + `}`,
 		`{"label":"before","textEdit":` + edit(navRange(2, 14, 2, 17), "x") + `}`,
 		`{"label":"inverted","textEdit":` + edit(navRange(2, 20, 2, 18), "x") + `}`,
@@ -73,6 +89,7 @@ func TestCompletionAgainstFakeServer(t *testing.T) {
 		`{"label":"` + strings.Repeat("a", maxCompletionShort+1) + `"}`,
 		`{"label":"many","additionalTextEdits":[` + strings.Join(extras, ",") + `]}`,
 		`{"label":"textless","additionalTextEdits":[{"range":` + navRange(0, 0, 0, 0) + `}]}`,
+		`{"label":"outside","additionalTextEdits":[` + edit(navRange(4, 0, 4, 0), "import os\n") + `]}`,
 		// Extra edits overlapping the main edit (here the position) or an
 		// earlier one are dropped; touching is not overlapping.
 		`{"label":"overlap","additionalTextEdits":[` + edit(navRange(0, 0, 0, 2), "a") + `,` + edit(navRange(0, 1, 0, 3), "b") + `,` +
@@ -89,7 +106,7 @@ func TestCompletionAgainstFakeServer(t *testing.T) {
 	for _, item := range got.Items {
 		labels = append(labels, item.Label)
 	}
-	if got.DocumentID != "d1" || got.Version != 1 || got.Incomplete || !got.Truncated || fmt.Sprint(labels) != "[Println Printf Print overlap long]" {
+	if got.DocumentID != "d1" || got.Version != 1 || got.ResultID == "" || got.Incomplete || !got.Truncated || fmt.Sprint(labels) != "[Println Printf Print overlap long]" {
 		t.Fatalf("%v %+v", labels, got)
 	}
 	want := CompletionItem{
@@ -232,19 +249,42 @@ func must[T any](v T, err error) T {
 	return v
 }
 
-// completeDocs adds completion to the fake document provider.
+// completeDocs adds completion to the fake document provider. Answers are
+// r1, r2, ...; when hold is set, the next answer waits for it.
 type completeDocs struct {
 	MultiOwnedDocumentProvider
-	mu    sync.Mutex
-	reqs  []CompletionRequest
-	items []CompletionItem
+	mu       sync.Mutex
+	reqs     []CompletionRequest
+	resolves []CompletionResolveRequest
+	items    []CompletionItem
+	answers  int
+	hold     chan struct{}
 }
 
 func (n *completeDocs) Complete(_ context.Context, req CompletionRequest) (CompletionResult, error) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	n.reqs = append(n.reqs, req)
-	return CompletionResult{Items: n.items}, nil
+	n.answers++
+	id, items, hold := fmt.Sprintf("r%d", n.answers), n.items, n.hold
+	n.hold = nil
+	n.mu.Unlock()
+	if hold != nil {
+		<-hold
+	}
+	return CompletionResult{ResultID: id, Items: items}, nil
+}
+
+func (n *completeDocs) ResolveCompletion(_ context.Context, req CompletionResolveRequest) (CompletionDetails, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.resolves = append(n.resolves, req)
+	return CompletionDetails{Detail: "resolved"}, nil
+}
+
+func (n *completeDocs) requests() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return len(n.reqs)
 }
 
 func TestCompletionChoosesTheLanguageServer(t *testing.T) {
@@ -264,17 +304,13 @@ func TestCompletionChoosesTheLanguageServer(t *testing.T) {
 	}
 	docs := &completeDocs{MultiOwnedDocumentProvider: p}
 	m.SetDocumentProvider(docs)
-	// Items whose edits do not fit the text the position refers to are left out.
-	docs.items = []CompletionItem{
-		{Label: "real", Edit: &TextEdit{Range: Range{Position{1, 2}, Position{1, 2}}, NewText: "real"}},
-		{Label: "past", Edit: &TextEdit{Range: Range{Position{1, 2}, Position{1, 5}}, NewText: "past"}},
-		{Label: "import", ExtraEdits: []TextEdit{{Range: Range{Position{3, 0}, Position{3, 0}}, NewText: "import os\n"}}},
-	}
+	docs.items = []CompletionItem{{Label: "real"}}
 	got, err := m.Complete(ctx, c, "d1", 1, at, dot)
-	if err != nil || len(got.Items) != 1 || got.Items[0].Label != "real" || got.DocumentID != "d1" || got.Version != 1 {
+	if err != nil || len(got.Items) != 1 || got.Items[0].Label != "real" || got.DocumentID != "d1" || got.Version != 1 || got.ResultID != "r1" {
 		t.Fatal(got, err)
 	}
-	if req := docs.reqs[len(docs.reqs)-1]; req.Owner.ProviderID != "pyright" || req.Generation != "g-pyright" || req.Path != "source.go" || req.Position != at || req.Trigger != dot {
+	// The provider checks ranges against the text the position refers to.
+	if req := docs.reqs[len(docs.reqs)-1]; req.Owner.ProviderID != "pyright" || req.Generation != "g-pyright" || req.Path != "source.go" || req.Position != at || req.Trigger != dot || req.Text != "x = 1\nx.\n" {
 		t.Fatalf("went to %+v", req)
 	}
 	// Both offer completion: the one with more navigation answers.
@@ -370,5 +406,215 @@ func TestCompletionResultValidate(t *testing.T) {
 	}
 	if err := (CompletionResult{Items: make([]CompletionItem, maxCompletionItems+1)}).Validate(); err == nil {
 		t.Fatal("too many items")
+	}
+}
+
+func TestCompletionResolveAgainstFakeServer(t *testing.T) {
+	f := newCompletionFixture(t, completionInit, "package a\n\nfunc main() { a }\n")
+	srv, m, ctx, c := f.srv, f.m, context.Background(), f.c
+	at, invoked := Position{Line: 2, Character: 15}, CompletionTrigger{Kind: CompletionInvoked}
+	srv.set("textDocument/completion", `"result":{"isIncomplete":false,"items":[`+
+		`{"label":"skipped","textEdit":`+edit(navRange(1, 0, 1, 0), "x")+`},`+
+		`{"label":"alpha","detail":"listed","data":{"id":7}},`+
+		`{"label":"beta","documentation":"Beta from the list.","data":{"id":8}}]}`)
+	got, err := m.Complete(ctx, c, "d1", 1, at, invoked)
+	if err != nil || got.ResultID == "" || len(got.Items) != 2 {
+		t.Fatal(got, err)
+	}
+	resolve := func(id string, index int) (CompletionDetails, error) { return m.ResolveCompletion(ctx, c, "d1", id, index) }
+
+	// The kept item goes back with its data; the index is in the kept items.
+	srv.set("completionItem/resolve", `"result":{"label":"alpha","detail":"func alpha()","documentation":{"kind":"markdown","value":"Alpha does."},"data":{"id":7},`+
+		`"additionalTextEdits":[`+edit(navRange(0, 0, 0, 0), "ignored")+`]}`)
+	details, err := resolve(got.ResultID, 0)
+	if err != nil || details != (CompletionDetails{DocumentID: "d1", ResultID: got.ResultID, Index: 0, Detail: "func alpha()", Documentation: details.Documentation}) ||
+		*details.Documentation != (MarkupText{Kind: "markdown", Value: "Alpha does."}) || details.Validate() != nil {
+		t.Fatal(details, err)
+	}
+	if sent := srv.last(); sent["label"] != "alpha" || fmt.Sprint(sent["data"]) != "map[id:7]" {
+		t.Fatal(sent)
+	}
+	// What the server leaves out keeps the list's value.
+	srv.set("completionItem/resolve", `"result":{"label":"beta","detail":"var beta int"}`)
+	if details, err = resolve(got.ResultID, 1); err != nil || details.Detail != "var beta int" || details.Documentation == nil || details.Documentation.Value != "Beta from the list." {
+		t.Fatal(details, err)
+	}
+	// Documentation is capped.
+	srv.set("completionItem/resolve", `"result":{"label":"beta","documentation":"`+strings.Repeat("d", maxCompletionDocs+1)+`"}`)
+	if details, err = resolve(got.ResultID, 1); err != nil || len(details.Documentation.Value) != maxCompletionDocs || !details.Truncated || details.Validate() != nil {
+		t.Fatal(len(details.Documentation.Value), details.Truncated, err)
+	}
+	srv.set("completionItem/resolve", `"error":{"code":-32603,"message":"SECRET"}`)
+	if _, err = resolve(got.ResultID, 1); errCode(err) != "toolFailed" || strings.Contains(err.Error(), "SECRET") {
+		t.Fatal(err)
+	}
+	srv.set("completionItem/resolve", `"result":{"label":"alpha"}`)
+
+	// Unknown items and answers are refused before reaching the server.
+	before := len(srv.requests)
+	for _, bad := range []struct {
+		id    string
+		index int
+		code  string
+	}{{got.ResultID, 2, "invalidArgument"}, {got.ResultID, -1, "invalidArgument"}, {"", 0, "invalidArgument"}, {"999", 0, "staleVersion"}} {
+		if _, err = resolve(bad.id, bad.index); errCode(err) != bad.code {
+			t.Fatal(bad, err)
+		}
+	}
+	if _, err = m.ResolveCompletion(ctx, c, "nope", got.ResultID, 0); errCode(err) != "notFound" {
+		t.Fatal(err)
+	}
+	if len(srv.requests) != before {
+		t.Fatal("refused resolve reached the server")
+	}
+
+	// A newer answer replaces the kept one.
+	next, err := m.Complete(ctx, c, "d1", 1, at, invoked)
+	if err != nil || next.ResultID == got.ResultID {
+		t.Fatal(next, err)
+	}
+	if _, err = resolve(got.ResultID, 0); errCode(err) != "staleVersion" {
+		t.Fatal(err)
+	}
+	if _, err = resolve(next.ResultID, 0); err != nil {
+		t.Fatal(err)
+	}
+	// The session drops its items when the document changes, when the
+	// session restarts (another generation) and when the document closes.
+	m.mu.Lock()
+	kept := m.attachments[c.AttachmentID].docs["d1"].completion
+	m.mu.Unlock()
+	req := CompletionResolveRequest{Root: f.root, Owner: kept.owner, Generation: kept.generation, Path: "source.go", ResultID: next.ResultID}
+	if _, err = f.docs.ResolveCompletion(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	restarted := req
+	restarted.Generation = "another"
+	if _, err = f.docs.ResolveCompletion(ctx, restarted); errCode(err) != "staleVersion" {
+		t.Fatal(err)
+	}
+	if _, err = m.ChangeDocument(ctx, c, "d1", 2, "package a\n\nfunc main() { al }\n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = resolve(next.ResultID, 0); errCode(err) != "staleVersion" {
+		t.Fatal(err)
+	}
+	if _, err = f.docs.ResolveCompletion(ctx, req); errCode(err) != "staleVersion" {
+		t.Fatal(err)
+	}
+	if got, err = m.Complete(ctx, c, "d1", 2, Position{Line: 2, Character: 16}, invoked); err != nil || got.ResultID == "" {
+		t.Fatal(got, err)
+	}
+	_, s, err := f.docs.serverFor(f.root, "source.go", kept.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keptURIs := func() int { s.mu.Lock(); defer s.mu.Unlock(); return len(s.completions) }
+	if keptURIs() != 1 {
+		t.Fatal("answer not kept")
+	}
+	if _, err = m.CloseDocument(ctx, c, "d1"); err != nil {
+		t.Fatal(err)
+	}
+	if keptURIs() != 0 {
+		t.Fatal("answer kept after close")
+	}
+}
+
+// A server without resolve: the list's own detail and documentation.
+func TestCompletionResolveWithoutResolveProvider(t *testing.T) {
+	init := strings.Replace(completionInit, `,"resolveProvider":true`, "", 1)
+	f := newCompletionFixture(t, init, "package a\n")
+	ctx := context.Background()
+	f.srv.set("textDocument/completion", `"result":[{"label":"alpha","detail":"`+strings.Repeat("é", maxCompletionShort)+`","documentation":{"kind":"plaintext","value":"Alpha."}}]`)
+	got, err := f.m.Complete(ctx, f.c, "d1", 1, Position{Line: 0, Character: 7}, CompletionTrigger{Kind: CompletionInvoked})
+	if err != nil || len(got.Items) != 1 {
+		t.Fatal(got, err)
+	}
+	before := len(f.srv.requests)
+	details, err := f.m.ResolveCompletion(ctx, f.c, "d1", got.ResultID, 0)
+	if err != nil || details.Detail != got.Items[0].Detail || !details.Truncated || *details.Documentation != (MarkupText{Kind: "plaintext", Value: "Alpha."}) {
+		t.Fatal(details, err)
+	}
+	if len(f.srv.requests) != before {
+		t.Fatal("resolve reached a server without resolve")
+	}
+}
+
+func TestCompletionResolveKeepsTheLastAnswer(t *testing.T) {
+	m, s, p := multiDocFixture(t)
+	caps := incrementalCaps
+	caps.Completion = true
+	p.entries[1].Capabilities = caps
+	docs := &completeDocs{MultiOwnedDocumentProvider: p, items: []CompletionItem{{Label: "a"}, {Label: "b"}}}
+	m.SetDocumentProvider(docs)
+	ctx, c := context.Background(), s.Context
+	if _, err := m.OpenDocument(ctx, c, "source.go", "d1", 1, "x = 1\n", ""); err != nil {
+		t.Fatal(err)
+	}
+	invoked := CompletionTrigger{Kind: CompletionInvoked}
+	if _, err := m.Complete(ctx, c, "d1", 1, Position{}, invoked); err != nil {
+		t.Fatal(err)
+	}
+	details, err := m.ResolveCompletion(ctx, c, "d1", "r1", 1)
+	if err != nil || details != (CompletionDetails{DocumentID: "d1", ResultID: "r1", Index: 1, Detail: "resolved"}) {
+		t.Fatal(details, err)
+	}
+	if req := docs.resolves[0]; req.Owner.ProviderID != "pyright" || req.Generation != "g-pyright" || req.Path != "source.go" || req.ResultID != "r1" || req.Index != 1 {
+		t.Fatalf("%+v", req)
+	}
+	// An earlier request answering after a later one does not replace it.
+	hold := make(chan struct{})
+	docs.mu.Lock()
+	docs.hold = hold
+	docs.mu.Unlock()
+	done := make(chan CompletionResult, 1)
+	go func() { r, _ := m.Complete(ctx, c, "d1", 1, Position{}, invoked); done <- r }()
+	eventually(t, "slow request sent", func() bool { return docs.requests() == 2 })
+	if r, err := m.Complete(ctx, c, "d1", 1, Position{}, invoked); err != nil || r.ResultID != "r3" {
+		t.Fatal(r, err)
+	}
+	close(hold)
+	if r := <-done; r.ResultID != "r2" {
+		t.Fatal(r)
+	}
+	if _, err = m.ResolveCompletion(ctx, c, "d1", "r2", 0); errCode(err) != "staleVersion" {
+		t.Fatal(err)
+	}
+	if _, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0); err != nil {
+		t.Fatal(err)
+	}
+	// A change, then a close, end it.
+	if _, err = m.ChangeDocument(ctx, c, "d1", 2, "x = 2\n"); err != nil {
+		t.Fatal(err)
+	}
+	resolves := len(docs.resolves)
+	if _, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0); errCode(err) != "staleVersion" || len(docs.resolves) != resolves {
+		t.Fatal(err)
+	}
+	if _, err = m.CloseDocument(ctx, c, "d1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0); err == nil {
+		t.Fatal("resolved after close")
+	}
+}
+
+func TestCompletionDetailsValidate(t *testing.T) {
+	ok := CompletionDetails{DocumentID: "d1", ResultID: "1", Index: 3, Detail: "d", Documentation: &MarkupText{Kind: "markdown", Value: "v"}}
+	if err := ok.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []CompletionDetails{
+		{ResultID: ""},
+		{ResultID: "1", Index: -1},
+		{ResultID: "1", Index: maxCompletionItems},
+		{ResultID: "1", Detail: strings.Repeat("d", maxCompletionShort+1)},
+		{ResultID: "1", Documentation: &MarkupText{Kind: "html"}},
+		{ResultID: "1", Documentation: &MarkupText{Kind: "plaintext", Value: strings.Repeat("v", maxCompletionDocs+1)}},
+	} {
+		if errCode(bad.Validate()) != "toolFailed" {
+			t.Fatalf("%+v", bad)
+		}
 	}
 }

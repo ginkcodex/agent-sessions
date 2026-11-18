@@ -749,6 +749,11 @@ type lspSession struct {
 	// unindexed: open URIs opened or changed since their last Reindex request
 	// (config.Reindex only).
 	unindexed map[string]bool
+	// completions: the server's items of the last completion answer per open
+	// URI, for completionItem/resolve. Opening, changing or closing the
+	// document drops them.
+	completions   map[string]keptItems
+	completionIDs uint64
 
 	ready    chan struct{} // closed once with the first terminal/ready result
 	readyErr error

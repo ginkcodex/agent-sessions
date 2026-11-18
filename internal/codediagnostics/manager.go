@@ -56,6 +56,9 @@ type Manager struct {
 	workers     sync.WaitGroup
 	ownedWork   atomic.Int64     // running owned workers (runs + document releases); test-visible
 	provider    DocumentProvider // nil: live document operations are unsupported
+	// completionSeq orders completion requests, so a slower earlier answer
+	// never replaces a later one as a document's kept answer.
+	completionSeq uint64
 }
 
 func NewManager(connection string, trust *Trust, supervisor *Supervisor, limits ManagerLimits) (*Manager, error) {

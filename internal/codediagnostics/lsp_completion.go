@@ -78,10 +78,12 @@ type CompletionItem struct {
 // empty, never nil, when the server has nothing. Incomplete asks the caller
 // to ask again as the user types on rather than filter locally; Truncated
 // reports dropped items or shortened text and implies Incomplete when items
-// were dropped.
+// were dropped. ResultID names the answer for ResolveCompletion, which takes
+// an item's index in Items.
 type CompletionResult struct {
 	DocumentID string           `json:"documentId"`
 	Version    int64            `json:"version"`
+	ResultID   string           `json:"resultId,omitempty"`
 	Items      []CompletionItem `json:"items"`
 	Incomplete bool             `json:"isIncomplete,omitempty"`
 	Truncated  bool             `json:"truncated,omitempty"`
@@ -96,12 +98,14 @@ type CompletionRequest struct {
 	Path       string
 	Position   Position
 	Trigger    CompletionTrigger
+	Text       string // the document at the requested version
 }
 
 // CompletionProvider sends completion requests to running sessions. Like
 // NavigationProvider it never starts a process.
 type CompletionProvider interface {
 	Complete(ctx context.Context, req CompletionRequest) (CompletionResult, error)
+	ResolveCompletion(ctx context.Context, req CompletionResolveRequest) (CompletionDetails, error)
 }
 
 // completionClientCapabilities is what the client reads in an answer: no
@@ -182,11 +186,15 @@ func validTrigger(t CompletionTrigger, caps ServerCapabilities) bool {
 // open at exactly version, the position inside its text, and a running
 // session must offer completion. Of several owners, the one that offers
 // completion and the most navigation answers is asked (Pyright, not Ruff).
-// Items whose ranges do not fit the text at version are left out.
+// Items whose ranges do not fit the text at version are left out. The answer
+// is kept for ResolveCompletion while the document stays at version and no
+// later answer replaces it.
 func (m *Manager) Complete(ctx context.Context, c Context, documentID string, version int64, pos Position, trigger CompletionTrigger) (CompletionResult, error) {
 	m.mu.Lock()
 	provider, ok := m.provider.(CompletionProvider)
 	route, err := m.documentRoute(c, documentID, version, completionOp, pos, ok, "Code completion is unavailable")
+	m.completionSeq++
+	seq := m.completionSeq
 	m.mu.Unlock()
 	if err != nil {
 		return CompletionResult{}, err
@@ -195,12 +203,14 @@ func (m *Manager) Complete(ctx context.Context, c Context, documentID string, ve
 		return CompletionResult{}, failure("invalidArgument", "Unknown completion trigger")
 	}
 	r := route.req
-	result, err := provider.Complete(ctx, CompletionRequest{Root: r.Root, Owner: r.Owner, Generation: r.Generation, Path: r.Path, Position: pos, Trigger: trigger})
+	result, err := provider.Complete(ctx, CompletionRequest{Root: r.Root, Owner: r.Owner, Generation: r.Generation, Path: r.Path, Position: pos, Trigger: trigger, Text: route.text})
 	if err != nil {
 		return CompletionResult{}, err
 	}
 	result.DocumentID, result.Version = documentID, version
-	result.Items = itemsInText(route.text, result.Items)
+	if result.Items == nil {
+		result.Items = []CompletionItem{}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	// The attachment may have ended (or lost approval) while the server
@@ -212,23 +222,10 @@ func (m *Manager) Complete(ctx context.Context, c Context, documentID string, ve
 	if err != nil {
 		return CompletionResult{}, err
 	}
-	return result, nil
-}
-
-// itemsInText keeps the items whose edits all lie inside text. It never
-// returns nil.
-func itemsInText(text string, items []CompletionItem) []CompletionItem {
-	out := make([]CompletionItem, 0, len(items))
-	for _, item := range items {
-		fits := item.Edit == nil || rangeInText(text, item.Edit.Range)
-		for _, e := range item.ExtraEdits {
-			fits = fits && rangeInText(text, e.Range)
-		}
-		if fits {
-			out = append(out, item)
-		}
+	if d := a.docs[documentID]; d != nil && d.version == version && result.ResultID != "" && seq > d.completion.seq {
+		d.completion = keptAnswer{seq: seq, resultID: result.ResultID, items: len(result.Items), version: version, owner: r.Owner, generation: r.Generation}
 	}
-	return out
+	return result, nil
 }
 
 // Complete sends textDocument/completion to the running session that owns
@@ -239,6 +236,7 @@ func (d SessionDocuments) Complete(ctx context.Context, req CompletionRequest) (
 	if err != nil {
 		return CompletionResult{}, err
 	}
+	uri := fileURI(target)
 	why := map[string]any{"triggerKind": 1}
 	switch req.Trigger.Kind {
 	case CompletionCharacter:
@@ -247,37 +245,47 @@ func (d SessionDocuments) Complete(ctx context.Context, req CompletionRequest) (
 		why["triggerKind"] = 3
 	}
 	params := map[string]any{
-		"textDocument": map[string]any{"uri": fileURI(target)},
+		"textDocument": map[string]any{"uri": uri},
 		"position":     lspPosition{req.Position.Line, req.Position.Character},
 		"context":      why,
 	}
+	id := s.beginCompletion(uri)
 	cctx, cancel := s.deadline(ctx, completionTimeout)
 	defer cancel()
 	if err := s.reindex(cctx, tr); err != nil {
+		s.dropCompletion(uri, id)
 		return CompletionResult{}, navigationCallError(cctx, err)
 	}
 	raw, err := tr.Call(cctx, "textDocument/completion", params)
 	if err != nil {
+		s.dropCompletion(uri, id)
 		return CompletionResult{}, navigationCallError(cctx, err)
 	}
-	return completionResult(raw, req.Position)
+	result, items, err := completionResult(raw, req.Position, req.Text)
+	if err != nil || !s.keepCompletion(uri, id, items) {
+		s.dropCompletion(uri, id)
+		return result, err
+	}
+	result.ResultID = id
+	return result, nil
 }
 
 // completionResult reads CompletionItem[] or CompletionList and keeps what
-// the editor uses, within the caps. Items with an invalid shape or range, a
-// main edit that is not on pos's line or does not cover pos, overlong text to
-// insert, or more than 100 extra edits are left out (applying part of them
-// could break the code). Extra edits overlapping the main edit or an earlier
-// extra edit are dropped from the item.
-func completionResult(raw json.RawMessage, pos Position) (CompletionResult, error) {
+// the editor uses, within the caps. Items with an invalid shape, a range that
+// is not inside text, a main edit that is not on pos's line or does not cover
+// pos, overlong text to insert, or more than 100 extra edits are left out
+// (applying part of them could break the code). Extra edits overlapping the
+// main edit or an earlier extra edit are dropped from the item. The server's
+// items for the kept ones are returned too, in the same order, for resolve.
+func completionResult(raw json.RawMessage, pos Position, text string) (CompletionResult, []json.RawMessage, error) {
 	out := CompletionResult{Items: []CompletionItem{}}
 	var items []json.RawMessage
 	switch t := strings.TrimSpace(string(raw)); {
 	case t == "" || t == "null":
-		return out, nil
+		return out, nil, nil
 	case t[0] == '[':
 		if json.Unmarshal(raw, &items) != nil {
-			return CompletionResult{}, failure("toolFailed", "The language server answer is invalid")
+			return CompletionResult{}, nil, failure("toolFailed", "The language server answer is invalid")
 		}
 	default:
 		var list struct {
@@ -285,13 +293,15 @@ func completionResult(raw json.RawMessage, pos Position) (CompletionResult, erro
 			Items        []json.RawMessage `json:"items"`
 		}
 		if json.Unmarshal(raw, &list) != nil {
-			return CompletionResult{}, failure("toolFailed", "The language server answer is invalid")
+			return CompletionResult{}, nil, failure("toolFailed", "The language server answer is invalid")
 		}
 		out.Incomplete, items = list.IsIncomplete, list.Items
 	}
 	budget := maxCompletionAnswer
+	var kept []json.RawMessage
+	lines := &lineIndex{text: text}
 	for _, raw := range items {
-		item, size, truncated, ok := completionItem(raw, pos)
+		item, size, truncated, ok := completionItem(raw, pos, lines)
 		if !ok {
 			continue
 		}
@@ -302,13 +312,14 @@ func completionResult(raw json.RawMessage, pos Position) (CompletionResult, erro
 		budget -= size
 		out.Truncated = out.Truncated || truncated
 		out.Items = append(out.Items, item)
+		kept = append(kept, raw)
 	}
-	return out, nil
+	return out, kept, nil
 }
 
 // completionItem normalizes one item and reports the bytes it keeps and
 // whether display text was shortened.
-func completionItem(raw json.RawMessage, pos Position) (CompletionItem, int, bool, bool) {
+func completionItem(raw json.RawMessage, pos Position, lines *lineIndex) (CompletionItem, int, bool, bool) {
 	var in struct {
 		Label        string `json:"label"`
 		LabelDetails *struct {
@@ -372,7 +383,7 @@ func completionItem(raw json.RawMessage, pos Position) (CompletionItem, int, boo
 		if r == nil {
 			r = in.TextEdit.Insert // an insert/replace pair: the insert range
 		}
-		if r == nil || in.TextEdit.NewText == nil || !validRange(r) || len(*in.TextEdit.NewText) > maxCompletionText {
+		if r == nil || in.TextEdit.NewText == nil || !lines.contains(*r) || len(*in.TextEdit.NewText) > maxCompletionText {
 			return CompletionItem{}, 0, false, false
 		}
 		if r.Start.Line != pos.Line || r.End.Line != pos.Line || r.Start.Character > pos.Character || r.End.Character < pos.Character {
@@ -385,7 +396,7 @@ func completionItem(raw json.RawMessage, pos Position) (CompletionItem, int, boo
 	}
 	taken := []Range{main}
 	for _, e := range in.AdditionalTextEdits {
-		if e.Range == nil || e.NewText == nil || !validRange(e.Range) || len(*e.NewText) > maxCompletionText {
+		if e.Range == nil || e.NewText == nil || !lines.contains(*e.Range) || len(*e.NewText) > maxCompletionText {
 			return CompletionItem{}, 0, false, false
 		}
 		if overlapsAny(*e.Range, taken) {
@@ -437,6 +448,59 @@ func markupText(raw json.RawMessage) (*MarkupText, bool, bool) {
 		docs.Value = shorten(docs.Value, maxCompletionDocs)
 	}
 	return &docs, cut, true
+}
+
+// lineIndex checks many ranges against one text, as rangeInText does, while
+// reading each line once: an answer has up to 2,000 items, mostly on one line.
+type lineIndex struct {
+	text   string
+	starts []int // byte offset of each line; nil until first used
+	lines  map[int]lineShape
+}
+
+// lineShape is a line's UTF-16 length and the columns that fall inside a
+// surrogate pair.
+type lineShape struct {
+	length int
+	split  map[int]bool
+}
+
+func (x *lineIndex) contains(r Range) bool {
+	return validRange(&r) && x.at(r.Start) && x.at(r.End)
+}
+
+func (x *lineIndex) at(p Position) bool {
+	if x.starts == nil {
+		x.starts, x.lines = []int{0}, map[int]lineShape{}
+		for i := 0; i < len(x.text); {
+			if w := separator(x.text, i); w > 0 {
+				i += w
+				x.starts = append(x.starts, i)
+			} else {
+				i++
+			}
+		}
+	}
+	if p.Line < 0 || p.Line >= len(x.starts) || p.Character < 0 {
+		return false
+	}
+	shape, ok := x.lines[p.Line]
+	if !ok {
+		for i := x.starts[p.Line]; i < len(x.text) && separator(x.text, i) == 0; {
+			r, size := utf8.DecodeRuneInString(x.text[i:])
+			shape.length++
+			if r >= 0x10000 {
+				if shape.split == nil {
+					shape.split = map[int]bool{}
+				}
+				shape.split[shape.length] = true
+				shape.length++
+			}
+			i += size
+		}
+		x.lines[p.Line] = shape
+	}
+	return p.Character <= shape.length && !shape.split[p.Character]
 }
 
 // overlapsAny reports whether r shares text with any of taken. Two edits at
