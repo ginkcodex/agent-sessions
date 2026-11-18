@@ -13,6 +13,8 @@ import {
   terminalTabShortcut,
   isNewShellShortcut,
   isNewWindowShortcut,
+  isSidebarToggleShortcut,
+  sidebarToggleShortcutLabel,
   isSplitShortcut,
   isTerminalFindShortcut,
   splitShortcutLabel,
@@ -1383,6 +1385,28 @@ test('split panes follow the dock, or the chosen layout while maximized', async 
   });
 });
 
+test('with the left dock hidden the panel shows at the bottom and split panes take the chosen layout', async () => {
+  await withTerminals(async ({ store }) => {
+    await store.newShell('/generated');
+    store.setPosition('left');
+    assert.deepEqual([store.placement, store.layoutChosen, store.stacked], ['left', false, true]);
+    store.setLeftDockHidden(true);
+    assert.deepEqual([store.placement, store.layoutChosen, store.stacked], ['bottom', true, false], 'full width at the bottom, panes side by side');
+    assert.equal(store.position, 'left', 'the saved dock is kept');
+    store.setMaximizedStacked(true);
+    assert.equal(store.stacked, true, 'the chosen layout applies while collapsed');
+    store.toggleMaximized();
+    assert.equal(store.stacked, true, 'and is the same choice as maximized');
+    store.toggleMaximized();
+    store.setPosition('bottom');
+    assert.deepEqual([store.placement, store.stacked], ['bottom', true], 'docked bottom too');
+    store.setLeftDockHidden(false);
+    assert.deepEqual([store.placement, store.layoutChosen, store.stacked], ['bottom', false, false], 'the dock layout returns');
+    store.setPosition('left');
+    assert.deepEqual([store.placement, store.stacked], ['left', true], 'back on the left once the dock returns');
+  });
+});
+
 async function loadPanel() {
   const lib = (name) => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
   const { default: Panel } = await loadServerComponent(new URL('../src/lib/components/terminal/TerminalPanel.svelte', import.meta.url), [
@@ -1414,7 +1438,7 @@ test('terminal toolbar renders maximize and restore without replacing tab views'
         terminals: {
           tabs: [shellPane('generated-shell')],
           groups: [{ id: 'g1', panes: ['generated-shell'], focus: 'generated-shell', sizes: [1] }],
-          active: 'generated-shell', attention: {}, height: 360, position, maximized, stacked, canSplit: () => true,
+          active: 'generated-shell', attention: {}, height: 360, position, placement: position, maximized, layoutChosen: maximized, stacked, canSplit: () => true,
         },
         appState: {}, link: {},
       };
@@ -1443,6 +1467,30 @@ test('terminal toolbar renders maximize and restore without replacing tab views'
   } finally { delete globalThis.__componentFixture; }
 });
 
+test('with the sidebar collapsed the toolbar matches the maximized one', async () => {
+  const Panel = await loadPanel();
+  try {
+    for (const position of ['bottom', 'left']) for (const stacked of [false, true]) {
+      globalThis.__componentFixture = {
+        terminals: {
+          tabs: [shellPane('generated-shell')],
+          groups: [{ id: 'g1', panes: ['generated-shell'], focus: 'generated-shell', sizes: [1] }],
+          active: 'generated-shell', attention: {}, height: 360, position, placement: 'bottom', leftDockHidden: true,
+          maximized: false, layoutChosen: true, stacked, canSplit: () => true,
+        },
+        appState: {}, link: {},
+      };
+      const html = render(Panel).body;
+      assert.doesNotMatch(html, /aria-label="Move terminal/, `docked ${position}: no dock to move to while collapsed`);
+      const layout = html.match(/<button[^>]*aria-label="(?:Stack split panes|Place split panes side by side)"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? '';
+      assert.match(layout, stacked ? /side by side/ : /Stack split panes/);
+      assert.match(layout, stacked ? /class="mask-icon[^"]* split-h"/ : /class="mask-icon[^"]* split-v"/);
+      assert.match(html, /aria-label="Maximize terminal" aria-pressed="false"/, 'still a docked panel, not maximized');
+      assert.ok(html.includes('height: 360px'));
+    }
+  } finally { delete globalThis.__componentFixture; }
+});
+
 test('a split tab renders its panes side by side under one tab', async () => {
   const Panel = await loadPanel();
   try {
@@ -1454,7 +1502,7 @@ test('a split tab renders its panes side by side under one tab', async () => {
             { id: 'g1', panes: ['a', 'b'], focus: 'b', sizes: [0.25, 0.75] },
             { id: 'g2', panes: ['other'], focus: 'other', sizes: [1] },
           ],
-          active: 'b', attention: {}, height: 360, position, maximized: false, stacked: position === 'left', canSplit: () => false,
+          active: 'b', attention: {}, height: 360, position, placement: position, maximized: false, layoutChosen: false, stacked: position === 'left', canSplit: () => false,
         },
         appState: {}, link: {},
       };
@@ -1483,7 +1531,7 @@ test('a split tab renders its panes side by side under one tab', async () => {
 test('maximized workspace hides panes but leaves dialogs mounted and one terminal panel', () => {
   const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
   assert.equal((app.match(/<TerminalPanel\b/g) ?? []).length, 1);
-  assert.match(app, /terminals\.position === 'left' && !panelMaximized/);
+  assert.match(app, /terminals\.placement === 'left' && !panelMaximized/);
   assert.match(app, /terminals\.open && !panelMaximized/);
   assert.match(app, /inert=\{stale \|\| panelMaximized\}/);
   assert.match(app, /\.panel-maximized \.shell > \.pane,[\s\S]*?display: none/);
@@ -1537,6 +1585,24 @@ test('new window: Cmd+N on macOS, Ctrl+Shift+N elsewhere, kept from the terminal
   assert.equal(terminalKeyAction(key('n', { metaKey: true }), true), 'app');
   assert.equal(newWindowShortcutLabel(true), '⌘N');
   assert.equal(newWindowShortcutLabel(false), 'Ctrl+Shift+N');
+});
+
+test('sidebar toggle: Cmd+B on macOS, Ctrl+B elsewhere, left to the terminal', () => {
+  const key = (k, mods = {}) => ({ type: 'keydown', key: k, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.ok(isSidebarToggleShortcut(key('b', { metaKey: true }), true));
+  assert.ok(!isSidebarToggleShortcut(key('b', { ctrlKey: true }), true));
+  assert.ok(isSidebarToggleShortcut(key('b', { ctrlKey: true }), false));
+  assert.ok(!isSidebarToggleShortcut(key('b', { metaKey: true }), false));
+  assert.ok(!isSidebarToggleShortcut(key('B', { ctrlKey: true, shiftKey: true }), false));
+  assert.ok(!isSidebarToggleShortcut(key('b', { ctrlKey: true, altKey: true }), false));
+  assert.ok(!isSidebarToggleShortcut(key('b'), false));
+  // Layouts without Latin letters use the key in B's place.
+  assert.ok(isSidebarToggleShortcut({ ...key('и', { ctrlKey: true }), code: 'KeyB' }, false));
+  assert.ok(!isSidebarToggleShortcut({ ...key('x', { ctrlKey: true }), code: 'KeyB' }, false));
+  // tmux's prefix stays with the shell.
+  assert.equal(terminalKeyAction(key('b', { ctrlKey: true }), false), null);
+  assert.equal(sidebarToggleShortcutLabel(true), '⌘B');
+  assert.equal(sidebarToggleShortcutLabel(false), 'Ctrl+B');
 });
 
 test('window cycling: Alt+` on Windows and Linux, kept from the terminal', () => {

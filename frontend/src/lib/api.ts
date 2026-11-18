@@ -1,5 +1,5 @@
 import type { CodexRepairResult } from './codexRepair';
-import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsRun, CodeDiagnosticsAttachment, CodeDiagnosticsSnapshot, CodeDiagnosticsAck, CodeDiagnosticsRuns, CodeDiagnosticsDocumentReceipt, CodeDiagnosticPosition, CodeNavigationOp, CodeNavigationResult } from './codeDiagnostics';
+import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsRun, CodeDiagnosticsAttachment, CodeDiagnosticsSnapshot, CodeDiagnosticsAck, CodeDiagnosticsRuns, CodeDiagnosticsDocumentReceipt, CodeDiagnosticPosition, CodeNavigationOp, CodeNavigationResult, CodeCompletionTrigger, CodeCompletionResult, CodeCompletionDetails } from './codeDiagnostics';
 import { CodeDiagnosticsError, codeDiagnosticsError } from './codeDiagnostics';
 import { GitSyncError, gitSyncError } from './gitSync';
 import type { GitHistoryTarget, GitHistoryRepositoryList, GitHistoryRefList, GitHistoryListRequest, GitHistoryPage, GitHistoryCommitRequest, GitHistoryCommitDetail, GitHistoryDiffRequest, GitHistoryDiff, GitHistoryRefActionRequest, GitHistoryRefActionResult, GitHistoryCompareRequest, GitHistoryComparison, GitHistoryCompareDiffRequest, GitHistoryCompareDiff } from './gitHistory';
@@ -386,6 +386,9 @@ export interface WailsAppBinding {
   CloseCodeDiagnosticDocument?: CodeDiagnosticsAPI['closeCodeDiagnosticDocument'];
   NavigateCode?: CodeDiagnosticsAPI['navigateCode'];
   ReadNavigationFile?: CodeDiagnosticsAPI['readNavigationFile'];
+  CompleteCode?: CodeDiagnosticsAPI['completeCode'];
+  ResolveCodeCompletion?: CodeDiagnosticsAPI['resolveCodeCompletion'];
+  CancelCodeCompletion?(requestId: string): Promise<void>;
   GetAgentSettings?(): Promise<AgentSettings>;
   SetAgentSettings?(agents: string[]): Promise<AgentSettings>;
   ListWorkspaces(): Promise<string[]>;
@@ -676,6 +679,22 @@ class WailsBackendAPI implements BackendAPI {
   readNavigationFile(c: CodeDiagnosticsContext, path: string, host: string): Promise<FileContent> {
     const b = this.binding;
     return this.diagnosticsCall(b.ReadNavigationFile && (() => b.ReadNavigationFile!(c, path, host)));
+  }
+  completeCode(c: CodeDiagnosticsContext, requestId: string, documentId: string, version: number, position: CodeDiagnosticPosition, trigger: CodeCompletionTrigger, host: string): Promise<CodeCompletionResult> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.CompleteCode && (async () => {
+      const out = await b.CompleteCode!(c, requestId, documentId, version, position, trigger, host);
+      return { ...out, items: out.items ?? [] };
+    }));
+  }
+  resolveCodeCompletion(c: CodeDiagnosticsContext, requestId: string, documentId: string, resultId: string, index: number, version: number, host: string): Promise<CodeCompletionDetails> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.ResolveCodeCompletion && (() => b.ResolveCodeCompletion!(c, requestId, documentId, resultId, index, version, host)));
+  }
+  async cancelCodeCompletion(requestId: string): Promise<void> {
+    const b = this.binding;
+    if (!b.CancelCodeCompletion) return;
+    try { await b.CancelCodeCompletion(requestId); } catch (e) { throw codeDiagnosticsError(e); }
   }
 
   async getAgentSettings(): Promise<AgentSettings> {
@@ -1885,6 +1904,9 @@ const UNGUARDED = new Set<string>([
   // Canceling must reach the backend even after a host switch, to stop a
   // search the switch made stale.
   'cancelSearch',
+  // Likewise a completion request: the switch already canceled it, and an
+  // extra cancel is a no-op.
+  'cancelCodeCompletion',
   'onFileDrop',
   'openURL',
   'appVersion',

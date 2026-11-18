@@ -22,6 +22,33 @@ const panel = await loadServerComponent(new URL('../src/lib/components/common/go
   ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
 ]);
 
+test('suggestions while typing default to on, persist and survive unavailable storage', () => {
+  const previous = globalThis.localStorage;
+  const values = new Map();
+  globalThis.localStorage = { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v) };
+  try {
+    const fresh = new PreferencesStore();
+    fresh.init();
+    assert.equal(fresh.suggestWhileTyping, true);
+    fresh.setSuggestWhileTyping(false);
+    assert.equal(values.get('agent-sessions:suggest-while-typing'), 'off');
+    const restored = new PreferencesStore();
+    restored.init();
+    assert.equal(restored.suggestWhileTyping, false);
+    restored.setSuggestWhileTyping(true);
+    const again = new PreferencesStore();
+    again.init();
+    assert.equal(again.suggestWhileTyping, true);
+    globalThis.localStorage.getItem = () => { throw new Error('disabled'); };
+    globalThis.localStorage.setItem = () => { throw new Error('disabled'); };
+    const blocked = new PreferencesStore();
+    blocked.init();
+    assert.equal(blocked.suggestWhileTyping, true);
+    blocked.setSuggestWhileTyping(false);
+    assert.equal(blocked.suggestWhileTyping, false, 'the choice still applies for this run');
+  } finally { globalThis.localStorage = previous; }
+});
+
 test('the language table matches the backend IDs and maps providers and files', () => {
   assert.deepEqual(CODE_LANGUAGES.map(l => l.id), ['go', 'typescript', 'svelte', 'python', 'rust', 'ruby', 'java', 'php']);
   assert.deepEqual(codeLanguageIds(['ruby', 'go']), ['go', 'ruby']);
@@ -150,7 +177,7 @@ test('the panel names only the languages that are on and explains off and ignore
   const off = await render({ languagesOff: ['python', 'rust'], providers: [saved, live('ruff', undefined, 'disabled'), { ...saved, providerId: 'cargo-check', availability: 'disabled', notice: 'Off in Settings', coverage: { ...saved.coverage, roots: [] } }] });
   assert.match(off, /For Go, TypeScript\/JavaScript and Svelte, a missing supported server/);
   assert.doesNotMatch(off, /Ruff plus Pyright|npm install -g pyright|uv tool install ruff/);
-  assert.match(off, /Python and Rust are off in Settings and get no code checks, navigation or downloads/);
+  assert.match(off, /Python and Rust are off in Settings and get no code checks, navigation, language-server suggestions or downloads/);
   assert.match(off, /Off in Settings<\/span>/);
   assert.match(off, /Turn this language on under Settings › Code checks/);
   // Rust guidance is for Rust projects that are checked, not for a muted row.
@@ -175,10 +202,10 @@ test('Ruby: RuboCop setup text and install hints, never an app download or a Rub
   assert.ok(!renderedButtons(missing).some(b => /^Install /.test(b.text)));
   // Approval names RuboCop as giving no navigation, unless Ruby is off.
   const approval = await render({ providers: [live('gopls', ['.go'], 'approvalRequired'), rubocop('approvalRequired')], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [{ providerId: 'rubocop', executable: '/r/bin/ruby', configPaths: ['Gemfile'] }] } } });
-  assert.match(approval, /Ruff alone does not provide navigation\. RuboCop alone does not provide navigation for Ruby\./);
-  assert.doesNotMatch(/hover with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? 'missing RuboCop', /RuboCop/);
+  assert.match(approval, /Ruff alone does not provide navigation or code suggestions\. RuboCop alone does not provide navigation or code suggestions for Ruby\./);
+  assert.doesNotMatch(/suggestions with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? 'missing RuboCop', /RuboCop/);
   const rubyOff = await render({ languagesOff: ['ruby'], providers: [live('gopls', ['.go'], 'approvalRequired'), rubocop('disabled')], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [] } } });
-  assert.doesNotMatch(rubyOff, /RuboCop alone does not provide navigation|RuboCop is never downloaded|gem install rubocop|ruby-lsp/);
+  assert.doesNotMatch(rubyOff, /RuboCop alone does not provide|RuboCop is never downloaded|gem install rubocop|ruby-lsp/);
   assert.match(rubyOff, /Ruby is off in Settings/);
   // A folder without Ruby files has only the muted row and no Ruby setup text.
   const other = await render({ providers: [saved, { ...rubocop('unsupported', 'No Ruby file was found in this project.'), coverage: { ...rubocop().coverage, roots: [] } }] });
@@ -191,7 +218,7 @@ test('Ruby: ruby-lsp row, setup text and install hint; navigation names it, neve
   const missing = await render({ providers: [saved, rubocop('available'), rubyLsp('missingTool', 'ruby-lsp is not installed for Ruby 4.0.9. Run gem install ruby-lsp, then refresh.')], managed: { hostId: 'local:actual', state: 'idle' } });
   assert.match(missing, /<span class="name[^"]*">Ruby language server \(ruby-lsp\)<\/span> <span class="pill tone-bad[^"]*">Not installed<\/span>/);
   assert.match(missing, /ruby-lsp is not installed for Ruby 4\.0\.9\. Run gem install ruby-lsp, then refresh\./);
-  assert.match(missing, /ruby-lsp, also never downloaded, answers go to definition, references and hover in opened Ruby files with the same Ruby\./);
+  assert.match(missing, /ruby-lsp, also never downloaded, answers go to definition, references, hover and code suggestions in opened Ruby files with the same Ruby\./);
   assert.match(missing, /without add-ons; it reads the project's Ruby files, Ruby's standard library and installed gems, evaluates the project's Gemfile, and reports no problems\. Right after it starts it may answer nothing while it indexes the project\./);
   assert.doesNotMatch(missing, /Install ruby-lsp|Ruby, a missing/);
   assert.ok(!renderedButtons(missing).some(b => /^Install /.test(b.text)));
@@ -202,9 +229,9 @@ test('Ruby: ruby-lsp row, setup text and install hint; navigation names it, neve
   // A Ruby project with only ruby-lsp registered still gets the Ruby setup text.
   assert.match(old, /ruby-lsp, also never downloaded/);
   // Approval lists ruby-lsp among the navigation servers, and its approval notice.
-  const notice = "ruby-lsp reads the project's Ruby files, Ruby's standard library and the gems in Gemfile.lock to answer Go to Definition, references and hover; it reports no problems. Add-ons are not loaded. It evaluates the project's Gemfile. Ruby navigation covers opened documents only.";
+  const notice = "ruby-lsp reads the project's Ruby files, Ruby's standard library and the gems in Gemfile.lock to answer Go to Definition, references, hover and code suggestions; it reports no problems. Add-ons are not loaded. It evaluates the project's Gemfile. Ruby navigation covers opened documents only.";
   const approval = await render({ providers: [rubocop('approvalRequired'), rubyLsp('approvalRequired', notice)], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [{ providerId: 'ruby-lsp', executable: '/r/bin/ruby', configPaths: ['Gemfile', 'Gemfile.lock'] }] } } });
-  assert.match(/hover with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? '', /ruby-lsp for Ruby, JDT LS for Java \(JDK 25\+\) and Intelephense for PHP \(Node\.js\)$/);
+  assert.match(/suggestions with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? '', /ruby-lsp for Ruby, JDT LS for Java \(JDK 25\+\) and Intelephense for PHP \(Node\.js\)$/);
   assert.match(approval, /Ruby language server \(ruby-lsp\)/);
   assert.ok(approval.includes(notice.replaceAll("'", '&#39;')) || approval.includes(notice), 'approval notice');
 });

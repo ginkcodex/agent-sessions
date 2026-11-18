@@ -22,7 +22,7 @@ test('Java/PHP setup is manual, host-local and honest about coverage and executi
   assert.match(html, /JDK 25 or newer on the remote host/);
   assert.match(html, /npm install -g intelephense/);
   assert.match(html, /server is proprietary/);
-  assert.match(html, /definition, references, hover and opened-file diagnostics are free/);
+  assert.match(html, /definition, references, hover, code suggestions and opened-file diagnostics are free/);
   assert.match(html, /Maven\/Gradle import can execute project build code and download dependencies/);
   assert.match(html, /not Java archive\/decompiled targets/);
   assert.match(html, /not a whole-project Check Project build/);

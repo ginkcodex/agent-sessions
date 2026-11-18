@@ -133,6 +133,8 @@ func (c ServerCapabilities) offers(op string) bool {
 		return c.References
 	case NavigateHover:
 		return c.Hover
+	case completionOp:
+		return c.Completion
 	}
 	return false
 }
@@ -185,29 +187,45 @@ func (m *Manager) Navigate(ctx context.Context, c Context, documentID string, ve
 	return result, nil
 }
 
-// navigationRoute picks the session that answers op for the document. Of
-// several owners (Pyright and Ruff share Python files), the one offering the
-// most navigation answers: a language server rather than a linter.
+// navigationRoute picks the session that answers op for the document.
 func (m *Manager) navigationRoute(c Context, documentID string, version int64, op string, pos Position) (NavigationRequest, NavigationProvider, error) {
+	nav, ok := m.provider.(NavigationProvider)
+	r, err := m.documentRoute(c, documentID, version, op, pos, ok, "Code navigation is unavailable")
+	return r.req, nav, err
+}
+
+// documentRoute is a checked request for the session that answers op, with
+// that session's capabilities and the document text the position refers to.
+type documentRoute struct {
+	req  NavigationRequest
+	caps ServerCapabilities
+	text string // the document at version
+}
+
+// documentRoute picks the session that answers op for an open document at
+// exactly version. Of several owners (Pyright and Ruff share Python files),
+// the one offering the most navigation answers: a language server rather than
+// a linter. provided reports whether the provider can send op at all;
+// unavailable is the message when it cannot.
+func (m *Manager) documentRoute(c Context, documentID string, version int64, op string, pos Position, provided bool, unavailable string) (documentRoute, error) {
 	a, d, err := m.ownedDocument(c, documentID)
 	if err != nil {
-		return NavigationRequest{}, nil, err
+		return documentRoute{}, err
 	}
-	nav, ok := m.provider.(NavigationProvider)
-	if !ok {
-		return NavigationRequest{}, nil, failure("unsupported", "Code navigation is unavailable")
+	if !provided {
+		return documentRoute{}, failure("unsupported", unavailable)
 	}
 	if version != d.version {
-		return NavigationRequest{}, nil, failure("staleVersion", "The document changed since this request")
+		return documentRoute{}, failure("staleVersion", "The document changed since this request")
 	}
 	if pos.Line < 0 || pos.Character < 0 || !coordinateInText(d.text, pos) {
-		return NavigationRequest{}, nil, failure("invalidArgument", "Position is outside the document")
+		return documentRoute{}, failure("invalidArgument", "Position is outside the document")
 	}
 	if d.contextBlocked {
-		return NavigationRequest{}, nil, goContextChanged()
+		return documentRoute{}, goContextChanged()
 	}
 	if err = m.validateDocument(a.root, d.path, d.owner, d.text); err != nil {
-		return NavigationRequest{}, nil, err
+		return documentRoute{}, err
 	}
 	routes := d.routes
 	if len(routes) == 0 {
@@ -215,6 +233,7 @@ func (m *Manager) navigationRoute(c Context, documentID string, version int64, o
 	}
 	var best *documentState
 	var bestGeneration string
+	var bestCaps ServerCapabilities
 	bestScore := 0
 	var blocked error
 	for _, route := range routes {
@@ -228,17 +247,18 @@ func (m *Manager) navigationRoute(c Context, documentID string, version int64, o
 			blocked = navigationSessionError(err)
 		case owner != route.owner || generation != route.generation || route.version != version:
 			blocked = failure("resyncRequired", "The language server does not have this version; document must be reopened")
-		case caps.offers(op) && caps.navigation() > bestScore:
-			best, bestGeneration, bestScore = route, generation, caps.navigation()
+		case caps.offers(op) && (best == nil || caps.navigation() > bestScore):
+			best, bestGeneration, bestCaps, bestScore = route, generation, caps, caps.navigation()
 		}
 	}
 	if best == nil {
 		if blocked != nil {
-			return NavigationRequest{}, nil, blocked
+			return documentRoute{}, blocked
 		}
-		return NavigationRequest{}, nil, failure("unsupported", "The language server does not offer "+op)
+		return documentRoute{}, failure("unsupported", "The language server does not offer "+op)
 	}
-	return NavigationRequest{Root: a.root, Owner: best.owner, Generation: bestGeneration, Path: d.path, Op: op, Position: pos}, nav, nil
+	req := NavigationRequest{Root: a.root, Owner: best.owner, Generation: bestGeneration, Path: d.path, Op: op, Position: pos}
+	return documentRoute{req: req, caps: bestCaps, text: d.text}, nil
 }
 
 // navigationSessionError names a session that is not running as notRunning;
@@ -255,23 +275,9 @@ func navigationSessionError(err error) error {
 // and normalizes its answer. Ten seconds without one is a timeout; the
 // server is told to cancel.
 func (d SessionDocuments) Navigate(ctx context.Context, req NavigationRequest) (NavigationResult, error) {
-	server, s, err := d.serverFor(req.Root, req.Path, req.Owner)
-	if err != nil {
-		return NavigationResult{}, navigationSessionError(err)
-	}
-	if req.Owner != (DocumentOwnerIdentity{server.Config.ProviderID, server.Config.Policy()}) || s.generation != req.Generation || !s.current() {
-		return NavigationResult{}, failure("resyncRequired", "Language session generation changed")
-	}
-	if !s.info().Capabilities.offers(req.Op) {
-		return NavigationResult{}, failure("unsupported", "The language server does not offer "+req.Op)
-	}
-	target, err := req.Root.ResolvePath(req.Root.Project().HostID, req.Path)
+	server, s, tr, target, err := d.sessionFor(req.Root, req.Path, req.Owner, req.Generation, req.Op)
 	if err != nil {
 		return NavigationResult{}, err
-	}
-	tr := s.transport()
-	if tr == nil {
-		return NavigationResult{}, failure("notRunning", "The language server is not running")
 	}
 	params := map[string]any{
 		"textDocument": map[string]any{"uri": fileURI(target)},
@@ -294,6 +300,30 @@ func (d SessionDocuments) Navigate(ctx context.Context, req NavigationRequest) (
 		return hoverResult(raw)
 	}
 	return locationResult(req.Root, raw, server.Config.ExternalRoots)
+}
+
+// sessionFor is the session of generation that owns path and offers op,
+// with its transport and the document's host path.
+func (d SessionDocuments) sessionFor(root AuthorizedRoot, path string, owner DocumentOwnerIdentity, generation, op string) (DocumentServer, *lspSession, *LSPTransport, string, error) {
+	server, s, err := d.serverFor(root, path, owner)
+	if err != nil {
+		return DocumentServer{}, nil, nil, "", navigationSessionError(err)
+	}
+	if owner != (DocumentOwnerIdentity{server.Config.ProviderID, server.Config.Policy()}) || s.generation != generation || !s.current() {
+		return DocumentServer{}, nil, nil, "", failure("resyncRequired", "Language session generation changed")
+	}
+	if !s.info().Capabilities.offers(op) {
+		return DocumentServer{}, nil, nil, "", failure("unsupported", "The language server does not offer "+op)
+	}
+	target, err := root.ResolvePath(root.Project().HostID, path)
+	if err != nil {
+		return DocumentServer{}, nil, nil, "", err
+	}
+	tr := s.transport()
+	if tr == nil {
+		return DocumentServer{}, nil, nil, "", failure("notRunning", "The language server is not running")
+	}
+	return server, s, tr, target, nil
 }
 
 const (

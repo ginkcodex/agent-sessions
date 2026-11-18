@@ -26,6 +26,7 @@ import (
 var (
 	_ engine.Backend               = (*Client)(nil)
 	_ engine.CodeNavigationBackend = (*Client)(nil)
+	_ engine.CodeCompletionBackend = (*Client)(nil)
 )
 
 // NotificationHandler receives incoming JSON-RPC notifications.

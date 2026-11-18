@@ -34,8 +34,10 @@ const (
 	pyrightName       = "pyright"
 	// pyrightPolicy binds the launch shape: node runs the package's own
 	// langserver.index.js directly (no shell, npx or version-manager shim),
-	// only opened files are analyzed and language services are off
-	// (pyrightSettings). The suffix names the interpreter Pyright may run.
+	// and only opened files are analyzed. Which language services answer is
+	// pyrightSettings', bound into approval as well: "language-services-off"
+	// is an old name the settings have since outgrown, kept so the policy text
+	// itself does not change. The suffix names the interpreter Pyright may run.
 	pyrightPolicy          = "pyright-v1:any-version:" + runtime.GOOS + "/" + runtime.GOARCH + ":node-direct:push-only:no-edits:opened-documents:language-services-off:"
 	pyrightToolchainPolicy = "pyright-toolchain-v1"
 	minPyrightNodeMajor    = 14 // pyright engines: node >=14.0.0
@@ -70,7 +72,9 @@ var pyrightToolchainNames = []string{"pyright-entry", "pyright-langserver", "pyr
 // pyrightSettings is the fixed workspace/configuration answer. Pyright asks
 // for the "python", "python.analysis" and "pyright" sections. Only opened files
 // are analyzed. Language services stay on: Pyright answers go to definition,
-// references and hover. Organize imports and tagged hints, never used, are off.
+// references, hover and completion, whose items may import a module not
+// imported yet (autoImportCompletions, CC-08). Organize imports and tagged
+// hints, never used, are off.
 // pythonPath, when set, is the chosen interpreter; without one missing-import
 // rules are silenced because no environment is known.
 func pyrightSettings(pythonPath string) json.RawMessage {
@@ -79,7 +83,7 @@ func pyrightSettings(pythonPath string) json.RawMessage {
 		"typeCheckingMode":       "basic",
 		"autoSearchPaths":        true,
 		"useLibraryCodeForTypes": true,
-		"autoImportCompletions":  false,
+		"autoImportCompletions":  true,
 		"extraPaths":             []string{},
 		"logLevel":               "Error",
 	}

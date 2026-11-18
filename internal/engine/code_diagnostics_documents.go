@@ -113,7 +113,35 @@ func (e *Engine) ReadNavigationFile(ctx context.Context, c cd.Context, path stri
 	}
 }
 
+// CodeCompletionBackend suggests code for a live document (capability
+// codeCompletion). Like navigation, it needs the live surface and asks only
+// about an open document at its current version. ResolveCodeCompletion adds
+// an item's detail and documentation, and with version above 0 (the current
+// one) its extra edits for that version; the server's own item data stays on
+// the host that asked. A request is canceled through ctx.
+type CodeCompletionBackend interface {
+	CompleteCode(ctx context.Context, c cd.Context, documentID string, version int64, pos cd.Position, trigger cd.CompletionTrigger) (cd.CompletionResult, error)
+	ResolveCodeCompletion(ctx context.Context, c cd.Context, documentID, resultID string, index int, version int64) (cd.CompletionDetails, error)
+}
+
+func (e *Engine) CompleteCode(ctx context.Context, c cd.Context, documentID string, version int64, pos cd.Position, trigger cd.CompletionTrigger) (cd.CompletionResult, error) {
+	o, err := e.diagnostics(ctx)
+	if err != nil {
+		return cd.CompletionResult{}, err
+	}
+	return o.manager.Complete(ctx, c, documentID, version, pos, trigger)
+}
+
+func (e *Engine) ResolveCodeCompletion(ctx context.Context, c cd.Context, documentID, resultID string, index int, version int64) (cd.CompletionDetails, error) {
+	o, err := e.diagnostics(ctx)
+	if err != nil {
+		return cd.CompletionDetails{}, err
+	}
+	return o.manager.ResolveCompletion(ctx, c, documentID, resultID, index, version)
+}
+
 var (
 	_ LiveCodeDiagnosticsBackend = (*Engine)(nil)
 	_ CodeNavigationBackend      = (*Engine)(nil)
+	_ CodeCompletionBackend      = (*Engine)(nil)
 )

@@ -119,6 +119,23 @@ blocked and available navigation, settings availability, copy-only menus and
 existing ownership guards; frontend tests, type checks and build pass. Native
 visual review is recorded separately if performed.
 
+## Pyright definitions inside the project (2026-11-17)
+
+Follow-up [NAV-08](../tasks/editor-essentials/NAV-08.md): Pyright resolves
+project imports only from workspace folders, and the client sent one only
+for servers scoped to a subdirectory. Go to Definition on a project symbol
+of a root-level Python project answered nothing, and Code checks showed
+false unresolved-import errors. The initialize request now always names its
+directory, the root included, as the one workspace folder, the same one as
+`rootUri`. No client capability or approval input changes.
+
+Risk: every root-level server now receives a workspace folder; Ruff, gopls,
+vtsls and rust-analyzer behaved the same in a real-server comparison, while
+ruby-lsp, RuboCop, PHP, Java and Svelte servers were not compared. Pyright
+users see real type errors that unresolved imports used to hide. Release
+criteria: the initialize test asserts the root folder; Go tests pass; a real
+Pyright resolves project definitions.
+
 ## Validation
 
 Each task adds Go unit tests with temporary directories and fake servers, and

@@ -58,8 +58,8 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| Keyboard diagnostics | [keyboard-diagnostics](docs/plan/keyboard-diagnostics.md) | [keyboard-diagnostics/](docs/tasks/keyboard-diagnostics/README.md) | 2/4 ✅ · 1 🟡 · 1 ⬜ |
-| Collapsible sidebar | [collapsible-sidebar](docs/plan/collapsible-sidebar.md) | [collapsible-sidebar/](docs/tasks/collapsible-sidebar/README.md) | 4/5 ✅ · 1 ⬜ |
+| Keyboard diagnostics | [keyboard-diagnostics](docs/plan/keyboard-diagnostics.md) | [keyboard-diagnostics/](docs/tasks/keyboard-diagnostics/README.md) | 3/6 ✅ · 3 🟡 |
+| Collapsible sidebar | [collapsible-sidebar](docs/plan/collapsible-sidebar.md) | [collapsible-sidebar/](docs/tasks/collapsible-sidebar/README.md) | 8/9 ✅ · 1 ⬜ |
 | Linux native window theme | [linux-window-theme](docs/plan/linux-window-theme.md) | [linux-window-theme/](docs/tasks/linux-window-theme/README.md) | 1/2 ✅ · 1 ⛔ |
 | macOS native window theme | [macos-window-theme](docs/plan/macos-window-theme.md) | [macos-window-theme/](docs/tasks/macos-window-theme/README.md) | 1/2 ✅ · 1 🟡 |
 | Codex skills dialog | [codex-skills-dialog](docs/plan/codex-skills-dialog.md) | [codex-skills-dialog/](docs/tasks/codex-skills-dialog/README.md) | 1/1 ✅ |
@@ -87,7 +87,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Orphaned task notifications | [orphan-task-notifications](docs/plan/orphan-task-notifications.md) | [orphan-task-notifications/](docs/tasks/orphan-task-notifications/README.md) | 1/1 ✅ |
 | Idle rendering | [idle-rendering](docs/plan/idle-rendering.md) | [idle-rendering/](docs/tasks/idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](docs/plan/file-translate.md) | [file-translate/](docs/tasks/file-translate/README.md) | 2/2 ✅ |
-| Print page setup | [print-page-setup](docs/plan/print-page-setup.md) | [print-page-setup/](docs/tasks/print-page-setup/README.md) | 1/1 ✅ |
+| Print page setup | [print-page-setup](docs/plan/print-page-setup.md) | [print-page-setup/](docs/tasks/print-page-setup/README.md) | 1/2 ✅ · 1 🟡 |
 | Windows CI test stability | [windows-ci-test-stability](docs/plan/windows-ci-test-stability.md) | [windows-ci-test-stability/](docs/tasks/windows-ci-test-stability/README.md) | 1/1 ✅ |
 | Workspace terminal selection | [workspace-terminal-selection](docs/plan/workspace-terminal-selection.md) | [workspace-terminal-selection/](docs/tasks/workspace-terminal-selection/README.md) | 1/1 ✅ |
 | Conversation PDF | [conversation-pdf](docs/plan/conversation-pdf.md) | [conversation-pdf/](docs/tasks/conversation-pdf/README.md) | 1/1 ✅ |
@@ -99,7 +99,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Session scrollbar stability | [session-scrollbar](docs/plan/session-scrollbar.md) | [session-scrollbar/](docs/tasks/session-scrollbar/README.md) | 9/10 ✅ · 1 🟡 |
 | Terminal cwd matching | [terminal-cwd-matching](docs/plan/terminal-cwd-matching.md) | [terminal-cwd-matching/](docs/tasks/terminal-cwd-matching/README.md) | 1/1 ✅ |
 | Code diagnostics (Go to File checks) | [code-diagnostics](docs/plan/code-diagnostics.md) | [code-diagnostics/](docs/tasks/code-diagnostics/README.md) | 19/28 ✅ · 8 🟡 · 1 ⛔ |
-| Editor essentials | [editor-essentials](docs/plan/editor-essentials.md) | [editor-essentials/](docs/tasks/editor-essentials/README.md) | 25/25 ✅ |
+| Editor essentials | [editor-essentials](docs/plan/editor-essentials.md) | [editor-essentials/](docs/tasks/editor-essentials/README.md) | 26/26 ✅ |
 | Git history | [git-history](docs/plan/git-history.md) | [git-history/](docs/tasks/git-history/README.md) | 17/18 ✅ · 1 🟡 |
 | Code checks: choosing languages | [code-diagnostics-languages](docs/plan/code-diagnostics-languages.md) | [code-diagnostics-languages/](docs/tasks/code-diagnostics-languages/README.md) | 8/8 ✅ |
 | Code checks: Git ignore rules in discovery | [code-diagnostics-ignore-scope](docs/plan/code-diagnostics-ignore-scope.md) | [code-diagnostics-ignore-scope/](docs/tasks/code-diagnostics-ignore-scope/README.md) | 4/6 ✅ · 1 🟡 · 1 ⬜ |
@@ -140,3 +140,5 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Chat message queue | [chat-message-queue](docs/plan/chat-message-queue.md) | [chat-message-queue/](docs/tasks/chat-message-queue/README.md) | 7/8 ✅ · 1 ⬜ |
 | Tool file links | [tool-file-links](docs/plan/tool-file-links.md) | [tool-file-links/](docs/tasks/tool-file-links/README.md) | 1/2 ✅ · 1 ⬜ |
 | Review fixes (2026-11-14 review) | [review-fixes](docs/plan/review-fixes.md) | [review-fixes/](docs/tasks/review-fixes/README.md) | 27/35 ✅ · 8 ⬜ |
+| Code completion | [code-completion](docs/plan/code-completion.md) | [code-completion/](docs/tasks/code-completion/README.md) | 24/27 ✅ · 2 🟡 · 1 ⬜ |
+| File link line highlight | [file-link-line-highlight](docs/plan/file-link-line-highlight.md) | [file-link-line-highlight/](docs/tasks/file-link-line-highlight/README.md) | 1/1 ✅ |

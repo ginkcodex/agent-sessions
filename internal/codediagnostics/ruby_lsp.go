@@ -28,14 +28,15 @@ const (
 	rubyLspProviderID = "ruby-lsp"
 	// rubyLspPolicy binds the launch shape: the resolved interpreter runs the
 	// app's wrapper on the gem's lib directory, never exe/ruby-lsp, a shim or
-	// bundle exec; add-ons are not loaded and only navigation is enabled.
-	rubyLspPolicy          = "ruby-lsp-v1:min-" + rubyLspMinVersion + ":" + runtime.GOOS + "/" + runtime.GOARCH + ":ruby-wrapper:no-addons:navigation-only:no-edits:opened-documents"
+	// bundle exec; add-ons are not loaded and only navigation and completion
+	// are enabled.
+	rubyLspPolicy          = "ruby-lsp-v1:min-" + rubyLspMinVersion + ":" + runtime.GOOS + "/" + runtime.GOARCH + ":ruby-wrapper:no-addons:navigation-completion:no-edits:opened-documents"
 	rubyLspToolchainPolicy = "ruby-lsp-toolchain-v1:loaded-file"
 	// rubyLspWrapperExit is the wrapper's exit status for a ruby-lsp whose
 	// RubyLsp::Server has no load_addons. Discovery rejects such a gem first
 	// (state incompatible); this guards a gem changed after discovery.
 	rubyLspWrapperExit = 3
-	rubyLspScopeNotice = "ruby-lsp reads the project's Ruby files, Ruby's standard library and the gems in Gemfile.lock to answer Go to Definition, references and hover; it reports no problems. Add-ons are not loaded."
+	rubyLspScopeNotice = "ruby-lsp reads the project's Ruby files, Ruby's standard library and the gems in Gemfile.lock to answer Go to Definition, references, hover and code suggestions; it reports no problems. Add-ons are not loaded."
 	rubyLspGemfile     = "It evaluates the project's Gemfile."
 	rubyLspOpened      = "Ruby navigation covers opened documents only."
 	rubyLspInstallHint = "Run gem install ruby-lsp, then refresh."
@@ -51,7 +52,7 @@ func rubyLspIncompatible(version string) string {
 
 // rubyLspWrapper starts ruby-lsp as its exe's in-process branch does, without
 // add-ons. ARGV[0] is the gem's lib directory.
-const rubyLspWrapper = `# agent-sessions: ruby-lsp without add-ons, navigation only. ARGV[0] is the gem's lib directory.
+const rubyLspWrapper = `# agent-sessions: ruby-lsp without add-ons, navigation and completion. ARGV[0] is the gem's lib directory.
 $stdin.sync = $stdout.sync = $stderr.sync = true
 [$stdin, $stdout, $stderr].each(&:binmode)
 $LOAD_PATH.unshift(ARGV.fetch(0))
@@ -66,11 +67,12 @@ $> = $stderr
 server.start
 `
 
-// rubyLspOptions turns off every ruby-lsp feature except navigation, its
-// linters and its formatter. documentSymbols stays on: the app requests it to
+// rubyLspOptions turns off every ruby-lsp feature except navigation and
+// completion (CC-08), and its linters and its formatter. Completion edits only
+// the editor's text, where the user accepts an item. documentSymbols stays on: the app requests it to
 // make ruby-lsp re-index an open draft (RL-04).
 const rubyLspOptions = `{"enabledFeatures":{"definition":true,"hover":true,"documentSymbols":true,` +
-	`"codeActions":false,"codeLens":false,"completion":false,"diagnostics":false,"documentHighlights":false,` +
+	`"codeActions":false,"codeLens":false,"completion":true,"diagnostics":false,"documentHighlights":false,` +
 	`"documentLink":false,"foldingRanges":false,"formatting":false,"inlayHint":false,"onTypeFormatting":false,` +
 	`"selectionRanges":false,"semanticHighlighting":false,"signatureHelp":false,"typeHierarchy":false,` +
 	`"workspaceSymbol":false},"linters":[],"formatter":"none"}`

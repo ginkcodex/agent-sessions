@@ -27,6 +27,7 @@ export function startLiveDocuments(): LiveDocumentBridge {
   files.setDiagnosticPaths(() => codeDiagnostics.directory === files.dir ? codeDiagnostics.resultSets.flatMap(s => s.diagnostics.map(d => d.path)) : []);
   codeDiagnostics.setReconciler(() => files.reconcileDisplayed());
   codeDiagnostics.setLiveBasis(path => bridge.basis(path));
+  codeDiagnostics.setLiveFlush((path, bound) => bridge.flush(path, bound));
   codeDiagnostics.setLiveRecovery(() => bridge.statuses, (path, id) => bridge.reopen(path, id));
   bridge.onChange(() => codeDiagnostics.liveChanged());
   files.observe(bridge);

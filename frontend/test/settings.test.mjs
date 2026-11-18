@@ -32,6 +32,7 @@ async function renderSettingsDialog(
       ["'../../transcript'", lib('../../transcript.ts')],
       ["'../../date'", lib('../../date.ts')],
       ["'../../codeLanguages'", lib('../../codeLanguages.ts')],
+      ["'../../editorKeys'", lib('../../editorKeys.ts')],
       ["import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';", fixtureStore('codeDiagnostics')],
       ["import { installedFonts } from '../../stores/installedFonts.svelte';", 'const installedFonts = { markStale() {} };'],
       ["import Dropdown from './Dropdown.svelte';", 'const Dropdown = globalThis.__dropdown;'],
@@ -81,6 +82,18 @@ test('Settings shows the time zone used for timestamps', async () => {
   assert.match(utc, /aria-label="Time zone for timestamps"/);
   const local = await renderSettingsDialog({ info }, { transcriptMode: 'activity', timeZone: 'local' });
   assert.match(local, /Local time \(this computer\)/);
+});
+
+test('Settings › General has the editor\'s "Suggest code while typing", on by default', async () => {
+  const info = { terminal: true, chooseTerminal: false, shell: 'powershell' };
+  const checkbox = (html) => html.match(/<input type="checkbox"([^>]*)\/?>\s*Suggest code while typing/)?.[1];
+  const on = await renderSettingsDialog({ info }, { transcriptMode: 'chat', timeZone: 'utc', suggestWhileTyping: true });
+  assert.match(on, /<h3[^>]*>Editor<\/h3>/);
+  assert.match(checkbox(on), /checked/);
+  assert.match(on, /Off, (⌘I|Ctrl\+Space) still shows them\./);
+  const off = await renderSettingsDialog({ info }, { transcriptMode: 'chat', timeZone: 'utc', suggestWhileTyping: false });
+  assert.doesNotMatch(checkbox(off), /checked/);
+  // Changing it is checked on the mounted dialog (settings-client.test.mjs).
 });
 
 test('Settings shows the terminal choice only where it can be chosen', async () => {

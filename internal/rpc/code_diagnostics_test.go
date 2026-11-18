@@ -40,6 +40,10 @@ type diagnosticsBackend struct {
 	tamper        func(*cd.NavigationResult) // test-only: change an answer on its way out
 	tamperFile    func(*files.Content)
 	fileReads     int
+	completeCalls int
+	// test-only: change a completion answer or details on its way out
+	tamperCompletion func(*cd.CompletionResult)
+	tamperDetails    func(*cd.CompletionDetails)
 }
 
 func (b *diagnosticsBackend) RemoteCodeDiagnosticsHostID(context.Context) (string, error) {

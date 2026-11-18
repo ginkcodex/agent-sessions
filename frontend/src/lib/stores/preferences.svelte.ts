@@ -22,6 +22,7 @@ const TRANSCRIPT_MODE_KEY = 'agent-sessions:transcript-mode';
 const AUTO_INSTALL_KEY = 'agent-sessions:auto-install-language-servers';
 const DISABLED_LANGUAGES_KEY = 'agent-sessions:disabled-code-languages';
 const NAVIGATION_COLLAPSED_KEY = 'agent-sessions:navigation-collapsed';
+const SUGGEST_WHILE_TYPING_KEY = 'agent-sessions:suggest-while-typing';
 
 export interface PaneWidths {
   sidebar: number;
@@ -62,6 +63,8 @@ export class PreferencesStore {
   disabledLanguages = $state.raw<CodeLanguageId[]>([]);
   // The sidebar and the session list are hidden; the session content takes the width.
   navigationCollapsed = $state(false);
+  // The Go to File editor suggests code as you type; off, only the shortcut opens suggestions.
+  suggestWhileTyping = $state(true);
 
   init(): void {
     if (typeof localStorage === 'undefined') return;
@@ -140,6 +143,12 @@ export class PreferencesStore {
       this.navigationCollapsed = localStorage.getItem(NAVIGATION_COLLAPSED_KEY) === 'on';
     } catch {
       // Storage disabled; keep the panes shown.
+    }
+
+    try {
+      this.suggestWhileTyping = localStorage.getItem(SUGGEST_WHILE_TYPING_KEY) !== 'off';
+    } catch {
+      // Storage disabled; keep suggestions on.
     }
 
     if (typeof window !== 'undefined') {
@@ -244,6 +253,15 @@ export class PreferencesStore {
     this.autoInstallLanguageServers = on;
     try {
       localStorage.setItem(AUTO_INSTALL_KEY, on ? 'on' : 'off');
+    } catch {
+      // Storage disabled; the choice still applies for this run.
+    }
+  }
+
+  setSuggestWhileTyping(on: boolean): void {
+    this.suggestWhileTyping = on;
+    try {
+      localStorage.setItem(SUGGEST_WHILE_TYPING_KEY, on ? 'on' : 'off');
     } catch {
       // Storage disabled; the choice still applies for this run.
     }

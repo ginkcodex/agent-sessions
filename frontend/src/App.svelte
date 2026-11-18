@@ -77,7 +77,9 @@
     isSplitShortcut,
     isNewWindowShortcut,
     isPanelToggle,
+    isSidebarToggleShortcut,
     newWindowShortcutLabel,
+    sidebarToggleShortcutLabel,
     terminalTabShortcut,
     windowCycleShortcut,
   } from './lib/terminal';
@@ -273,6 +275,14 @@
         void terminals.toggle(shellCwd);
         return;
       }
+      // Cmd+B on macOS, Ctrl+B elsewhere: hides or shows the sidebar. Text
+      // fields, the terminal and the editor keep the key.
+      if (isSidebarToggleShortcut(event, isMac)) {
+        if (isEditableTarget(event.target) || hasOpenModal() || panelMaximized) return;
+        event.preventDefault();
+        if (!event.repeat) setNavigationCollapsed(!preferences.navigationCollapsed);
+        return;
+      }
       // Cmd+T on macOS, Ctrl+Shift+T elsewhere: a new shell tab, showing the panel.
       if (isNewShellShortcut(event, isMac)) {
         if (!launcher.info.panel || hasOpenModal()) return;
@@ -402,16 +412,29 @@
   // On the left the panel sits below the sidebar and the session list, as
   // wide as both, and the transcript keeps the full height.
   let panelMaximized = $derived(launcher.info.panel && terminals.open && terminals.maximized);
-  // With the left side collapsed a left panel has no column: it goes below the content.
-  let panelLeft = $derived(
-    launcher.info.panel && terminals.position === 'left' && !panelMaximized && !preferences.navigationCollapsed,
-  );
+  // With the left side collapsed a left panel has no column: it goes below the
+  // content. The store knows, so the panel's toolbar and split layout follow.
+  $effect.pre(() => terminals.setLeftDockHidden(preferences.navigationCollapsed));
+  let panelLeft = $derived(launcher.info.panel && terminals.placement === 'left' && !panelMaximized);
 
   // The clicked toggle disappears, so focus moves to the other one.
   let collapseButton: HTMLButtonElement | undefined = $state();
   let expandButton: HTMLButtonElement | undefined = $state();
+  // A terminal docked left collapses with the sidebar and returns with it,
+  // unless the user opened it from the rail meanwhile.
+  let terminalHiddenByCollapse = false;
+  $effect(() => {
+    if (terminals.open) terminalHiddenByCollapse = false;
+  });
   function setNavigationCollapsed(on: boolean) {
+    if (on && panelLeft && terminals.open) {
+      terminals.setOpen(false);
+      terminalHiddenByCollapse = true;
+    } else if (!on && terminalHiddenByCollapse) {
+      void terminals.toggle(shellCwd);
+    }
     preferences.setNavigationCollapsed(on);
+    terminals.setLeftDockHidden(on);
     void tick().then(() => (on ? expandButton : collapseButton)?.focus());
   }
 </script>
@@ -464,7 +487,7 @@
         <button
           type="button"
           class="icon-button"
-          title="Show sidebar"
+          title={`Show sidebar (${sidebarToggleShortcutLabel(isMac)})`}
           aria-label="Show sidebar"
           aria-expanded="false"
           bind:this={expandButton}
@@ -475,7 +498,7 @@
         <SessionSwitcher disabled={stale} />
         <div class="rail-bottom">
           {#if launcher.info.panel}{@render terminalButton()}{/if}
-          <HostSelector dotOnly />
+          <HostSelector rail />
         </div>
       </nav>
     {/if}
@@ -597,7 +620,7 @@
         <button
           type="button"
           class="icon-button"
-          title="Hide sidebar"
+          title={`Hide sidebar (${sidebarToggleShortcutLabel(isMac)})`}
           aria-label="Hide sidebar"
           aria-expanded="true"
           bind:this={collapseButton}

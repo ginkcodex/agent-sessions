@@ -94,6 +94,9 @@ type Capabilities struct {
 	// CodeNavigation: definition, references and hover for live documents.
 	// Only with LiveCodeDiagnostics.
 	CodeNavigation bool `json:"codeNavigation,omitempty"`
+	// CodeCompletion: completion and item details for live documents. Only
+	// with LiveCodeDiagnostics.
+	CodeCompletion bool `json:"codeCompletion,omitempty"`
 	// CodeDiagnosticsLanguages: attach applies disabledLanguages. Older
 	// servers ignore the field and check every language.
 	CodeDiagnosticsLanguages bool `json:"codeDiagnosticsLanguages,omitempty"`

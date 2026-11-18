@@ -157,6 +157,10 @@ func TestLiveRouteAppOldServerOmitsLive(t *testing.T) {
 	checkDiagnosticsError(t, err, "unsupported")
 	_, err = a.ReadNavigationFile(att.Context, "/go/src/fmt/print.go", host)
 	checkDiagnosticsError(t, err, "unsupported")
+	_, err = a.CompleteCode(att.Context, "q", "d1", 1, cd.Position{}, cd.CompletionTrigger{Kind: cd.CompletionInvoked}, host)
+	checkDiagnosticsError(t, err, "unsupported")
+	_, err = a.ResolveCodeCompletion(att.Context, "r", "d1", "1", 0, 0, host)
+	checkDiagnosticsError(t, err, "unsupported")
 	if launches.Load() != 0 {
 		t.Fatal("old capability launched")
 	}

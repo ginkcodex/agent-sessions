@@ -10,6 +10,7 @@ import { EditorView, keymap, lineNumberMarkers } from '@codemirror/view';
 import { undo, redo, undoDepth, indentMore, insertNewlineAndIndent } from '@codemirror/commands';
 import { language, indentUnit } from '@codemirror/language';
 import { searchPanelOpen } from '@codemirror/search';
+import { CompletionContext, clearSnippet, completionStatus, hasNextSnippetField, nextSnippetField, prevSnippetField, startCompletion } from '@codemirror/autocomplete';
 import { javascriptLanguage, jsxLanguage, tsxLanguage, typescriptLanguage } from '@codemirror/lang-javascript';
 import { jsonLanguage } from '@codemirror/lang-json';
 import { yamlLanguage } from '@codemirror/lang-yaml';
@@ -143,6 +144,8 @@ async function loadEditorModule() {
   source = source.replace("'./files'", JSON.stringify(new URL('files.ts', EDITOR_URL).href));
   source = source.replace("'./searchReplace'", JSON.stringify(new URL('searchReplace.ts', EDITOR_URL).href));
   source = source.replace("'./sourceNavigation'", JSON.stringify(new URL('sourceNavigation.ts', EDITOR_URL).href));
+  source = source.replace("'./editorCompletion'", JSON.stringify(new URL('editorCompletion.ts', EDITOR_URL).href));
+  source = source.replace("'./editorKeys'", JSON.stringify(new URL('editorKeys.ts', EDITOR_URL).href));
   source = source.replace("import { handleCopyCodeClick } from './copycode';", "const handleCopyCodeClick = () => {};");
   source = source.replace("'./codeHighlight'", JSON.stringify(new URL('codeHighlight.ts', EDITOR_URL).href));
   source = source.replace("'@replit/codemirror-lang-svelte'", JSON.stringify(import.meta.resolve('@replit/codemirror-lang-svelte')));
@@ -153,7 +156,7 @@ async function loadEditorModule() {
   return import(`data:text/javascript,${encodeURIComponent(js)}`);
 }
 
-const { createFileEditor, navigationKeymap, symbolMouseDown, symbolContextMenu, symbolPress, symbolKeyDown, symbolHover, editorPosition, wordAtSide } = await loadEditorModule();
+const { createFileEditor, acceptOrBreakLine, completionKeys, documentWords, codeSuggestions, completionSources, LANGUAGE_SLOTS, completionTrigger, SERVER_SUGGESTION_WAIT, RESOLVE_ACCEPT_WAIT, navigationKeymap, symbolMouseDown, symbolContextMenu, symbolPress, symbolKeyDown, symbolHover, editorPosition, wordAtSide } = await loadEditorModule();
 
 const isMac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 
@@ -892,7 +895,7 @@ test('after destroy every controller method is an inert no-op and destroy is ide
 const component = await loadServerComponent(COMPONENT_URL, [
   ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
   ["import { filePrompt } from '../../../stores/filePrompt.svelte';", 'const filePrompt = { request: null };'],
-  ["import { preferences } from '../../../stores/preferences.svelte';", "const preferences = { editorFont: '', editorFontSize: null };"],
+  ["import { preferences } from '../../../stores/preferences.svelte';", "const preferences = { editorFont: '', editorFontSize: null, suggestWhileTyping: true };"],
 ]);
 
 test('FileEditor server-renders an empty host and inert command exports before the runtime loads', async () => {
@@ -1173,4 +1176,673 @@ test('symbol hover creates a bounded scrollable CodeMirror tooltip with the shar
     assert.match(created.dom.children[0].innerHTML, /&lt;safe&gt;/);
     assert.match(created.dom.children[1].textContent, /cut short/);
   } finally { globalThis.document = previous; h.editor.destroy(); }
+});
+
+// ---------------------------------------------------------------------------
+// Code completion without a language server (CC-01).
+// ---------------------------------------------------------------------------
+
+const typed = (view, text, at = view.state.selection.main.head) =>
+  view.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length }, userEvent: 'input.type' });
+
+function wordsAt(state, pos = state.doc.length, explicit = false) {
+  return documentWords(new CompletionContext(state, pos, explicit));
+}
+
+test('completion keys: Cmd+I on macOS and Ctrl+Space everywhere open suggestions; Option+` and Option+I stay accents', async () => {
+  const opens = completionKeys.filter(b => b.run === startCompletion);
+  assert.deepEqual(opens.map(b => [b.key, b.mac]), [[undefined, 'Cmd-i'], ['Ctrl-Space', undefined]]);
+  // The keys Settings names (settings-client.test.mjs ties the label to these).
+  const keys = await import('../src/lib/editorKeys.ts');
+  assert.deepEqual(opens.map(b => b.key ?? b.mac), [keys.SUGGEST_KEY_MAC, keys.SUGGEST_KEY]);
+  const names = completionKeys.flatMap(b => [b.key, b.mac, b.win, b.linux]).filter(Boolean);
+  for (const dead of ['Alt-`', 'Alt-i']) assert.ok(!names.includes(dead), `${dead} must not be bound`);
+  for (const name of ['Escape', 'ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Enter', 'Tab']) assert.ok(names.includes(name), name);
+
+  const { view, editor } = mount();
+  const groups = view.state.facet(keymap);
+  const all = groups.flat();
+  for (const dead of ['Alt-`', 'Alt-i']) assert.ok(!all.some(b => b.key === dead || b.mac === dead), `no keymap binds ${dead}`);
+  // Accepting with Tab or Enter runs before indenting or a new line; without a popup they fall through.
+  const accept = completionKeys.find(b => b.key === 'Tab');
+  const completion = groups.findIndex(g => g.includes(completionKeys[0]));
+  const editing = groups.findIndex(g => g.some(b => b.key === 'Tab' && b.run !== accept.run));
+  assert.ok(completion >= 0 && editing > completion, 'completion keys come first');
+  assert.equal(accept.run(view), false, 'no popup: Tab is left to indentation');
+  const enter = completionKeys.find(b => b.key === 'Enter');
+  assert.equal(enter.run, acceptOrBreakLine, 'Enter breaks the line after a name typed in full (checked in Chrome)');
+  assert.equal(enter.run(view), false, 'no popup: Enter is left to the new line');
+  editor.destroy();
+});
+
+test('document words: a language source that answers later and fails leaves no unhandled rejection', async () => {
+  let rejected = 0;
+  const failing = () => { rejected++; return Promise.reject(new Error('gone')); };
+  const state = EditorState.create({ doc: 'alpha alphabet\nalp', extensions: EditorState.languageData.of(() => [{ autocomplete: failing }]) });
+  const unhandled = [];
+  const record = reason => unhandled.push(reason);
+  process.on('unhandledRejection', record);
+  try {
+    assert.deepEqual(wordsAt(state).options.map(o => o.label).sort(), ['alpha', 'alphabet']);
+    await new Promise(resolve => setImmediate(resolve));
+  } finally {
+    process.off('unhandledRejection', record);
+  }
+  assert.equal(rejected, 1);
+  assert.deepEqual(unhandled, []);
+});
+
+test('document words: a language source that answers later is run for its labels once, not on every query', () => {
+  let runs = 0;
+  const later = () => { runs++; return new Promise(() => {}); };
+  let syncRuns = 0;
+  const now = () => { syncRuns++; return null; };
+  const state = EditorState.create({ doc: 'alpha alphabet\nalp', extensions: EditorState.languageData.of(() => [{ autocomplete: later }, { autocomplete: now }]) });
+  for (let i = 0; i < 3; i++) assert.deepEqual(wordsAt(state).options.map(o => o.label).sort(), ['alpha', 'alphabet']);
+  assert.equal(syncRuns, 1, 'the same text and position: its answer is reused');
+  const next = state.update({ changes: { from: state.doc.length, insert: 'h' } }).state;
+  for (let i = 0; i < 3; i++) assert.deepEqual(wordsAt(next).options.map(o => o.label).sort(), ['alpha', 'alphabet']);
+  assert.equal(runs, 1, 'seen to answer later: not run again');
+  assert.equal(syncRuns, 2, 'a source that answers at once still is, once per text');
+});
+
+test('each language source runs once per query, and its names still stay out of the words', async () => {
+  let runs = 0;
+  const counting = (context) => { runs++; return { from: context.pos - 3, options: [{ label: 'alphabet', type: 'keyword' }] }; };
+  const state = EditorState.create({ doc: 'alpha alphabet beta\nalp', extensions: EditorState.languageData.of(() => [{ autocomplete: counting }]) });
+  // As CodeMirror runs a query (the editor's override): each source with its own context, in order.
+  const query = (s, explicit) => Promise.all(completionSources.map(source => source(new CompletionContext(s, s.doc.length, explicit))));
+  const results = (await query(state, true)).filter(Boolean);
+  assert.equal(runs, 1, 'once, shared by its slot and the words');
+  const labels = results.flatMap(r => r.options.map(o => `${o.label}:${o.type}`));
+  assert.deepEqual(labels.filter(l => l.startsWith('alphabet')), ['alphabet:keyword'], 'the language item only');
+  assert.ok(labels.includes('alpha:text'), 'the other words');
+  // The next keystroke is a new query.
+  await query(state.update({ changes: { from: state.doc.length, insert: 'h' } }).state, false);
+  assert.equal(runs, 2);
+  // A slot past the language's sources answers nothing; no language has as many.
+  assert.equal(completionSources.length, LANGUAGE_SLOTS + 1);
+});
+
+test('document words: prefix matches, the whole typed word and language items left out, none past the highlight limit', () => {
+  const state = EditorState.create({ doc: 'alpha alphabet beta\nalp' });
+  const result = wordsAt(state);
+  assert.equal(result.from, state.doc.length - 3);
+  assert.deepEqual(result.options.map(o => o.label).sort(), ['alpha', 'alphabet', 'beta']);
+  assert.ok(result.options.every(o => o.type === 'text'));
+  assert.equal(result.validFor('alph'), true, 'typing on filters locally');
+  assert.equal(result.validFor('alpha'), false, 'a whole word asks again');
+  assert.equal(result.validFor('al-'), false);
+
+  // A name the language offers (a keyword, a property) shows once, as the language's item.
+  const language = EditorState.create({ doc: 'alpha alphabet beta\nalp', extensions: EditorState.languageData.of(() => [
+    { autocomplete: ['alphabet'] },
+    { autocomplete: () => ({ from: 20, options: [{ label: 'beta', type: 'keyword' }] }) },
+    { autocomplete: async () => ({ from: 20, options: [{ label: 'alpha', type: 'variable' }] }) },
+    { autocomplete: () => { throw new Error('broken source'); } },
+  ]) });
+  assert.deepEqual(wordsAt(language).options.map(o => o.label), ['alpha'], 'only answers given at once are left out');
+
+  const whole = EditorState.create({ doc: 'alpha alphabet\nalpha' });
+  assert.deepEqual(wordsAt(whole).options.map(o => o.label), ['alphabet'], 'Enter after a finished word still breaks the line');
+
+  assert.equal(wordsAt(EditorState.create({ doc: 'alpha ' })), null, 'nothing after a space unless asked');
+  assert.ok(wordsAt(EditorState.create({ doc: 'alpha ' }), 6, true).options.some(o => o.label === 'alpha'), 'the shortcut lists words anywhere');
+
+  const large = EditorState.create({ doc: 'word '.repeat(100_001) + 'wo' });
+  assert.ok(large.doc.length > 500_000);
+  assert.equal(wordsAt(large, large.doc.length, true), null);
+});
+
+test('typing opens suggestions when the setting is on; off, only the shortcut does; read-only never', () => {
+  const { view, editor, options } = mount({ text: 'alpha\n', path: 'notes.txt' });
+  typed(view, 'al');
+  assert.equal(completionStatus(view.state), 'pending');
+  // Options are applied on every keystroke; the same mode leaves an open popup alone.
+  editor.update({ ...options, text: view.state.doc.toString() });
+  assert.equal(completionStatus(view.state), 'pending');
+
+  assert.equal(editor.handleKey(key('Escape')), true);
+  editor.update({ ...options, text: view.state.doc.toString(), suggest: false });
+  assert.equal(completionStatus(view.state), null);
+  typed(view, 'p');
+  assert.equal(completionStatus(view.state), null, 'typing opens nothing with the setting off');
+  assert.equal(startCompletion(view), true);
+  assert.equal(completionStatus(view.state), 'pending', 'the shortcut still does');
+
+  editor.update({ ...options, text: view.state.doc.toString(), suggest: false, disabled: true });
+  assert.equal(startCompletion(view), false, 'read-only: no completion at all');
+  assert.equal(editor.handleKey(key('Escape')), false);
+
+  editor.update({ ...options, text: view.state.doc.toString(), disabled: false });
+  typed(view, 'h');
+  assert.equal(completionStatus(view.state), 'pending', 'editable again, with the setting on');
+  editor.destroy();
+});
+
+test('Escape closes suggestions first, then the search panel, then reaches the dialog', () => {
+  const { view, editor } = mount({ text: 'alpha\nal' });
+  assert.equal(editor.find(), true);
+  startCompletion(view);
+  assert.equal(completionStatus(view.state), 'pending');
+  const first = key('Escape');
+  assert.equal(editor.handleKey(first), true);
+  assert.equal(first.prevented, 1);
+  assert.equal(first.stopped, 1);
+  assert.equal(completionStatus(view.state), null);
+  assert.equal(searchPanelOpen(view.state), true, 'the search panel stays');
+  assert.equal(editor.handleKey(key('Escape')), true);
+  assert.equal(searchPanelOpen(view.state), false);
+  const last = key('Escape');
+  assert.equal(editor.handleKey(last), false, 'nothing open: Escape goes to the dialog');
+  assert.equal(last.prevented, 0);
+  editor.destroy();
+});
+
+test('a CSS file offers its properties beside the words, and a property is not repeated as a word', async () => {
+  // lang-css reads the property names from the page's own style object.
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  globalThis.document = { body: { style: { color: '', columnGap: '', cssText: '' } } };
+  try {
+    const { view, editor } = mount({ text: 'a { color: red; } .collapsed {}\nb { col', path: 'site.css' });
+    await languageOf(view, 'site.css');
+    const end = view.state.doc.length;
+    const css = view.state.languageDataAt('autocomplete', end);
+    assert.ok(css.length > 0, 'the CSS package brings its own completions');
+    const results = await Promise.all(css.map(s => s(new CompletionContext(view.state, end, false))));
+    const labels = results.filter(Boolean).flatMap(r => r.options.map(o => o.label));
+    assert.ok(labels.includes('color') && labels.includes('column-gap'), 'properties are offered');
+    // CodeMirror filters by the typed prefix; the source gives every other word.
+    assert.deepEqual(wordsAt(view.state, end).options.map(o => o.label), ['a', 'red', 'collapsed', 'b'], 'color comes once, as the property');
+    editor.destroy();
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'document', previous);
+    else delete globalThis.document;
+  }
+});
+
+test('the suggestion popup uses the editor font and the app colours', () => {
+  const { view, editor } = mount();
+  const css = themeRules(view.state).join('\n');
+  assert.match(css, /\.cm-tooltip\.cm-tooltip-autocomplete > ul \{[^}]*font-family: var\(--editor-font-family, var\(--font-mono\)\)/);
+  assert.match(css, /\.cm-tooltip\.cm-tooltip-autocomplete > ul > li\[aria-selected\] \{[^}]*var\(--accent-color\)/);
+  assert.match(css, /\.cm-tooltip\.cm-tooltip-autocomplete \{[^}]*overflow: visible/);
+  assert.match(css, /\.cm-tooltip\.cm-completionInfo \{[^}]*var\(--bg-primary\)/);
+  editor.destroy();
+});
+
+test('FileEditor passes the suggestion setting, so changing it reconfigures open editors', () => {
+  const source = readFileSync(COMPONENT_URL, 'utf8');
+  assert.match(source, /suggest: preferences\.suggestWhileTyping/);
+  assert.match(source, /\$effect\(\(\) => \{\s*editor\?\.update\(options\(\)\);/);
+});
+
+// ---------------------------------------------------------------------------
+// Language-server suggestions (CC-06).
+// ---------------------------------------------------------------------------
+
+function serverEditor(text, path = 'a.go', reply = async () => ({ items: [], incomplete: false })) {
+  const asks = [];
+  const h = { asks, reply };
+  const symbols = { ask() {}, hover: async () => undefined, complete(position, trigger, current, signal) { asks.push({ position, trigger, current, signal }); return h.reply(position, trigger); } };
+  Object.assign(h, mount({ text, path, symbols }));
+  h.at = (pos = h.view.state.doc.length, explicit = false) => new CompletionContext(h.view.state, pos, explicit, h.view);
+  h.suggest = (pos, explicit) => codeSuggestions(h.at(pos, explicit));
+  return h;
+}
+
+test('server suggestions: why the server is asked, and trigger characters it names replace the likely ones', async () => {
+  const h = serverEditor('fmt.\nx = 1 \nal\nfmt:');
+  const { view } = h, line = n => view.state.doc.line(n);
+  assert.deepEqual(completionTrigger(h.at(4), view, 'a.go'), { kind: 'character', character: '.' }, 'a likely trigger before the server said');
+  assert.deepEqual(completionTrigger(h.at(line(3).to), view, 'a.go'), { kind: 'invoked' }, 'typing a name');
+  assert.deepEqual(completionTrigger(h.at(line(2).to, true), view, 'a.go'), { kind: 'invoked' }, 'the shortcut, anywhere');
+  assert.equal(completionTrigger(h.at(line(2).to), view, 'a.go'), undefined, 'after a space: words only');
+  assert.equal(completionTrigger(h.at(0), view, 'a.go'), undefined);
+
+  h.reply = async () => ({ items: [{ label: 'Println' }], incomplete: false, triggerCharacters: '.' });
+  await h.suggest(4);
+  assert.deepEqual(h.asks[0].position, { line: 0, character: 4 });
+  assert.deepEqual(h.asks[0].trigger, { kind: 'character', character: '.' });
+  assert.equal(completionTrigger(h.at(line(4).to), view, 'a.go'), undefined, "':' is not this server's");
+  assert.deepEqual(completionTrigger(h.at(4), view, 'a.go'), { kind: 'character', character: '.' });
+  assert.deepEqual(completionTrigger(h.at(line(4).to), view, 'b.rb'), { kind: 'character', character: ':' }, 'another file: likely ones again');
+  assert.equal(h.asks[0].current(), true);
+  typed(view, 'P', 4);
+  assert.equal(h.asks[0].current(), false, 'the asked text changed');
+
+  // An incomplete answer: typing on in the same word asks again as such; the shortcut starts over.
+  h.reply = async () => ({ items: [{ label: 'alpha' }], incomplete: true });
+  const end = view.state.doc.line(3).to;
+  const result = await h.suggest(end);
+  assert.equal(result.validFor, undefined, 'never filtered locally');
+  typed(view, 'p', end);
+  assert.deepEqual(completionTrigger(h.at(end + 1), view, 'a.go'), { kind: 'incomplete' });
+  assert.deepEqual(completionTrigger(h.at(end + 1, true), view, 'a.go'), { kind: 'invoked' });
+  assert.deepEqual(completionTrigger(h.at(end + 1), view, 'a.go'), { kind: 'invoked' });
+  h.editor.destroy();
+});
+
+test('server suggestions keep the server order past 99 items, where CodeMirror breaks equal scores by sortText', async () => {
+  // Labels against the server's order, so a tie broken by label would show.
+  const items = Array.from({ length: 500 }, (_, i) => ({ label: `al${String(499 - i).padStart(3, '0')}`, sortText: String(i).padStart(3, '0') }));
+  const h = serverEditor('al', 'a.go', async () => ({ incomplete: false, items }));
+  const { options } = await h.suggest();
+  // CodeMirror's sort for options that match alike (all start with what was typed):
+  // the score (match plus boost), then its default compareCompletions.
+  const sorted = [...options].sort((a, b) => (b.boost - a.boost) || (a.sortText || a.label).localeCompare(b.sortText || b.label));
+  assert.deepEqual(sorted.map(o => o.label), items.map(i => i.label));
+  h.editor.destroy();
+});
+
+test('server suggestions come above the words they do not repeat, in the server order, with kinds and details', async () => {
+  const h = serverEditor('alpha alphabet\nal', 'a.ts', async () => ({ incomplete: false, items: [
+    { label: 'alpha', kind: 6, sortText: 'b', detail: 'let alpha: number' },
+    { label: 'alert', kind: 3, sortText: 'a', labelDetail: '(message?: any)', deprecated: true },
+    { label: 'all', filterText: 'allx', kind: 14, sortText: 'c' },
+  ] }));
+  const result = await h.suggest();
+  assert.equal(result.from, 15);
+  assert.equal(result.validFor.test('alp'), true, 'a complete answer filters as the user types on');
+  assert.equal(result.validFor.test('al.'), false);
+  assert.deepEqual(result.options.map(o => o.label), ['alpha', 'alert', 'allx', 'alphabet'], 'alpha once, as the server item');
+  const [alpha, alert, all, word] = result.options;
+  assert.ok(alert.boost > alpha.boost && alpha.boost > all.boost && all.boost > 0 && !word.boost);
+  assert.deepEqual([alpha.type, alert.type, all.type, word.type], ['variable', 'function', 'keyword', 'text']);
+  assert.equal(alpha.detail, 'let alpha: number');
+  assert.equal(alert.detail, '(message?: any)');
+  assert.equal(all.displayLabel, 'all', 'matched on filterText, shown as the label');
+  assert.equal(alpha.displayLabel, undefined);
+  assert.equal(alpha.info, undefined, 'no details to show');
+  h.editor.destroy();
+});
+
+test('words alone, at once, when no server can be asked; asked again next time when it fails or answers nothing', async () => {
+  const h = serverEditor('alpha alphabet\nal', 'a.ts');
+  h.reply = () => undefined;
+  const sync = h.suggest();
+  assert.ok(!(sync instanceof Promise), 'no server: no waiting');
+  assert.deepEqual(sync.options.map(o => o.label), ['alpha', 'alphabet']);
+  assert.equal(typeof sync.validFor, 'function');
+
+  for (const reply of [async () => undefined, async () => { throw new Error('gone'); }]) {
+    h.reply = reply;
+    const words = await h.suggest();
+    assert.deepEqual(words.options.map(o => o.label), ['alpha', 'alphabet']);
+    assert.equal(words.validFor, undefined, 'the next keystroke asks the server again');
+  }
+  h.reply = async () => ({ items: [], incomplete: false });
+  const empty = await h.suggest();
+  assert.deepEqual(empty.options.map(o => o.label), ['alpha', 'alphabet']);
+  assert.equal(empty.validFor, undefined, 'nothing yet (ruby-lsp indexing): the next keystroke asks again');
+  assert.equal(await h.suggest(6), null, 'after a space with nothing to offer');
+
+  // Words from another start than the server's edits are left out.
+  h.reply = async () => ({ incomplete: false, items: [{ label: '@alpha', edit: { range: { start: { line: 1, character: 0 }, end: { line: 1, character: 2 } }, newText: '@alpha' } }] });
+  assert.deepEqual((await h.suggest()).options.map(o => o.label), ['@alpha', 'alpha', 'alphabet'], 'same start: kept');
+  h.editor.destroy();
+  const ruby = serverEditor('@alpha alphabet\n@al', 'a.rb', async () => ({ incomplete: false, items: [{ label: '@alpha', edit: { range: { start: { line: 1, character: 0 }, end: { line: 1, character: 3 } }, newText: '@alpha' } }] }));
+  const ivar = await ruby.suggest();
+  assert.equal(ivar.from, 16, 'the edit starts at the sigil');
+  assert.deepEqual(ivar.options.map(o => o.label), ['@alpha'], 'words start after it');
+  ruby.editor.destroy();
+});
+
+test('a slow server is canceled and the words show; CodeMirror ending the query cancels it too', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = serverEditor('alpha alphabet\nal', 'a.ts', () => new Promise(() => {}));
+  const pending = h.suggest();
+  assert.equal(h.asks[0].signal.aborted, false);
+  t.mock.timers.tick(SERVER_SUGGESTION_WAIT);
+  const words = await pending;
+  assert.equal(h.asks[0].signal.aborted, true);
+  assert.deepEqual(words.options.map(o => o.label), ['alpha', 'alphabet']);
+
+  const context = h.at();
+  void codeSuggestions(context);
+  for (const listener of context.abortListeners) listener();
+  assert.equal(h.asks[1].signal.aborted, true);
+  h.editor.destroy();
+});
+
+test('an answer to a query CodeMirror aborted changes neither the trigger characters nor the unfinished word', async () => {
+  const h = serverEditor('fmt:\nal', 'a.go');
+  let answer;
+  h.reply = () => new Promise(resolve => { answer = resolve; });
+  const { view } = h, end = view.state.doc.length;
+  const aborted = h.at(end);
+  const pending = codeSuggestions(aborted);
+  // As CodeMirror aborts a query: its listeners, then no more.
+  for (const listener of aborted.abortListeners) listener();
+  aborted.abortListeners = null;
+  answer({ items: [{ label: 'alpha' }], incomplete: true, triggerCharacters: '.' });
+  assert.equal(await pending, null);
+  typed(view, 'p', end);
+  assert.deepEqual(completionTrigger(h.at(end + 1), view, 'a.go'), { kind: 'invoked' }, 'not asked again as incomplete');
+  assert.deepEqual(completionTrigger(h.at(4), view, 'a.go'), { kind: 'character', character: ':' }, 'the likely triggers still apply');
+
+  // Typed on in the same word while the server answered: asked again as incomplete.
+  const typedOn = codeSuggestions(h.at(end + 1));
+  typed(view, 'h', end + 1);
+  answer({ items: [{ label: 'alpha' }], incomplete: true });
+  await typedOn;
+  assert.deepEqual(completionTrigger(h.at(end + 2), view, 'a.go'), { kind: 'incomplete' });
+
+  // The word changed before the answer came: not.
+  const changed = codeSuggestions(h.at(end + 2));
+  view.dispatch({ changes: { from: end - 2, insert: 'x' } });
+  answer({ items: [{ label: 'alpha' }], incomplete: true });
+  await changed;
+  assert.deepEqual(completionTrigger(h.at(end + 3), view, 'a.go'), { kind: 'invoked' });
+  h.editor.destroy();
+});
+
+test('accepting applies the edit and its import as one undo step, with the snippet\'s first field selected', async () => {
+  const text = 'package main\n\nfunc f() {\n\tfmt.Pr\n}\n';
+  const h = serverEditor(text, 'a.go', async () => ({ incomplete: false, items: [{
+    label: 'Println', kind: 3, snippet: true,
+    edit: { range: { start: { line: 3, character: 5 }, end: { line: 3, character: 7 } }, newText: 'Println(${1:a ...any})$0' },
+    extraEdits: [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }, newText: 'import "fmt"\n' }],
+  }] }));
+  const { view } = h, end = view.state.doc.line(4).to;
+  view.dispatch({ selection: { anchor: end } });
+  const result = await h.suggest(end);
+  typed(view, 'i', end);
+  const depth = undoDepth(view.state);
+  const option = result.options[0];
+  option.apply(view, option, result.from, end + 1);
+  assert.equal(view.state.doc.toString(), 'package main\nimport "fmt"\n\nfunc f() {\n\tfmt.Println(a ...any)\n}\n');
+  const args = view.state.doc.line(5).from + '\tfmt.Println('.length;
+  assert.deepEqual([view.state.selection.main.from, view.state.selection.main.to], [args, args + 'a ...any'.length], 'the placeholder is selected');
+  assert.equal(undoDepth(view.state), depth + 1);
+  assert.equal(hasNextSnippetField(view.state), true);
+  assert.equal(nextSnippetField(view), true, 'Tab moves on');
+  assert.deepEqual([view.state.selection.main.from, view.state.selection.main.to], [args + 'a ...any)'.length, args + 'a ...any)'.length], 'and ends at $0');
+  assert.equal(hasNextSnippetField(view.state), false, 'the snippet is done');
+  undo(view);
+  assert.equal(view.state.doc.toString(), 'package main\n\nfunc f() {\n\tfmt.Pri\n}\n', 'one undo, the typing stays');
+
+  // An edit elsewhere since asking: only the item's text replaces the typed word, still with its fields.
+  typed(view, 'X', 0);
+  const word = view.state.doc.line(4);
+  option.apply(view, option, word.to - 3, word.to);
+  assert.equal(view.state.doc.toString(), 'Xpackage main\n\nfunc f() {\n\tfmt.Println(a ...any)\n}\n');
+  assert.equal(view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to), 'a ...any');
+  h.editor.destroy();
+});
+
+test('server suggestions: a server that names no trigger characters is asked after none', async () => {
+  const h = serverEditor('fmt.\nfmt(');
+  const { view } = h;
+  h.reply = async () => ({ items: [{ label: 'Println' }], incomplete: false, triggerCharacters: '' });
+  await h.suggest(4);
+  assert.equal(h.asks.length, 1, 'asked after a likely trigger before the server said');
+  assert.equal(completionTrigger(h.at(4), view, 'a.go'), undefined, "'.'");
+  assert.equal(completionTrigger(h.at(view.state.doc.length), view, 'a.go'), undefined, "'('");
+  assert.deepEqual(completionTrigger(h.at(4, true), view, 'a.go'), { kind: 'invoked' }, 'the shortcut still asks');
+  // An older host that does not say keeps the likely ones.
+  const old = serverEditor('fmt.');
+  old.reply = async () => ({ items: [], incomplete: false });
+  await old.suggest(4);
+  assert.deepEqual(completionTrigger(old.at(4), old.view, 'a.go'), { kind: 'character', character: '.' });
+  h.editor.destroy(); old.editor.destroy();
+});
+
+// An editor offering helperValue, whose import comes only on resolve (vtsls, CC-12).
+async function resolvingEditor(resolveEdits, item = { label: 'helperValue', kind: 6 }) {
+  const resolves = [];
+  const h = serverEditor('export {};\nhelperVa', 'a.ts', async () => ({ incomplete: false, items: [item],
+    resolveEdits: (index, current, signal) => { resolves.push({ index, current, signal }); return resolveEdits(index); } }));
+  const end = h.view.state.doc.length;
+  h.view.dispatch({ selection: { anchor: end } });
+  const result = await h.suggest(end);
+  h.resolves = resolves;
+  h.end = end;
+  h.accept = (to = end) => { const o = result.options[0]; o.apply(h.view, o, result.from, to); };
+  return h;
+}
+const helperImport = { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: 'import { helperValue } from "./helper.js";\n' };
+const settled = () => new Promise(resolve => setImmediate(resolve));
+
+test('accepting an item whose import comes on resolve waits for it and applies both as one undo step', async () => {
+  let answer;
+  const h = await resolvingEditor(() => new Promise(resolve => { answer = resolve; }));
+  const { view } = h, depth = undoDepth(view.state);
+  h.accept();
+  assert.equal(view.state.doc.toString(), 'export {};\nhelperVa', 'waits');
+  assert.equal(completionStatus(view.state), null, 'the popup closed');
+  assert.equal(h.resolves[0].index, 0);
+  assert.equal(h.resolves[0].current(), true, 'asked for the text shown');
+  answer([helperImport]);
+  await settled();
+  assert.equal(view.state.doc.toString(), 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue');
+  assert.equal(view.state.selection.main.head, view.state.doc.length);
+  assert.equal(h.resolves[0].signal.aborted, true, 'done with');
+  assert.equal(undoDepth(view.state), depth + 1);
+  undo(view);
+  assert.equal(view.state.doc.toString(), 'export {};\nhelperVa', 'one undo removes both');
+  h.editor.destroy();
+});
+
+test('an import known for the text shown applies at once; listed imports never wait', async () => {
+  const h = await resolvingEditor(() => [helperImport]);
+  h.accept();
+  assert.equal(h.view.state.doc.toString(), 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue');
+  h.editor.destroy();
+  const listed = await resolvingEditor(() => { throw new Error('must not resolve'); }, { label: 'helperValue', extraEdits: [{ ...helperImport, newText: 'import "listed";\n' }] });
+  listed.accept();
+  assert.equal(listed.view.state.doc.toString(), 'import "listed";\nexport {};\nhelperValue');
+  assert.equal(listed.resolves.length, 0);
+  listed.editor.destroy();
+  const throwing = await resolvingEditor(() => { throw new Error('gone'); });
+  throwing.accept();
+  assert.equal(throwing.view.state.doc.toString(), 'export {};\nhelperValue', 'a throw: the item alone');
+  throwing.editor.destroy();
+});
+
+test('a slow, failing or empty resolve inserts the item alone', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let answer;
+  const slow = await resolvingEditor(() => new Promise(resolve => { answer = resolve; }));
+  slow.accept();
+  t.mock.timers.tick(RESOLVE_ACCEPT_WAIT - 1);
+  assert.equal(slow.view.state.doc.toString(), 'export {};\nhelperVa');
+  t.mock.timers.tick(1);
+  assert.equal(slow.view.state.doc.toString(), 'export {};\nhelperValue');
+  assert.equal(slow.resolves[0].signal.aborted, true);
+  answer([helperImport]);
+  await settled();
+  assert.equal(slow.view.state.doc.toString(), 'export {};\nhelperValue', 'a late import is not added');
+  slow.editor.destroy();
+  for (const resolveEdits of [() => Promise.reject(new Error('staleVersion')), () => Promise.resolve(undefined), () => Promise.resolve([])]) {
+    const h = await resolvingEditor(resolveEdits);
+    h.accept();
+    await settled();
+    assert.equal(h.view.state.doc.toString(), 'export {};\nhelperValue');
+    assert.equal(h.view.state.selection.main.head, h.view.state.doc.length);
+    h.editor.destroy();
+  }
+});
+
+test('typing while the import is awaited stays, and the item still goes in without it', async () => {
+  let answer;
+  const h = await resolvingEditor(() => new Promise(resolve => { answer = resolve; }));
+  const { view } = h;
+  h.accept();
+  typed(view, '// note\n', 0);
+  typed(view, '(', view.state.doc.length);
+  answer([helperImport]);
+  await settled();
+  assert.equal(view.state.doc.toString(), '// note\nexport {};\nhelperValue(', 'the typed text kept, no import');
+  assert.equal(view.state.selection.main.head, view.state.doc.length, 'the caret stays after the typing');
+  undo(view);
+  assert.equal(view.state.doc.toString(), '// note\nexport {};\nhelperVa(');
+  h.editor.destroy();
+});
+
+test('an awaited item does not go in once the editor is read-only', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const settle of ['resolve', 'timeout']) {
+    let answer;
+    const h = await resolvingEditor(() => new Promise(resolve => { answer = resolve; }));
+    const { view } = h, text = view.state.doc.toString();
+    h.accept();
+    // A file action starts while the import is awaited.
+    h.editor.update({ ...h.options, text, disabled: true });
+    assert.equal(view.state.readOnly, true);
+    if (settle === 'resolve') { answer([helperImport]); await settled(); }
+    else t.mock.timers.tick(RESOLVE_ACCEPT_WAIT);
+    assert.equal(view.state.doc.toString(), text, `${settle}: nothing went in`);
+    h.editor.update({ ...h.options, text, disabled: false });
+    answer([helperImport]);
+    await settled();
+    assert.equal(view.state.doc.toString(), text, `${settle}: nor once editable again`);
+    h.editor.destroy();
+  }
+});
+
+test('an awaited item at an empty range (after a trigger character) goes before what is typed meanwhile', async () => {
+  let answer;
+  const resolves = [];
+  const h = serverEditor('obj.', 'a.ts', async () => ({ incomplete: false, items: [{ label: 'foo', kind: 5 }],
+    resolveEdits: (index) => { resolves.push(index); return new Promise(resolve => { answer = resolve; }); } }));
+  const { view } = h, end = view.state.doc.length;
+  view.dispatch({ selection: { anchor: end } });
+  const result = await h.suggest(end);
+  assert.equal(result.from, end, 'it replaces nothing');
+  const o = result.options[0];
+  o.apply(view, o, result.from, end);
+  assert.deepEqual(resolves, [0]);
+  typed(view, 'x', end);
+  answer([]);
+  await settled();
+  assert.equal(view.state.doc.toString(), 'obj.foox');
+  assert.equal(view.state.selection.main.head, view.state.doc.length, 'the caret stays after the typing');
+  h.editor.destroy();
+});
+
+test('an awaited item whose word was deleted or typed over goes nowhere; a shortened word is still replaced', async () => {
+  const backspace = (view, at) => view.dispatch({ changes: { from: at - 1, to: at }, userEvent: 'delete.backward' });
+  const cases = [
+    ['deleted', (view, w) => view.dispatch({ changes: { from: w.from, to: w.to }, userEvent: 'delete.selection' }), 'export {};\n'],
+    ['typed over', (view, w) => view.dispatch({ changes: { from: w.from, to: w.to, insert: 'x' }, userEvent: 'input.type' }), 'export {};\nx'],
+    ['deleted one by one', (view, w) => { for (let at = w.to; at > w.from; at--) backspace(view, at); }, 'export {};\n'],
+    ['shortened', (view, w) => backspace(view, w.to), 'export {};\nhelperValue'],
+  ];
+  for (const [what, edit, expected] of cases) {
+    let answer;
+    const h = await resolvingEditor(() => new Promise(resolve => { answer = resolve; }));
+    const { view } = h;
+    h.accept();
+    edit(view, view.state.doc.line(2));
+    const depth = undoDepth(view.state);
+    answer([helperImport]);
+    await settled();
+    assert.equal(view.state.doc.toString(), expected, what);
+    assert.equal(undoDepth(view.state), depth + (what === 'shortened' ? 1 : 0), `${what}: undo history`);
+    h.editor.destroy();
+  }
+});
+
+test('accepting again puts an awaited item in first; another file in the editor gets nothing', async () => {
+  const answers = [];
+  const h = await resolvingEditor(() => new Promise(resolve => answers.push(resolve)));
+  const { view } = h;
+  h.accept();
+  typed(view, ' helperVa', h.end);
+  const end = view.state.doc.length, result = await h.suggest(end), o = result.options[0];
+  o.apply(view, o, result.from, end);
+  assert.equal(view.state.doc.toString(), 'export {};\nhelperValue helperVa', 'the first goes in at once, the second waits');
+  answers[1]([helperImport]);
+  answers[0]([helperImport]);
+  await settled();
+  assert.equal(view.state.doc.toString(), 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue helperValue');
+
+  let late;
+  const other = await resolvingEditor(() => new Promise(resolve => { late = resolve; }));
+  other.accept();
+  other.editor.update({ ...other.options, id: {}, path: 'b.ts', text: 'const b = 1;\n' });
+  late([helperImport]);
+  await settled();
+  assert.equal(other.view.state.doc.toString(), 'const b = 1;\n');
+  other.editor.destroy();
+  h.editor.destroy();
+});
+
+test('snippet fields: mirrors change together, Tab and Shift-Tab move, lines take the indentation, Escape leaves', async () => {
+  const text = 'func f() {\n\tfo\n}\n';
+  const reply = async () => ({ incomplete: false, items: [{
+    label: 'for', kind: 15, snippet: true,
+    insertText: 'for ${1:i} := 0; $1 < ${2:n}; $1++ {\n\t$0\n}',
+  }] });
+  const multiple = view => view.state.facet(EditorState.allowMultipleSelections);
+  const h = serverEditor(text, 'a.go', reply);
+  const { view } = h, end = view.state.doc.line(2).to;
+  view.dispatch({ selection: { anchor: end } });
+  const result = await h.suggest(end);
+  const option = result.options[0];
+  assert.equal(multiple(view), false, 'one selection while editing');
+  const depth = undoDepth(view.state);
+  option.apply(view, option, result.from, end);
+  assert.equal(view.state.doc.toString(), 'func f() {\n\tfor i := 0; i < n; i++ {\n\t\t\n\t}\n}\n', 'new lines indented under the first');
+  assert.equal(undoDepth(view.state), depth + 1);
+  assert.deepEqual(view.state.selection.ranges.map(r => view.state.sliceDoc(r.from, r.to)), ['i', 'i', 'i'], 'every $1 is selected');
+  view.dispatch(view.state.replaceSelection('k'));
+  assert.equal(view.state.doc.line(2).text, '\tfor k := 0; k < n; k++ {', 'mirrors change together');
+  assert.equal(nextSnippetField(view), true);
+  assert.deepEqual(view.state.selection.ranges.map(r => view.state.sliceDoc(r.from, r.to)), ['n']);
+  assert.equal(prevSnippetField(view), true);
+  assert.equal(view.state.selection.ranges.length, 3, 'back on $1');
+  nextSnippetField(view);
+  nextSnippetField(view);
+  assert.equal(view.state.selection.main.head, view.state.doc.line(3).to, '$0 inside the body');
+  assert.equal(hasNextSnippetField(view.state), false, 'done at $0');
+  assert.equal(multiple(view), false, 'one selection again');
+  undo(view);
+  assert.equal(view.state.doc.toString(), 'func f() {\n\tfor i := 0; i < n; i++ {\n\t\t\n\t}\n}\n', 'the typing in the field undoes first');
+  undo(view);
+  assert.equal(view.state.doc.toString(), text, 'then the snippet, in one step');
+
+  // Escape leaves the fields and their cursors; one selection is left.
+  const again = await h.suggest(end);
+  again.options[0].apply(view, again.options[0], again.from, end);
+  assert.equal(view.state.selection.ranges.length, 3);
+  assert.equal(clearSnippet(view), true);
+  assert.equal(hasNextSnippetField(view.state), false);
+  assert.equal(view.state.selection.ranges.length, 1);
+  assert.equal(multiple(view), false);
+  // A click elsewhere ends it too.
+  undo(view);
+  const third = await h.suggest(end);
+  third.options[0].apply(view, third.options[0], third.from, end);
+  assert.equal(hasNextSnippetField(view.state), true);
+  view.dispatch({ selection: { anchor: 0 } });
+  assert.equal(multiple(view), false);
+  assert.equal(hasNextSnippetField(view.state), false, 'the fields are gone');
+  assert.equal(view.state.selection.ranges.length, 1);
+  h.editor.destroy();
+});
+
+test('the details panel shows the signature and the documentation the owner rendered', async () => {
+  const asked = [];
+  const h = serverEditor('al', 'a.ts', async () => ({ incomplete: false, items: [{ label: 'alpha' }, { label: 'alert' }],
+    details: async index => { asked.push(index); return index ? undefined : { detail: 'let alpha: number', html: '<p>Docs</p>', truncated: true }; } }));
+  const [alpha, alert] = (await h.suggest()).options;
+  const previous = globalThis.document;
+  try {
+    globalThis.document = { createElement: () => ({ children: [], style: {}, appendChild(child) { this.children.push(child); return child; }, addEventListener() {} }) };
+    const dom = await alpha.info(alpha);
+    assert.equal(dom.className, 'cm-symbol-hover cm-completion-docs');
+    assert.deepEqual(dom.children.map(c => c.className), ['cm-completion-signature', 'hover-body', 'hover-truncated']);
+    assert.equal(dom.children[0].textContent, 'let alpha: number', 'the signature is text, never HTML');
+    assert.equal(dom.children[1].innerHTML, '<p>Docs</p>');
+    assert.equal(await alert.info(alert), null);
+    assert.deepEqual(asked, [0, 1], 'by the index in the answer');
+  } finally { globalThis.document = previous; h.editor.destroy(); }
+});
+
+test('deprecated suggestions are struck through', () => {
+  const source = readFileSync(EDITOR_URL, 'utf8');
+  assert.match(source, /optionClass/);
+  assert.match(source, /'\.cm-completion-deprecated \.cm-completionLabel': \{ textDecoration: 'line-through'/);
 });

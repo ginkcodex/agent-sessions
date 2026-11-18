@@ -73,3 +73,11 @@ func (u UnsupportedCodeDiagnostics) NavigateCode(context.Context, cd.Context, st
 func (u UnsupportedCodeDiagnostics) ReadNavigationFile(context.Context, cd.Context, string) (files.Content, error) {
 	return files.Content{}, u.err()
 }
+
+func (u UnsupportedCodeDiagnostics) CompleteCode(context.Context, cd.Context, string, int64, cd.Position, cd.CompletionTrigger) (cd.CompletionResult, error) {
+	return cd.CompletionResult{}, u.err()
+}
+
+func (u UnsupportedCodeDiagnostics) ResolveCodeCompletion(context.Context, cd.Context, string, string, int, int64) (cd.CompletionDetails, error) {
+	return cd.CompletionDetails{}, u.err()
+}

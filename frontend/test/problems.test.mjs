@@ -106,6 +106,7 @@ function viewerHarness(files) {
     editor: { revealRange: (r, valid) => { if (valid()) reveals.push(r); return true; } },
     codeScroll: {}, revealSourceRange: (_, r) => { reveals.push(r); return true; },
     isTextContent: c => !!c && !c.binary && !c.tooLarge && !c.image,
+    lineSelections: new Map(), selectionVersion: 0,
     closeBlame() {}, untrack: fn => fn(), tick: () => new Promise(resolve => ticks.push(resolve)),
     $state: Object.assign(v => v, { raw: v => v }), $effect: fn => effect = fn,
   };
@@ -130,6 +131,7 @@ test('actual viewer async navigation keeps dirty preview and existing editor, sw
   assert.equal(h.reveals.length, 0);
   reads.get('next.md')(content('next.md')); await Promise.resolve(); await Promise.resolve(); files.diff = true; h.effect(); await h.flush();
   assert.equal(files.diff, false); assert.equal(h.preview(), false); assert.deepEqual(h.reveals, [range]);
+  assert.equal(h.ctx.lineSelections.size, 0, 'only links mark lines; a problem keeps its own selection');
   assert.equal(draft.edit.draft, 'unsaved😀'); assert.equal(files.tabs.includes(draft), true);
   const kept = files.activeTab; h.navigateProblem(diagnostic({ path: 'next.md' })); assert.equal(files.activeTab, kept);
   h.effect(); files.selectTab('draft.md'); await h.flush(); assert.equal(h.reveals.length, 1);
@@ -150,18 +152,23 @@ test('file link reveal waits for source, preserves drafts, and retires supersede
   h.effect(); await h.flush();
   assert.deepEqual(h.reveals, [{ start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }]);
   assert.equal(files.fileLinkReveal, null); assert.equal(h.preview(), false);
+  assert.deepEqual(h.ctx.lineSelections.get(files.activeTab), { anchor: 2, head: 2 }, 'a line link marks its line');
+  assert.equal(h.ctx.selectionVersion, 1);
   files.startEditing('a.md'); const tab = files.activeTab; files.updateDraft(tab, 'draft\nchanged');
   files.revealFileLink('a.md', { line: 2, endLine: 2 }); h.navigateFileLink(files.fileLinkReveal); h.effect(); await h.flush();
   assert.equal(files.activeTab, tab); assert.equal(tab.edit.draft, 'draft\nchanged');
   assert.deepEqual(h.reveals.at(-1).end, { line: 1, character: 7 });
+  files.revealFileLink('a.md', { line: 1, endLine: 2 }); h.navigateFileLink(files.fileLinkReveal); h.effect(); await h.flush();
+  assert.deepEqual(h.ctx.lineSelections.get(tab), { anchor: 1, head: 2 }, 'a range link marks every line in it');
   files.diff = true;
   files.revealFileLink('a.md', { line: 99 }); h.navigateFileLink(files.fileLinkReveal); h.effect(); await h.flush();
   assert.match(h.notice(), /outside the current source/); assert.equal(files.diff, false);
+  assert.deepEqual(h.ctx.lineSelections.get(tab), { anchor: 1, head: 2 }, 'a link outside the text marks nothing');
   assert.equal(files.activeTab, tab); assert.equal(files.fileLinkReveal, null);
   files.revealFileLink('a.md', { line: 1 }); h.navigateFileLink(files.fileLinkReveal); h.effect();
-  files.revealFileLink('a.md', { line: 2 }); await h.flush(); assert.equal(h.reveals.length, 2);
+  files.revealFileLink('a.md', { line: 2 }); await h.flush(); assert.equal(h.reveals.length, 3);
   h.navigateFileLink(files.fileLinkReveal); h.effect();
-  files.openFile('b.md', { keep: true }); await h.flush(); assert.equal(h.reveals.length, 2);
+  files.openFile('b.md', { keep: true }); await h.flush(); assert.equal(h.reveals.length, 3);
   assert.equal(files.matchesFileLinkReveal(first), false);
   files.revealFileLink('a.md', { line: 1 }); assert.equal(files.fileLinkReveal, null);
   files.selectTab('a.md'); files.revealFileLink('a.md', { line: 1 });

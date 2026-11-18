@@ -41,7 +41,14 @@ export interface NavigationView {
   /** The file's synchronization failed. */
   failure?: string;
   basis?: LiveDocumentBasis;
+  /** What the reasons name: code navigation (the default) or code suggestions. */
+  feature?: 'navigation' | 'suggestions';
 }
+
+const FEATURES = {
+  navigation: { name: 'code navigation', is: 'is', uses: 'go to definition, references and hover', provides: 'go to definition, references or hover' },
+  suggestions: { name: 'code suggestions', is: 'are', uses: 'code suggestions', provides: 'code suggestions' },
+};
 
 export const OP_LABEL: Record<CodeNavigationOp, string> = {
   definition: 'Go to definition',
@@ -57,11 +64,12 @@ const LINT_ONLY = new Map([['rubocop', { language: 'Ruby', tool: 'RuboCop' }]]);
  * Each reason says what is missing and, where there is one, what to do.
  */
 export function navigationBlocker(v: NavigationView): string | undefined {
+  const f = FEATURES[v.feature ?? 'navigation'];
   switch (v.status) {
     case 'unsupported':
-      return 'Code navigation is not available for this host.';
+      return `${f.name[0].toUpperCase()}${f.name.slice(1)} ${f.is} not available for this host.`;
     case 'disconnected':
-      return 'The host is disconnected. Reconnect to use code navigation.';
+      return `The host is disconnected. Reconnect to use ${f.name}.`;
     case 'error':
       return 'Code checks failed for this project. Open Code checks to see why.';
     case 'ready':
@@ -69,15 +77,15 @@ export function navigationBlocker(v: NavigationView): string | undefined {
     default:
       return 'Code checks are still starting for this project.';
   }
-  if (v.off) return `${v.off} is off in Settings, so code navigation is not offered for this file. Turn it on under Settings › Code checks.`;
-  if (!v.live) return 'This host does not run language servers for open files, so code navigation is unavailable.';
-  if (!v.navigation) return "This host's Agent Sessions server is older and does not offer code navigation.";
+  if (v.off) return `${v.off} is off in Settings, so ${f.name} ${f.is} not offered for this file. Turn it on under Settings › Code checks.`;
+  if (!v.live) return `This host does not run language servers for open files, so ${f.name} ${f.is} unavailable.`;
+  if (!v.navigation) return `This host's Agent Sessions server is older and does not offer ${f.name}.`;
   // A file that only linters declare gets no navigation, approved or not.
   // Beside a language server (ruby-lsp), a linter's state does not matter.
   const navigators = v.servers.filter(p => !LINT_ONLY.has(p.providerId));
   const linter = v.servers.length && !navigators.length ? LINT_ONLY.get(v.servers[0].providerId) : undefined;
-  if (linter) return `No language server provides go to definition, references or hover for ${linter.language} files; ${linter.tool} reports lint and syntax problems only.`;
-  if (!v.approved) return v.approvalBlocker ?? 'Approve code checks for this project in Code checks to use go to definition, references and hover.';
+  if (linter) return `No language server provides ${f.provides} for ${linter.language} files; ${linter.tool} reports lint and syntax problems only.`;
+  if (!v.approved) return v.approvalBlocker ?? `Approve code checks for this project in Code checks to use ${f.uses}.`;
   const servers = navigators.filter(p => p.availability === 'available');
   if (!servers.length) {
     const missing = navigators.find(p => p.availability === 'missingTool' || p.missingTool);

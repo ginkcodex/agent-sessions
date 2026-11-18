@@ -169,6 +169,7 @@ func (s *lspSession) openLifecycle(uri string) {
 		s.wireBases = make(map[string]int64)
 	}
 	s.wireBases[uri] = base
+	delete(s.completions, uri)
 }
 
 // recordPublicationURILocked reports whether this is the URI's first recorded
@@ -218,6 +219,7 @@ func (s *lspSession) closeLifecycle(uri string) {
 	defer s.mu.Unlock()
 	delete(s.wireBases, uri)
 	delete(s.unindexed, uri)
+	delete(s.completions, uri)
 }
 
 // markUnindexed records an opened or changed document for the next Reindex
@@ -470,6 +472,7 @@ func (d SessionDocuments) Apply(ctx context.Context, step DocumentStep) error {
 		if err != nil {
 			return err
 		}
+		// The kept answer stays: the editor still resolves its items (CC-10).
 		s.markUnindexed(uri)
 		method = "textDocument/didChange"
 		changes := make([]map[string]any, 0, len(step.Changes))

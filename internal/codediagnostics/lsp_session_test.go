@@ -288,11 +288,26 @@ func TestSessionAdvertisesNoLiveCapability(t *testing.T) {
 	td := caps["textDocument"].(map[string]any)
 	definition, _ := td["definition"].(map[string]any)
 	hover, _ := td["hover"].(map[string]any)
-	if len(td) != 3 || definition["linkSupport"] != true || td["references"] == nil || len(hover["contentFormat"].([]any)) != 2 {
+	if len(td) != 4 || definition["linkSupport"] != true || td["references"] == nil || len(hover["contentFormat"].([]any)) != 2 {
 		t.Fatalf("textDocument capabilities %v", td)
 	}
-	if params["workspaceFolders"] != nil {
-		t.Fatal("workspace folders must not be advertised")
+	// Completion: snippets, one range per item, no commit characters yet,
+	// details resolved later.
+	completion := td["completion"].(map[string]any)
+	item := completion["completionItem"].(map[string]any)
+	resolve, _ := item["resolveSupport"].(map[string]any)
+	kinds, _ := completion["completionItemKind"].(map[string]any)["valueSet"].([]any)
+	if completion["contextSupport"] != true || item["snippetSupport"] != true || item["insertReplaceSupport"] != false ||
+		item["commitCharactersSupport"] != false || item["labelDetailsSupport"] != true || item["deprecatedSupport"] != true ||
+		fmt.Sprint(item["documentationFormat"]) != "[markdown plaintext]" || fmt.Sprint(resolve["properties"]) != "[documentation detail]" ||
+		len(kinds) != 25 || kinds[0] != 1.0 || kinds[24] != 25.0 {
+		t.Fatalf("completion capabilities %v", completion)
+	}
+	// The root is still named as the one workspace folder: Pyright resolves
+	// project imports only from workspace folders, not from rootUri.
+	folders, _ := params["workspaceFolders"].([]any)
+	if len(folders) != 1 || folders[0].(map[string]any)["uri"] != params["rootUri"] {
+		t.Fatalf("workspace folders %v, rootUri %v", params["workspaceFolders"], params["rootUri"])
 	}
 }
 

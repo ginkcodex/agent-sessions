@@ -1,8 +1,9 @@
 # Print page setup — tasks
 
 - **Plan:** [print-page-setup.md](../../plan/print-page-setup.md)
-- **Progress:** 1/1 done
+- **Progress:** 1/2 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
 | [PPS-01](PPS-01.md) | ✅ Done | Page-setup controls, CSS/native defaults, compatibility and regression tests | 4 h | — |
+| [PPS-02](PPS-02.md) | 🟡 Partial | Fit wide tables to the printed page; macOS print not checked | 2 h | PPS-01 |

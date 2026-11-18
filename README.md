@@ -313,8 +313,8 @@ before sharing it.
 - Optional message or selected-text translation through an OpenAI-compatible
   endpoint you configure. Selected-text translation includes the surrounding
   sentence as context.
-- `Ctrl+,` (`⌘,` on macOS) opens Settings; `/` opens transcript search;
-  `Esc` closes dialogs.
+- `Ctrl+,` (`⌘,` on macOS) opens Settings; `Ctrl+B` (`⌘B`) hides or shows
+  the sidebar; `/` opens transcript search; `Esc` closes dialogs.
 
 ## How a handoff works
 

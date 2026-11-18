@@ -20,7 +20,8 @@ const (
 
 func isLiveDiagnosticsMethod(m string) bool {
 	switch m {
-	case "openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument", "navigateCode", "readNavigationFile":
+	case "openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument", "navigateCode", "readNavigationFile",
+		"completeCode", "resolveCodeCompletion":
 		return true
 	}
 	return false
@@ -32,7 +33,7 @@ func checkLiveParams(p codeDiagnosticsParams) error {
 	if len(p.Text) > cd.MaxDocumentBytes {
 		return cdError("limitExceeded", "Document text exceeds the live diagnostics limit")
 	}
-	if len(p.Path) > 4096 || len(p.DocumentID) > maxLiveIDBytes || len(p.Revision) > maxLiveIDBytes || len(p.Op) > maxLiveIDBytes {
+	if len(p.Path) > 4096 || len(p.DocumentID) > maxLiveIDBytes || len(p.Revision) > maxLiveIDBytes || len(p.Op) > maxLiveIDBytes || len(p.ResultID) > maxLiveIDBytes {
 		return cdError("invalidArgument", "Document parameter is too large")
 	}
 	return nil
@@ -41,7 +42,7 @@ func checkLiveParams(p codeDiagnosticsParams) error {
 func (s *Server) dispatchLiveDiagnostics(ctx context.Context, req Request) (any, error) {
 	d := &s.diagnostics
 	d.mu.Lock()
-	closed, host, live, navigation := d.closed, d.host, d.live, d.navigation
+	closed, host, live, navigation, completion := d.closed, d.host, d.live, d.navigation, d.completion
 	d.mu.Unlock()
 	switch {
 	case closed:
@@ -54,6 +55,8 @@ func (s *Server) dispatchLiveDiagnostics(ctx context.Context, req Request) (any,
 		return nil, cdError("unsupported", "Live code diagnostics are not supported")
 	case (req.Method == "navigateCode" || req.Method == "readNavigationFile") && !navigation:
 		return nil, cdError("unsupported", "Code navigation is not supported")
+	case (req.Method == "completeCode" || req.Method == "resolveCodeCompletion") && !completion:
+		return nil, cdError("unsupported", "Code completion is not supported")
 	case len(req.Params) > maxLiveParamsBytes:
 		return nil, cdError("limitExceeded", "Document request exceeds the transport budget")
 	}
@@ -90,6 +93,21 @@ func (s *Server) dispatchLiveDiagnostics(ctx context.Context, req Request) (any,
 			return nil, cdError("unsupported", "Code navigation is not supported")
 		}
 		return nav.ReadNavigationFile(ctx, p.Context, p.Path)
+	case "completeCode":
+		complete, ok := s.backend.(engine.CodeCompletionBackend)
+		if !ok {
+			return nil, cdError("unsupported", "Code completion is not supported")
+		}
+		if p.Position == nil || p.Trigger == nil {
+			return nil, cdError("invalidArgument", "Invalid completion parameters")
+		}
+		return complete.CompleteCode(ctx, p.Context, p.DocumentID, p.Version, *p.Position, *p.Trigger)
+	case "resolveCodeCompletion":
+		complete, ok := s.backend.(engine.CodeCompletionBackend)
+		if !ok {
+			return nil, cdError("unsupported", "Code completion is not supported")
+		}
+		return complete.ResolveCodeCompletion(ctx, p.Context, p.DocumentID, p.ResultID, p.Index, p.Version)
 	case "openCodeDiagnosticDocument":
 		return b.OpenCodeDiagnosticDocument(ctx, p.Context, p.Path, p.DocumentID, p.Version, p.Text, p.Revision)
 	case "changeCodeDiagnosticDocument":

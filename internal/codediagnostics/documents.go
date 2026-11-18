@@ -138,6 +138,7 @@ type documentState struct {
 	contextBlocked bool   // displayed/saved header no longer matches the immutable owner
 	saved          int64  // last version reported through didSave
 	revision       string
+	completion     keptAnswer // the last completion answer, for resolve
 }
 
 // SetDocumentProvider installs the session seam. Without one every document

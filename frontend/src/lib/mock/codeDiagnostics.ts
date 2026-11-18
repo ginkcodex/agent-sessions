@@ -1,7 +1,20 @@
-import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsSnapshot, CodeDiagnosticsRun, CodeDiagnosticsDocumentReceipt, CodeDiagnosticPosition, CodeNavigationLocation, CodeNavigationOp, CodeNavigationResult } from '../codeDiagnostics';
+import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsSnapshot, CodeDiagnosticsRun, CodeDiagnosticsDocumentReceipt, CodeDiagnosticPosition, CodeNavigationLocation, CodeNavigationOp, CodeNavigationResult, CodeCompletionTrigger, CodeCompletionResult, CodeCompletionDetails, CodeCompletionItem } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CodeDiagnosticsError, sameContext } from '../codeDiagnostics';
 import type { FileContent } from '../types';
 import { CODE_LANGUAGES } from '../codeLanguages';
+
+/**
+ * The line a position is on, as a server checks it: whole numbers, not
+ * negative, inside the text (the end of a line included).
+ */
+function lineAt(text: string, position: CodeDiagnosticPosition): string {
+  const { line: n, character } = position;
+  const line = Number.isInteger(n) && n >= 0 ? text.split('\n')[n] : undefined;
+  if (line === undefined || !Number.isInteger(character) || character < 0 || character > line.length) {
+    throw new CodeDiagnosticsError('invalidArgument', 'Position is outside the document');
+  }
+  return line;
+}
 
 /** Synthetic dependency sources outside every project, for go to definition. */
 const MOCK_EXTERNAL: Record<string, string> = {
@@ -19,6 +32,8 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
   private closed = new Set<string>();
   /** External paths navigation answers pointed to, per attachment. */
   private grants = new Map<string, Set<string>>();
+  /** Each document's last completion answer, by document ID. */
+  private answers = new Map<string, { resultId: string; version: number; items: { item: CodeCompletionItem; path: string; declared?: string }[] }>();
   /** The languages the last attach turned off. */
   disabledLanguages: string[] = [];
   constructor(publishEvent: (name: string, event: unknown) => void) { this.publishEvent = publishEvent; }
@@ -44,7 +59,13 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     this.snapshots.set(context.attachmentId, snapshot);
     return structuredClone({ project: { hostId: host, root: dir }, context, snapshot });
   }
-  async detachCodeDiagnostics(c: CodeDiagnosticsContext, host: string) { this.get(c, host); this.snapshots.delete(c.attachmentId); this.documents.delete(c.attachmentId); this.grants.delete(c.attachmentId); return { context: c }; }
+  async detachCodeDiagnostics(c: CodeDiagnosticsContext, host: string) {
+    this.get(c, host);
+    // The documents' kept completion answers go with them.
+    for (const documentId of this.documents.get(c.attachmentId)?.keys() ?? []) this.answers.delete(documentId);
+    this.snapshots.delete(c.attachmentId); this.documents.delete(c.attachmentId); this.grants.delete(c.attachmentId);
+    return { context: c };
+  }
   private docs(c: CodeDiagnosticsContext, host: string) {
     const s = this.get(c, host);
     if (!this.liveDocuments) throw new CodeDiagnosticsError('unsupported', 'Mock live diagnostics are unavailable');
@@ -75,8 +96,73 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
   async closeCodeDiagnosticDocument(c: CodeDiagnosticsContext, documentId: string, host: string): Promise<CodeDiagnosticsDocumentReceipt> {
     const m = this.docs(c, host);
     if (m.delete(documentId)) this.closed.add(documentId);
+    this.answers.delete(documentId);
     return { context: c, documentId };
   }
+  /**
+   * Suggests the words of the open mirrors that start with the word before
+   * the position, replacing that word. A declared name resolves to its
+   * declaring line, as navigateCode finds it.
+   */
+  async completeCode(c: CodeDiagnosticsContext, _requestId: string, documentId: string, version: number, position: CodeDiagnosticPosition, trigger: CodeCompletionTrigger, host: string): Promise<CodeCompletionResult> {
+    const m = this.docs(c, host), d = m.get(documentId);
+    if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
+    if (version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The document changed since this request');
+    const line = lineAt(d.text, position);
+    // Like a server whose only trigger character is '.'.
+    const triggerCharacters = '.';
+    if (trigger.kind === 'character' && !triggerCharacters.includes(trigger.character)) return { documentId, version, items: [], triggerCharacters };
+    const prefix = /\w*$/.exec(line.slice(0, position.character))![0];
+    const range = { start: { line: position.line, character: position.character - prefix.length }, end: position };
+    const found = new Map<string, { path: string; declared?: string }>();
+    for (const doc of m.values()) {
+      for (const text of doc.text.split('\n')) {
+        for (const [word] of text.matchAll(/\b[A-Za-z_]\w{2,}\b/g)) {
+          if (word === prefix || !word.toLowerCase().startsWith(prefix.toLowerCase())) continue;
+          const declared = new RegExp(`\\b(?:func|function|const|let|var|def|class|type)\\s+${word}\\b`).test(text) ? text.trim() : undefined;
+          const seen = found.get(word);
+          if (!seen || (declared && !seen.declared)) found.set(word, { path: doc.path, declared });
+        }
+      }
+    }
+    const words = [...found.keys()].sort();
+    const items = words.slice(0, 100).map(word => {
+      const { path, declared } = found.get(word)!;
+      // A declared function goes in as a snippet with its parameters as tab stops.
+      const params = declared && new RegExp(`\\b${word}\\s*\\(([^)]*)\\)`).exec(declared)?.[1];
+      const snippet = params === undefined ? undefined
+        : `${word}(${params.split(',').map(p => p.trim()).filter(Boolean).map((p, i) => `\${${i + 1}:${p.replace(/[$}\\]/g, '\\$&')}}`).join(', ')})$0`;
+      return { item: { label: word, kind: declared ? 3 : 1, edit: { range, newText: snippet ?? word }, ...(snippet ? { snippet: true } : {}) }, path, declared };
+    });
+    const resultId = `mock-completion-${++this.serial}`;
+    this.answers.set(documentId, { resultId, version, items });
+    return { documentId, version, resultId, resolves: true, items: items.map(i => structuredClone(i.item)), triggerCharacters, ...(words.length > items.length ? { isIncomplete: true } : {}) };
+  }
+  /**
+   * The kept answer survives changes. At the current version, a name declared
+   * in another open JS or TS document also resolves to an import of it, at
+   * the top, when the document asked about is JS or TS too.
+   */
+  async resolveCodeCompletion(c: CodeDiagnosticsContext, _requestId: string, documentId: string, resultId: string, index: number, version: number, host: string): Promise<CodeCompletionDetails> {
+    const d = this.docs(c, host).get(documentId);
+    if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
+    if (!Number.isInteger(version) || version < 0) throw new CodeDiagnosticsError('invalidArgument', 'Invalid document version');
+    const answer = this.answers.get(documentId);
+    if (!answer || answer.resultId !== resultId) throw new CodeDiagnosticsError('staleVersion', 'The completion answer is no longer kept');
+    const kept = answer.items[index];
+    if (!kept) throw new CodeDiagnosticsError('invalidArgument', 'No such completion item');
+    if (version > 0 && version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The document changed since this request');
+    const details: CodeCompletionDetails = { documentId, resultId, index, detail: kept.path, ...(kept.declared ? { documentation: { kind: 'markdown', value: '```\n' + kept.declared + '\n```' } } : {}) };
+    const script = (path: string) => /\.[cm]?[jt]sx?$/.test(path);
+    if (version > 0 && kept.declared && kept.path !== d.path && script(kept.path) && script(d.path)) {
+      const from = './' + kept.path.replace(/^.*\//, '').replace(/\.[^.]*$/, '');
+      const top = { line: 0, character: 0 };
+      details.version = version;
+      details.extraEdits = [{ range: { start: top, end: top }, newText: `import { ${kept.item.label} } from '${from}';\n` }];
+    }
+    return details;
+  }
+  async cancelCodeCompletion(_requestId: string): Promise<void> {}
   /**
    * Answers from the open mirrors: the word at the position, its declaring line
    * (`func`, `function`, `const`, `let`, `var`, `def`, `class`, `type`) and every use.
@@ -85,8 +171,7 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     const m = this.docs(c, host), d = m.get(documentId);
     if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
     if (version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The document changed since this request');
-    const line = d.text.split('\n')[position.line];
-    if (line === undefined || position.character > line.length) throw new CodeDiagnosticsError('invalidArgument', 'Position is outside the document');
+    const line = lineAt(d.text, position);
     const word = /\w*$/.exec(line.slice(0, position.character))![0] + /^\w*/.exec(line.slice(position.character))![0];
     const result: CodeNavigationResult = { op, documentId, version, locations: [] };
     if (!word) return result;

@@ -6,11 +6,12 @@ import { aggregateCodeDiagnostics } from '../codeDiagnosticCounts';
 import { epoch } from '../link';
 import type { BackendAPI } from '../api';
 import type { ConnectionState, FileContent } from '../types';
-import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsProvider, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun, CodeDiagnosticPosition, CodeNavigationOp } from '../codeDiagnostics';
+import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsProvider, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun, CodeDiagnosticPosition, CodeNavigationOp, CodeCompletionDetails, CodeCompletionResult, CodeCompletionTrigger, CodeMarkupText, CodeTextEdit } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CODE_DIAGNOSTICS_LIMITS as limits, CodeDiagnosticsError, codeDiagnosticsError, sameAttachment, sameContext, encodedBytes, resultSetKey, groupCodeDiagnostics, inlineCodeDiagnostic, liveDocumentEligibility } from '../codeDiagnostics';
 import type { CodeNavigationAsk, CodeNavigationOutcome } from '../codeNavigation';
 import { externalReadFailure, navigationBlocker, navigationFailure } from '../codeNavigation';
 import { preferences } from './preferences.svelte';
+import { CompletionResolves } from '../completionResolves';
 import { CODE_LANGUAGES, languageOfPath, type CodeLanguage, type CodeLanguageId } from '../codeLanguages';
 
 /** Whether missing language servers are downloaded without a click; kept by the caller. */
@@ -22,6 +23,29 @@ const allLanguagesOn: LanguageSetting = { off: [], set() {} };
 
 /** How long a navigation request waits for the language server to catch up with typing. */
 const NAV_SYNC_WAIT = 2000, NAV_SYNC_POLL = 50;
+/** How long a completion request waits for the language server to confirm typing it just sent. */
+export const COMPLETION_SYNC_WAIT = 1000;
+
+/** What a completion request is asked against: the attachment and the confirmed version. */
+export interface CompletionBasis { context: CodeDiagnosticsContext; host: string; basis: LiveDocumentBasis }
+/** How a completion request is asked: `current` says the editor text is still the asked text. */
+export interface CompletionAsk { current?: () => boolean; signal?: AbortSignal; wait?: number }
+/** An item's detail and documentation for the info panel. */
+export interface CompletionItemDetails { detail?: string; documentation?: CodeMarkupText; truncated?: boolean }
+/**
+ * A server's answer, a way to read each item's details, and the extra edits
+ * (imports) an item resolves to for the text shown (CC-12): at once when
+ * known, else after sending pending typing; undefined when they cannot be
+ * known for that text. Items that list their edits resolve to none, and so
+ * do all items of an answer whose server does not resolve (`resolves`).
+ */
+export interface CompletionAnswer {
+  result: CodeCompletionResult;
+  /** Item `index`'s details; its resolve is cancelled on the host once `signal` aborts and nobody else waits for it. */
+  details(index: number, signal?: AbortSignal): Promise<CompletionItemDetails | undefined>;
+  extraEdits(index: number, ask?: CompletionAsk): CodeTextEdit[] | Promise<CodeTextEdit[] | undefined>;
+}
+let completionRequests = 0;
 
 /** Whether an opened-documents provider declares path by extension and coverage root. */
 function declares(p: CodeDiagnosticsProvider, path: string): boolean {
@@ -234,6 +258,9 @@ export class CodeDiagnosticsStore {
   private navCapable = $state(false);
   /** The attached host answers definition, references and hover (copy only; never a grant). */
   get navigationEnabled(): boolean { return this.liveCapable && this.navCapable; }
+  private completionCapable = $state(false);
+  /** The attached host suggests code for live documents (copy only; never a grant). */
+  get completionEnabled(): boolean { return this.liveCapable && this.completionCapable; }
   private listeners = new Set<() => void>();
   private reconcileFiles: () => Promise<void> = async () => {};
   private liveRevision = $state(0);
@@ -241,6 +268,9 @@ export class CodeDiagnosticsStore {
   private readLiveBasis: (path: string) => LiveDocumentBasis | undefined = () => undefined;
   /** Bridge-owned protocol identity only; never text or editor state. */
   setLiveBasis(read: (path: string) => LiveDocumentBasis | undefined): void { this.readLiveBasis = read; }
+  private flushLive: (path: string, bound: number) => Promise<LiveDocumentBasis | undefined> = async () => undefined;
+  /** Sends a document's pending typing now; the bridge's `flush`. */
+  setLiveFlush(flush: (path: string, bound: number) => Promise<LiveDocumentBasis | undefined>): void { this.flushLive = flush; }
   private readLiveStatus: () => LiveDocumentStatus[] = () => [];
   private reopenLive: (path: string, documentId: string) => void = () => {};
   setLiveRecovery(read: () => LiveDocumentStatus[], reopen: (path: string, documentId: string) => void): void {
@@ -267,6 +297,123 @@ export class CodeDiagnosticsStore {
   liveBasis(path: string): LiveDocumentBasis | undefined {
     this.liveRevision;
     return this.liveAttachment ? this.readLiveBasis(path) : undefined;
+  }
+  /**
+   * Sends path's pending typing at once and returns what a completion request
+   * asks against: the attachment and the version the server confirmed. Undefined
+   * when completion is not available, the document is not synced within
+   * `bound` ms, or the attachment changed meanwhile. Never throws.
+   */
+  async completionBasis(path: string, bound = COMPLETION_SYNC_WAIT): Promise<CompletionBasis | undefined> {
+    const att = this.liveAttachment, life = this.lifetime;
+    if (!att || !this.completionEnabled) return undefined;
+    let basis: LiveDocumentBasis | undefined;
+    try { basis = await this.flushLive(path, bound); } catch { return undefined; }
+    const now = this.liveAttachment;
+    if (!basis?.synced || !now || now.token !== att.token || !this.active(life) || !this.completionEnabled) return undefined;
+    return { context: att.context, host: att.host, basis };
+  }
+  /** Why completion cannot be asked for path now; undefined when it can (the document may still be syncing). */
+  completionBlocker(path: string): string | undefined {
+    // Says why whenever completionEnabled is false: no live servers or no completion.
+    return navigationBlocker({
+      feature: 'suggestions',
+      status: this.status, off: this.offLanguage(path)?.name, live: this.liveCapable, navigation: this.completionCapable, approved: this.approved, approvalBlocker: this.approvalBlocker,
+      servers: this.liveServers(path), failure: this.liveDocuments.find(d => d.path === path)?.failure, basis: this.liveBasis(path),
+    });
+  }
+  /**
+   * Asks path's language server for completions at position. Pending typing
+   * is sent first. Undefined, never a throw, when completion is unavailable,
+   * fails, is aborted through `ask.signal` (which cancels the request on the
+   * host), or `ask.current` says the text changed before asking. An answer is
+   * kept while the document is the same one: the editor maps typing since.
+   */
+  async complete(path: string, position: CodeDiagnosticPosition, trigger: CodeCompletionTrigger, ask: CompletionAsk = {}): Promise<CompletionAnswer | undefined> {
+    const life = this.lifetime, signal = ask.signal;
+    if (this.completionBlocker(path)) return undefined;
+    const at = await this.completionBasis(path, ask.wait);
+    if (!at || signal?.aborted || !(ask.current?.() ?? true) || !this.active(life)) return undefined;
+    const { context: c, host, basis } = at;
+    const requestId = `completion-${++completionRequests}`;
+    const cancel = () => { this.backend.cancelCodeCompletion(requestId).catch(() => { /* finished or gone */ }); };
+    signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      const result = await this.backend.completeCode(c, requestId, basis.documentId, basis.version, position, trigger, host);
+      const same = this.active(life) && !!this.context && sameContext(c, this.context) && this.liveBasis(path)?.documentId === basis.documentId;
+      if (signal?.aborted || !same || result.documentId !== basis.documentId || result.version !== basis.version) return undefined;
+      return this.completionAnswer(path, c, host, result, life);
+    } catch {
+      return undefined;
+    } finally {
+      signal?.removeEventListener('abort', cancel);
+    }
+  }
+  /**
+   * An answer whose items resolve once per index and version, shared by the
+   * info panel and accept. Details resolve at the document's confirmed
+   * version when it is this answer's, so the item's import is usually known
+   * by the time it is accepted; else at version 0, which gives details only.
+   */
+  private completionAnswer(path: string, c: CodeDiagnosticsContext, host: string, result: CodeCompletionResult, life: number): CompletionAnswer {
+    const resolves = new CompletionResolves({
+      newId: () => `completion-${++completionRequests}`,
+      ask: (requestId, index, version) => this.backend.resolveCodeCompletion(c, requestId, result.documentId, result.resultId!, index, version, host).then(d => {
+        if (!this.active(life) || d.documentId !== result.documentId || d.resultId !== result.resultId || d.index !== index) throw new Error('another answer');
+        return d;
+      }),
+      cancel: requestId => { this.backend.cancelCodeCompletion(requestId).catch(() => { /* finished or gone */ }); },
+    });
+    const resolveAt = (index: number, version: number, signal?: AbortSignal) => resolves.at(index, version, signal);
+    // The confirmed version when the document is this answer's and synced.
+    const synced = (): number | undefined => {
+      const b = this.liveBasis(path);
+      return b?.synced && b.documentId === result.documentId ? b.version : undefined;
+    };
+    const editsAt = (d: CodeCompletionDetails, version: number) => d.version === version ? d.extraEdits ?? [] : [];
+    return {
+      result,
+      details: async (index, signal) => {
+        const item = result.items[index];
+        if (!item) return undefined;
+        const listed: CompletionItemDetails = { detail: item.detail, documentation: item.documentation };
+        if (!result.resultId) return listed;
+        const version = synced();
+        let d: CodeCompletionDetails;
+        try {
+          const atZero = () => resolveAt(index, 0, signal);
+          d = await (version !== undefined ? resolveAt(index, version, signal).catch(e => { if (signal?.aborted) throw e; return atZero(); }) : atZero());
+        } catch {
+          return listed;
+        }
+        return { detail: d.detail ?? item.detail, documentation: d.documentation ?? item.documentation, truncated: d.truncated };
+      },
+      extraEdits: (index, ask = {}) => {
+        const item = result.items[index];
+        if (!item || item.extraEdits?.length || !result.resultId || !result.resolves) return [];
+        // Not for an aborted ask or an ended store, even when known.
+        if (ask.signal?.aborted || !this.active(life)) return Promise.resolve(undefined);
+        const current = () => ask.current?.() ?? true;
+        const known = synced();
+        const done = known !== undefined && current() ? resolves.settled(index, known) : undefined;
+        if (done) return editsAt(done, known!);
+        // Asked, or joined, at once: the info panel's resolve of this item is
+        // not cancelled when accepting closes the popup.
+        const early = known !== undefined && current() ? resolveAt(index, known, ask.signal) : undefined;
+        // Not awaited when the version moved on meanwhile.
+        early?.catch(() => { /* awaited below, or not needed */ });
+        return (async () => {
+          const at = await this.completionBasis(path, ask.wait);
+          if (!at || ask.signal?.aborted || !current() || !this.active(life) || !sameContext(at.context, c) || at.basis.documentId !== result.documentId) return undefined;
+          const version = at.basis.version;
+          let d: CodeCompletionDetails;
+          try { d = await (early && version === known ? early : resolveAt(index, version, ask.signal)); } catch { return undefined; }
+          // The edits fit only the version they were resolved at, still shown.
+          if (ask.signal?.aborted || !current() || synced() !== version) return undefined;
+          return editsAt(d, version);
+        })();
+      },
+    };
   }
   async invalidatePath(dir: string, path: string): Promise<void> {
     const c = this.context, life = this.lifetime;
@@ -440,7 +587,7 @@ export class CodeDiagnosticsStore {
     this.directory = undefined;
     this.project = undefined; this.snapshot = undefined; this.status = 'detached'; this.error = undefined;
     this.pending = undefined; this.revoking = false; this.pendingRuns = [];
-    this.liveCapable = false; this.navCapable = false; this.languagesCapable = false; this.attachedOff = [];
+    this.liveCapable = false; this.navCapable = false; this.completionCapable = false; this.languagesCapable = false; this.attachedOff = [];
     this.emit();
     if (c) { try { await this.backend.detachCodeDiagnostics(c, host); } catch { /* Never retry mutations across a connection change. */ } }
   }
@@ -454,7 +601,7 @@ export class CodeDiagnosticsStore {
     this.clearBuffers(); this.recovering = false;
     this.pending = undefined; this.pendingRuns = []; this.revoking = false;
     this.status = 'disconnected'; this.stale(true);
-    this.liveCapable = false; this.navCapable = false; this.languagesCapable = false;
+    this.liveCapable = false; this.navCapable = false; this.completionCapable = false; this.languagesCapable = false;
     this.emit();
   }
   async attach(dir: string, connection: ConnectionState) {
@@ -467,6 +614,7 @@ export class CodeDiagnosticsStore {
     }
     this.liveCapable = !!connection.capabilities.liveCodeDiagnostics;
     this.navCapable = !!connection.capabilities.codeNavigation;
+    this.completionCapable = !!connection.capabilities.codeCompletion;
     this.languagesCapable = !!connection.capabilities.codeDiagnosticsLanguages;
     const off = [...this.languageSetting.off];
     this.attachedOff = off;

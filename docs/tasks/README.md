@@ -32,8 +32,8 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 
 | Feature | Plan | Tasks | Progress |
 |---|---|---|---|
-| Keyboard diagnostics | [keyboard-diagnostics](../plan/keyboard-diagnostics.md) | [keyboard-diagnostics/](keyboard-diagnostics/README.md) | 2/4 ✅ · 1 🟡 · 1 ⬜ |
-| Collapsible sidebar | [collapsible-sidebar](../plan/collapsible-sidebar.md) | [collapsible-sidebar/](collapsible-sidebar/README.md) | 4/5 ✅ · 1 ⬜ |
+| Keyboard diagnostics | [keyboard-diagnostics](../plan/keyboard-diagnostics.md) | [keyboard-diagnostics/](keyboard-diagnostics/README.md) | 3/6 ✅ · 3 🟡 |
+| Collapsible sidebar | [collapsible-sidebar](../plan/collapsible-sidebar.md) | [collapsible-sidebar/](collapsible-sidebar/README.md) | 8/9 ✅ · 1 ⬜ |
 | Linux native window theme | [linux-window-theme](../plan/linux-window-theme.md) | [linux-window-theme/](linux-window-theme/README.md) | 1/2 ✅ · 1 ⛔ |
 | macOS native window theme | [macos-window-theme](../plan/macos-window-theme.md) | [macos-window-theme/](macos-window-theme/README.md) | 1/2 ✅ · 1 🟡 |
 | Codex skills dialog | [codex-skills-dialog](../plan/codex-skills-dialog.md) | [codex-skills-dialog/](codex-skills-dialog/README.md) | 1/1 ✅ |
@@ -61,7 +61,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Orphaned task notifications | [orphan-task-notifications](../plan/orphan-task-notifications.md) | [orphan-task-notifications/](orphan-task-notifications/README.md) | 1/1 ✅ |
 | Idle rendering | [idle-rendering](../plan/idle-rendering.md) | [idle-rendering/](idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](../plan/file-translate.md) | [file-translate/](file-translate/README.md) | 2/2 ✅ |
-| Print page setup | [print-page-setup](../plan/print-page-setup.md) | [print-page-setup/](print-page-setup/README.md) | 1/1 ✅ |
+| Print page setup | [print-page-setup](../plan/print-page-setup.md) | [print-page-setup/](print-page-setup/README.md) | 1/2 ✅ · 1 🟡 |
 | Windows CI test stability | [windows-ci-test-stability](../plan/windows-ci-test-stability.md) | [windows-ci-test-stability/](windows-ci-test-stability/README.md) | 1/1 ✅ |
 | Workspace terminal selection | [workspace-terminal-selection](../plan/workspace-terminal-selection.md) | [workspace-terminal-selection/](workspace-terminal-selection/README.md) | 1/1 ✅ |
 | Conversation PDF | [conversation-pdf](../plan/conversation-pdf.md) | [conversation-pdf/](conversation-pdf/README.md) | 1/1 ✅ |
@@ -73,7 +73,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Session scrollbar stability | [session-scrollbar](../plan/session-scrollbar.md) | [session-scrollbar/](session-scrollbar/README.md) | 9/10 ✅ · 1 🟡 |
 | Terminal cwd matching | [terminal-cwd-matching](../plan/terminal-cwd-matching.md) | [terminal-cwd-matching/](terminal-cwd-matching/README.md) | 1/1 ✅ |
 | Code diagnostics (Go to File checks) | [code-diagnostics](../plan/code-diagnostics.md) | [code-diagnostics/](code-diagnostics/README.md) | 19/28 ✅ · 8 🟡 · 1 ⛔ |
-| Editor essentials | [editor-essentials](../plan/editor-essentials.md) | [editor-essentials/](editor-essentials/README.md) | 25/25 ✅ |
+| Editor essentials | [editor-essentials](../plan/editor-essentials.md) | [editor-essentials/](editor-essentials/README.md) | 26/26 ✅ |
 | Git history | [git-history](../plan/git-history.md) | [git-history/](git-history/README.md) | 17/18 ✅ · 1 🟡 |
 | Code checks: choosing languages | [code-diagnostics-languages](../plan/code-diagnostics-languages.md) | [code-diagnostics-languages/](code-diagnostics-languages/README.md) | 8/8 ✅ |
 | Code checks: Git ignore rules in discovery | [code-diagnostics-ignore-scope](../plan/code-diagnostics-ignore-scope.md) | [code-diagnostics-ignore-scope/](code-diagnostics-ignore-scope/README.md) | 4/6 ✅ · 1 🟡 · 1 ⬜ |
@@ -114,3 +114,5 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Chat message queue | [chat-message-queue](../plan/chat-message-queue.md) | [chat-message-queue/](chat-message-queue/README.md) | 7/8 ✅ · 1 ⬜ |
 | Tool file links | [tool-file-links](../plan/tool-file-links.md) | [tool-file-links/](tool-file-links/README.md) | 1/2 ✅ · 1 ⬜ |
 | Review fixes (2026-11-14 review) | [review-fixes](../plan/review-fixes.md) | [review-fixes/](review-fixes/README.md) | 27/35 ✅ · 8 ⬜ |
+| Code completion | [code-completion](../plan/code-completion.md) | [code-completion/](code-completion/README.md) | 24/27 ✅ · 2 🟡 · 1 ⬜ |
+| File link line highlight | [file-link-line-highlight](../plan/file-link-line-highlight.md) | [file-link-line-highlight/](file-link-line-highlight/README.md) | 1/1 ✅ |

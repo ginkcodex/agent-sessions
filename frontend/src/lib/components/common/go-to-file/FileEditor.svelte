@@ -22,7 +22,7 @@
   let error = $state('');
 
   function options(): FileEditorOptions {
-    return { id, text, path, version, wrap, disabled, diagnostics, position, onposition, selection, onselection, onchange, onsave, symbols, onproblems };
+    return { id, text, path, version, wrap, disabled, suggest: preferences.suggestWhileTyping, diagnostics, position, onposition, selection, onselection, onchange, onsave, symbols, onproblems };
   }
 
   onMount(() => {

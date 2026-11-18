@@ -172,7 +172,8 @@ cover them.
   `lib/ruby_lsp/internal.rb`, the wrapper text. Configuration bound:
   `Gemfile`, `Gemfile.lock`, `.bundle/config` and the version file, per
   workspace. Policy:
-  `ruby-lsp-v1:min-0.26:<os>/<arch>:ruby-wrapper:no-addons:navigation-only:no-edits:opened-documents`.
+  `ruby-lsp-v1:min-0.26:<os>/<arch>:ruby-wrapper:no-addons:navigation-only:no-edits:opened-documents`
+  (`navigation-completion` since code completion's CC-08).
   Notice: "ruby-lsp reads the project's Ruby files, Ruby's standard library
   and the gems in Gemfile.lock to answer navigation. It evaluates the project's
   Gemfile. Add-ons are not loaded. Opened documents only."

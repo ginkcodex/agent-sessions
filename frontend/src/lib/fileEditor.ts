@@ -1,11 +1,11 @@
-import { Annotation, Compartment, EditorState, RangeSet, StateField, type Extension, type SelectionRange, type Text, type TransactionSpec } from '@codemirror/state';
+import { Annotation, ChangeSet, CharCategory, Compartment, EditorState, Prec, RangeSet, StateEffect, StateField, type Extension, type SelectionRange, type Text, type Transaction, type TransactionSpec } from '@codemirror/state';
 import { forEachDiagnostic, lintKeymap, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import { projectSourceDiagnostics } from './sourceDiagnostics';
 import type { AttributedCodeDiagnostic, LiveDocumentBasis } from './codeDiagnostics';
 import { EditorView, GutterMarker, closeHoverTooltips, drawSelection, hasHoverTooltips, highlightActiveLine, hoverTooltip, keymap, lineNumberMarkers, lineNumbers, tooltips, type KeyBinding, type Tooltip } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from '@codemirror/commands';
 import { LanguageDescription, indentOnInput, indentUnit } from '@codemirror/language';
-import { Decoration, type DecorationSet } from '@codemirror/view';
+import { Decoration, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { HIGHLIGHT_LIMIT, loadFileHighlighter, highlightFileWith } from './codeHighlight';
 import type { HLJSApi } from 'highlight.js';
 import { keyHandled } from './fullscreen';
@@ -16,7 +16,10 @@ import type { FileLineSelection } from './fileSelection';
 import { fileLanguage } from './files';
 import { textChanges } from './searchReplace';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
-import type { CodeDiagnosticPosition } from './codeDiagnostics';
+import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completeFromList, completionKeymap, completionStatus, hasNextSnippetField, hasPrevSnippetField, pickedCompletion, selectedCompletion, snippet, startCompletion, CompletionContext, type Completion, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete';
+import type { CodeCompletionItem, CodeCompletionTrigger, CodeDiagnosticPosition, CodeTextEdit } from './codeDiagnostics';
+import { SUGGEST_KEY, SUGGEST_KEY_MAC } from './editorKeys';
+import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, serverOrder, snippetText, withExtraEdits, type CompletionAccept, type CompletionEdit, type EditorCompleter, type EditorCompletionAnswer, type EditorCompletionDetails } from './editorCompletion';
 import { HOVER_DELAY, contextPress, linkModifier, menuKey, wordRange, type SelectionHold, type ViewportPoint } from './sourceNavigation';
 import { handleCopyCodeClick } from './copycode';
 import { severityRank, type OverviewProblem, type ProblemSeverity } from './problemOverview';
@@ -34,6 +37,8 @@ export interface EditorSymbols {
   menu?(position: CodeDiagnosticPosition, word: string, at: ViewportPoint, current: () => boolean): void;
   /** A context menu on selected text: Copy only. */
   selectionMenu?(text: string, at: ViewportPoint, hold: SelectionHold): void;
+  /** Language-server suggestions at position (edit mode); see EditorCompleter. */
+  complete?: EditorCompleter;
 }
 
 export interface FileEditorOptions {
@@ -43,6 +48,8 @@ export interface FileEditorOptions {
   version: number;
   wrap: boolean;
   disabled?: boolean;
+  /** Suggestions open while typing (Settings › General › Editor); the shortcut works either way. */
+  suggest?: boolean;
   /** Context-bound snapshot supplied anew by the viewer, never cached as an owner. */
   diagnostics?: { tab: object; path: string; context: string; findings: AttributedCodeDiagnostic[]; dirty: boolean; revision?: string; live?: LiveDocumentBasis; current: boolean };
   position?: FilePosition;
@@ -73,10 +80,476 @@ const editing = new Compartment();
 const language = new Compartment();
 const coloring = new Compartment();
 const font = new Compartment();
+const completing = new Compartment();
 const editable = (disabled = false): Extension => [
   EditorView.editable.of(!disabled),
   EditorState.readOnly.of(disabled),
 ];
+
+/**
+ * Enter accepts the selected suggestion, unless it is exactly the word just
+ * typed (a variable typed out in full): then the popup closes and Enter
+ * breaks the line, as it would have without one.
+ */
+export function acceptOrBreakLine(view: EditorView): boolean {
+  const selected = selectedCompletion(view.state);
+  const { head, empty } = view.state.selection.main;
+  const text = selected && plainText(selected);
+  const start = head - (text?.length ?? 0);
+  if (selected && text !== undefined && empty && start >= 0
+    && view.state.sliceDoc(start, head) === text
+    && (start === 0 || view.state.charCategorizer(start)(view.state.sliceDoc(start - 1, start)) !== CharCategory.Word)) {
+    closeCompletion(view);
+    return false;
+  }
+  return acceptCompletion(view);
+}
+
+/** What accepting option puts in when it changes nothing else; undefined when it may. */
+function plainText(option: Completion): string | undefined {
+  if (option.apply === undefined) return option.label;
+  if (typeof option.apply === 'string') return option.apply;
+  // A server item's own text.
+  return plainInserts.get(option);
+}
+
+/**
+ * Completion keys. CodeMirror's own list, except what opens the popup: on
+ * macOS Option+` and Option+I are dead keys (accents, and Vietnamese input),
+ * and Ctrl+Space switches the input source, so Cmd+I opens it there. Tab
+ * accepts like Enter; without a popup both keep their meaning.
+ */
+export const completionKeys: readonly KeyBinding[] = [
+  { mac: SUGGEST_KEY_MAC, run: startCompletion },
+  { key: SUGGEST_KEY, run: startCompletion },
+  ...completionKeymap.filter(binding => binding.run !== startCompletion && binding.key !== 'Enter'),
+  { key: 'Enter', run: acceptOrBreakLine },
+  { key: 'Tab', run: acceptCompletion },
+];
+
+// Language sources seen to answer with a promise. They are not run for their
+// labels: that run would do the whole work and could not be cancelled.
+const asyncSources = new WeakSet<CompletionSource>();
+// A word list a language gives (rather than a function), as a source.
+const listSources = new WeakMap<readonly (string | Completion)[], CompletionSource>();
+// Per state, the language's sources at one position.
+const languageAt = new WeakMap<EditorState, { pos: number; sources: CompletionSource[] }>();
+
+/**
+ * The language's own sources at pos (keywords, CSS properties, local names),
+ * in its order. The editor runs them in its own slots (languageSlots), so
+ * each runs once per query, also for the words left out beside them.
+ */
+function languageSources(state: EditorState, pos: number): CompletionSource[] {
+  const known = languageAt.get(state);
+  if (known?.pos === pos) return known.sources;
+  const sources: CompletionSource[] = [];
+  for (const source of state.languageDataAt<CompletionSource | readonly (string | Completion)[]>('autocomplete', pos)) {
+    if (typeof source === 'function') { sources.push(source); continue; }
+    let list = listSources.get(source);
+    if (!list) listSources.set(source, list = completeFromList(source));
+    sources.push(list);
+  }
+  languageAt.set(state, { pos, sources });
+  return sources;
+}
+
+// Per state, what each language source answered at once, for one query.
+const languageRuns = new WeakMap<EditorState, Map<CompletionSource, { pos: number; explicit: boolean; result: CompletionResult | null }>>();
+
+/** Runs a language source, or gives its answer from earlier in the same query. */
+function runLanguageSource(source: CompletionSource, context: CompletionContext): ReturnType<CompletionSource> {
+  let runs = languageRuns.get(context.state);
+  const known = runs?.get(source);
+  if (known && known.pos === context.pos && known.explicit === context.explicit) return known.result;
+  const result = source(context);
+  if (result instanceof Promise) { asyncSources.add(source); return result; }
+  if (!runs) languageRuns.set(context.state, runs = new Map());
+  runs.set(source, { pos: context.pos, explicit: context.explicit, result });
+  return result;
+}
+
+/**
+ * The slots CodeMirror runs the language's sources in, by their place at the
+ * position: the editor lists its sources itself (`override`), so that the
+ * words can share the language's answers. No language has more than two.
+ */
+export const LANGUAGE_SLOTS = 8;
+const languageSlots: CompletionSource[] = Array.from({ length: LANGUAGE_SLOTS }, (_, i) => (context: CompletionContext) => {
+  const source = languageSources(context.state, context.pos)[i];
+  return source ? runLanguageSource(source, context) : null;
+});
+
+// What the language's own sources offer here, so words do not repeat them.
+// Only answers given at once count; CodeMirror merges the rest as they come.
+function languageLabels(context: CompletionContext): Set<string> {
+  const labels = new Set<string>();
+  for (const source of languageSources(context.state, context.pos)) {
+    if (asyncSources.has(source)) continue;
+    try {
+      const result = runLanguageSource(source, new CompletionContext(context.state, context.pos, context.explicit, context.view));
+      // Not waited for: a rejection is CodeMirror's to report when it runs the source.
+      if (result instanceof Promise) result.catch(() => {});
+      else if (result) for (const option of result.options) labels.add(option.label);
+    } catch { /* A failing source offers nothing; CodeMirror reports it when it runs it. */ }
+  }
+  return labels;
+}
+
+/**
+ * Words from the document, as CodeMirror's word source finds them, without
+ * those the language already offers (a keyword, a CSS property). The word
+ * being typed is left out once complete, so Enter after it still breaks the
+ * line. Large documents get none, as they get no colours.
+ */
+export const documentWords: CompletionSource = context => {
+  if (context.state.doc.length > HIGHLIGHT_LIMIT) return null;
+  const result = completeAnyWord(context);
+  if (!result || result instanceof Promise) return result;
+  const typed = context.state.sliceDoc(result.from, context.pos);
+  const offered = languageLabels(context);
+  const words = new Set(result.options.map(option => option.label));
+  // completeAnyWord's pattern is anchored at the start only; CodeMirror anchors both ends.
+  const pattern = result.validFor instanceof RegExp ? new RegExp(`(?:${result.validFor.source})$`, result.validFor.flags) : null;
+  return {
+    ...result,
+    options: result.options.filter(option => option.label !== typed && !offered.has(option.label)),
+    // Typing on narrows the list here; reaching a whole word asks again, so it drops out.
+    validFor: text => !words.has(text) && (!pattern || pattern.test(text)),
+  };
+};
+
+/** How long suggestions wait for the language server before the document's words show alone. */
+export const SERVER_SUGGESTION_WAIT = 1500;
+
+// Per view, what its language server said: the characters it suggests after,
+// and where an incomplete answer's word starts, so typing on asks again as such.
+const learnedTriggers = new WeakMap<EditorView, { path: string; triggers: string }>();
+const unfinished = new WeakMap<EditorView, { path: string; start: number }>();
+// Server items struck through, and what an item inserts when it changes nothing else.
+const deprecatedOptions = new WeakSet<Completion>();
+const plainInserts = new WeakMap<Completion, string>();
+
+/**
+ * Why the language server is asked at context, or undefined to offer words
+ * only: on request; while an identifier is typed (again as `incomplete` after
+ * an incomplete answer for the same word); right after one of the server's
+ * trigger characters, or a likely one until the server has named its own.
+ */
+export function completionTrigger(context: CompletionContext, view: EditorView, path: string): CodeCompletionTrigger | undefined {
+  if (context.explicit) { unfinished.delete(view); return { kind: 'invoked' }; }
+  const { doc } = context.state, pos = context.pos;
+  const start = identifierStart(doc, pos);
+  if (start < pos) {
+    const last = unfinished.get(view);
+    return last?.path === path && last.start === start ? { kind: 'incomplete' } : { kind: 'invoked' };
+  }
+  const line = doc.lineAt(pos);
+  const character = Array.from(line.text.slice(0, pos - line.from)).pop();
+  const known = learnedTriggers.get(view);
+  const triggers = known?.path === path ? known.triggers : LIKELY_TRIGGERS;
+  return character && triggers.includes(character) ? { kind: 'character', character } : undefined;
+}
+
+function wordsOnly(context: CompletionContext): CompletionResult | null {
+  const words = documentWords(context);
+  return words instanceof Promise ? null : words;
+}
+
+/**
+ * Whether the word asked about (from start to pos in asked) is still at the
+ * same place in doc: the same document, or one typed on after the word.
+ */
+function sameWord(doc: Text, asked: Text, start: number, pos: number): boolean {
+  return doc === asked || (pos <= doc.length && doc.sliceString(start, pos) === asked.sliceString(start, pos) && identifierStart(doc, pos) === start);
+}
+
+/** Resolves undefined, and aborts the request, when the server takes longer than wait. */
+function answerWithin(answer: Promise<EditorCompletionAnswer | undefined>, wait: number, controller: AbortController): Promise<EditorCompletionAnswer | undefined> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { controller.abort(); resolve(undefined); }, wait);
+    answer.then(a => { clearTimeout(timer); resolve(a); }, () => { clearTimeout(timer); resolve(undefined); });
+  });
+}
+
+/** The info panel: the item's signature, then its documentation (HTML the owner rendered). */
+function completionInfo(d: EditorCompletionDetails | undefined): HTMLElement | null {
+  if (!d || (!d.detail && !d.html)) return null;
+  const dom = document.createElement('div');
+  dom.className = 'cm-symbol-hover cm-completion-docs';
+  if (d.detail) {
+    const detail = dom.appendChild(document.createElement('div'));
+    detail.className = 'cm-completion-signature';
+    detail.textContent = d.detail;
+  }
+  if (d.html) {
+    const body = dom.appendChild(document.createElement('div'));
+    body.className = 'hover-body';
+    body.innerHTML = d.html;
+  }
+  if (d.truncated) {
+    const note = dom.appendChild(document.createElement('div'));
+    note.className = 'hover-truncated';
+    note.textContent = 'The description was cut short.';
+  }
+  dom.addEventListener('click', handleCopyCodeClick);
+  return dom;
+}
+
+// A snippet's mirrors ($1 twice) are edited together as several selections:
+// allowed while a snippet is active, back to one selection when it ends.
+const mirrors = new Compartment();
+const allowMirrors = EditorState.allowMultipleSelections.of(true);
+const endMirrors = EditorState.transactionFilter.of(tr => {
+  if (mirrors.get(tr.startState) !== allowMirrors) return tr;
+  // Only while mirrors are on, which is rare: the new state is needed to know the snippet ended.
+  const state = tr.state;
+  if (hasNextSnippetField(state) || hasPrevSnippetField(state)) return tr;
+  return [tr, { effects: mirrors.reconfigure([]), selection: state.selection.asSingle(), sequential: true }];
+});
+
+/**
+ * What CodeMirror's snippet() would do to insert template over edit: its
+ * change, the first field selected and the fields made active. Undefined,
+ * so the plain text goes in, when it fails.
+ */
+function snippetFields(state: EditorState, template: string, edit: CompletionEdit): Transaction | undefined {
+  let made: Transaction | undefined;
+  try {
+    snippet(template)({ state, dispatch: tr => { made = tr; } }, null, edit.from, edit.to);
+  } catch {
+    return undefined;
+  }
+  return made;
+}
+
+/**
+ * Applies an accepted item as one step to undo, whatever it changed. With
+ * `typedSince`, the user typed while its import was awaited: the selection
+ * stays theirs, mapped, and a snippet goes in as plain text.
+ */
+function applyAccept(view: EditorView, completion: Completion, accept: CompletionAccept, typedSince = false, effects: StateEffect<unknown>[] = []): ChangeSet {
+  const { changes, main, caret, template } = accept;
+  const annotations = [pickedCompletion.of(completion), isolateHistory.of('full')];
+  const send = (tr: Transaction) => { view.dispatch(tr); return tr.changes; };
+  if (typedSince) return send(view.state.update({ changes, effects, userEvent: 'input.complete', annotations }));
+  let fields = template !== undefined ? snippetFields(view.state, template, changes[main]) : undefined;
+  if (fields?.selection && fields.selection.ranges.length > 1 && !view.state.facet(EditorState.allowMultipleSelections)) {
+    // Selecting every mirror needs several selections before the snippet goes in.
+    view.dispatch({ effects: mirrors.reconfigure(allowMirrors) });
+    fields = snippetFields(view.state, template!, changes[main]);
+  }
+  if (fields) {
+    // The snippet with its fields, and the other edits in the same transaction.
+    return send(view.state.update(
+      { changes: fields.changes, selection: fields.selection, effects: [...(fields.effects ? [fields.effects].flat() : []), ...effects], scrollIntoView: true, userEvent: 'input.complete', annotations },
+      { changes: changes.filter((_, i) => i !== main) },
+    ));
+  }
+  return send(view.state.update({ changes, selection: { anchor: caretAfter(changes, main, caret) }, effects, scrollIntoView: true, userEvent: 'input.complete', annotations }));
+}
+
+/** How long accepting an item waits for the import its server gives only on resolve (CC-12). */
+export const RESOLVE_ACCEPT_WAIT = 500;
+
+// An accepted item awaiting its import: the text it replaces, followed through
+// typing; gone once a change removed or replaced all of that text.
+interface PendingPick { id: number; from: number; to: number; gone?: boolean }
+const setPendingPick = StateEffect.define<PendingPick | null>();
+const pendingPick = StateField.define<PendingPick | null>({
+  create: () => null,
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setPendingPick)) value = e.value;
+    if (!value || !tr.docChanged) return value;
+    let gone = value.gone;
+    if (value.from < value.to) tr.changes.iterChangedRanges((fromA, toA) => { if (fromA <= value.from && toA >= value.to) gone = true; });
+    // Text typed at either end stays outside it. An empty range (an item
+    // after `obj.`) stays before what is typed there, as the item came first.
+    const empty = value.from === value.to;
+    const from = tr.changes.mapPos(value.from, empty ? -1 : 1), to = tr.changes.mapPos(value.to, -1);
+    return { ...value, from, to: Math.max(from, to), gone };
+  },
+});
+let pickIds = 0;
+// Per view, how to put its awaited item in now, without the import; the change it made.
+const pendingPicks = new WeakMap<EditorView, () => ChangeSet | undefined>();
+
+/** Puts an item still awaiting its import in now; from and to mapped through it. */
+function settleEarlierPick(view: EditorView, from: number, to: number): [number, number] {
+  const changes = pendingPicks.get(view)?.();
+  if (!changes) return [from, to];
+  const mapped = changes.mapPos(from, 1);
+  return [mapped, Math.max(mapped, changes.mapPos(to, -1))];
+}
+
+/**
+ * Accepting a server item whose import comes only on resolve (vtsls): with
+ * the import when it is known for the text shown. Otherwise the popup
+ * closes and the item goes in once its import is resolved, or without it
+ * after RESOLVE_ACCEPT_WAIT, a failure, or typing meanwhile; what was typed
+ * stays. Nothing goes in once the editor is read-only. Accepting again puts
+ * an awaited item in at once.
+ */
+function acceptResolving(view: EditorView, completion: Completion, item: CodeCompletionItem, index: number, answer: EditorCompletionAnswer, askedDoc: Text, pos: number, start: number, from: number, to: number): void {
+  const owner = owners.get(view), shown = view.state.doc;
+  const accept = (doc: Text, from: number, to: number) => completionChanges(askedDoc, pos, start, doc, from, to, item);
+  const controller = new AbortController();
+  let got: CodeTextEdit[] | Promise<CodeTextEdit[] | undefined>;
+  try { got = answer.resolveEdits!(index, askedText(view), controller.signal); } catch { got = []; }
+  if (Array.isArray(got)) { applyAccept(view, completion, withExtraEdits(accept(shown, from, to), shown, got)); return; }
+  const id = ++pickIds;
+  view.dispatch({ effects: setPendingPick.of({ id, from, to }) });
+  closeCompletion(view);
+  let done = false;
+  const settle = (edits?: CodeTextEdit[]): ChangeSet | undefined => {
+    if (done) return undefined;
+    done = true;
+    clearTimeout(timer);
+    controller.abort();
+    if (pendingPicks.get(view) === now) pendingPicks.delete(view);
+    const pick = view.state.field(pendingPick, false), still = owners.get(view);
+    // Another file or tab in the editor, or the editor gone: nothing goes in.
+    // Nor in a read-only editor, which a dispatch would still change: it has
+    // no suggestion extensions, so no pending pick.
+    if (!pick || pick.id !== id || !owner || still?.id !== owner.id || still.path !== owner.path) return undefined;
+    // The word it was to replace was deleted or typed over meanwhile: nothing goes in.
+    if (pick.gone) {
+      view.dispatch({ effects: setPendingPick.of(null) });
+      return undefined;
+    }
+    const doc = view.state.doc, typed = doc !== shown;
+    let changes = accept(doc, pick.from, pick.to);
+    if (!typed && edits?.length) changes = withExtraEdits(changes, doc, edits);
+    return applyAccept(view, completion, changes, typed, [setPendingPick.of(null)]);
+  };
+  const now = () => settle();
+  const timer = setTimeout(now, RESOLVE_ACCEPT_WAIT);
+  pendingPicks.set(view, now);
+  got.then(settle, () => settle());
+}
+
+// Per view, the details the info panel waits for, and the state it asked in.
+// CodeMirror shows them only while its completion state stays the same, so
+// they are aborted, which cancels their resolve on the host, once another
+// item is selected, the text, selection or popup changes, or the editor's
+// state is replaced.
+interface InfoWait { controller: AbortController; state: EditorState }
+const infoWaits = new WeakMap<EditorView, InfoWait>();
+
+function endInfoWait(view: EditorView): void {
+  infoWaits.get(view)?.controller.abort();
+  infoWaits.delete(view);
+}
+
+/** Item index's details for the info panel in view. */
+function waitInfo(view: EditorView, answer: EditorCompletionAnswer, index: number): Promise<HTMLElement | null> {
+  const was = infoWaits.get(view), controller = new AbortController();
+  infoWaits.set(view, { controller, state: view.state });
+  const shown = answer.details!(index, controller.signal);
+  // Only after asking: the same item asked again keeps its resolve.
+  was?.controller.abort();
+  return shown.then(completionInfo);
+}
+
+const infoWatch = ViewPlugin.define(view => ({
+  update(u: ViewUpdate) {
+    const wait = infoWaits.get(view);
+    // Asked in this update: the panel waits for it.
+    if (!wait || wait.state === u.state) return;
+    if (u.docChanged || u.selectionSet || selectedCompletion(u.state) !== selectedCompletion(u.startState) || completionStatus(u.state) !== completionStatus(u.startState)) endInfoWait(view);
+  },
+  destroy() { endInfoWait(view); },
+}));
+
+/** A CodeMirror option for server item index of an answer asked at pos in askedDoc, shown in view. */
+function serverOption(view: EditorView, item: CodeCompletionItem, index: number, { boost, sortText }: { boost: number; sortText: string }, answer: EditorCompletionAnswer, askedDoc: Text, pos: number, start: number): Completion {
+  const label = item.filterText || item.label;
+  const option: Completion = {
+    label,
+    ...(label !== item.label ? { displayLabel: item.label } : {}),
+    detail: completionDetail(item),
+    type: completionType(item.kind),
+    boost,
+    sortText,
+    apply(view, completion, from, to) {
+      [from, to] = settleEarlierPick(view, from, to);
+      // Listed imports go in with the item; others may come on resolve.
+      if (!item.extraEdits?.length && answer.resolveEdits) acceptResolving(view, completion, item, index, answer, askedDoc, pos, start, from, to);
+      else applyAccept(view, completion, completionChanges(askedDoc, pos, start, view.state.doc, from, to, item));
+    },
+    ...(answer.details ? { info: () => waitInfo(view, answer, index) } : {}),
+  };
+  if (item.deprecated) deprecatedOptions.add(option);
+  const plain = itemText(item, answer);
+  if (plain !== undefined) plainInserts.set(option, plain);
+  return option;
+}
+
+/**
+ * What accepting item inserts, as plain text, when it changes nothing else;
+ * undefined when it may. Listed extra edits do; so may an item that names a
+ * module (vtsls's auto-imports, in labelDescription) when its answer
+ * resolves edits on accept.
+ */
+function itemText(item: CodeCompletionItem, answer: EditorCompletionAnswer): string | undefined {
+  if (item.extraEdits?.length || (answer.resolveEdits && item.labelDescription)) return undefined;
+  const source = item.edit?.newText ?? item.insertText ?? item.label;
+  return item.snippet ? snippetText(source).text : source;
+}
+
+/**
+ * Suggestions in the editor: the language server's, when its owner can ask
+ * one (EditorSymbols.complete), above the document's words it did not offer.
+ * Words alone while no server can answer, and when it fails or is slow.
+ */
+export const codeSuggestions: CompletionSource = context => {
+  const view = context.view, owner = view && owners.get(view), complete = owner?.symbols?.complete;
+  const trigger = view && owner && complete && completionTrigger(context, view, owner.path);
+  if (!view || !owner || !complete || !trigger) return wordsOnly(context);
+  const askedDoc = context.state.doc, pos = context.pos, path = owner.path;
+  const controller = new AbortController();
+  context.addEventListener('abort', () => controller.abort());
+  const pending = complete(editorPosition(context.state, pos), trigger, () => view.state.doc === askedDoc, controller.signal);
+  if (!pending) return wordsOnly(context);
+  return answerWithin(pending, SERVER_SUGGESTION_WAIT, controller).then(answer => {
+    // CodeMirror dropped the query (another edit, the popup closed): its answer changes nothing.
+    if (context.aborted) return null;
+    const words = wordsOnly(context);
+    // Asked again on the next keystroke: the server may answer then.
+    if (!answer) return words && { ...words, validFor: undefined };
+    if (answer.triggerCharacters !== undefined) learnedTriggers.set(view, { path, triggers: answer.triggerCharacters });
+    const word = identifierStart(askedDoc, pos);
+    if (answer.incomplete && sameWord(view.state.doc, askedDoc, word, pos)) unfinished.set(view, { path, start: word });
+    else unfinished.delete(view);
+    const items = answer.items, start = answerStart(askedDoc, pos, items), placed = serverOrder(items);
+    const offered = new Set(items.map(item => item.label));
+    const options = items.map((item, index) => serverOption(view, item, index, placed[index], answer, askedDoc, pos, start));
+    if (words && words.from === start) options.push(...words.options.filter(option => !offered.has(option.label)));
+    if (!options.length) return null;
+    // An incomplete answer is asked again as the user types on, and so is an
+    // empty one: a server still indexing (ruby-lsp) answers nothing at first.
+    return { from: start, options, ...(answer.incomplete || !items.length ? {} : { validFor: IDENTIFIER }) };
+  });
+};
+
+// One extension per mode, made once: options are applied on every keystroke,
+// and the same extension again changes nothing (an open popup stays).
+const completionParts: Extension = [
+  pendingPick,
+  infoWatch,
+  Prec.highest(keymap.of(completionKeys)),
+];
+const optionClass = (option: Completion) => (deprecatedOptions.has(option) ? 'cm-completion-deprecated' : '');
+/** What CodeMirror runs per query: the language's sources in their slots, then the server's and the words. */
+export const completionSources: readonly CompletionSource[] = [...languageSlots, codeSuggestions];
+const override = [...completionSources];
+const suggestionModes = {
+  typing: [autocompletion({ defaultKeymap: false, activateOnTyping: true, optionClass, override }), completionParts],
+  shortcut: [autocompletion({ defaultKeymap: false, activateOnTyping: false, optionClass, override }), completionParts],
+};
+// Read-only text gets no popup at all.
+const suggestions = (options: Pick<FileEditorOptions, 'disabled' | 'suggest'>): Extension =>
+  options.disabled ? [] : suggestionModes[options.suggest === false ? 'shortcut' : 'typing'];
 
 /** The editor font (Settings → Appearance), with today's defaults as fallbacks; SourceView uses the same. */
 export const EDITOR_FONT_SIZE = 'var(--editor-font-size, 0.78rem)';
@@ -140,6 +613,31 @@ const theme = EditorView.theme({
   '.cm-symbol-hover a': { color: 'var(--accent-color)' },
   '.cm-symbol-hover .hover-plain': { margin: '0', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' },
   '.cm-symbol-hover .hover-truncated': { marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' },
+  // Suggestions in the editor font, in the app's colours. The details panel
+  // sits beside the list, inside its box, so the box must not clip.
+  '.cm-tooltip.cm-tooltip-autocomplete': {
+    overflow: 'visible', padding: '2px 0', borderRadius: '6px',
+    backgroundColor: 'var(--bg-primary)', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete > ul': {
+    fontFamily: EDITOR_FONT_FAMILY, maxHeight: '15em', minWidth: '14em', maxWidth: 'min(560px, calc(100vw - 8px))',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li': { padding: '1px 8px', lineHeight: '1.5' },
+  // As specific as CodeMirror's base theme, whose light and dark rows are blue.
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+    backgroundColor: 'color-mix(in srgb, var(--accent-color) 22%, transparent)', color: 'var(--text-primary)',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete-disabled > ul > li[aria-selected]': { backgroundColor: 'var(--hover-bg)' },
+  '.cm-completionMatchedText': { textDecoration: 'none', fontWeight: '600', color: 'var(--accent-color)' },
+  '.cm-completionDetail': { marginLeft: '0.75em', fontStyle: 'normal', color: 'var(--text-muted)' },
+  '.cm-completionIcon': { color: 'var(--text-secondary)' },
+  '.cm-completion-deprecated .cm-completionLabel': { textDecoration: 'line-through', opacity: '0.75' },
+  '.cm-completion-docs .cm-completion-signature': { fontFamily: EDITOR_FONT_FAMILY, whiteSpace: 'pre-wrap', margin: '0 0 4px' },
+  '.cm-completion-docs > :last-child': { marginBottom: '0' },
+  '.cm-tooltip.cm-completionInfo': {
+    padding: '6px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-primary)', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
+    fontFamily: 'var(--font-sans)', fontSize: '12.5px', lineHeight: '1.5', overflowWrap: 'anywhere',
+  },
   '.cm-panels': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' },
   '& .cm-panels-bottom': { borderTop: '1px solid var(--border-color)' },
   '& .cm-panels-top': { borderBottom: '1px solid var(--border-color)' },
@@ -511,7 +1009,8 @@ function freshState(options: FileEditorOptions): EditorState {
       diagnosticLines, clearSavedMarkers, navigation,
       search(), theme, font.of(fontThemes[0]), fitTooltips, indentUnit.of(detectIndent(options.text)), EditorState.tabSize.of(4),
       wrapping.of(options.wrap ? EditorView.lineWrapping : []),
-      editing.of(editable(options.disabled)), language.of([]), coloring.of([]),
+      editing.of(editable(options.disabled)), language.of([]), coloring.of([]), completing.of(suggestions(options)),
+      mirrors.of([]), endMirrors,
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...editorLintKeymap]),
       EditorView.updateListener.of(update => {
         if (update.docChanged && !update.transactions.every(tr => tr.annotation(external)))
@@ -566,6 +1065,9 @@ function handleKey(view: EditorView, event: KeyboardEvent): boolean {
   } else if (mod && !event.altKey && !event.shiftKey && key === 'f') {
     openSearchPanel(view);
     consumed = true;
+  } else if (event.key === 'Escape' && closeCompletion(view)) {
+    // Suggestions close first: the hover, the search panel and the dialog stay.
+    consumed = true;
   } else if (event.key === 'Escape' && hasHoverTooltips(view.state)) {
     // A hover (a symbol's, or a diagnostic's) closes before the search panel or the dialog.
     view.dispatch({ effects: closeHoverTooltips });
@@ -616,6 +1118,7 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
     view.dispatch({ effects: [
       wrapping.reconfigure(options.wrap ? EditorView.lineWrapping : []),
       editing.reconfigure(editable(options.disabled)),
+      completing.reconfigure(suggestions(options)),
     ] });
   }
   function setLanguage() {

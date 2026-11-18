@@ -60,7 +60,7 @@ func (n *navServer) script(f *fakeSrv) {
 			n.mu.Lock()
 			n.cancels++
 			n.mu.Unlock()
-		case strings.HasPrefix(method, "textDocument/") && m["id"] != nil:
+		case (strings.HasPrefix(method, "textDocument/") || method == "completionItem/resolve") && m["id"] != nil:
 			n.mu.Lock()
 			n.requests = append(n.requests, m)
 			answer, ok := n.answers[method]

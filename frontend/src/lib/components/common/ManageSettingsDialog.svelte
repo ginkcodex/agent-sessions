@@ -20,7 +20,11 @@
   import { CODE_LANGUAGES } from '../../codeLanguages';
   import { isTranscriptMode, transcriptModes } from '../../transcript';
   import { isTimeZoneMode, TIME_ZONE_OPTIONS } from '../../date';
+  import { suggestShortcutLabel } from '../../editorKeys';
   import Dropdown from './Dropdown.svelte';
+
+  // The editor's shortcut for suggestions, as its keymap binds it.
+  const suggestShortcut = suggestShortcutLabel();
 
   let transcriptMode = $derived(transcriptModes.find((m) => m.value === preferences.transcriptMode));
 
@@ -144,6 +148,19 @@
                 />
               </div>
               <p class="hint">Used for message, session and list timestamps on every host. Local time follows this computer's time zone.</p>
+            </section>
+
+            <section class="section editor">
+              <h3>Editor</h3>
+              <label class="setting">
+                <input
+                  type="checkbox"
+                  checked={preferences.suggestWhileTyping}
+                  onchange={(e) => preferences.setSuggestWhileTyping((e.currentTarget as HTMLInputElement).checked)}
+                />
+                Suggest code while typing
+              </label>
+              <p class="hint">Suggestions from the file and its language appear in the Go to File editor as you type. Off, {suggestShortcut} still shows them.</p>
             </section>
 
             {#if updates.available}

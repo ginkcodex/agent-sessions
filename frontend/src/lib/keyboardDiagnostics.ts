@@ -4,6 +4,7 @@
 // input method replacement shows where it got lost. Nothing is attached
 // while recording is off, and field values are never read.
 import { callApp, onDesktopEvent } from './desktopRuntime';
+import { KEY_ORDER_GUARD_EVENT } from './keyOrderGuard';
 
 /** The Go recorder's state, a bool, sent to every window on each change. */
 export const KEYBOARD_LOG_STATE_EVENT = 'keyboard-log:state';
@@ -20,6 +21,8 @@ export const RECORDED_EVENTS = [
   'compositionend',
   'focus',
   'blur',
+  // A key order guard correction (KD-05): its action and delete count.
+  KEY_ORDER_GUARD_EVENT,
 ] as const;
 
 /** How long records wait before they are sent, in milliseconds. */
@@ -94,6 +97,11 @@ export function keyboardRecord(e: Event, timeOrigin: number, focused: boolean): 
     r.isComposing = any.isComposing;
   }
   if ('data' in e && !secret) r.data = any.data;
+  if (e.type === KEY_ORDER_GUARD_EVENT) {
+    const detail = any.detail as { action?: unknown; deletes?: unknown } | undefined;
+    r.action = detail?.action;
+    r.deletes = detail?.deletes;
+  }
   if (e.defaultPrevented) r.prevented = true;
   return r;
 }

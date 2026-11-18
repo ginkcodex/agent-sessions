@@ -95,6 +95,76 @@ export interface CodeNavigationResult {
   truncated?: boolean;
 }
 
+/**
+ * Why completion was asked: on request, after one of the server's trigger
+ * characters, or again after an incomplete answer.
+ */
+export type CodeCompletionTrigger = { kind: 'invoked' | 'incomplete' } | { kind: 'character'; character: string };
+export interface CodeTextEdit { range: CodeDiagnosticRange; newText: string }
+export interface CodeMarkupText { kind: 'markdown' | 'plaintext'; value: string }
+/**
+ * One suggestion. `edit` replaces a range on the asked line (otherwise
+ * `insertText`, or the label, goes in at the word); `extraEdits` change other
+ * lines (imports). `kind` is the LSP CompletionItemKind (1-25).
+ */
+export interface CodeCompletionItem {
+  label: string;
+  labelDetail?: string;
+  labelDescription?: string;
+  kind?: number;
+  detail?: string;
+  documentation?: CodeMarkupText;
+  sortText?: string;
+  filterText?: string;
+  insertText?: string;
+  edit?: CodeTextEdit;
+  snippet?: boolean;
+  extraEdits?: CodeTextEdit[];
+  deprecated?: boolean;
+}
+/**
+ * The answer for the document at `version`. `resultId` names it for
+ * resolveCodeCompletion while it is the document's last answer, typing on
+ * included; an
+ * incomplete answer is asked again as the user types on.
+ */
+export interface CodeCompletionResult {
+  documentId: string;
+  version: number;
+  resultId?: string;
+  /**
+   * The answering server resolves items, so one may gain extra edits
+   * (imports) then. Absent from hosts before CC-20, whose answers are taken
+   * as not resolving.
+   */
+  resolves?: boolean;
+  items: CodeCompletionItem[];
+  isIncomplete?: boolean;
+  truncated?: boolean;
+  /**
+   * The answering server's trigger characters; a character it did not name
+   * is answered with nothing. Empty when it names none; absent from hosts
+   * before CC-20.
+   */
+  triggerCharacters?: string;
+}
+/**
+ * An item's detail and documentation, from completionItem/resolve. Resolved
+ * at a version, also the item's extra edits (imports) the server computes
+ * only then, for that version's text: `version` and `extraEdits` come
+ * together or not at all. A host from before CC-10 never sends them.
+ */
+export interface CodeCompletionDetails {
+  documentId: string;
+  resultId: string;
+  index: number;
+  detail?: string;
+  documentation?: CodeMarkupText;
+  truncated?: boolean;
+  version?: number;
+  extraEdits?: CodeTextEdit[];
+}
+
 /** What the bridge confirmed for a displayed document; the store keeps no text. */
 export interface LiveDocumentBasis { documentId: string; version: number; synced: boolean }
 
@@ -141,6 +211,23 @@ export interface CodeDiagnosticsAPI {
    * path) a navigation answer of this attachment pointed to. Never editable.
    */
   readNavigationFile(context: CodeDiagnosticsContext, path: string, expectedHostId: string): Promise<FileContent>;
+  /**
+   * codeCompletion only: suggestions for the open document at exactly
+   * `version`. `requestId` names the request for cancelCodeCompletion; a new
+   * request under the same ID cancels the old one.
+   */
+  completeCode(context: CodeDiagnosticsContext, requestId: string, documentId: string, version: number, position: CodeDiagnosticPosition, trigger: CodeCompletionTrigger, expectedHostId: string): Promise<CodeCompletionResult>;
+  /**
+   * codeCompletion only: item `index` of the document's last answer,
+   * `resultId`, kept through later changes. `version` 0 asks for details
+   * only; the document's current version also asks for the item's extra
+   * edits, and rejects with `staleVersion` when the document is at another.
+   * `requestId` names the request for cancelCodeCompletion, as for
+   * completeCode.
+   */
+  resolveCodeCompletion(context: CodeDiagnosticsContext, requestId: string, documentId: string, resultId: string, index: number, version: number, expectedHostId: string): Promise<CodeCompletionDetails>;
+  /** Ends the completion or resolve started under `requestId`, which rejects with `canceled`. A finished or unknown ID is a no-op. */
+  cancelCodeCompletion(requestId: string): Promise<void>;
 }
 
 export const CODE_DIAGNOSTICS_EVENT = 'codeDiagnostics:updated';

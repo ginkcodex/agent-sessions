@@ -99,6 +99,25 @@ export function isNewWindowShortcut(
 }
 
 /**
+ * Whether a key hides or shows the sidebar: Cmd+B on macOS, Ctrl+B elsewhere.
+ * The caller leaves it to text fields, the terminal and the editor, where
+ * Ctrl+B belongs to tmux, readline and editors.
+ */
+export function isSidebarToggleShortcut(
+  e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+  mac: boolean,
+): boolean {
+  const chord = mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+  if (!chord || e.shiftKey || e.altKey) return false;
+  return /^[a-z]$/i.test(e.key) ? e.key.toLowerCase() === 'b' : e.code === 'KeyB';
+}
+
+/** The sidebar toggle shortcut as the platform writes it. */
+export function sidebarToggleShortcutLabel(mac: boolean): string {
+  return mac ? '⌘B' : 'Ctrl+B';
+}
+
+/**
  * Which way a key moves between the app's windows: Alt+` for the next,
  * Alt+Shift+` for the previous, on Windows and Linux. The key's position is
  * read, so layouts that type another character there work too. On macOS,

@@ -7,6 +7,7 @@
   import { firstVisibleSourceLine, type FilePosition } from '../../../filePosition';
   import { firstVisibleRow, restoreRow, rowAnchor } from '../../../scrollAnchor';
   import type { EditorSymbols } from '../../../fileEditor';
+  import type { EditorCompletionAnswer } from '../../../editorCompletion';
   import { isBlameableLine, selectFileLine, type FileLineSelection } from '../../../fileSelection';
   import type { BlameLine } from '../../../types';
   import { formatAbsoluteTime, formatAgo } from '../../../date';
@@ -33,7 +34,7 @@
   import { canEditContent, readOnlyText } from '../../../fileEditing';
   import { emptyNavigationAnswer, externalLabel } from '../../../codeNavigation';
   import { languageOfPath } from '../../../codeLanguages';
-  import type { CodeDiagnosticPosition, CodeNavigationLocation } from '../../../codeDiagnostics';
+  import type { CodeCompletionTrigger, CodeDiagnosticPosition, CodeNavigationLocation } from '../../../codeDiagnostics';
   import { historyKey, hoverHtml, locationList, navigationKey, rankRubyDefinitions, sourcePosition, wordRange, type EditorPlace, type SourceLocation, type SelectionHold, type SourceSymbols, type ViewportPoint } from '../../../sourceNavigation';
   import ContextMenu, { type ContextMenuItem } from '../ContextMenu.svelte';
   import Dropdown from '../Dropdown.svelte';
@@ -335,6 +336,12 @@
       }
       const editorValid = () => valid() && !frozen && !request.locate(tab, shownSource()) && Boolean(rangeOffsets(shownSource(), range));
       const shown = editing || largeView ? editor?.revealRange(range, editorValid) : codeScroll && revealSourceRange(codeScroll, range);
+      // A link's lines stay marked as a gutter click would mark them: a caret
+      // alone is invisible in the source view.
+      if (shown && request.kind === 'link') {
+        lineSelections.set(tab, { anchor: range.start.line + 1, head: range.end.line + 1 });
+        selectionVersion++;
+      }
       if (shown) finishNavigation();
     }); });
   });
@@ -868,6 +875,11 @@
       : codeDiagnostics.directory !== files.dir ? 'Code checks are not attached to this project yet.'
       : codeDiagnostics.navigationBlocker(files.selectedPath)
   );
+  // Suggestions from the language server: the same files as navigation, on a host that offers them.
+  let completionBlocked = $derived(
+    !files.selectedPath || historical || Boolean(activeTab?.gitBasis) || external || codeDiagnostics.directory !== files.dir
+      || Boolean(codeDiagnostics.completionBlocker(files.selectedPath))
+  );
   let symbolNotice = $state<{ text: string; x: number; y: number } | null>(null);
   let symbolNoticeTimer: ReturnType<typeof setTimeout> | undefined;
   let symbolPicker = $state<{ label: string; heading?: string; items: ContextMenuItem[]; x: number; y: number } | null>(null);
@@ -1043,12 +1055,44 @@
     if (files.activeTab !== tab || files.selectedPath !== path || !current() || out.kind !== 'result' || !out.result.hover?.value) return undefined;
     return { html: hoverHtml(out.result.hover), truncated: Boolean(out.result.truncated) };
   }
+  /**
+   * The language server's suggestions for the draft (EditorSymbols.complete).
+   * Undefined at once when none can be asked, so the editor's words show
+   * without waiting; an answer for another tab or file is dropped.
+   */
+  function draftComplete(position: CodeDiagnosticPosition, trigger: CodeCompletionTrigger, current: () => boolean, signal: AbortSignal): Promise<EditorCompletionAnswer | undefined> | undefined {
+    const path = files.selectedPath, tab = files.activeTab;
+    if (!path || !tab || !editing || completionBlocked) return undefined;
+    return codeDiagnostics.complete(path, position, trigger, { current, signal }).then(answer => {
+      if (!answer || files.activeTab !== tab || files.selectedPath !== path) return undefined;
+      const { result, details, extraEdits } = answer;
+      const shown = () => files.activeTab === tab && files.selectedPath === path;
+      return {
+        items: result.items, incomplete: Boolean(result.isIncomplete), triggerCharacters: result.triggerCharacters,
+        details: async (index: number, signal?: AbortSignal) => {
+          const d = await details(index, signal);
+          if (!d) return undefined;
+          return { detail: d.detail, html: d.documentation?.value ? hoverHtml(d.documentation) : undefined, truncated: d.truncated };
+        },
+        // An item's import, for the file still shown in this tab; only from a
+        // server that resolves, so other servers' items go in at once.
+        ...(result.resolves ? {
+          resolveEdits: (index: number, current: () => boolean, signal: AbortSignal) => {
+            if (!shown()) return [];
+            const edits = extraEdits(index, { current: () => shown() && current(), signal });
+            return Array.isArray(edits) ? edits : edits.then(e => shown() ? e : undefined);
+          },
+        } : {}),
+      };
+    });
+  }
   // Navigation from the draft, read at call time; the same answers as the viewer's.
   const editorSymbols: EditorSymbols = {
     ask: (op, position, at, current) => void askSymbol(op, position, at, current),
     hover: draftHover,
     menu: wordMenu,
     selectionMenu,
+    complete: draftComplete,
   };
   function hoverEnded() {
     hoverSequence++;

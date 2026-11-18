@@ -407,3 +407,141 @@ test('window focus re-reads open files only during live checks, one read at a ti
   refreshOnFocus();
   assert.equal(reads, 2);
 });
+
+// -- flush (CC-05): completion sends pending typing at once ------------------
+
+const gate = () => { let open; const p = new Promise((r) => { open = r; }); return { p, open }; };
+const settled = async (p) => { let out = 'pending'; p.then((v) => { out = v; }); await tick(); return out; };
+
+test('flush sends typing at once and resolves with the confirmed version; nothing pending resolves at once', async () => {
+  const s = await setup();
+  s.store.openFile('a.txt', { keep: true }); await tick();
+  s.store.startEditing('a.txt'); s.store.updateDraft('a.txt', 'ab');
+  const flushed = s.bridge.flush('a.txt', 1000);
+  assert.deepEqual(await flushed, { documentId: 'doc1', version: 2, synced: true });
+  assert.deepEqual(s.calls.slice(1), [['change', 2, 'ab']]);
+  assert.equal(s.timers.pending, 0); // debounce canceled, bound cleared
+  // Nothing pending: settled before any timer or call.
+  const again = s.bridge.flush('a.txt', 1000);
+  assert.equal(s.timers.pending, 0);
+  assert.deepEqual(await again, { documentId: 'doc1', version: 2, synced: true });
+  assert.equal(s.calls.length, 2);
+  // Callers that do not flush keep the 300 ms debounce.
+  s.store.updateDraft('a.txt', 'abc'); await s.timers.advance(299);
+  assert.equal(s.calls.length, 2);
+  await s.timers.advance(1);
+  assert.deepEqual(s.calls.slice(2), [['change', 3, 'abc']]);
+});
+
+test('flush with a change in flight sends later typing after it and resolves with the last version', async () => {
+  let held = gate();
+  const s = await setup({ apiOverrides: { change: () => held.p } });
+  s.store.openFile('a.txt', { keep: true }); await tick();
+  s.store.startEditing('a.txt'); s.store.updateDraft('a.txt', 'a'); await s.timers.advance(300);
+  assert.deepEqual(s.calls.slice(1), [['change', 2, 'a']]); // in flight
+  s.store.updateDraft('a.txt', 'ab');
+  const flushed = s.bridge.flush('a.txt', 1000);
+  assert.equal(await settled(flushed), 'pending');
+  const first = held; held = { p: Promise.resolve() }; first.open();
+  assert.deepEqual(await flushed, { documentId: 'doc1', version: 3, synced: true });
+  assert.deepEqual(s.calls.slice(1), [['change', 2, 'a'], ['change', 3, 'ab']]);
+});
+
+test('flush settles with a timer that fires at once', async () => {
+  const held = gate();
+  const s = await setup({ apiOverrides: { change: () => held.p } });
+  s.store.openFile('a.txt', { keep: true }); await tick();
+  s.store.startEditing('a.txt'); s.store.updateDraft('a.txt', 'a');
+  const set = s.timers.set;
+  s.timers.set = (fn) => { fn(); return 'fired'; };
+  try {
+    assert.equal(await s.bridge.flush('a.txt', 0), undefined, 'the bound passed before the change was confirmed');
+  } finally {
+    s.timers.set = set;
+    held.open();
+  }
+  await tick();
+  assert.equal(s.timers.pending, 0, 'the flush sent the typing: no debounce left');
+  assert.deepEqual(s.calls.slice(1), [['change', 2, 'a']]);
+});
+
+test('flush during a save waits for the save, then sends the held typing', async () => {
+  const s = await setup();
+  const saving = gate();
+  s.fixture.api.saveFile = async (_d, req) => { await saving.p; return { status: 'saved', content: content(req.path, req.text, 'r2') }; };
+  s.store.openFile('a.txt', { keep: true }); await tick();
+  s.store.startEditing('a.txt'); s.store.updateDraft('a.txt', 'v2');
+  const saved = s.store.saveEdited('a.txt'); await tick();
+  s.store.updateDraft('a.txt', 'v3'); // typed while saving: held back
+  const flushed = s.bridge.flush('a.txt', 1000);
+  assert.equal(await settled(flushed), 'pending');
+  assert.deepEqual(s.calls.slice(1), [['change', 2, 'v2']]);
+  saving.open(); await saved;
+  assert.deepEqual(await flushed, { documentId: 'doc1', version: 3, synced: true });
+  assert.deepEqual(s.calls.slice(1), [['change', 2, 'v2'], ['save', 2, 'r2'], ['change', 3, 'v3']]);
+  assert.equal(s.timers.pending, 0);
+});
+
+test('flush resolves undefined on failure, pause, untracked or not live documents', async () => {
+  let failWith;
+  const s = await setup({ apiOverrides: { change: async () => { if (failWith) throw { code: failWith, message: 'x' }; } } });
+  assert.equal(await s.bridge.flush('a.txt', 1000), undefined); // not tracked yet
+  s.store.openFile('a.txt', { keep: true }); await tick();
+  s.store.startEditing('a.txt');
+  // A failure while waiting settles the flush.
+  failWith = 'toolFailed';
+  s.store.updateDraft('a.txt', 'x');
+  assert.equal(await s.bridge.flush('a.txt', 1000), undefined);
+  assert.equal(s.bridge.failure('a.txt'), 'toolFailed');
+  // An already failed document is not flushed.
+  s.store.updateDraft('a.txt', 'xy');
+  const before = s.calls.length;
+  assert.equal(await s.bridge.flush('a.txt', 1000), undefined);
+  assert.equal(s.calls.length, before);
+  assert.equal(s.timers.pending, 1); // only the usual debounce (it recovers); flush left it alone
+
+  const p = await setup();
+  p.store.openFile('a.txt', { keep: true }); await tick();
+  p.store.startEditing('a.txt'); p.store.updateDraft('a.txt', 'y');
+  p.diag.set(undefined); // paused: the same attachment is not live right now
+  assert.equal(await p.bridge.flush('a.txt', 1000), undefined);
+  // A pause while waiting settles it too.
+  const held = gate();
+  const q = await setup({ apiOverrides: { change: () => held.p } });
+  q.store.openFile('a.txt', { keep: true }); await tick();
+  q.store.startEditing('a.txt'); q.store.updateDraft('a.txt', 'z');
+  const flushed = q.bridge.flush('a.txt', 1000);
+  assert.equal(await settled(flushed), 'pending');
+  q.diag.set(undefined);
+  assert.equal(await flushed, undefined);
+  held.open();
+  assert.equal(q.timers.pending, 0);
+
+  const n = await setup({ live: false });
+  n.store.openFile('a.txt', { keep: true }); await tick();
+  n.store.startEditing('a.txt'); n.store.updateDraft('a.txt', 'w');
+  assert.equal(await n.bridge.flush('a.txt', 1000), undefined);
+  assert.deepEqual(n.calls, []);
+});
+
+test('flush settles undefined after its bound, and follows a recovered lifecycle', async () => {
+  const held = gate();
+  const s = await setup({ apiOverrides: { change: () => held.p } });
+  s.store.openFile('a.txt', { keep: true }); await tick();
+  s.store.startEditing('a.txt'); s.store.updateDraft('a.txt', 'slow');
+  const flushed = s.bridge.flush('a.txt', 500);
+  await s.timers.advance(499);
+  assert.equal(await settled(flushed), 'pending');
+  await s.timers.advance(1);
+  assert.equal(await flushed, undefined);
+  assert.equal(s.timers.pending, 0);
+  held.open(); await tick();
+  assert.deepEqual(s.bridge.basis('a.txt'), { documentId: 'doc1', version: 2, synced: true });
+
+  let fail = true;
+  const r = await setup({ apiOverrides: { change: async () => { if (fail) { fail = false; throw { code: 'resyncRequired', message: 'x' }; } } } });
+  r.store.openFile('a.txt', { keep: true }); await tick();
+  r.store.startEditing('a.txt'); r.store.updateDraft('a.txt', 'x');
+  assert.deepEqual(await r.bridge.flush('a.txt', 1000), { documentId: 'doc2', version: 1, synced: true });
+  assert.deepEqual(names(r.calls), ['open', 'change', 'close', 'open']);
+});

@@ -60,6 +60,22 @@ export function printDocument(doc: PrintDocument): void {
   printer?.(doc);
 }
 
+/**
+ * Paper can't scroll a table wider than the page, so such a table lets its
+ * short one-line cells (see keepsCellOnOneLine) wrap: its headers first, then
+ * the rest. Call it again when the page width or content changes.
+ */
+export function fitTables(root: ParentNode): void {
+  for (const box of root.querySelectorAll<HTMLElement>('.table-container')) {
+    box.classList.remove('wrap-head', 'wrap-cells');
+    const table = box.firstElementChild as HTMLElement | null;
+    for (const step of ['wrap-head', 'wrap-cells']) {
+      if (!table || table.offsetWidth <= box.clientWidth) break;
+      box.classList.add(step);
+    }
+  }
+}
+
 export function fileLabel(file: FileRef): string {
   return file.name || file.path?.split(/[\\/]/).pop() || (isImageFile(file) ? 'Image' : 'Attachment');
 }
