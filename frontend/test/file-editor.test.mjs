@@ -1391,6 +1391,18 @@ test('server suggestions: why the server is asked, and trigger characters it nam
   h.editor.destroy();
 });
 
+test('server suggestions keep the server order past 99 items, where CodeMirror breaks equal scores by sortText', async () => {
+  // Labels against the server's order, so a tie broken by label would show.
+  const items = Array.from({ length: 500 }, (_, i) => ({ label: `al${String(499 - i).padStart(3, '0')}`, sortText: String(i).padStart(3, '0') }));
+  const h = serverEditor('al', 'a.go', async () => ({ incomplete: false, items }));
+  const { options } = await h.suggest();
+  // CodeMirror's sort for options that match alike (all start with what was typed):
+  // the score (match plus boost), then its default compareCompletions.
+  const sorted = [...options].sort((a, b) => (b.boost - a.boost) || (a.sortText || a.label).localeCompare(b.sortText || b.label));
+  assert.deepEqual(sorted.map(o => o.label), items.map(i => i.label));
+  h.editor.destroy();
+});
+
 test('server suggestions come above the words they do not repeat, in the server order, with kinds and details', async () => {
   const h = serverEditor('alpha alphabet\nal', 'a.ts', async () => ({ incomplete: false, items: [
     { label: 'alpha', kind: 6, sortText: 'b', detail: 'let alpha: number' },

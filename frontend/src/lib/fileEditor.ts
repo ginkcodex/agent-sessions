@@ -18,7 +18,7 @@ import { textChanges } from './searchReplace';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
 import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completionKeymap, hasNextSnippetField, hasPrevSnippetField, pickedCompletion, selectedCompletion, snippet, startCompletion, CompletionContext, type Completion, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete';
 import type { CodeCompletionItem, CodeCompletionTrigger, CodeDiagnosticPosition, CodeTextEdit } from './codeDiagnostics';
-import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, serverBoosts, snippetText, withExtraEdits, type CompletionAccept, type CompletionEdit, type EditorCompleter, type EditorCompletionAnswer, type EditorCompletionDetails } from './editorCompletion';
+import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, serverOrder, snippetText, withExtraEdits, type CompletionAccept, type CompletionEdit, type EditorCompleter, type EditorCompletionAnswer, type EditorCompletionDetails } from './editorCompletion';
 import { HOVER_DELAY, contextPress, linkModifier, menuKey, wordRange, type SelectionHold, type ViewportPoint } from './sourceNavigation';
 import { handleCopyCodeClick } from './copycode';
 import { severityRank, type OverviewProblem, type ProblemSeverity } from './problemOverview';
@@ -356,7 +356,7 @@ function acceptResolving(view: EditorView, completion: Completion, item: CodeCom
 }
 
 /** A CodeMirror option for server item index of an answer asked at pos in askedDoc. */
-function serverOption(item: CodeCompletionItem, index: number, boost: number, answer: EditorCompletionAnswer, askedDoc: Text, pos: number, start: number): Completion {
+function serverOption(item: CodeCompletionItem, index: number, { boost, sortText }: { boost: number; sortText: string }, answer: EditorCompletionAnswer, askedDoc: Text, pos: number, start: number): Completion {
   const label = item.filterText || item.label;
   const option: Completion = {
     label,
@@ -364,6 +364,7 @@ function serverOption(item: CodeCompletionItem, index: number, boost: number, an
     detail: completionDetail(item),
     type: completionType(item.kind),
     boost,
+    sortText,
     apply(view, completion, from, to) {
       [from, to] = settleEarlierPick(view, from, to);
       // Listed imports go in with the item; others may come on resolve.
@@ -411,9 +412,9 @@ export const codeSuggestions: CompletionSource = context => {
     if (answer.triggerCharacters !== undefined) learnedTriggers.set(view, { path, triggers: answer.triggerCharacters });
     if (answer.incomplete) unfinished.set(view, { path, start: identifierStart(askedDoc, pos) });
     else unfinished.delete(view);
-    const items = answer.items, start = answerStart(askedDoc, pos, items), boosts = serverBoosts(items);
+    const items = answer.items, start = answerStart(askedDoc, pos, items), placed = serverOrder(items);
     const offered = new Set(items.map(item => item.label));
-    const options = items.map((item, index) => serverOption(item, index, boosts[index], answer, askedDoc, pos, start));
+    const options = items.map((item, index) => serverOption(item, index, placed[index], answer, askedDoc, pos, start));
     if (words && words.from === start) options.push(...words.options.filter(option => !offered.has(option.label)));
     if (!options.length) return null;
     // An incomplete answer is asked again as the user types on, and so is an

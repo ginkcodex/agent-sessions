@@ -61,15 +61,21 @@ export function completionDetail(item: CodeCompletionItem): string | undefined {
 }
 
 /**
- * Boosts that keep the server's order (sortText, then its own) and put
- * every server item above the editor's words: 1 to 99, highest first.
+ * Where each server item goes in the popup, in the server's order (sortText,
+ * then its own): a boost of 1 to 99, highest first, puts every server item
+ * above the editor's words, and a sortText from its rank keeps that order
+ * among items CodeMirror scores alike. Past 99 items neighbours share a
+ * boost, and CodeMirror breaks such ties by sortText (else by label).
  */
-export function serverBoosts(items: readonly CodeCompletionItem[]): number[] {
+export function serverOrder(items: readonly CodeCompletionItem[]): { boost: number; sortText: string }[] {
   const order = items.map((item, index) => ({ key: item.sortText ?? item.label, index }));
   order.sort((a, b) => compareKeys(a.key, b.key) || a.index - b.index);
-  const boosts = new Array<number>(items.length);
-  order.forEach(({ index }, rank) => { boosts[index] = 99 - Math.floor(rank * 98 / Math.max(1, items.length)); });
-  return boosts;
+  const width = String(items.length).length;
+  const placed = new Array<{ boost: number; sortText: string }>(items.length);
+  order.forEach(({ index }, rank) => {
+    placed[index] = { boost: 99 - Math.floor(rank * 98 / Math.max(1, items.length)), sortText: String(rank).padStart(width, '0') };
+  });
+  return placed;
 }
 
 /** Orders strings by code unit, as servers' sortText is meant to be read. */
@@ -147,15 +153,14 @@ function parseSnippet(snippet: string): SnippetPart[] {
       else if (snippet[i] === '|') {
         const choices = /^\|((?:[^|\\]|\\.)*)\|/.exec(snippet.slice(i));
         if (choices) {
-          const first = choices[1].split(/(?<!\\),/)[0].replace(/\\(.)/g, '$1');
+          const first = firstChoice(choices[1]);
           if (first) inner = [first];
           i += choices[0].length;
         }
       } else if (snippet[i] === '/') {
         // A transform: the text it would change is not known here.
         transform = true;
-        const end = snippet.indexOf('}', i);
-        i = end < 0 ? snippet.length : end;
+        i = transformEnd(snippet, i);
       }
       if (snippet[i] === '}') i++;
       flush();
@@ -167,6 +172,32 @@ function parseSnippet(snippet: string): SnippetPart[] {
     return parts;
   };
   return parse(false);
+}
+
+/** The first of a choice's comma-separated options, unescaped (`\,` is a comma, `\\` a backslash). */
+function firstChoice(choices: string): string {
+  let out = '';
+  for (let i = 0; i < choices.length; i++) {
+    if (choices[i] === '\\' && i + 1 < choices.length) out += choices[++i];
+    else if (choices[i] === ',') break;
+    else out += choices[i];
+  }
+  return out;
+}
+
+/**
+ * Where a transform from i (`/regex/format/options`) ends: at the `}` that
+ * closes it, past escapes and nested braces (`\d{2}`, `${1:/upcase}`), or the end.
+ */
+function transformEnd(snippet: string, i: number): number {
+  let depth = 0;
+  for (; i < snippet.length; i++) {
+    const c = snippet[i];
+    if (c === '\\') i++;
+    else if (c === '{') depth++;
+    else if (c === '}' && depth-- === 0) return i;
+  }
+  return snippet.length;
 }
 
 const partsText = (parts: readonly SnippetPart[]): string => parts.map(p => (typeof p === 'string' ? p : partsText(p.parts))).join('');

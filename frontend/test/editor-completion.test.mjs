@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EditorState, Text } from '@codemirror/state';
 import { hasNextSnippetField, nextSnippetField, snippet } from '@codemirror/autocomplete';
-import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, positionOffset, serverBoosts, snippetTemplate, snippetText, withExtraEdits } from '../src/lib/editorCompletion.ts';
+import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, positionOffset, serverOrder, snippetTemplate, snippetText, withExtraEdits } from '../src/lib/editorCompletion.ts';
 
 // Language-server suggestions in the editor (CC-06): the pure parts.
 
@@ -31,15 +31,21 @@ test('kinds map to CodeMirror icons; the detail line prefers label details and s
   assert.ok(long.endsWith('…'));
 });
 
-test('boosts keep the server order by sortText, then its own, all above words', () => {
+test('boosts and ranks keep the server order by sortText, then its own, all above words', () => {
   const items = [{ label: 'b', sortText: '2' }, { label: 'a', sortText: '1' }, { label: 'c', sortText: '2' }, { label: 'd' }];
-  const boosts = serverBoosts(items);
+  const placed = serverOrder(items), boosts = placed.map(p => p.boost);
   assert.ok(boosts[1] > boosts[0] && boosts[0] > boosts[2] && boosts[2] > boosts[3], `${boosts}`);
   assert.ok(boosts.every(b => b >= 1 && b <= 99));
-  const many = serverBoosts(Array.from({ length: 1000 }, (_, i) => ({ label: `x${i}`, sortText: String(i).padStart(4, '0') })));
-  assert.ok(many.every(b => b >= 1 && b <= 99));
-  assert.equal(many[0], 99);
-  assert.ok(many.every((b, i) => i === 0 || b <= many[i - 1]), 'never out of order');
+  assert.deepEqual(placed.map(p => p.sortText), ['1', '0', '2', '3']);
+  // Labels in reverse order, so a tie broken by label would show.
+  const many = serverOrder(Array.from({ length: 1000 }, (_, i) => ({ label: `x${999 - i}`, sortText: String(i).padStart(4, '0') })));
+  assert.ok(many.every(p => p.boost >= 1 && p.boost <= 99));
+  assert.equal(many[0].boost, 99);
+  assert.ok(many.every((p, i) => i === 0 || p.boost <= many[i - 1].boost), 'never out of order');
+  assert.ok(new Set(many.map(p => p.boost)).size < 1000, 'past 99 items, neighbours share a boost');
+  assert.equal(many[0].sortText, '0000');
+  assert.equal(many[999].sortText, '0999');
+  assert.ok(many.every((p, i) => i === 0 || p.sortText.localeCompare(many[i - 1].sortText) > 0), 'ranks order as CodeMirror compares them');
 });
 
 test('positions, identifier starts and where an answer filters from', () => {
@@ -175,6 +181,8 @@ test('snippet templates: tab stops become CodeMirror fields, ending at $0', () =
   assert.deepEqual(fill(snippetTemplate('${2:b} ${1:a}')), { text: 'b a', stops: [['a'], ['b'], ['@3']] }, 'in number order');
   assert.deepEqual(fill(snippetTemplate('x := ${1:v}; use($1, $1)')), { text: 'x := v; use(v, v)', stops: [['v', 'v', 'v'], ['@17']] }, 'mirrors show and select the text');
   assert.deepEqual(fill(snippetTemplate('${1|one,two|} ${2|\\,a,b|}')), { text: 'one ,a', stops: [['one'], [',a'], ['@6']] }, 'the first choice');
+  assert.equal(snippetText('${1|a\\\\,b|}').text, 'a\\', 'an escaped backslash, then the separator');
+  assert.equal(snippetText('${1|a\\|b,c|}').text, 'a|b', 'an escaped bar');
   assert.deepEqual(fill(snippetTemplate('${0:done}')), { text: 'done', stops: [['done']] });
 });
 
@@ -189,6 +197,10 @@ test('snippet templates keep braces, escapes, variables and other scripts as tex
   assert.equal(snippetTemplate('a\\{b} #{c} ${d'), undefined, 'three escapes before the final stop: plain text');
   assert.deepEqual(fill(snippetTemplate('$TM_FILENAME ${TM_SELECTED_TEXT:${1:sel}} ${CLIPBOARD/(.*)/x/}')), { text: ' sel ', stops: [['sel'], ['@5']] }, 'variables give their default');
   assert.deepEqual(fill(snippetTemplate('${1/(.*)/$1/} x')).text, ' x', 'a transform inserts nothing');
+  assert.deepEqual(fill(snippetTemplate('${1/(\\d{2})/x/} y')).text, ' y', 'a transform with a quantifier in its regex');
+  assert.deepEqual(fill(snippetTemplate('${1/(.*)/${1:/upcase}/g} z')).text, ' z', 'a transform with a nested format');
+  assert.deepEqual(fill(snippetTemplate('${1/a\\}/b/} w')).text, ' w', 'an escaped brace in a transform');
+  assert.equal(snippetText('${1/(.*)/x/').text, '', 'an unclosed transform ends the snippet');
   assert.deepEqual(fill(snippetTemplate('名前(${1:値}) 😀$0')), { text: '名前(値) 😀', stops: [['値'], ['@8']] }, 'UTF-16 offsets');
 
   assert.equal(snippetTemplate('#{${1:a}} \\\\{x}'), '#\\{${1:a}} \\\\{x}${0}', 'only braces CodeMirror would misread are escaped');
