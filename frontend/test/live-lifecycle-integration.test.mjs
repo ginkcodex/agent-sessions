@@ -488,12 +488,12 @@ test('completion details come from the server, else the listed ones once the doc
   const h = await harness(true, { completion: true });
   const resolves = [];
   h.api.completeCode = async (c, requestId, documentId, version) => ({ documentId, version, resultId: 'r7', items: [{ label: 'a', detail: 'listed', documentation: { kind: 'plaintext', value: 'old' } }, { label: 'b' }] });
-  h.api.resolveCodeCompletion = async (c, documentId, resultId, index, host) => { resolves.push([c, documentId, resultId, index, host]); return { documentId, resultId, index, detail: 'func a()', documentation: { kind: 'markdown', value: '**A**' }, truncated: true }; };
+  h.api.resolveCodeCompletion = async (c, documentId, resultId, index, version, host) => { resolves.push([c, documentId, resultId, index, version, host]); return { documentId, resultId, index, detail: 'func a()', documentation: { kind: 'markdown', value: '**A**' }, truncated: true }; };
   h.files.openFile('a.go', { keep: true }); await tick();
   h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'a\n'); await tick();
   const got = await h.checks.complete('a.go', { line: 0, character: 1 }, { kind: 'invoked' });
   assert.deepEqual(await got.details(0), { detail: 'func a()', documentation: { kind: 'markdown', value: '**A**' }, truncated: true });
-  assert.deepEqual(resolves[0], [context, 'd1', 'r7', 0, 'h']);
+  assert.deepEqual(resolves[0], [context, 'd1', 'r7', 0, 0, 'h'], 'the info panel asks for details only');
   assert.equal(await got.details(5), undefined, 'no such item');
   h.api.resolveCodeCompletion = async () => { throw Object.assign(new Error('staleVersion'), { code: 'staleVersion' }); };
   assert.deepEqual(await got.details(0), { detail: 'listed', documentation: { kind: 'plaintext', value: 'old' } });

@@ -472,8 +472,8 @@ func (d SessionDocuments) Apply(ctx context.Context, step DocumentStep) error {
 		if err != nil {
 			return err
 		}
+		// The kept answer stays: the editor still resolves its items (CC-10).
 		s.markUnindexed(uri)
-		s.dropCompletion(uri, "")
 		method = "textDocument/didChange"
 		changes := make([]map[string]any, 0, len(step.Changes))
 		for _, c := range step.Changes {

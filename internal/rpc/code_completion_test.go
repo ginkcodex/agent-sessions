@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -21,9 +22,9 @@ func (b *diagnosticsBackend) CompleteCode(ctx context.Context, c cd.Context, id 
 	return out, err
 }
 
-func (b *diagnosticsBackend) ResolveCodeCompletion(ctx context.Context, c cd.Context, id, resultID string, index int) (cd.CompletionDetails, error) {
+func (b *diagnosticsBackend) ResolveCodeCompletion(ctx context.Context, c cd.Context, id, resultID string, index int, version int64) (cd.CompletionDetails, error) {
 	b.completeCalls++
-	out, err := b.m.ResolveCompletion(ctx, c, id, resultID, index)
+	out, err := b.m.ResolveCompletion(ctx, c, id, resultID, index, version)
 	if err == nil && b.tamperDetails != nil {
 		b.tamperDetails(&out)
 	}
@@ -69,8 +70,15 @@ func (s *completeSession) ResolveCompletion(_ context.Context, req cd.Completion
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.resolves = append(s.resolves, req)
-	return cd.CompletionDetails{Detail: "func alpha()", Documentation: &cd.MarkupText{Kind: "markdown", Value: "Alpha."}}, nil
+	out := cd.CompletionDetails{Detail: "func alpha()", Documentation: &cd.MarkupText{Kind: "markdown", Value: "Alpha."}}
+	if req.Version > 0 {
+		out.ExtraEdits = []cd.TextEdit{importEdit}
+	}
+	return out, nil
 }
+
+// importEdit is what the fake session resolves an item's extra edits to.
+var importEdit = cd.TextEdit{Range: cd.Range{Start: cd.Position{Line: 1}, End: cd.Position{Line: 1}}, NewText: "import \"a\"\n"}
 
 func completeFixture(t *testing.T) (*diagnosticsBackend, *Client, cd.Context, *completeSession, context.Context, func()) {
 	t.Helper()
@@ -102,11 +110,18 @@ func TestCompletionOverRPC(t *testing.T) {
 	if req := sess.reqs[0]; req.Path != "doc.go" || req.Position != at || req.Trigger != dot || req.Text != "package x\n\nfunc f() { x. }\n" {
 		t.Fatalf("%+v", req)
 	}
-	details, err := c.ResolveCodeCompletion(ctx, token, "d1", "r1", 1)
-	if err != nil || details != (cd.CompletionDetails{DocumentID: "d1", ResultID: "r1", Index: 1, Detail: "func alpha()", Documentation: details.Documentation}) || details.Documentation.Value != "Alpha." {
+	details, err := c.ResolveCodeCompletion(ctx, token, "d1", "r1", 1, 0)
+	if err != nil || !reflect.DeepEqual(details, cd.CompletionDetails{DocumentID: "d1", ResultID: "r1", Index: 1, Detail: "func alpha()", Documentation: details.Documentation}) || details.Documentation.Value != "Alpha." {
 		t.Fatal(details, err)
 	}
-	if req := sess.resolves[0]; req.Path != "doc.go" || req.ResultID != "r1" || req.Index != 1 {
+	if req := sess.resolves[0]; req.Path != "doc.go" || req.ResultID != "r1" || req.Index != 1 || req.Version != 0 {
+		t.Fatalf("%+v", req)
+	}
+	// At the current version, the version and the edits cross the wire.
+	if details, err = c.ResolveCodeCompletion(ctx, token, "d1", "r1", 1, 1); err != nil || details.Version != 1 || !reflect.DeepEqual(details.ExtraEdits, []cd.TextEdit{importEdit}) {
+		t.Fatal(details, err)
+	}
+	if req := sess.resolves[1]; req.Version != 1 || req.Text != "package x\n\nfunc f() { x. }\n" {
 		t.Fatalf("%+v", req)
 	}
 	sess.items = nil
@@ -127,9 +142,13 @@ func TestCompletionOverRPC(t *testing.T) {
 	}{
 		"old version": {func() error { _, e := c.CompleteCode(ctx, token, "d1", 2, at, dot); return e }, "staleVersion"},
 		"outside":     {func() error { _, e := c.CompleteCode(ctx, token, "d1", 1, cd.Position{Line: 40}, dot); return e }, "invalidArgument"},
-		"trigger":     {func() error { _, e := c.CompleteCode(ctx, token, "d1", 1, at, cd.CompletionTrigger{Kind: cd.CompletionCharacter, Character: "(("}); return e }, "invalidArgument"},
-		"replaced":    {func() error { _, e := c.ResolveCodeCompletion(ctx, token, "d1", "r1", 0); return e }, "staleVersion"},
-		"index":       {func() error { _, e := c.ResolveCodeCompletion(ctx, token, "d1", "r2", 5); return e }, "invalidArgument"},
+		"trigger": {func() error {
+			_, e := c.CompleteCode(ctx, token, "d1", 1, at, cd.CompletionTrigger{Kind: cd.CompletionCharacter, Character: "(("})
+			return e
+		}, "invalidArgument"},
+		"replaced": {func() error { _, e := c.ResolveCodeCompletion(ctx, token, "d1", "r1", 0, 0); return e }, "staleVersion"},
+		"index":    {func() error { _, e := c.ResolveCodeCompletion(ctx, token, "d1", "r2", 5, 0); return e }, "invalidArgument"},
+		"negative": {func() error { _, e := c.ResolveCodeCompletion(ctx, token, "d1", "r2", 0, -1); return e }, "invalidArgument"},
 	} {
 		if err := tc.call(); rpcCode(err) != tc.code {
 			t.Fatal(name, err)
@@ -202,11 +221,28 @@ func TestCompletionClientRefusesBadAnswers(t *testing.T) {
 		"other document": {func(d *cd.CompletionDetails) { d.DocumentID = "d2" }, "staleContext"},
 		"odd docs":       {func(d *cd.CompletionDetails) { d.Documentation.Kind = "html" }, "toolFailed"},
 		"long detail":    {func(d *cd.CompletionDetails) { d.Detail = strings.Repeat("d", 1025) }, "toolFailed"},
+		"other version":  {func(d *cd.CompletionDetails) { d.Version = 7 }, "staleContext"},
+		"edits unasked":  {func(d *cd.CompletionDetails) { d.Version, d.ExtraEdits = 0, []cd.TextEdit{importEdit} }, "toolFailed"},
+		"bad edit": {func(d *cd.CompletionDetails) {
+			d.ExtraEdits[0].Range.End.Line = 0
+			d.ExtraEdits[0].Range.Start.Line = 1
+		}, "toolFailed"},
+		"overlapping": {func(d *cd.CompletionDetails) { d.ExtraEdits = append(d.ExtraEdits, importEdit) }, "toolFailed"},
 	} {
 		b.tamperDetails = tc.tamper
-		if _, err := c.ResolveCodeCompletion(ctx, token, "d1", got.ResultID, 0); rpcCode(err) != tc.code {
+		if _, err := c.ResolveCodeCompletion(ctx, token, "d1", got.ResultID, 0, 1); rpcCode(err) != tc.code {
 			t.Fatal(name, err)
 		}
+	}
+	// A host from before CC-10 answers without the version and edits.
+	b.tamperDetails = func(d *cd.CompletionDetails) { d.Version, d.ExtraEdits = 0, nil }
+	if d, err := c.ResolveCodeCompletion(ctx, token, "d1", got.ResultID, 0, 1); err != nil || d.ExtraEdits != nil {
+		t.Fatal(d, err)
+	}
+	b.tamperDetails = nil
+	// Edits only for the version the document is at.
+	if _, err := c.ResolveCodeCompletion(ctx, token, "d1", got.ResultID, 0, 2); rpcCode(err) != "staleVersion" {
+		t.Fatal(err)
 	}
 }
 
@@ -252,7 +288,7 @@ func TestCompletionUnsupportedFailsBeforeAnyWork(t *testing.T) {
 	if _, err := c.CompleteCode(ctx, token, "d1", 1, at, invoked); rpcCode(err) != "unsupported" {
 		t.Fatal(err)
 	}
-	if _, err := c.ResolveCodeCompletion(ctx, token, "d1", "r1", 0); rpcCode(err) != "unsupported" {
+	if _, err := c.ResolveCodeCompletion(ctx, token, "d1", "r1", 0, 0); rpcCode(err) != "unsupported" {
 		t.Fatal(err)
 	}
 	// Without live documents the server advertises no completion and

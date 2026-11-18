@@ -347,7 +347,7 @@ export class CodeDiagnosticsStore {
     const listed: CompletionItemDetails = { detail: item.detail, documentation: item.documentation };
     if (!result.resultId) return listed;
     try {
-      const d = await this.backend.resolveCodeCompletion(c, result.documentId, result.resultId, index, host);
+      const d = await this.backend.resolveCodeCompletion(c, result.documentId, result.resultId, index, 0, host);
       if (!this.active(life) || d.documentId !== result.documentId || d.resultId !== result.resultId || d.index !== index) return listed;
       return { detail: d.detail ?? item.detail, documentation: d.documentation ?? item.documentation, truncated: d.truncated };
     } catch {

@@ -78,6 +78,6 @@ func (u UnsupportedCodeDiagnostics) CompleteCode(context.Context, cd.Context, st
 	return cd.CompletionResult{}, u.err()
 }
 
-func (u UnsupportedCodeDiagnostics) ResolveCodeCompletion(context.Context, cd.Context, string, string, int) (cd.CompletionDetails, error) {
+func (u UnsupportedCodeDiagnostics) ResolveCodeCompletion(context.Context, cd.Context, string, string, int, int64) (cd.CompletionDetails, error) {
 	return cd.CompletionDetails{}, u.err()
 }

@@ -41,7 +41,8 @@ type completionQACase struct {
 // servers for completions through the production local route: discovery
 // (DiscoverLocalLive over the login shell's PATH and the directories in
 // AGENT_SESSIONS_COMPLETION_QA_DIRS, such as the app's managed installs),
-// session approval, an opened draft, CompleteCode and ResolveCodeCompletion.
+// session approval, an opened draft, CompleteCode and ResolveCodeCompletion
+// (details, and extra edits at the current version when none are listed).
 // Each project is a disposable temp directory. It logs, per probe, what the
 // server answered, how long the first useful answer took, and the warm
 // latency of a change plus a request, as the editor sends them (CC-05).
@@ -101,7 +102,7 @@ func TestLocalLiveRealCompletionQA(t *testing.T) {
 			probes: []completionProbe{
 				{"member after .", "console.§\n", ".", "log", false, ""},
 				{"typed on", "console.lo§\n", "", "log", false, ""},
-				{"project symbol, imported", "helperVal§\n", "", "helperValue", true, "CC-10"},
+				{"project symbol, imported", "helperVal§\n", "", "helperValue", true, ""},
 			},
 		},
 		{
@@ -285,12 +286,19 @@ func runCompletionQA(t *testing.T, c completionQACase, managed []string) {
 			if err != nil {
 				return r, -1, took, err
 			}
+			// The item by label, one with listed extra edits first.
+			found := -1
 			for j, item := range r.Items {
-				if strings.HasPrefix(item.Label, p.label) && (!p.extra || len(item.ExtraEdits) > 0) {
-					return r, j, took, nil
+				if strings.HasPrefix(item.Label, p.label) {
+					if len(item.ExtraEdits) > 0 {
+						return r, j, took, nil
+					}
+					if found < 0 {
+						found = j
+					}
 				}
 			}
-			return r, -1, took, nil
+			return r, found, took, nil
 		}
 		// The first probe waits for the server to start and index.
 		limit := 20 * time.Second
@@ -301,9 +309,23 @@ func runCompletionQA(t *testing.T, c completionQACase, managed []string) {
 		var r cd.CompletionResult
 		found, asks, empty := -1, 0, 0
 		var lastErr error
+		// Extra edits the server computes only on resolve (vtsls, CC-10), asked
+		// for at the version just answered, as the editor does on accept.
+		var resolvedExtra []cd.TextEdit
+		var extraResolve time.Duration
 		for time.Since(first) < limit {
 			asks++
 			r, found, _, lastErr = ask()
+			if found >= 0 && p.extra && len(r.Items[found].ExtraEdits) == 0 {
+				start := time.Now()
+				d, err := e.ResolveCodeCompletion(ctx, ctxID, "qa", r.ResultID, found, version)
+				extraResolve = time.Since(start)
+				if err == nil && d.Version == version && len(d.ExtraEdits) > 0 {
+					resolvedExtra = d.ExtraEdits
+				} else {
+					lastErr, found = err, -1
+				}
+			}
 			if found >= 0 {
 				break
 			}
@@ -340,7 +362,7 @@ func runCompletionQA(t *testing.T, c completionQACase, managed []string) {
 		item := r.Items[found]
 		// Details for the item, as the info panel asks while the answer is the last one.
 		resolveStart := time.Now()
-		details, resolveErr := e.ResolveCodeCompletion(ctx, ctxID, "qa", r.ResultID, found)
+		details, resolveErr := e.ResolveCodeCompletion(ctx, ctxID, "qa", r.ResultID, found, 0)
 		resolveTook := time.Since(resolveStart)
 		var warm []time.Duration
 		for range 5 {
@@ -357,8 +379,11 @@ func runCompletionQA(t *testing.T, c completionQACase, managed []string) {
 			docLen = len(details.Documentation.Value)
 		}
 		var extra []string
-		for _, x := range item.ExtraEdits {
+		for _, x := range append(slices.Clone(item.ExtraEdits), resolvedExtra...) {
 			extra = append(extra, strings.TrimSpace(x.NewText))
+		}
+		if resolvedExtra != nil {
+			extra = append(extra, "(on resolve, "+extraResolve.Round(time.Millisecond).String()+")")
 		}
 		insert := item.InsertText
 		if item.Edit != nil {

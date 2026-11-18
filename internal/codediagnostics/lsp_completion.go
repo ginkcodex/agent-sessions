@@ -191,8 +191,8 @@ func validTrigger(t CompletionTrigger) bool {
 // session must offer completion. Of several owners, the one that offers
 // completion and the most navigation answers is asked (Pyright, not Ruff).
 // Items whose ranges do not fit the text at version are left out. The answer
-// is kept for ResolveCompletion while the document stays at version and no
-// later answer replaces it.
+// is kept for ResolveCompletion until a later answer replaces it or the
+// document is reopened or closed; typing on keeps it.
 func (m *Manager) Complete(ctx context.Context, c Context, documentID string, version int64, pos Position, trigger CompletionTrigger) (CompletionResult, error) {
 	m.mu.Lock()
 	provider, ok := m.provider.(CompletionProvider)

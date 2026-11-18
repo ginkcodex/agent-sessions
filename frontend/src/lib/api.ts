@@ -687,9 +687,9 @@ class WailsBackendAPI implements BackendAPI {
       return { ...out, items: out.items ?? [] };
     }));
   }
-  resolveCodeCompletion(c: CodeDiagnosticsContext, documentId: string, resultId: string, index: number, host: string): Promise<CodeCompletionDetails> {
+  resolveCodeCompletion(c: CodeDiagnosticsContext, documentId: string, resultId: string, index: number, version: number, host: string): Promise<CodeCompletionDetails> {
     const b = this.binding;
-    return this.diagnosticsCall(b.ResolveCodeCompletion && (() => b.ResolveCodeCompletion!(c, documentId, resultId, index, host)));
+    return this.diagnosticsCall(b.ResolveCodeCompletion && (() => b.ResolveCodeCompletion!(c, documentId, resultId, index, version, host)));
   }
   async cancelCodeCompletion(requestId: string): Promise<void> {
     const b = this.binding;

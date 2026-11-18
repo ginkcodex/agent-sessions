@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -256,15 +257,18 @@ func must[T any](v T, err error) T {
 }
 
 // completeDocs adds completion to the fake document provider. Answers are
-// r1, r2, ...; when hold is set, the next answer waits for it.
+// r1, r2, ...; when hold is set, the next answer waits for it, and when
+// resolveHold is set, the next resolve. A resolve at a version returns edits.
 type completeDocs struct {
 	MultiOwnedDocumentProvider
-	mu       sync.Mutex
-	reqs     []CompletionRequest
-	resolves []CompletionResolveRequest
-	items    []CompletionItem
-	answers  int
-	hold     chan struct{}
+	mu          sync.Mutex
+	reqs        []CompletionRequest
+	resolves    []CompletionResolveRequest
+	items       []CompletionItem
+	edits       []TextEdit
+	answers     int
+	hold        chan struct{}
+	resolveHold chan struct{}
 }
 
 func (n *completeDocs) Complete(_ context.Context, req CompletionRequest) (CompletionResult, error) {
@@ -282,9 +286,24 @@ func (n *completeDocs) Complete(_ context.Context, req CompletionRequest) (Compl
 
 func (n *completeDocs) ResolveCompletion(_ context.Context, req CompletionResolveRequest) (CompletionDetails, error) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	n.resolves = append(n.resolves, req)
-	return CompletionDetails{Detail: "resolved"}, nil
+	hold, edits := n.resolveHold, n.edits
+	n.resolveHold = nil
+	n.mu.Unlock()
+	if hold != nil {
+		<-hold
+	}
+	out := CompletionDetails{Detail: "resolved"}
+	if req.Version > 0 {
+		out.ExtraEdits = edits
+	}
+	return out, nil
+}
+
+func (n *completeDocs) resolveCount() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return len(n.resolves)
 }
 
 func (n *completeDocs) requests() int {
@@ -449,14 +468,15 @@ func TestCompletionResolveAgainstFakeServer(t *testing.T) {
 		t.Fatal(got, err)
 	}
 	resolve := func(id string, index int) (CompletionDetails, error) {
-		return m.ResolveCompletion(ctx, c, "d1", id, index)
+		return m.ResolveCompletion(ctx, c, "d1", id, index, 0)
 	}
 
 	// The kept item goes back with its data; the index is in the kept items.
+	// Without a version, extra edits are not asked for.
 	srv.set("completionItem/resolve", `"result":{"label":"alpha","detail":"func alpha()","documentation":{"kind":"markdown","value":"Alpha does."},"data":{"id":7},`+
 		`"additionalTextEdits":[`+edit(navRange(0, 0, 0, 0), "ignored")+`]}`)
 	details, err := resolve(got.ResultID, 0)
-	if err != nil || details != (CompletionDetails{DocumentID: "d1", ResultID: got.ResultID, Index: 0, Detail: "func alpha()", Documentation: details.Documentation}) ||
+	if err != nil || !reflect.DeepEqual(details, CompletionDetails{DocumentID: "d1", ResultID: got.ResultID, Index: 0, Detail: "func alpha()", Documentation: details.Documentation}) ||
 		*details.Documentation != (MarkupText{Kind: "markdown", Value: "Alpha does."}) || details.Validate() != nil {
 		t.Fatal(details, err)
 	}
@@ -490,7 +510,7 @@ func TestCompletionResolveAgainstFakeServer(t *testing.T) {
 			t.Fatal(bad, err)
 		}
 	}
-	if _, err = m.ResolveCompletion(ctx, c, "nope", got.ResultID, 0); errCode(err) != "notFound" {
+	if _, err = m.ResolveCompletion(ctx, c, "nope", got.ResultID, 0, 0); errCode(err) != "notFound" {
 		t.Fatal(err)
 	}
 	if len(srv.requests) != before {
@@ -508,8 +528,8 @@ func TestCompletionResolveAgainstFakeServer(t *testing.T) {
 	if _, err = resolve(next.ResultID, 0); err != nil {
 		t.Fatal(err)
 	}
-	// The session drops its items when the document changes, when the
-	// session restarts (another generation) and when the document closes.
+	// The session keeps its items when the document changes, and drops them
+	// when the session restarts (another generation) and when it closes.
 	m.mu.Lock()
 	kept := m.attachments[c.AttachmentID].docs["d1"].completion
 	m.mu.Unlock()
@@ -525,11 +545,50 @@ func TestCompletionResolveAgainstFakeServer(t *testing.T) {
 	if _, err = m.ChangeDocument(ctx, c, "d1", 2, "package a\n\nfunc main() { al }\n"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = resolve(next.ResultID, 0); errCode(err) != "staleVersion" {
+	srv.set("completionItem/resolve", `"result":{"label":"alpha","detail":"func alpha()"}`)
+	if details, err = resolve(next.ResultID, 0); err != nil || details.Detail != "func alpha()" {
+		t.Fatal(details, err)
+	}
+	if _, err = f.docs.ResolveCompletion(ctx, req); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.docs.ResolveCompletion(ctx, req); errCode(err) != "staleVersion" {
-		t.Fatal(err)
+
+	// At the current version, the resolved item's extra edits come too,
+	// checked against that version's text.
+	at2 := func(index int) (CompletionDetails, error) {
+		return m.ResolveCompletion(ctx, c, "d1", next.ResultID, index, 2)
+	}
+	imports := `"result":{"label":"alpha","additionalTextEdits":[` + edit(navRange(1, 0, 1, 0), "import \"alpha\"\n") + `,` + edit(navRange(1, 0, 1, 0), "overlaps") + `]}`
+	srv.set("completionItem/resolve", imports)
+	if details, err = at2(0); err != nil || details.Version != 2 || len(details.ExtraEdits) != 1 || details.ExtraEdits[0] != (TextEdit{Range: Range{Start: Position{Line: 1}, End: Position{Line: 1}}, NewText: "import \"alpha\"\n"}) || details.Validate() != nil {
+		t.Fatal(details, err)
+	}
+	if details, err = resolve(next.ResultID, 0); err != nil || details.Version != 0 || details.ExtraEdits != nil {
+		t.Fatal("edits without a version", details, err)
+	}
+	// Any edit that does not fit the text drops them all.
+	for name, edits := range map[string]string{
+		"outside the text": edit(navRange(1, 0, 1, 0), "a") + `,` + edit(navRange(3, 1, 3, 1), "b"),
+		"past the line":    edit(navRange(2, 0, 2, 40), "c"),
+		"no text":          `{"range":` + navRange(0, 0, 0, 0) + `}`,
+		"too long":         edit(navRange(0, 0, 0, 0), strings.Repeat("x", maxCompletionText+1)),
+		"too many":         strings.TrimSuffix(strings.Repeat(edit(navRange(0, 0, 0, 0), "")+",", maxCompletionExtraEdits+1), ","),
+	} {
+		srv.set("completionItem/resolve", `"result":{"label":"alpha","additionalTextEdits":[`+edits+`]}`)
+		if details, err = at2(0); err != nil || details.Version != 0 || details.ExtraEdits != nil || details.Detail != "listed" {
+			t.Fatal(name, details, err)
+		}
+	}
+	// Edits are only for the version the document is at.
+	srv.set("completionItem/resolve", imports)
+	before = len(srv.requests)
+	for _, v := range []int64{1, 3, -1} {
+		if _, err = m.ResolveCompletion(ctx, c, "d1", next.ResultID, 0, v); errCode(err) == "" {
+			t.Fatal(v, "resolved at another version")
+		}
+	}
+	if len(srv.requests) != before {
+		t.Fatal("refused resolve reached the server")
 	}
 	if got, err = m.Complete(ctx, c, "d1", 2, Position{Line: 2, Character: 16}, invoked); err != nil || got.ResultID == "" {
 		t.Fatal(got, err)
@@ -561,8 +620,12 @@ func TestCompletionResolveWithoutResolveProvider(t *testing.T) {
 		t.Fatal(got, err)
 	}
 	before := len(f.srv.requests)
-	details, err := f.m.ResolveCompletion(ctx, f.c, "d1", got.ResultID, 0)
+	details, err := f.m.ResolveCompletion(ctx, f.c, "d1", got.ResultID, 0, 0)
 	if err != nil || details.Detail != got.Items[0].Detail || !details.Truncated || *details.Documentation != (MarkupText{Kind: "plaintext", Value: "Alpha."}) {
+		t.Fatal(details, err)
+	}
+	// Its edits were in the list, so resolving at the version adds none.
+	if details, err = f.m.ResolveCompletion(ctx, f.c, "d1", got.ResultID, 0, 1); err != nil || details.Version != 0 || details.ExtraEdits != nil || details.Validate() != nil {
 		t.Fatal(details, err)
 	}
 	if len(f.srv.requests) != before {
@@ -585,11 +648,11 @@ func TestCompletionResolveKeepsTheLastAnswer(t *testing.T) {
 	if _, err := m.Complete(ctx, c, "d1", 1, Position{}, invoked); err != nil {
 		t.Fatal(err)
 	}
-	details, err := m.ResolveCompletion(ctx, c, "d1", "r1", 1)
-	if err != nil || details != (CompletionDetails{DocumentID: "d1", ResultID: "r1", Index: 1, Detail: "resolved"}) {
+	details, err := m.ResolveCompletion(ctx, c, "d1", "r1", 1, 0)
+	if err != nil || !reflect.DeepEqual(details, CompletionDetails{DocumentID: "d1", ResultID: "r1", Index: 1, Detail: "resolved"}) {
 		t.Fatal(details, err)
 	}
-	if req := docs.resolves[0]; req.Owner.ProviderID != "pyright" || req.Generation != "g-pyright" || req.Path != "source.go" || req.ResultID != "r1" || req.Index != 1 {
+	if req := docs.resolves[0]; req.Owner.ProviderID != "pyright" || req.Generation != "g-pyright" || req.Path != "source.go" || req.ResultID != "r1" || req.Index != 1 || req.Version != 0 || req.Text != "" {
 		t.Fatalf("%+v", req)
 	}
 	// An earlier request answering after a later one does not replace it.
@@ -607,30 +670,74 @@ func TestCompletionResolveKeepsTheLastAnswer(t *testing.T) {
 	if r := <-done; r.ResultID != "r2" {
 		t.Fatal(r)
 	}
-	if _, err = m.ResolveCompletion(ctx, c, "d1", "r2", 0); errCode(err) != "staleVersion" {
+	if _, err = m.ResolveCompletion(ctx, c, "d1", "r2", 0, 0); errCode(err) != "staleVersion" {
 		t.Fatal(err)
 	}
-	if _, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0); err != nil {
+	if _, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0, 0); err != nil {
 		t.Fatal(err)
 	}
-	// A change, then a close, end it.
+	// At the current version the server gets the version's text, and its
+	// edits come back with that version.
+	imports := []TextEdit{{NewText: "import x\n"}}
+	docs.mu.Lock()
+	docs.edits = imports
+	docs.mu.Unlock()
+	if details, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0, 1); err != nil || details.Version != 1 || !reflect.DeepEqual(details.ExtraEdits, imports) {
+		t.Fatal(details, err)
+	}
+	if req := docs.resolves[len(docs.resolves)-1]; req.Version != 1 || req.Text != "x = 1\n" {
+		t.Fatalf("%+v", req)
+	}
+	// A change keeps the answer; only the new version can have edits.
 	if _, err = m.ChangeDocument(ctx, c, "d1", 2, "x = 2\n"); err != nil {
 		t.Fatal(err)
 	}
-	resolves := len(docs.resolves)
-	if _, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0); errCode(err) != "staleVersion" || len(docs.resolves) != resolves {
+	if details, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0, 0); err != nil || details.Detail != "resolved" || details.ExtraEdits != nil {
+		t.Fatal(details, err)
+	}
+	resolves := docs.resolveCount()
+	for _, v := range []int64{1, 3} {
+		if _, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0, v); errCode(err) != "staleVersion" || docs.resolveCount() != resolves {
+			t.Fatal(v, err)
+		}
+	}
+	if details, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0, 2); err != nil || details.Version != 2 || len(details.ExtraEdits) != 1 {
+		t.Fatal(details, err)
+	}
+	// A change while the server resolves drops the edits, not the details.
+	slow := make(chan struct{})
+	docs.mu.Lock()
+	docs.resolveHold = slow
+	docs.mu.Unlock()
+	type answer struct {
+		details CompletionDetails
+		err     error
+	}
+	held := make(chan answer, 1)
+	go func() { d, err := m.ResolveCompletion(ctx, c, "d1", "r3", 0, 2); held <- answer{d, err} }()
+	eventually(t, "slow resolve sent", func() bool { return docs.resolveCount() == resolves+2 })
+	if _, err = m.ChangeDocument(ctx, c, "d1", 3, "x = 3\n"); err != nil {
 		t.Fatal(err)
 	}
+	close(slow)
+	if a := <-held; a.err != nil || a.details.Detail != "resolved" || a.details.Version != 0 || a.details.ExtraEdits != nil || a.details.Validate() != nil {
+		t.Fatal(a.details, a.err)
+	}
+	// A close ends it.
 	if _, err = m.CloseDocument(ctx, c, "d1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0); err == nil {
+	if _, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0, 0); err == nil {
 		t.Fatal("resolved after close")
 	}
 }
 
 func TestCompletionDetailsValidate(t *testing.T) {
 	ok := CompletionDetails{DocumentID: "d1", ResultID: "1", Index: 3, Detail: "d", Documentation: &MarkupText{Kind: "markdown", Value: "v"}}
+	if err := ok.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	ok.Version, ok.ExtraEdits = 2, []TextEdit{{NewText: "import a\n"}, {Range: Range{Start: Position{Line: 1}, End: Position{Line: 1, Character: 2}}, NewText: ""}}
 	if err := ok.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -641,6 +748,14 @@ func TestCompletionDetailsValidate(t *testing.T) {
 		{ResultID: "1", Detail: strings.Repeat("d", maxCompletionShort+1)},
 		{ResultID: "1", Documentation: &MarkupText{Kind: "html"}},
 		{ResultID: "1", Documentation: &MarkupText{Kind: "plaintext", Value: strings.Repeat("v", maxCompletionDocs+1)}},
+		{ResultID: "1", Version: -1},
+		{ResultID: "1", Version: 2},
+		{ResultID: "1", ExtraEdits: []TextEdit{{NewText: "x"}}},
+		{ResultID: "1", Version: 2, ExtraEdits: make([]TextEdit, maxCompletionExtraEdits+1)},
+		{ResultID: "1", Version: 2, ExtraEdits: []TextEdit{{Range: Range{Start: Position{Line: 1}, End: Position{Line: 0}}}}},
+		{ResultID: "1", Version: 2, ExtraEdits: []TextEdit{{NewText: strings.Repeat("x", maxCompletionText+1)}}},
+		{ResultID: "1", Version: 2, ExtraEdits: []TextEdit{{NewText: "\xff"}}},
+		{ResultID: "1", Version: 2, ExtraEdits: []TextEdit{{NewText: "a"}, {NewText: "b"}}},
 	} {
 		if errCode(bad.Validate()) != "toolFailed" {
 			t.Fatalf("%+v", bad)

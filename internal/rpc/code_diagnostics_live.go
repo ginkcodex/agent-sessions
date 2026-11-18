@@ -107,7 +107,7 @@ func (s *Server) dispatchLiveDiagnostics(ctx context.Context, req Request) (any,
 		if !ok {
 			return nil, cdError("unsupported", "Code completion is not supported")
 		}
-		return complete.ResolveCodeCompletion(ctx, p.Context, p.DocumentID, p.ResultID, p.Index)
+		return complete.ResolveCodeCompletion(ctx, p.Context, p.DocumentID, p.ResultID, p.Index, p.Version)
 	case "openCodeDiagnosticDocument":
 		return b.OpenCodeDiagnosticDocument(ctx, p.Context, p.Path, p.DocumentID, p.Version, p.Text, p.Revision)
 	case "changeCodeDiagnosticDocument":

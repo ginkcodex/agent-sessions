@@ -321,15 +321,17 @@ func (c *Client) CompleteCode(ctx context.Context, token cd.Context, documentID 
 	return out, nil
 }
 
-// ResolveCodeCompletion asks for an item's detail and documentation. The
-// answer must name the item asked about.
-func (c *Client) ResolveCodeCompletion(ctx context.Context, token cd.Context, documentID, resultID string, index int) (cd.CompletionDetails, error) {
+// ResolveCodeCompletion asks for an item's detail and documentation, and
+// with version above 0 its extra edits at that version. The answer must name
+// the item asked about, and edits only the version asked for. A host from
+// before CC-10 ignores the version and returns no edits.
+func (c *Client) ResolveCodeCompletion(ctx context.Context, token cd.Context, documentID, resultID string, index int, version int64) (cd.CompletionDetails, error) {
 	var out cd.CompletionDetails
-	p := codeDiagnosticsParams{Context: token, DocumentID: documentID, ResultID: resultID, Index: index}
+	p := codeDiagnosticsParams{Context: token, DocumentID: documentID, ResultID: resultID, Index: index, Version: version}
 	if err := c.completionCall(ctx, "resolveCodeCompletion", p, &out); err != nil {
 		return cd.CompletionDetails{}, err
 	}
-	if out.DocumentID != documentID || out.ResultID != resultID || out.Index != index {
+	if out.DocumentID != documentID || out.ResultID != resultID || out.Index != index || out.Version != 0 && out.Version != version {
 		return cd.CompletionDetails{}, cdError("staleContext", "Completion details do not match the request")
 	}
 	if err := out.Validate(); err != nil {

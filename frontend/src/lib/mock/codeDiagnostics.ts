@@ -120,14 +120,27 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     this.answers.set(documentId, { resultId, version, items });
     return { documentId, version, resultId, items: items.map(i => structuredClone(i.item)), triggerCharacters, ...(words.length > items.length ? { isIncomplete: true } : {}) };
   }
-  async resolveCodeCompletion(c: CodeDiagnosticsContext, documentId: string, resultId: string, index: number, host: string): Promise<CodeCompletionDetails> {
+  /**
+   * The kept answer survives changes. At the current version, a name declared
+   * in another open document also resolves to an import of it, at the top.
+   */
+  async resolveCodeCompletion(c: CodeDiagnosticsContext, documentId: string, resultId: string, index: number, version: number, host: string): Promise<CodeCompletionDetails> {
     const d = this.docs(c, host).get(documentId);
     if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
+    if (!Number.isInteger(version) || version < 0) throw new CodeDiagnosticsError('invalidArgument', 'Invalid document version');
     const answer = this.answers.get(documentId);
-    if (!answer || answer.resultId !== resultId || answer.version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The completion answer is no longer kept');
+    if (!answer || answer.resultId !== resultId) throw new CodeDiagnosticsError('staleVersion', 'The completion answer is no longer kept');
     const kept = answer.items[index];
     if (!kept) throw new CodeDiagnosticsError('invalidArgument', 'No such completion item');
-    return { documentId, resultId, index, detail: kept.path, ...(kept.declared ? { documentation: { kind: 'markdown', value: '```\n' + kept.declared + '\n```' } } : {}) };
+    if (version > 0 && version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The document changed since this request');
+    const details: CodeCompletionDetails = { documentId, resultId, index, detail: kept.path, ...(kept.declared ? { documentation: { kind: 'markdown', value: '```\n' + kept.declared + '\n```' } } : {}) };
+    if (version > 0 && kept.declared && kept.path !== d.path) {
+      const from = './' + kept.path.replace(/^.*\//, '').replace(/\.[^.]*$/, '');
+      const top = { line: 0, character: 0 };
+      details.version = version;
+      details.extraEdits = [{ range: { start: top, end: top }, newText: `import { ${kept.item.label} } from '${from}';\n` }];
+    }
+    return details;
   }
   async cancelCodeCompletion(_requestId: string): Promise<void> {}
   /**

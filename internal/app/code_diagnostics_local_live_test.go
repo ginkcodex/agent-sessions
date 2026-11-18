@@ -108,7 +108,8 @@ func (f *localLSP) serve() {
 			}
 			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":[{"label":"alpha","kind":3,"data":{"n":1}}]}`)
 		case "completionItem/resolve":
-			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"label":"alpha","detail":"func alpha()","documentation":"Alpha does."}}`)
+			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"label":"alpha","detail":"func alpha()","documentation":"Alpha does.",` +
+				`"additionalTextEdits":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"newText":"// a\n"}]}}`)
 		}
 	}
 }
@@ -295,15 +296,22 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 	if err != nil || got.Version != 2 || got.ResultID == "" || len(got.Items) != 1 || got.Items[0].Label != "alpha" {
 		t.Fatal(got, err)
 	}
-	details, err := a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, host)
-	if err != nil || details.Detail != "func alpha()" || details.Documentation == nil || details.Documentation.Value != "Alpha does." {
+	details, err := a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, 0, host)
+	if err != nil || details.Detail != "func alpha()" || details.Documentation == nil || details.Documentation.Value != "Alpha does." || details.ExtraEdits != nil {
 		t.Fatal(details, err)
 	}
+	// At the current version the resolved import edit comes too.
+	details, err = a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, 2, host)
+	if err != nil || details.Version != 2 || len(details.ExtraEdits) != 1 || details.ExtraEdits[0].NewText != "// a\n" {
+		t.Fatal(details, err)
+	}
+	_, err = a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, 1, host)
+	checkDiagnosticsError(t, err, "staleVersion")
 	_, err = a.CompleteCode(att.Context, "q1", "d1", 1, end, invoked, host)
 	checkDiagnosticsError(t, err, "staleVersion")
 	_, err = a.CompleteCode(att.Context, "q1", "d1", 2, end, invoked, "other-host")
 	checkDiagnosticsError(t, err, "staleContext")
-	_, err = a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, "other-host")
+	_, err = a.ResolveCodeCompletion(att.Context, "d1", got.ResultID, 0, 0, "other-host")
 	checkDiagnosticsError(t, err, "staleContext")
 	// Cancel ends a request the server has not answered; an unknown ID is a
 	// no-op.

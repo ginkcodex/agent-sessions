@@ -124,7 +124,8 @@ export interface CodeCompletionItem {
 }
 /**
  * The answer for the document at `version`. `resultId` names it for
- * resolveCodeCompletion while it is the document's last answer; an
+ * resolveCodeCompletion while it is the document's last answer, typing on
+ * included; an
  * incomplete answer is asked again as the user types on.
  */
 export interface CodeCompletionResult {
@@ -137,7 +138,12 @@ export interface CodeCompletionResult {
   /** The answering server's trigger characters; a character it did not name is answered with nothing. */
   triggerCharacters?: string;
 }
-/** An item's detail and documentation, from completionItem/resolve. */
+/**
+ * An item's detail and documentation, from completionItem/resolve. Resolved
+ * at a version, also the item's extra edits (imports) the server computes
+ * only then, for that version's text: `version` and `extraEdits` come
+ * together or not at all. A host from before CC-10 never sends them.
+ */
 export interface CodeCompletionDetails {
   documentId: string;
   resultId: string;
@@ -145,6 +151,8 @@ export interface CodeCompletionDetails {
   detail?: string;
   documentation?: CodeMarkupText;
   truncated?: boolean;
+  version?: number;
+  extraEdits?: CodeTextEdit[];
 }
 
 /** What the bridge confirmed for a displayed document; the store keeps no text. */
@@ -199,8 +207,13 @@ export interface CodeDiagnosticsAPI {
    * request under the same ID cancels the old one.
    */
   completeCode(context: CodeDiagnosticsContext, requestId: string, documentId: string, version: number, position: CodeDiagnosticPosition, trigger: CodeCompletionTrigger, expectedHostId: string): Promise<CodeCompletionResult>;
-  /** codeCompletion only: item `index` of the document's last answer, `resultId`. */
-  resolveCodeCompletion(context: CodeDiagnosticsContext, documentId: string, resultId: string, index: number, expectedHostId: string): Promise<CodeCompletionDetails>;
+  /**
+   * codeCompletion only: item `index` of the document's last answer,
+   * `resultId`, kept through later changes. `version` 0 asks for details
+   * only; the document's current version also asks for the item's extra
+   * edits, and rejects with `staleVersion` when the document is at another.
+   */
+  resolveCodeCompletion(context: CodeDiagnosticsContext, documentId: string, resultId: string, index: number, version: number, expectedHostId: string): Promise<CodeCompletionDetails>;
   /** Ends the request started under `requestId`, which rejects with `canceled`. A finished or unknown ID is a no-op. */
   cancelCodeCompletion(requestId: string): Promise<void>;
 }

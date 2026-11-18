@@ -9,9 +9,10 @@ import (
 )
 
 // CompletionDetails is what resolving one item adds: its detail and
-// documentation, capped as in a completion answer. Resolved extra edits are
-// ignored (applying them would need the edit checks again; gopls and vtsls
-// send them in the list already).
+// documentation, capped as in a completion answer, and, when asked for at a
+// version, the extra edits (imports) the server computes only on resolve
+// (vtsls). ExtraEdits apply to the document at Version; both are set
+// together or not at all.
 type CompletionDetails struct {
 	DocumentID    string      `json:"documentId"`
 	ResultID      string      `json:"resultId"`
@@ -19,9 +20,13 @@ type CompletionDetails struct {
 	Detail        string      `json:"detail,omitempty"`
 	Documentation *MarkupText `json:"documentation,omitempty"`
 	Truncated     bool        `json:"truncated,omitempty"`
+	Version       int64       `json:"version,omitempty"`
+	ExtraEdits    []TextEdit  `json:"extraEdits,omitempty"`
 }
 
-// CompletionResolveRequest names an item of a session's kept answer.
+// CompletionResolveRequest names an item of a session's kept answer. Version
+// above 0 asks for the resolved item's extra edits too, checked against Text,
+// the document at Version.
 type CompletionResolveRequest struct {
 	Root       AuthorizedRoot
 	Owner      DocumentOwnerIdentity
@@ -29,10 +34,14 @@ type CompletionResolveRequest struct {
 	Path       string
 	ResultID   string
 	Index      int
+	Version    int64
+	Text       string
 }
 
 // keptAnswer is the Manager's record of a document's last completion answer:
-// which session gave it, for which version, and how many items it had.
+// which session gave it, for which version, and how many items it had. It
+// stays through later changes: the editor filters a complete answer as the
+// user types on, and still resolves its items.
 type keptAnswer struct {
 	seq        uint64
 	resultID   string
@@ -52,11 +61,16 @@ type keptItems struct {
 
 // ResolveCompletion returns an item's detail and documentation, from the
 // server when it resolves items and otherwise from the answer. The answer
-// must be the document's last one, and the document unchanged since; anything
-// else is staleVersion.
-func (m *Manager) ResolveCompletion(ctx context.Context, c Context, documentID, resultID string, index int) (CompletionDetails, error) {
+// must be the document's last one; anything else is staleVersion. The
+// document may have changed since: the server resolves with what it has.
+//
+// With version above 0, the current version, which the answering server must
+// have, the server's extra edits for the item come too, checked against that
+// version's text. They are dropped when the document changed while the server
+// answered, as they may no longer fit.
+func (m *Manager) ResolveCompletion(ctx context.Context, c Context, documentID, resultID string, index int, version int64) (CompletionDetails, error) {
 	m.mu.Lock()
-	req, provider, err := m.resolveRoute(c, documentID, resultID, index)
+	req, provider, err := m.resolveRoute(c, documentID, resultID, index, version)
 	m.mu.Unlock()
 	if err != nil {
 		return CompletionDetails{}, err
@@ -66,6 +80,7 @@ func (m *Manager) ResolveCompletion(ctx context.Context, c Context, documentID, 
 		return CompletionDetails{}, err
 	}
 	details.DocumentID, details.ResultID, details.Index = documentID, resultID, index
+	details.Version = 0
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	// The attachment may have ended (or lost approval) while the server
@@ -77,10 +92,15 @@ func (m *Manager) ResolveCompletion(ctx context.Context, c Context, documentID, 
 	if err != nil {
 		return CompletionDetails{}, err
 	}
+	if d := a.docs[documentID]; version <= 0 || len(details.ExtraEdits) == 0 || d == nil || d.version != version {
+		details.ExtraEdits = nil
+	} else {
+		details.Version = version
+	}
 	return details, nil
 }
 
-func (m *Manager) resolveRoute(c Context, documentID, resultID string, index int) (CompletionResolveRequest, CompletionProvider, error) {
+func (m *Manager) resolveRoute(c Context, documentID, resultID string, index int, version int64) (CompletionResolveRequest, CompletionProvider, error) {
 	a, d, err := m.ownedDocument(c, documentID)
 	if err != nil {
 		return CompletionResolveRequest{}, nil, err
@@ -89,17 +109,41 @@ func (m *Manager) resolveRoute(c Context, documentID, resultID string, index int
 	switch kept := d.completion; {
 	case !ok:
 		return CompletionResolveRequest{}, nil, failure("unsupported", "Code completion is unavailable")
-	case !bounded(resultID, 64):
+	case !bounded(resultID, 64) || version < 0:
 		return CompletionResolveRequest{}, nil, failure("invalidArgument", "Invalid completion result")
-	case kept.resultID != resultID || kept.version != d.version:
+	case kept.resultID != resultID:
 		return CompletionResolveRequest{}, nil, completionGone()
 	case index < 0 || index >= kept.items:
 		return CompletionResolveRequest{}, nil, failure("invalidArgument", "No such completion item")
 	case d.contextBlocked:
 		return CompletionResolveRequest{}, nil, goContextChanged()
+	case version > 0 && !answeredAt(d, kept, version):
+		return CompletionResolveRequest{}, nil, failure("staleVersion", "The document changed since this request")
 	default:
-		return CompletionResolveRequest{Root: a.root, Owner: kept.owner, Generation: kept.generation, Path: d.path, ResultID: resultID, Index: index}, provider, nil
+		req := CompletionResolveRequest{Root: a.root, Owner: kept.owner, Generation: kept.generation, Path: d.path, ResultID: resultID, Index: index}
+		if version > 0 {
+			req.Version, req.Text = version, d.text
+		}
+		return req, provider, nil
 	}
+}
+
+// answeredAt reports whether the document is at version and the session that
+// gave the kept answer has received it, so edits it resolves fit d.text.
+func answeredAt(d *documentState, kept keptAnswer, version int64) bool {
+	if d.version != version {
+		return false
+	}
+	routes := d.routes
+	if len(routes) == 0 {
+		routes = []*documentState{d}
+	}
+	for _, route := range routes {
+		if route.owner == kept.owner {
+			return !route.broken && route.generation == kept.generation && route.version == version
+		}
+	}
+	return false
 }
 
 func completionGone() error {
@@ -107,7 +151,8 @@ func completionGone() error {
 }
 
 // ResolveCompletion resolves an item of the session's kept answer. A
-// restarted session or a dropped answer is staleVersion.
+// restarted session or a dropped answer is staleVersion. With req.Version,
+// the resolved item's extra edits come too, checked against req.Text.
 func (d SessionDocuments) ResolveCompletion(ctx context.Context, req CompletionResolveRequest) (CompletionDetails, error) {
 	_, s, tr, target, err := d.sessionFor(req.Root, req.Path, req.Owner, req.Generation, completionOp)
 	var e *Error
@@ -122,6 +167,7 @@ func (d SessionDocuments) ResolveCompletion(ctx context.Context, req CompletionR
 		return CompletionDetails{}, completionGone()
 	}
 	listed, err := itemDetails(raw)
+	// A server that does not resolve put its edits in the answer already.
 	if err != nil || !s.info().Capabilities.CompletionResolve {
 		return listed, err
 	}
@@ -144,7 +190,40 @@ func (d SessionDocuments) ResolveCompletion(ctx context.Context, req CompletionR
 		resolved.Documentation, kept = listed.Documentation, true
 	}
 	resolved.Truncated = resolved.Truncated || kept && listed.Truncated
+	if req.Version > 0 {
+		resolved.ExtraEdits = resolvedEdits(answer, req.Text)
+	}
 	return resolved, nil
+}
+
+// resolvedEdits reads a resolved item's extra edits for text: all of them or
+// none, as part of an import can break the code. Each must be inside text and
+// within the bounds of a completion answer; one overlapping an earlier one is
+// dropped. The editor checks them against the main edit, which it maps.
+func resolvedEdits(raw json.RawMessage, text string) []TextEdit {
+	var in struct {
+		AdditionalTextEdits []struct {
+			Range   *Range  `json:"range"`
+			NewText *string `json:"newText"`
+		} `json:"additionalTextEdits"`
+	}
+	if json.Unmarshal(raw, &in) != nil || len(in.AdditionalTextEdits) > maxCompletionExtraEdits {
+		return nil
+	}
+	lines := &lineIndex{text: text}
+	var out []TextEdit
+	var taken []Range
+	for _, e := range in.AdditionalTextEdits {
+		if e.Range == nil || e.NewText == nil || !lines.contains(*e.Range) || len(*e.NewText) > maxCompletionText || !utf8.ValidString(*e.NewText) {
+			return nil
+		}
+		if overlapsAny(*e.Range, taken) {
+			continue
+		}
+		taken = append(taken, *e.Range)
+		out = append(out, TextEdit{Range: *e.Range, NewText: *e.NewText})
+	}
+	return out
 }
 
 // itemDetails reads an item's detail and documentation within the caps.
@@ -169,10 +248,22 @@ func itemDetails(raw json.RawMessage) (CompletionDetails, error) {
 
 // Validate checks details that crossed a connection against the caps.
 func (r CompletionDetails) Validate() error {
+	invalid := failure("toolFailed", "The completion details are invalid")
 	d := r.Documentation
 	if !bounded(r.ResultID, 64) || r.Index < 0 || r.Index >= maxCompletionItems || len(r.Detail) > maxCompletionShort || !utf8.ValidString(r.Detail) ||
 		d != nil && ((d.Kind != "markdown" && d.Kind != "plaintext") || len(d.Value) > maxCompletionDocs || !utf8.ValidString(d.Value)) {
-		return failure("toolFailed", "The completion details are invalid")
+		return invalid
+	}
+	// Edits only with the version they fit, and the version only with edits.
+	if r.Version < 0 || (r.Version > 0) != (len(r.ExtraEdits) > 0) || len(r.ExtraEdits) > maxCompletionExtraEdits {
+		return invalid
+	}
+	var taken []Range
+	for _, e := range r.ExtraEdits {
+		if !validRange(&e.Range) || len(e.NewText) > maxCompletionText || !utf8.ValidString(e.NewText) || overlapsAny(e.Range, taken) {
+			return invalid
+		}
+		taken = append(taken, e.Range)
 	}
 	return nil
 }
@@ -194,8 +285,8 @@ func (s *lspSession) beginCompletion(uri string) string {
 	return id
 }
 
-// keepCompletion stores the items of request id, unless a later request or
-// a document step replaced or dropped its slot.
+// keepCompletion stores the items of request id, unless a later request, a
+// reopen or a close replaced or dropped its slot. A change keeps it.
 func (s *lspSession) keepCompletion(uri, id string, items []json.RawMessage) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -211,12 +302,11 @@ func (s *lspSession) keepCompletion(uri, id string, items []json.RawMessage) boo
 	return true
 }
 
-// dropCompletion forgets uri's kept answer: any when id is empty, otherwise
-// only request id's.
+// dropCompletion forgets uri's kept answer if it is request id's.
 func (s *lspSession) dropCompletion(uri, id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if k, ok := s.completions[uri]; ok && (id == "" || k.id == id) {
+	if k, ok := s.completions[uri]; ok && k.id == id {
 		delete(s.completions, uri)
 	}
 }

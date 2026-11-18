@@ -42,7 +42,9 @@ type codeDiagnosticsParams struct {
 	Revision        string           `json:"revision"`
 	Op              string           `json:"op,omitempty"`
 	Position        *cd.Position     `json:"position,omitempty"`
-	// Trigger, ResultID and Index: completion only.
+	// Trigger, ResultID and Index: completion only. Version, for
+	// resolveCodeCompletion, asks for the item's extra edits at that version;
+	// an older host ignores it and returns none.
 	Trigger  *cd.CompletionTrigger `json:"trigger,omitempty"`
 	ResultID string                `json:"resultId,omitempty"`
 	Index    int                   `json:"index,omitempty"`

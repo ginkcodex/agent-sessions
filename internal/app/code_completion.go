@@ -43,13 +43,15 @@ func (a *App) CompleteCode(c cd.Context, requestID, documentID string, version i
 }
 
 // ResolveCodeCompletion returns the detail and documentation of item index
-// of the document's last completion answer, resultID.
-func (a *App) ResolveCodeCompletion(c cd.Context, documentID, resultID string, index int, expectedHostID string) (cd.CompletionDetails, error) {
+// of the document's last completion answer, resultID. With version above 0,
+// the document's current version, the item's extra edits for that version
+// come too (CC-10).
+func (a *App) ResolveCodeCompletion(c cd.Context, documentID, resultID string, index int, version int64, expectedHostID string) (cd.CompletionDetails, error) {
 	b, gen, err := a.completionRoute(expectedHostID)
 	if err != nil {
 		return cd.CompletionDetails{}, err
 	}
-	out, err := b.ResolveCodeCompletion(a.appCtx(), c, documentID, resultID, index)
+	out, err := b.ResolveCodeCompletion(a.appCtx(), c, documentID, resultID, index, version)
 	if stale := a.diagnosticsCurrent(gen); stale != nil {
 		return cd.CompletionDetails{}, stale
 	}
