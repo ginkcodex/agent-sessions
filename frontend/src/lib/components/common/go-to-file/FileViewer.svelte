@@ -336,6 +336,12 @@
       }
       const editorValid = () => valid() && !frozen && !request.locate(tab, shownSource()) && Boolean(rangeOffsets(shownSource(), range));
       const shown = editing || largeView ? editor?.revealRange(range, editorValid) : codeScroll && revealSourceRange(codeScroll, range);
+      // A link's lines stay marked as a gutter click would mark them: a caret
+      // alone is invisible in the source view.
+      if (shown && request.kind === 'link') {
+        lineSelections.set(tab, { anchor: range.start.line + 1, head: range.end.line + 1 });
+        selectionVersion++;
+      }
       if (shown) finishNavigation();
     }); });
   });

@@ -115,3 +115,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Tool file links | [tool-file-links](../plan/tool-file-links.md) | [tool-file-links/](tool-file-links/README.md) | 1/2 ✅ · 1 ⬜ |
 | Review fixes (2026-11-14 review) | [review-fixes](../plan/review-fixes.md) | [review-fixes/](review-fixes/README.md) | 27/35 ✅ · 8 ⬜ |
 | Code completion | [code-completion](../plan/code-completion.md) | [code-completion/](code-completion/README.md) | 24/27 ✅ · 2 🟡 · 1 ⬜ |
+| File link line highlight | [file-link-line-highlight](../plan/file-link-line-highlight.md) | [file-link-line-highlight/](file-link-line-highlight/README.md) | 1/1 ✅ |
