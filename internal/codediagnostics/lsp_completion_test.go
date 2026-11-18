@@ -657,7 +657,8 @@ func TestCompletionResolveKeepsTheLastAnswer(t *testing.T) {
 	if req := docs.resolves[0]; req.Owner.ProviderID != "pyright" || req.Generation != "g-pyright" || req.Path != "source.go" || req.ResultID != "r1" || req.Index != 1 || req.Version != 0 || req.Text != "" {
 		t.Fatalf("%+v", req)
 	}
-	// An earlier request answering after a later one does not replace it.
+	// An earlier request answering after a later one does not replace it, and
+	// comes back without a result ID.
 	hold := make(chan struct{})
 	docs.mu.Lock()
 	docs.hold = hold
@@ -669,7 +670,7 @@ func TestCompletionResolveKeepsTheLastAnswer(t *testing.T) {
 		t.Fatal(r, err)
 	}
 	close(hold)
-	if r := <-done; r.ResultID != "r2" {
+	if r := <-done; r.ResultID != "" || len(r.Items) != 2 {
 		t.Fatal(r)
 	}
 	if _, err = m.ResolveCompletion(ctx, c, "d1", "r2", 0, 0); errCode(err) != "staleVersion" {
@@ -820,7 +821,101 @@ func TestCompletionKeptBytesAreCapped(t *testing.T) {
 	// A pending request's slot holds no bytes and is not dropped.
 	pending := s.beginCompletion("a")
 	keep("c", quarter)
-	if k := s.completions["a"]; k.id != pending {
+	if k := s.completions["a"]; k.pending != pending {
 		t.Fatal("a pending slot was dropped")
+	}
+	// Dropping a kept answer for the cap leaves the request in flight pending.
+	keep("a", quarter)
+	pending = s.beginCompletion("a")
+	keep("b", quarter, quarter, quarter, quarter)
+	if k := s.completions["a"]; k.id != "" || k.pending != pending || !s.keepCompletion("a", pending, []json.RawMessage{quarter}) {
+		t.Fatalf("%+v", k)
+	}
+}
+
+// A session keeps the last answer for a URI while a newer request runs, so
+// the answer the editor shows still resolves; the newer one replaces it once
+// stored, and one that fails or times out leaves it.
+func TestCompletionKeptWhileAskingAgain(t *testing.T) {
+	s := &lspSession{wireBases: map[string]int64{"a": 1}}
+	item := json.RawMessage(`{"label":"x"}`)
+	first := s.beginCompletion("a")
+	if !s.keepCompletion("a", first, []json.RawMessage{item}) {
+		t.Fatal("not kept")
+	}
+	resolvable := func(id string) bool { _, ok := s.keptCompletion("a", id, 0); return ok }
+	// Held, then failed or timed out: the kept answer stays.
+	failed := s.beginCompletion("a")
+	if !resolvable(first) || resolvable(failed) {
+		t.Fatal("a request in flight replaced the kept answer")
+	}
+	s.dropCompletion("a", failed)
+	if !resolvable(first) || s.keepCompletion("a", failed, []json.RawMessage{item}) {
+		t.Fatal("a failed request changed the kept answer")
+	}
+	// Of two requests, only the later one's answer is stored.
+	older, newer := s.beginCompletion("a"), s.beginCompletion("a")
+	if s.keepCompletion("a", older, []json.RawMessage{item}) || !resolvable(first) {
+		t.Fatal("an earlier request replaced the kept answer")
+	}
+	s.dropCompletion("a", older) // its failure path: a no-op now
+	if !s.keepCompletion("a", newer, []json.RawMessage{item}) || resolvable(first) || !resolvable(newer) {
+		t.Fatal("the newer answer did not replace the kept one")
+	}
+	// A request for a document that is not open keeps nothing.
+	closed := s.beginCompletion("b")
+	if s.keepCompletion("b", closed, []json.RawMessage{item}) {
+		t.Fatal("kept an answer for a closed document")
+	}
+}
+
+// The Manager keeps an answer for the document lifecycle it was asked about:
+// typing while the server answers keeps it, a close does not.
+func TestCompletionKeptThroughTypingWhileAsked(t *testing.T) {
+	m, s, p := multiDocFixture(t)
+	caps := incrementalCaps
+	caps.Completion = true
+	p.entries[1].Capabilities = caps
+	docs := &completeDocs{MultiOwnedDocumentProvider: p, items: []CompletionItem{{Label: "a"}}, edits: []TextEdit{{NewText: "import x\n"}}}
+	m.SetDocumentProvider(docs)
+	ctx, c := context.Background(), s.Context
+	if _, err := m.OpenDocument(ctx, c, "source.go", "d1", 1, "x = 1\n", ""); err != nil {
+		t.Fatal(err)
+	}
+	invoked := CompletionTrigger{Kind: CompletionInvoked}
+	held := func(version int64, during func()) CompletionResult {
+		t.Helper()
+		hold := make(chan struct{})
+		docs.mu.Lock()
+		docs.hold = hold
+		asked := docs.answers
+		docs.mu.Unlock()
+		done := make(chan CompletionResult, 1)
+		go func() { r, _ := m.Complete(ctx, c, "d1", version, Position{}, invoked); done <- r }()
+		eventually(t, "request sent", func() bool { return docs.requests() == asked+1 })
+		during()
+		close(hold)
+		return <-done
+	}
+	r := held(1, func() {
+		if _, err := m.ChangeDocument(ctx, c, "d1", 2, "x = 2\n"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if r.ResultID != "r1" || r.Version != 1 {
+		t.Fatal(r)
+	}
+	if d, err := m.ResolveCompletion(ctx, c, "d1", "r1", 0, 2); err != nil || d.Version != 2 || len(d.ExtraEdits) != 1 {
+		t.Fatal(d, err)
+	}
+	// A close while the server answers: the answer comes back, but is not
+	// kept, so it has no result ID.
+	r = held(2, func() {
+		if _, err := m.CloseDocument(ctx, c, "d1"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if r.ResultID != "" || len(r.Items) != 1 {
+		t.Fatal(r)
 	}
 }

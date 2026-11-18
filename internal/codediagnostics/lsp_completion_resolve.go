@@ -40,26 +40,28 @@ type CompletionResolveRequest struct {
 }
 
 // keptAnswer is the Manager's record of a document's last completion answer:
-// which session gave it, for which version, and how many items it had. It
-// stays through later changes: the editor filters a complete answer as the
-// user types on, and still resolves its items.
+// which session gave it and how many items it had. It stays through later
+// changes: the editor filters a complete answer as the user types on, and
+// still resolves its items.
 type keptAnswer struct {
 	seq        uint64
 	resultID   string
 	items      int
-	version    int64
 	owner      DocumentOwnerIdentity
 	generation string
 }
 
 // keptItems is a session's last answer for one URI: the server's items, with
-// their opaque data, which never leave the host. Items is nil while the
-// request runs; bytes is their raw size.
+// their opaque data, which never leave the host; bytes is their raw size.
+// Pending names the request in flight, whose answer replaces them; until it
+// does, the answer shown in the editor still resolves. Id is empty while no
+// answer is kept yet.
 type keptItems struct {
-	id    string
-	seq   uint64
-	items []json.RawMessage
-	bytes int
+	id      string
+	seq     uint64
+	items   []json.RawMessage
+	bytes   int
+	pending string
 }
 
 // maxKeptCompletion caps the raw item bytes a session keeps for resolve,
@@ -278,8 +280,8 @@ func (r CompletionDetails) Validate() error {
 }
 
 // beginCompletion starts a request for an open uri and returns its result ID.
-// Its slot replaces the URI's kept answer at once, so an earlier request that
-// answers later is not kept.
+// It becomes the URI's pending request, so an earlier request that answers
+// later is not kept; the kept answer stays until this one is stored.
 func (s *lspSession) beginCompletion(uri string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -289,21 +291,23 @@ func (s *lspSession) beginCompletion(uri string) string {
 		if s.completions == nil {
 			s.completions = make(map[string]keptItems)
 		}
-		s.completions[uri] = keptItems{id: id, seq: s.completionIDs}
+		k := s.completions[uri]
+		k.pending = id
+		s.completions[uri] = k
 	}
 	return id
 }
 
-// keepCompletion stores the items of request id, unless a later request, a
-// reopen or a close replaced or dropped its slot. A change keeps it. Within
-// maxKeptCompletion: other URIs' answers are dropped, oldest first, and an
-// answer larger than the cap keeps the items that fit; the rest cannot be
-// resolved.
+// keepCompletion stores the items of request id in place of the kept answer,
+// unless a later request, a reopen or a close replaced or dropped its slot. A
+// change keeps it. Within maxKeptCompletion: other URIs' answers are dropped,
+// oldest first (a request they have in flight stays pending), and an answer
+// larger than the cap keeps the items that fit; the rest cannot be resolved.
 func (s *lspSession) keepCompletion(uri, id string, items []json.RawMessage) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	k, ok := s.completions[uri]
-	if !ok || k.id != id {
+	if !ok || k.pending != id {
 		return false
 	}
 	n := 0
@@ -317,8 +321,8 @@ func (s *lspSession) keepCompletion(uri, id string, items []json.RawMessage) boo
 	if items == nil {
 		items = []json.RawMessage{}
 	}
-	k.items, k.bytes = items, n
-	s.completions[uri] = k
+	seq, _ := strconv.ParseUint(id, 10, 64)
+	s.completions[uri] = keptItems{id: id, seq: seq, items: items, bytes: n}
 	for total := s.keptCompletionBytes(); total > maxKeptCompletion; {
 		oldest := ""
 		for other, o := range s.completions {
@@ -326,8 +330,13 @@ func (s *lspSession) keepCompletion(uri, id string, items []json.RawMessage) boo
 				oldest = other
 			}
 		}
-		total -= s.completions[oldest].bytes
-		delete(s.completions, oldest)
+		o := s.completions[oldest]
+		total -= o.bytes
+		if o.pending != "" {
+			s.completions[oldest] = keptItems{pending: o.pending}
+		} else {
+			delete(s.completions, oldest)
+		}
 	}
 	return true
 }
@@ -340,12 +349,18 @@ func (s *lspSession) keptCompletionBytes() int {
 	return n
 }
 
-// dropCompletion forgets uri's kept answer if it is request id's.
+// dropCompletion ends request id without an answer to keep: it is no longer
+// pending, and the kept answer, if any, stays.
 func (s *lspSession) dropCompletion(uri, id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if k, ok := s.completions[uri]; ok && k.id == id {
-		delete(s.completions, uri)
+	if k, ok := s.completions[uri]; ok && k.pending == id {
+		k.pending = ""
+		if k.id == "" {
+			delete(s.completions, uri)
+		} else {
+			s.completions[uri] = k
+		}
 	}
 }
 

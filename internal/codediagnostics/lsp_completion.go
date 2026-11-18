@@ -192,11 +192,17 @@ func validTrigger(t CompletionTrigger) bool {
 // completion and the most navigation answers is asked (Pyright, not Ruff).
 // Items whose ranges do not fit the text at version are left out. The answer
 // is kept for ResolveCompletion until a later answer replaces it or the
-// document is reopened or closed; typing on keeps it.
+// document is reopened or closed; typing on keeps it, also typing that
+// arrives while the server answers. An answer that is not kept has no
+// ResultID.
 func (m *Manager) Complete(ctx context.Context, c Context, documentID string, version int64, pos Position, trigger CompletionTrigger) (CompletionResult, error) {
 	m.mu.Lock()
 	provider, ok := m.provider.(CompletionProvider)
 	route, err := m.documentRoute(c, documentID, version, completionOp, pos, ok, "Code completion is unavailable")
+	var asked *documentState
+	if err == nil {
+		_, asked, _ = m.ownedDocument(c, documentID)
+	}
 	m.completionSeq++
 	seq := m.completionSeq
 	m.mu.Unlock()
@@ -232,8 +238,13 @@ func (m *Manager) Complete(ctx context.Context, c Context, documentID string, ve
 	if err != nil {
 		return CompletionResult{}, err
 	}
-	if d := a.docs[documentID]; d != nil && d.version == version && result.ResultID != "" && seq > d.completion.seq {
-		d.completion = keptAnswer{seq: seq, resultID: result.ResultID, items: len(result.Items), version: version, owner: r.Owner, generation: r.Generation}
+	// Kept for the lifecycle asked about, whatever typing arrived meanwhile: the
+	// editor still shows this answer. A resolve at a version checks that
+	// version (answeredAt).
+	if d := a.docs[documentID]; d != nil && d == asked && result.ResultID != "" && seq > d.completion.seq {
+		d.completion = keptAnswer{seq: seq, resultID: result.ResultID, items: len(result.Items), owner: r.Owner, generation: r.Generation}
+	} else {
+		result.ResultID = ""
 	}
 	return result, nil
 }

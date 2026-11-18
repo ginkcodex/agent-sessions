@@ -80,8 +80,11 @@ any command a completion item carries.
   the word it replaces was deleted or typed over meanwhile (CC-17). The info panel's
   resolve is shared, so a selected item's import is usually ready.
 - **Item details come later and stay on the host.** The backend keeps the
-  last answer per document, through later typing, and resolves an item (`completionItem/resolve`)
-  by result and index, so the server's opaque `data` never crosses the wire.
+  last answer per document, through later typing (also typing sent while
+  the server answers) and while a newer request runs, and resolves an item
+  (`completionItem/resolve`) by result and index, so the server's opaque
+  `data` never crosses the wire. An answer that is not kept has no result
+  ID (CC-19).
   A session keeps at most 8 MiB of these raw items over all its documents:
   older answers go first, and items past the cap fall back to their listed
   details (CC-13).
