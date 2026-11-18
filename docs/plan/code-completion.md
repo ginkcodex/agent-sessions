@@ -81,6 +81,9 @@ any command a completion item carries.
 - **Item details come later and stay on the host.** The backend keeps the
   last answer per document, through later typing, and resolves an item (`completionItem/resolve`)
   by result and index, so the server's opaque `data` never crosses the wire.
+  A session keeps at most 8 MiB of these raw items over all its documents:
+  older answers go first, and items past the cap fall back to their listed
+  details (CC-13).
 - **Commands are never run.** An item's `command` is ignored.
   `commitCharacters` are ignored too.
 - **Snippets come in their own step.** CC-02 tells servers it does not
@@ -123,6 +126,8 @@ Completion follows navigation's path:
   boundary, 2 MiB per answer. Text an item inserts (insert text, the new
   text of each edit) is not cut, since cut code would be wrong: an item with
   more than 16 KiB of it, or with more than 100 extra edits, is left out.
+  So is an item whose extra edits overlap each other or the main edit, as
+  part of an import can break the code (CC-13).
 - Triggers: `invoked`, `character` (one of the server's trigger characters,
   checked against the session that answers) and `incomplete` (asking again
   after an incomplete answer, LSP trigger kind 3).

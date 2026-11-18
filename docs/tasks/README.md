@@ -114,4 +114,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Chat message queue | [chat-message-queue](../plan/chat-message-queue.md) | [chat-message-queue/](chat-message-queue/README.md) | 7/8 ✅ · 1 ⬜ |
 | Tool file links | [tool-file-links](../plan/tool-file-links.md) | [tool-file-links/](tool-file-links/README.md) | 1/2 ✅ · 1 ⬜ |
 | Review fixes (2026-11-14 review) | [review-fixes](../plan/review-fixes.md) | [review-fixes/](review-fixes/README.md) | 27/35 ✅ · 8 ⬜ |
-| Code completion | [code-completion](../plan/code-completion.md) | [code-completion/](code-completion/README.md) | 9/12 ✅ · 2 🟡 · 1 ⬜ |
+| Code completion | [code-completion](../plan/code-completion.md) | [code-completion/](code-completion/README.md) | 10/15 ✅ · 2 🟡 · 3 ⬜ |

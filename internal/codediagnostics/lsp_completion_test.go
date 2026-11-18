@@ -91,10 +91,11 @@ func TestCompletionAgainstFakeServer(t *testing.T) {
 		`{"label":"many","additionalTextEdits":[` + strings.Join(extras, ",") + `]}`,
 		`{"label":"textless","additionalTextEdits":[{"range":` + navRange(0, 0, 0, 0) + `}]}`,
 		`{"label":"outside","additionalTextEdits":[` + edit(navRange(4, 0, 4, 0), "import os\n") + `]}`,
-		// Extra edits overlapping the main edit (here the position) or an
-		// earlier one are dropped; touching is not overlapping.
-		`{"label":"overlap","additionalTextEdits":[` + edit(navRange(0, 0, 0, 2), "a") + `,` + edit(navRange(0, 1, 0, 3), "b") + `,` +
-			edit(navRange(2, 20, 2, 20), "c") + `,` + edit(navRange(0, 2, 0, 2), "d") + `]}`,
+		// Extra edits overlapping each other, or the main edit (here the
+		// position), leave the item out; touching is not overlapping.
+		`{"label":"overlapping","additionalTextEdits":[` + edit(navRange(0, 0, 0, 2), "a") + `,` + edit(navRange(0, 1, 0, 3), "b") + `]}`,
+		`{"label":"over the main","additionalTextEdits":[` + edit(navRange(2, 20, 2, 20), "c") + `]}`,
+		`{"label":"touching","additionalTextEdits":[` + edit(navRange(0, 0, 0, 2), "a") + `,` + edit(navRange(0, 2, 0, 2), "d") + `]}`,
 		// Long display text is cut; long documentation too.
 		`{"label":"long","detail":"` + strings.Repeat("é", maxCompletionShort) + `","documentation":{"kind":"plaintext","value":"` + strings.Repeat("d", maxCompletionDocs+1) + `"}}`,
 	}
@@ -107,7 +108,7 @@ func TestCompletionAgainstFakeServer(t *testing.T) {
 	for _, item := range got.Items {
 		labels = append(labels, item.Label)
 	}
-	if got.DocumentID != "d1" || got.Version != 1 || got.ResultID == "" || got.Incomplete || !got.Truncated || fmt.Sprint(labels) != "[Println Printf Print overlap long]" {
+	if got.DocumentID != "d1" || got.Version != 1 || got.ResultID == "" || got.Incomplete || !got.Truncated || fmt.Sprint(labels) != "[Println Printf Print touching long]" {
 		t.Fatalf("%v %+v", labels, got)
 	}
 	want := CompletionItem{
@@ -558,7 +559,7 @@ func TestCompletionResolveAgainstFakeServer(t *testing.T) {
 	at2 := func(index int) (CompletionDetails, error) {
 		return m.ResolveCompletion(ctx, c, "d1", next.ResultID, index, 2)
 	}
-	imports := `"result":{"label":"alpha","additionalTextEdits":[` + edit(navRange(1, 0, 1, 0), "import \"alpha\"\n") + `,` + edit(navRange(1, 0, 1, 0), "overlaps") + `]}`
+	imports := `"result":{"label":"alpha","additionalTextEdits":[` + edit(navRange(1, 0, 1, 0), "import \"alpha\"\n") + `]}`
 	srv.set("completionItem/resolve", imports)
 	if details, err = at2(0); err != nil || details.Version != 2 || len(details.ExtraEdits) != 1 || details.ExtraEdits[0] != (TextEdit{Range: Range{Start: Position{Line: 1}, End: Position{Line: 1}}, NewText: "import \"alpha\"\n"}) || details.Validate() != nil {
 		t.Fatal(details, err)
@@ -566,9 +567,10 @@ func TestCompletionResolveAgainstFakeServer(t *testing.T) {
 	if details, err = resolve(next.ResultID, 0); err != nil || details.Version != 0 || details.ExtraEdits != nil {
 		t.Fatal("edits without a version", details, err)
 	}
-	// Any edit that does not fit the text drops them all.
+	// Any edit that does not fit the text, or overlaps another, drops them all.
 	for name, edits := range map[string]string{
 		"outside the text": edit(navRange(1, 0, 1, 0), "a") + `,` + edit(navRange(3, 1, 3, 1), "b"),
+		"overlapping":      edit(navRange(1, 0, 1, 0), "import \"alpha\"\n") + `,` + edit(navRange(1, 0, 1, 0), "overlaps"),
 		"past the line":    edit(navRange(2, 0, 2, 40), "c"),
 		"no text":          `{"range":` + navRange(0, 0, 0, 0) + `}`,
 		"too long":         edit(navRange(0, 0, 0, 0), strings.Repeat("x", maxCompletionText+1)),
@@ -723,10 +725,21 @@ func TestCompletionResolveKeepsTheLastAnswer(t *testing.T) {
 	if a := <-held; a.err != nil || a.details.Detail != "resolved" || a.details.Version != 0 || a.details.ExtraEdits != nil || a.details.Validate() != nil {
 		t.Fatal(a.details, a.err)
 	}
-	// A close ends it.
+	// So does a close: the edits fit only the lifecycle asked about.
+	slow = make(chan struct{})
+	docs.mu.Lock()
+	docs.resolveHold = slow
+	docs.mu.Unlock()
+	go func() { d, err := m.ResolveCompletion(ctx, c, "d1", "r3", 0, 3); held <- answer{d, err} }()
+	eventually(t, "slow resolve sent", func() bool { return docs.resolveCount() == resolves+3 })
 	if _, err = m.CloseDocument(ctx, c, "d1"); err != nil {
 		t.Fatal(err)
 	}
+	close(slow)
+	if a := <-held; a.err != nil || a.details.Version != 0 || a.details.ExtraEdits != nil {
+		t.Fatal(a.details, a.err)
+	}
+	// A close ends the answer.
 	if _, err = m.ResolveCompletion(ctx, c, "d1", "r3", 0, 0); err == nil {
 		t.Fatal("resolved after close")
 	}
@@ -760,5 +773,54 @@ func TestCompletionDetailsValidate(t *testing.T) {
 		if errCode(bad.Validate()) != "toolFailed" {
 			t.Fatalf("%+v", bad)
 		}
+	}
+}
+
+// A session keeps at most maxKeptCompletion raw item bytes for resolve:
+// keeping an answer drops other URIs' answers, oldest first, and an answer
+// larger than the cap keeps only the items that fit.
+func TestCompletionKeptBytesAreCapped(t *testing.T) {
+	s := &lspSession{wireBases: map[string]int64{"a": 1, "b": 1, "c": 1}}
+	quarter := json.RawMessage(`"` + strings.Repeat("x", maxKeptCompletion/4) + `"`)
+	keep := func(uri string, items ...json.RawMessage) string {
+		t.Helper()
+		id := s.beginCompletion(uri)
+		if !s.keepCompletion(uri, id, items) {
+			t.Fatal("not kept")
+		}
+		return id
+	}
+	a := keep("a", quarter)
+	b := keep("b", quarter)
+	c := keep("c", quarter, quarter) // past the cap with a and b: a goes
+	if _, ok := s.keptCompletion("a", a, 0); ok {
+		t.Fatal("the oldest answer was kept")
+	}
+	if _, ok := s.keptCompletion("b", b, 0); !ok {
+		t.Fatal("a newer answer was dropped")
+	}
+	if _, ok := s.keptCompletion("c", c, 1); !ok {
+		t.Fatal("the new answer was dropped")
+	}
+	if n := s.keptCompletionBytes(); n > maxKeptCompletion {
+		t.Fatalf("kept %d bytes", n)
+	}
+	// An answer larger than the cap keeps the items that fit, and drops all
+	// others; the rest cannot be resolved.
+	b = keep("b", quarter, quarter, quarter, quarter, quarter)
+	if _, ok := s.keptCompletion("b", b, 2); !ok {
+		t.Fatal("an item within the cap was dropped")
+	}
+	if _, ok := s.keptCompletion("b", b, 3); ok {
+		t.Fatal("an item past the cap was kept")
+	}
+	if _, ok := s.keptCompletion("c", c, 0); ok || len(s.completions) != 1 || s.keptCompletionBytes() > maxKeptCompletion {
+		t.Fatalf("%d answers, %d bytes", len(s.completions), s.keptCompletionBytes())
+	}
+	// A pending request's slot holds no bytes and is not dropped.
+	pending := s.beginCompletion("a")
+	keep("c", quarter)
+	if k := s.completions["a"]; k.id != pending {
+		t.Fatal("a pending slot was dropped")
 	}
 }

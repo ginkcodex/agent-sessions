@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 	"unicode/utf8"
 )
@@ -53,11 +54,18 @@ type keptAnswer struct {
 
 // keptItems is a session's last answer for one URI: the server's items, with
 // their opaque data, which never leave the host. Items is nil while the
-// request runs.
+// request runs; bytes is their raw size.
 type keptItems struct {
 	id    string
+	seq   uint64
 	items []json.RawMessage
+	bytes int
 }
+
+// maxKeptCompletion caps the raw item bytes a session keeps for resolve,
+// over all its URIs. Only the normalized answer is capped otherwise, and a
+// server's items can be several times larger (opaque data, unused fields).
+const maxKeptCompletion = 8 << 20
 
 // ResolveCompletion returns an item's detail and documentation, from the
 // server when it resolves items and otherwise from the answer. The answer
@@ -70,7 +78,7 @@ type keptItems struct {
 // answered, as they may no longer fit.
 func (m *Manager) ResolveCompletion(ctx context.Context, c Context, documentID, resultID string, index int, version int64) (CompletionDetails, error) {
 	m.mu.Lock()
-	req, provider, err := m.resolveRoute(c, documentID, resultID, index, version)
+	req, provider, asked, err := m.resolveRoute(c, documentID, resultID, index, version)
 	m.mu.Unlock()
 	if err != nil {
 		return CompletionDetails{}, err
@@ -92,7 +100,8 @@ func (m *Manager) ResolveCompletion(ctx context.Context, c Context, documentID, 
 	if err != nil {
 		return CompletionDetails{}, err
 	}
-	if d := a.docs[documentID]; version <= 0 || len(details.ExtraEdits) == 0 || d == nil || d.version != version {
+	// The edits fit the text of the lifecycle and version asked about.
+	if d := a.docs[documentID]; version <= 0 || len(details.ExtraEdits) == 0 || d != asked || d.version != version {
 		details.ExtraEdits = nil
 	} else {
 		details.Version = version
@@ -100,31 +109,31 @@ func (m *Manager) ResolveCompletion(ctx context.Context, c Context, documentID, 
 	return details, nil
 }
 
-func (m *Manager) resolveRoute(c Context, documentID, resultID string, index int, version int64) (CompletionResolveRequest, CompletionProvider, error) {
+func (m *Manager) resolveRoute(c Context, documentID, resultID string, index int, version int64) (CompletionResolveRequest, CompletionProvider, *documentState, error) {
 	a, d, err := m.ownedDocument(c, documentID)
 	if err != nil {
-		return CompletionResolveRequest{}, nil, err
+		return CompletionResolveRequest{}, nil, nil, err
 	}
 	provider, ok := m.provider.(CompletionProvider)
 	switch kept := d.completion; {
 	case !ok:
-		return CompletionResolveRequest{}, nil, failure("unsupported", "Code completion is unavailable")
+		return CompletionResolveRequest{}, nil, nil, failure("unsupported", "Code completion is unavailable")
 	case !bounded(resultID, 64) || version < 0:
-		return CompletionResolveRequest{}, nil, failure("invalidArgument", "Invalid completion result")
+		return CompletionResolveRequest{}, nil, nil, failure("invalidArgument", "Invalid completion result")
 	case kept.resultID != resultID:
-		return CompletionResolveRequest{}, nil, completionGone()
+		return CompletionResolveRequest{}, nil, nil, completionGone()
 	case index < 0 || index >= kept.items:
-		return CompletionResolveRequest{}, nil, failure("invalidArgument", "No such completion item")
+		return CompletionResolveRequest{}, nil, nil, failure("invalidArgument", "No such completion item")
 	case d.contextBlocked:
-		return CompletionResolveRequest{}, nil, goContextChanged()
+		return CompletionResolveRequest{}, nil, nil, goContextChanged()
 	case version > 0 && !answeredAt(d, kept, version):
-		return CompletionResolveRequest{}, nil, failure("staleVersion", "The document changed since this request")
+		return CompletionResolveRequest{}, nil, nil, failure("staleVersion", "The document changed since this request")
 	default:
 		req := CompletionResolveRequest{Root: a.root, Owner: kept.owner, Generation: kept.generation, Path: d.path, ResultID: resultID, Index: index}
 		if version > 0 {
 			req.Version, req.Text = version, d.text
 		}
-		return req, provider, nil
+		return req, provider, d, nil
 	}
 }
 
@@ -198,8 +207,8 @@ func (d SessionDocuments) ResolveCompletion(ctx context.Context, req CompletionR
 
 // resolvedEdits reads a resolved item's extra edits for text: all of them or
 // none, as part of an import can break the code. Each must be inside text and
-// within the bounds of a completion answer; one overlapping an earlier one is
-// dropped. The editor checks them against the main edit, which it maps.
+// within the bounds of a completion answer, and none may overlap another.
+// The editor checks them against the main edit, which it maps.
 func resolvedEdits(raw json.RawMessage, text string) []TextEdit {
 	var in struct {
 		AdditionalTextEdits []struct {
@@ -218,7 +227,7 @@ func resolvedEdits(raw json.RawMessage, text string) []TextEdit {
 			return nil
 		}
 		if overlapsAny(*e.Range, taken) {
-			continue
+			return nil
 		}
 		taken = append(taken, *e.Range)
 		out = append(out, TextEdit{Range: *e.Range, NewText: *e.NewText})
@@ -280,13 +289,16 @@ func (s *lspSession) beginCompletion(uri string) string {
 		if s.completions == nil {
 			s.completions = make(map[string]keptItems)
 		}
-		s.completions[uri] = keptItems{id: id}
+		s.completions[uri] = keptItems{id: id, seq: s.completionIDs}
 	}
 	return id
 }
 
 // keepCompletion stores the items of request id, unless a later request, a
-// reopen or a close replaced or dropped its slot. A change keeps it.
+// reopen or a close replaced or dropped its slot. A change keeps it. Within
+// maxKeptCompletion: other URIs' answers are dropped, oldest first, and an
+// answer larger than the cap keeps the items that fit; the rest cannot be
+// resolved.
 func (s *lspSession) keepCompletion(uri, id string, items []json.RawMessage) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -294,12 +306,38 @@ func (s *lspSession) keepCompletion(uri, id string, items []json.RawMessage) boo
 	if !ok || k.id != id {
 		return false
 	}
+	n := 0
+	for i, raw := range items {
+		if n+len(raw) > maxKeptCompletion {
+			items = slices.Clone(items[:i]) // not the dropped items' backing array
+			break
+		}
+		n += len(raw)
+	}
 	if items == nil {
 		items = []json.RawMessage{}
 	}
-	k.items = items
+	k.items, k.bytes = items, n
 	s.completions[uri] = k
+	for total := s.keptCompletionBytes(); total > maxKeptCompletion; {
+		oldest := ""
+		for other, o := range s.completions {
+			if other != uri && o.bytes > 0 && (oldest == "" || o.seq < s.completions[oldest].seq) {
+				oldest = other
+			}
+		}
+		total -= s.completions[oldest].bytes
+		delete(s.completions, oldest)
+	}
 	return true
+}
+
+func (s *lspSession) keptCompletionBytes() int {
+	n := 0
+	for _, k := range s.completions {
+		n += k.bytes
+	}
+	return n
 }
 
 // dropCompletion forgets uri's kept answer if it is request id's.

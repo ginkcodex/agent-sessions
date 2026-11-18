@@ -409,8 +409,10 @@ func completionItem(raw json.RawMessage, pos Position, lines *lineIndex) (Comple
 		if e.Range == nil || e.NewText == nil || !lines.contains(*e.Range) || len(*e.NewText) > maxCompletionText {
 			return CompletionItem{}, 0, false, false
 		}
+		// Conflicting edits cannot all apply, and part of an import can break
+		// the code: the item is not offered.
 		if overlapsAny(*e.Range, taken) {
-			continue
+			return CompletionItem{}, 0, false, false
 		}
 		taken = append(taken, *e.Range)
 		item.ExtraEdits = append(item.ExtraEdits, TextEdit{Range: *e.Range, NewText: *e.NewText})

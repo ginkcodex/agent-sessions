@@ -750,8 +750,9 @@ type lspSession struct {
 	// (config.Reindex only).
 	unindexed map[string]bool
 	// completions: the server's items of the last completion answer per open
-	// URI, for completionItem/resolve. Opening, changing or closing the
-	// document drops them.
+	// URI, for completionItem/resolve. A change keeps them; opening or
+	// closing the document drops them, and so does keeping other answers
+	// past maxKeptCompletion.
 	completions   map[string]keptItems
 	completionIDs uint64
 
