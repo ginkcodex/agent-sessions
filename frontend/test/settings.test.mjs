@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { openMode } from '../src/lib/terminal.ts';
-import { fixtureStore, loadAppearanceSettings, loadServerComponent, loadServerModule, loadTerminalFontSetting, renderWithFixture } from './helpers.mjs';
+import { fixtureStore, loadAppearanceSettings, loadServerComponent, loadTerminalFontSetting, renderWithFixture } from './helpers.mjs';
 
 const SETTINGS_DIALOG_URL = new URL('../src/lib/components/common/ManageSettingsDialog.svelte', import.meta.url);
 
@@ -32,6 +32,7 @@ async function renderSettingsDialog(
       ["'../../transcript'", lib('../../transcript.ts')],
       ["'../../date'", lib('../../date.ts')],
       ["'../../codeLanguages'", lib('../../codeLanguages.ts')],
+      ["'../../editorKeys'", lib('../../editorKeys.ts')],
       ["import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';", fixtureStore('codeDiagnostics')],
       ["import { installedFonts } from '../../stores/installedFonts.svelte';", 'const installedFonts = { markStale() {} };'],
       ["import Dropdown from './Dropdown.svelte';", 'const Dropdown = globalThis.__dropdown;'],
@@ -92,36 +93,7 @@ test('Settings › General has the editor\'s "Suggest code while typing", on by 
   assert.match(on, /Off, (⌘I|Ctrl\+Space) still shows them\./);
   const off = await renderSettingsDialog({ info }, { transcriptMode: 'chat', timeZone: 'utc', suggestWhileTyping: false });
   assert.doesNotMatch(checkbox(off), /checked/);
-  const source = readFileSync(SETTINGS_DIALOG_URL, 'utf8');
-  assert.match(source, /onchange=\{\(e\) => preferences\.setSuggestWhileTyping\(\(e\.currentTarget as HTMLInputElement\)\.checked\)\}/);
-});
-
-test('suggesting while typing is on by default, and the choice is read back', async () => {
-  const { PreferencesStore } = await loadServerModule(new URL('../src/lib/stores/preferences.svelte.ts', import.meta.url), [
-    ["'../terminalFont'", JSON.stringify(new URL('../src/lib/terminalFont.ts', import.meta.url).href)],
-    ["'../transcript'", JSON.stringify(new URL('../src/lib/transcript.ts', import.meta.url).href)],
-    ["'../date'", JSON.stringify(new URL('../src/lib/date.ts', import.meta.url).href)],
-  ]);
-  const previous = globalThis.localStorage;
-  const values = new Map();
-  globalThis.localStorage = { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v) };
-  try {
-    const fresh = new PreferencesStore();
-    fresh.init();
-    assert.equal(fresh.suggestWhileTyping, true, 'on by default');
-    fresh.setSuggestWhileTyping(false);
-    const restored = new PreferencesStore();
-    restored.init();
-    assert.equal(restored.suggestWhileTyping, false, 'off is read back');
-    restored.setSuggestWhileTyping(true);
-    const again = new PreferencesStore();
-    again.init();
-    assert.equal(again.suggestWhileTyping, true);
-    globalThis.localStorage.getItem = () => { throw new Error('disabled'); };
-    const noStorage = new PreferencesStore();
-    noStorage.init();
-    assert.equal(noStorage.suggestWhileTyping, true, 'storage disabled: on');
-  } finally { globalThis.localStorage = previous; }
+  // Changing it is checked on the mounted dialog (settings-client.test.mjs).
 });
 
 test('Settings shows the terminal choice only where it can be chosen', async () => {

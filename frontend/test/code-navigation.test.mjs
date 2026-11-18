@@ -234,6 +234,9 @@ test('the mock answers from its open documents', async () => {
   const hover = await mock.navigateCode(c, 'd1', 1, 'hover', { line: 1, character: 0 }, 'mock:local');
   assert.match(hover.hover.value, /function helper\(\) \{\}/);
   await assert.rejects(mock.navigateCode(c, 'd1', 2, 'hover', { line: 0, character: 0 }, 'mock:local'), e => codeDiagnosticsError(e).code === 'staleVersion');
+  for (const bad of [{ line: 0, character: -1 }, { line: 0, character: 2.5 }, { line: -1, character: 0 }, { line: 0, character: 10 }, { line: 5, character: 0 }]) {
+    await assert.rejects(mock.navigateCode(c, 'd2', 1, 'hover', bad, 'mock:local'), e => codeDiagnosticsError(e).code === 'invalidArgument', JSON.stringify(bad));
+  }
 });
 
 test('external paths read from the home they share with the project', () => {

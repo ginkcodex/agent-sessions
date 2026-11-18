@@ -458,8 +458,11 @@ test('flush settles with a timer that fires at once', async () => {
     assert.equal(await s.bridge.flush('a.txt', 0), undefined, 'the bound passed before the change was confirmed');
   } finally {
     s.timers.set = set;
+    held.open();
   }
-  held.open();
+  await tick();
+  assert.equal(s.timers.pending, 0, 'the flush sent the typing: no debounce left');
+  assert.deepEqual(s.calls.slice(1), [['change', 2, 'a']]);
 });
 
 test('flush during a save waits for the save, then sends the held typing', async () => {
@@ -503,7 +506,7 @@ test('flush resolves undefined on failure, pause, untracked or not live document
   p.diag.set(undefined); // paused: the same attachment is not live right now
   assert.equal(await p.bridge.flush('a.txt', 1000), undefined);
   // A pause while waiting settles it too.
-  let held = gate();
+  const held = gate();
   const q = await setup({ apiOverrides: { change: () => held.p } });
   q.store.openFile('a.txt', { keep: true }); await tick();
   q.store.startEditing('a.txt'); q.store.updateDraft('a.txt', 'z');

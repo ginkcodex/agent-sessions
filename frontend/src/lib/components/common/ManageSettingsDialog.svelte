@@ -20,10 +20,11 @@
   import { CODE_LANGUAGES } from '../../codeLanguages';
   import { isTranscriptMode, transcriptModes } from '../../transcript';
   import { isTimeZoneMode, TIME_ZONE_OPTIONS } from '../../date';
+  import { suggestShortcutLabel } from '../../editorKeys';
   import Dropdown from './Dropdown.svelte';
 
-  // The editor's shortcut for suggestions (fileEditor.ts completionKeys).
-  const suggestShortcut = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘I' : 'Ctrl+Space';
+  // The editor's shortcut for suggestions, as its keymap binds it.
+  const suggestShortcut = suggestShortcutLabel();
 
   let transcriptMode = $derived(transcriptModes.find((m) => m.value === preferences.transcriptMode));
 

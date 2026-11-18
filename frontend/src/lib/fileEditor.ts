@@ -18,6 +18,7 @@ import { textChanges } from './searchReplace';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
 import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completionKeymap, hasNextSnippetField, hasPrevSnippetField, pickedCompletion, selectedCompletion, snippet, startCompletion, CompletionContext, type Completion, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete';
 import type { CodeCompletionItem, CodeCompletionTrigger, CodeDiagnosticPosition, CodeTextEdit } from './codeDiagnostics';
+import { SUGGEST_KEY, SUGGEST_KEY_MAC } from './editorKeys';
 import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, serverOrder, snippetText, withExtraEdits, type CompletionAccept, type CompletionEdit, type EditorCompleter, type EditorCompletionAnswer, type EditorCompletionDetails } from './editorCompletion';
 import { HOVER_DELAY, contextPress, linkModifier, menuKey, wordRange, type SelectionHold, type ViewportPoint } from './sourceNavigation';
 import { handleCopyCodeClick } from './copycode';
@@ -119,8 +120,8 @@ function plainText(option: Completion): string | undefined {
  * accepts like Enter; without a popup both keep their meaning.
  */
 export const completionKeys: readonly KeyBinding[] = [
-  { mac: 'Cmd-i', run: startCompletion },
-  { key: 'Ctrl-Space', run: startCompletion },
+  { mac: SUGGEST_KEY_MAC, run: startCompletion },
+  { key: SUGGEST_KEY, run: startCompletion },
   ...completionKeymap.filter(binding => binding.run !== startCompletion && binding.key !== 'Enter'),
   { key: 'Enter', run: acceptOrBreakLine },
   { key: 'Tab', run: acceptCompletion },

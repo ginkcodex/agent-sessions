@@ -77,7 +77,11 @@ test('the mock suggests words of its open documents and resolves its last answer
   await assert.rejects(mock.resolveCodeCompletion(c, 'd1', next.resultId, 2, 1, 'mock:local'), e => codeDiagnosticsError(e).code === 'staleVersion');
   assert.equal((await mock.resolveCodeCompletion(c, 'd1', next.resultId, 2, 2, 'mock:local')).version, 2);
   await assert.rejects(mock.completeCode(c, 'q1', 'd1', 1, end, invoked, 'mock:local'), e => codeDiagnosticsError(e).code === 'staleVersion');
-  await assert.rejects(mock.completeCode(c, 'q1', 'd1', 2, { line: 9, character: 0 }, invoked, 'mock:local'), e => codeDiagnosticsError(e).code === 'invalidArgument');
+  // Positions as a server checks them: whole, not negative, inside the text.
+  for (const bad of [{ line: 9, character: 0 }, { line: 0, character: 21 }, { line: 0, character: -1 }, { line: -1, character: 0 }, { line: 0, character: 1.5 }, { line: 0.5, character: 0 }, { line: 0, character: NaN }]) {
+    await assert.rejects(mock.completeCode(c, 'q1', 'd1', 2, bad, invoked, 'mock:local'), e => codeDiagnosticsError(e).code === 'invalidArgument', JSON.stringify(bad));
+  }
+  assert.equal((await mock.completeCode(c, 'q1', 'd1', 2, { line: 0, character: 20 }, invoked, 'mock:local')).version, 2, 'the end of a line is inside');
   await mock.closeCodeDiagnosticDocument(c, 'd1', 'mock:local');
   await assert.rejects(mock.completeCode(c, 'q1', 'd1', 2, end, invoked, 'mock:local'), e => codeDiagnosticsError(e).code === 'notFound');
   await mock.cancelCodeCompletion('q1');

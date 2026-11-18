@@ -3,6 +3,19 @@ import { CODE_DIAGNOSTICS_EVENT, CodeDiagnosticsError, sameContext } from '../co
 import type { FileContent } from '../types';
 import { CODE_LANGUAGES } from '../codeLanguages';
 
+/**
+ * The line a position is on, as a server checks it: whole numbers, not
+ * negative, inside the text (the end of a line included).
+ */
+function lineAt(text: string, position: CodeDiagnosticPosition): string {
+  const { line: n, character } = position;
+  const line = Number.isInteger(n) && n >= 0 ? text.split('\n')[n] : undefined;
+  if (line === undefined || !Number.isInteger(character) || character < 0 || character > line.length) {
+    throw new CodeDiagnosticsError('invalidArgument', 'Position is outside the document');
+  }
+  return line;
+}
+
 /** Synthetic dependency sources outside every project, for go to definition. */
 const MOCK_EXTERNAL: Record<string, string> = {
   '/usr/local/go/src/fmt/print.go': 'package fmt\n\n// Println formats using the default formats for its operands and writes to standard output.\nfunc Println(a ...any) (n int, err error) {\n\treturn Fprintln(os.Stdout, a...)\n}\n',
@@ -95,8 +108,7 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     const m = this.docs(c, host), d = m.get(documentId);
     if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
     if (version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The document changed since this request');
-    const line = d.text.split('\n')[position.line];
-    if (line === undefined || position.character > line.length) throw new CodeDiagnosticsError('invalidArgument', 'Position is outside the document');
+    const line = lineAt(d.text, position);
     // Like a server whose only trigger character is '.'.
     const triggerCharacters = '.';
     if (trigger.kind === 'character' && !triggerCharacters.includes(trigger.character)) return { documentId, version, items: [], triggerCharacters };
@@ -157,8 +169,7 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     const m = this.docs(c, host), d = m.get(documentId);
     if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
     if (version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The document changed since this request');
-    const line = d.text.split('\n')[position.line];
-    if (line === undefined || position.character > line.length) throw new CodeDiagnosticsError('invalidArgument', 'Position is outside the document');
+    const line = lineAt(d.text, position);
     const word = /\w*$/.exec(line.slice(0, position.character))![0] + /^\w*/.exec(line.slice(position.character))![0];
     const result: CodeNavigationResult = { op, documentId, version, locations: [] };
     if (!word) return result;

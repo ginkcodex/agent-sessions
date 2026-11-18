@@ -145,6 +145,7 @@ async function loadEditorModule() {
   source = source.replace("'./searchReplace'", JSON.stringify(new URL('searchReplace.ts', EDITOR_URL).href));
   source = source.replace("'./sourceNavigation'", JSON.stringify(new URL('sourceNavigation.ts', EDITOR_URL).href));
   source = source.replace("'./editorCompletion'", JSON.stringify(new URL('editorCompletion.ts', EDITOR_URL).href));
+  source = source.replace("'./editorKeys'", JSON.stringify(new URL('editorKeys.ts', EDITOR_URL).href));
   source = source.replace("import { handleCopyCodeClick } from './copycode';", "const handleCopyCodeClick = () => {};");
   source = source.replace("'./codeHighlight'", JSON.stringify(new URL('codeHighlight.ts', EDITOR_URL).href));
   source = source.replace("'@replit/codemirror-lang-svelte'", JSON.stringify(import.meta.resolve('@replit/codemirror-lang-svelte')));
@@ -1188,9 +1189,12 @@ function wordsAt(state, pos = state.doc.length, explicit = false) {
   return documentWords(new CompletionContext(state, pos, explicit));
 }
 
-test('completion keys: Cmd+I on macOS and Ctrl+Space everywhere open suggestions; Option+` and Option+I stay accents', () => {
+test('completion keys: Cmd+I on macOS and Ctrl+Space everywhere open suggestions; Option+` and Option+I stay accents', async () => {
   const opens = completionKeys.filter(b => b.run === startCompletion);
   assert.deepEqual(opens.map(b => [b.key, b.mac]), [[undefined, 'Cmd-i'], ['Ctrl-Space', undefined]]);
+  // The keys Settings names (settings-client.test.mjs ties the label to these).
+  const keys = await import('../src/lib/editorKeys.ts');
+  assert.deepEqual(opens.map(b => b.key ?? b.mac), [keys.SUGGEST_KEY_MAC, keys.SUGGEST_KEY]);
   const names = completionKeys.flatMap(b => [b.key, b.mac, b.win, b.linux]).filter(Boolean);
   for (const dead of ['Alt-`', 'Alt-i']) assert.ok(!names.includes(dead), `${dead} must not be bound`);
   for (const name of ['Escape', 'ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Enter', 'Tab']) assert.ok(names.includes(name), name);

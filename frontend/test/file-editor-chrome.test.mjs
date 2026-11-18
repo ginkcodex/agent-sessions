@@ -192,21 +192,39 @@ function keyboard(page) {
   return { press, type };
 }
 
-test('Chrome: suggestions open while typing, Tab and Enter accept, Escape closes, the shortcut works with the setting off', { skip: !process.env.AS_TEST_CHROME, timeout: 120000 }, async () => {
+// Builds the editor page for text at path, opens it in Chrome and gives fn
+// the page and its helpers; closes and removes everything afterwards.
+async function withEditor(text, path, fn) {
   const dir = mkdtempSync(join(tmpdir(), 'as-completion-'));
   let server, browser;
   try {
-    const dist = await buildPage(dir, 'const alphabet = 1;\nconst alpine = 2;\n', 'a.js');
+    const dist = await buildPage(dir, text, path);
     server = await serve(dist);
     browser = await openChrome(dir, `http://127.0.0.1:${server.address().port}/`);
     const { evaluate, page } = browser;
-    const { press, type } = keyboard(page);
-    const popup = () => evaluate(`[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map(li => li.textContent)`);
-    const text = () => evaluate('window.probe.state.text');
+    const isMac = /Mac/.test(await evaluate('navigator.platform'));
+    await fn({
+      evaluate,
+      ...keyboard(page),
+      popup: () => evaluate(`[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map(li => li.textContent)`),
+      text: () => evaluate('window.probe.state.text'),
+      isMac,
+    });
+  } finally {
+    await browser?.close();
+    if (server) {
+      server.closeAllConnections();
+      await new Promise(done => server.close(done));
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('Chrome: suggestions open while typing, Tab and Enter accept, Escape closes, the shortcut works with the setting off', { skip: !process.env.AS_TEST_CHROME, timeout: 120000 }, async () => {
+  await withEditor('const alphabet = 1;\nconst alpine = 2;\n', 'a.js', async ({ evaluate, press, type, popup, text, isMac }) => {
     const lastLine = async () => (await text()).split('\n').at(-1);
     const open = what => until(popup, items => items.length > 0, what);
     const closed = what => until(popup, items => items.length === 0, what);
-    const isMac = /Mac/.test(await evaluate('navigator.platform'));
     await caretToEnd(evaluate);
 
     await type('al');
@@ -263,22 +281,11 @@ test('Chrome: suggestions open while typing, Tab and Enter accept, Escape closes
     await press(' ', ['ctrl']);
     await settle();
     assert.deepEqual(await popup(), [], 'read-only: no popup');
-  } finally {
-    await browser?.close();
-    server?.close();
-    rmSync(dir, { recursive: true, force: true });
-  }
+  });
 });
 
 test('Chrome: language-server suggestions after a dot, filtered as typed, with details; Enter applies the import and the snippet in one undo step', { skip: !process.env.AS_TEST_CHROME, timeout: 120000 }, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'as-completion-'));
-  let server, browser;
-  try {
-    const dist = await buildPage(dir, 'package main\n\nfunc f() {\n\t', 'a.go');
-    server = await serve(dist);
-    browser = await openChrome(dir, `http://127.0.0.1:${server.address().port}/`);
-    const { evaluate, page } = browser;
-    const { press, type } = keyboard(page);
+  await withEditor('package main\n\nfunc f() {\n\t', 'a.go', async ({ evaluate, press, type, popup, text, isMac }) => {
     await evaluate(`(() => {
       window.asks = [];
       const items = [
@@ -295,9 +302,6 @@ test('Chrome: language-server suggestions after a dot, filtered as typed, with d
       } };
       window.probe.editor.update(window.probe.opts({ text: window.probe.state.text, symbols }));
     })()`);
-    const popup = () => evaluate(`[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map(li => li.textContent)`);
-    const text = () => evaluate('window.probe.state.text');
-    const isMac = /Mac/.test(await evaluate('navigator.platform'));
     await caretToEnd(evaluate);
 
     await type('fmt.');
@@ -332,22 +336,11 @@ test('Chrome: language-server suggestions after a dot, filtered as typed, with d
     await until(text, t => t === 'package main\nimport "fmt"\n\nfunc f() {\n\tfmt.Println(a ...any)', 'the typing undoes first');
     await undoKey();
     await until(text, t => t === 'package main\n\nfunc f() {\n\tfmt.Pr', 'one undo takes the suggestion and its import back');
-  } finally {
-    await browser?.close();
-    server?.close();
-    rmSync(dir, { recursive: true, force: true });
-  }
+  });
 });
 
 test('Chrome: Enter on an item whose import comes on resolve adds it with the item in one undo step, even typed in full; typing during the wait keeps the typing', { skip: !process.env.AS_TEST_CHROME, timeout: 120000 }, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'as-completion-resolve-'));
-  let server, browser;
-  try {
-    const dist = await buildPage(dir, 'export {};\n', 'a.ts');
-    server = await serve(dist);
-    browser = await openChrome(dir, `http://127.0.0.1:${server.address().port}/`);
-    const { evaluate, page } = browser;
-    const { press, type } = keyboard(page);
+  await withEditor('export {};\n', 'a.ts', async ({ evaluate, press, type, popup, text, isMac }) => {
     // Each resolve waits at a gate the test opens, after its own keystrokes.
     await evaluate(`(() => {
       window.resolves = [];
@@ -359,15 +352,12 @@ test('Chrome: Enter on an item whose import comes on resolve adds it with the it
       } };
       window.probe.editor.update(window.probe.opts({ text: window.probe.state.text, symbols }));
     })()`);
-    const popup = () => evaluate(`[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map(li => li.textContent)`);
-    const text = () => evaluate('window.probe.state.text');
     const offered = what => acceptable(popup, items => /^helperValue/.test(items[0] ?? ''), what);
     // Opens the gate of the one resolve asked since the last.
     const answer = async () => {
       await until(() => evaluate('window.gates.length'), n => n === 1, 'a resolve on accept');
       await evaluate('window.gates.shift()()');
     };
-    const isMac = /Mac/.test(await evaluate('navigator.platform'));
     await caretToEnd(evaluate);
 
     await type('helperVa');
@@ -400,9 +390,5 @@ test('Chrome: Enter on an item whose import comes on resolve adds it with the it
     await press('Enter');
     await answer();
     await until(text, t => t === 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue helperValue', 'the import for the name typed in full');
-  } finally {
-    await browser?.close();
-    server?.close();
-    rmSync(dir, { recursive: true, force: true });
-  }
+  });
 });
