@@ -83,6 +83,19 @@ test('Settings shows the time zone used for timestamps', async () => {
   assert.match(local, /Local time \(this computer\)/);
 });
 
+test('Settings › General has the editor\'s "Suggest code while typing", on by default', async () => {
+  const info = { terminal: true, chooseTerminal: false, shell: 'powershell' };
+  const checkbox = (html) => html.match(/<input type="checkbox"([^>]*)\/?>\s*Suggest code while typing/)?.[1];
+  const on = await renderSettingsDialog({ info }, { transcriptMode: 'chat', timeZone: 'utc', suggestWhileTyping: true });
+  assert.match(on, /<h3[^>]*>Editor<\/h3>/);
+  assert.match(checkbox(on), /checked/);
+  assert.match(on, /Off, (⌘I|Ctrl\+Space) still shows them\./);
+  const off = await renderSettingsDialog({ info }, { transcriptMode: 'chat', timeZone: 'utc', suggestWhileTyping: false });
+  assert.doesNotMatch(checkbox(off), /checked/);
+  const source = readFileSync(SETTINGS_DIALOG_URL, 'utf8');
+  assert.match(source, /onchange=\{\(e\) => preferences\.setSuggestWhileTyping\(\(e\.currentTarget as HTMLInputElement\)\.checked\)\}/);
+});
+
 test('Settings shows the terminal choice only where it can be chosen', async () => {
   const windows = await renderSettingsDialog({ info: { terminal: true, chooseTerminal: false, shell: 'powershell' } }, undefined, { section: 'terminal' });
   assert.match(windows, /<h2 id="settings-title"[^>]*>Settings<\/h2>/);

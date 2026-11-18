@@ -1,4 +1,4 @@
-import { Annotation, Compartment, EditorState, RangeSet, StateField, type Extension, type SelectionRange, type Text, type TransactionSpec } from '@codemirror/state';
+import { Annotation, CharCategory, Compartment, EditorState, Prec, RangeSet, StateField, type Extension, type SelectionRange, type Text, type TransactionSpec } from '@codemirror/state';
 import { forEachDiagnostic, lintKeymap, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import { projectSourceDiagnostics } from './sourceDiagnostics';
 import type { AttributedCodeDiagnostic, LiveDocumentBasis } from './codeDiagnostics';
@@ -16,6 +16,7 @@ import type { FileLineSelection } from './fileSelection';
 import { fileLanguage } from './files';
 import { textChanges } from './searchReplace';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
+import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completionKeymap, selectedCompletion, startCompletion, CompletionContext, type Completion, type CompletionSource } from '@codemirror/autocomplete';
 import type { CodeDiagnosticPosition } from './codeDiagnostics';
 import { HOVER_DELAY, contextPress, linkModifier, menuKey, wordRange, type SelectionHold, type ViewportPoint } from './sourceNavigation';
 import { handleCopyCodeClick } from './copycode';
@@ -43,6 +44,8 @@ export interface FileEditorOptions {
   version: number;
   wrap: boolean;
   disabled?: boolean;
+  /** Suggestions open while typing (Settings › General › Editor); the shortcut works either way. */
+  suggest?: boolean;
   /** Context-bound snapshot supplied anew by the viewer, never cached as an owner. */
   diagnostics?: { tab: object; path: string; context: string; findings: AttributedCodeDiagnostic[]; dirty: boolean; revision?: string; live?: LiveDocumentBasis; current: boolean };
   position?: FilePosition;
@@ -73,10 +76,96 @@ const editing = new Compartment();
 const language = new Compartment();
 const coloring = new Compartment();
 const font = new Compartment();
+const completing = new Compartment();
 const editable = (disabled = false): Extension => [
   EditorView.editable.of(!disabled),
   EditorState.readOnly.of(disabled),
 ];
+
+/**
+ * Enter accepts the selected suggestion, unless it is exactly the word just
+ * typed (a variable typed out in full): then the popup closes and Enter
+ * breaks the line, as it would have without one.
+ */
+export function acceptOrBreakLine(view: EditorView): boolean {
+  const selected = selectedCompletion(view.state);
+  const { head, empty } = view.state.selection.main;
+  const start = head - (selected?.label.length ?? 0);
+  if (selected && empty && start >= 0 && (selected.apply === undefined || selected.apply === selected.label)
+    && view.state.sliceDoc(start, head) === selected.label
+    && (start === 0 || view.state.charCategorizer(start)(view.state.sliceDoc(start - 1, start)) !== CharCategory.Word)) {
+    closeCompletion(view);
+    return false;
+  }
+  return acceptCompletion(view);
+}
+
+/**
+ * Completion keys. CodeMirror's own list, except what opens the popup: on
+ * macOS Option+` and Option+I are dead keys (accents, and Vietnamese input),
+ * and Ctrl+Space switches the input source, so Cmd+I opens it there. Tab
+ * accepts like Enter; without a popup both keep their meaning.
+ */
+export const completionKeys: readonly KeyBinding[] = [
+  { mac: 'Cmd-i', run: startCompletion },
+  { key: 'Ctrl-Space', run: startCompletion },
+  ...completionKeymap.filter(binding => binding.run !== startCompletion && binding.key !== 'Enter'),
+  { key: 'Enter', run: acceptOrBreakLine },
+  { key: 'Tab', run: acceptCompletion },
+];
+
+// What the language's own sources offer here, so words do not repeat them.
+// Only answers given at once count; CodeMirror merges the rest as they come.
+function languageLabels(context: CompletionContext): Set<string> {
+  const labels = new Set<string>();
+  const add = (option: string | Completion) => labels.add(typeof option === 'string' ? option : option.label);
+  for (const source of context.state.languageDataAt<CompletionSource | readonly (string | Completion)[]>('autocomplete', context.pos)) {
+    if (source === documentWords) continue;
+    if (typeof source !== 'function') { source.forEach(add); continue; }
+    try {
+      const result = source(new CompletionContext(context.state, context.pos, context.explicit, context.view));
+      if (result && !(result instanceof Promise)) result.options.forEach(add);
+    } catch { /* A failing source offers nothing; CodeMirror reports it when it runs it. */ }
+  }
+  return labels;
+}
+
+/**
+ * Words from the document, as CodeMirror's word source finds them, without
+ * those the language already offers (a keyword, a CSS property). The word
+ * being typed is left out once complete, so Enter after it still breaks the
+ * line. Large documents get none, as they get no colours.
+ */
+export const documentWords: CompletionSource = context => {
+  if (context.state.doc.length > HIGHLIGHT_LIMIT) return null;
+  const result = completeAnyWord(context);
+  if (!result || result instanceof Promise) return result;
+  const typed = context.state.sliceDoc(result.from, context.pos);
+  const offered = languageLabels(context);
+  const words = new Set(result.options.map(option => option.label));
+  // completeAnyWord's pattern is anchored at the start only; CodeMirror anchors both ends.
+  const pattern = result.validFor instanceof RegExp ? new RegExp(`(?:${result.validFor.source})$`, result.validFor.flags) : null;
+  return {
+    ...result,
+    options: result.options.filter(option => option.label !== typed && !offered.has(option.label)),
+    // Typing on narrows the list here; reaching a whole word asks again, so it drops out.
+    validFor: text => !words.has(text) && (!pattern || pattern.test(text)),
+  };
+};
+
+// One extension per mode, made once: options are applied on every keystroke,
+// and the same extension again changes nothing (an open popup stays).
+const completionParts: Extension = [
+  Prec.highest(keymap.of(completionKeys)),
+  EditorState.languageData.of(() => [{ autocomplete: documentWords }]),
+];
+const suggestionModes = {
+  typing: [autocompletion({ defaultKeymap: false, activateOnTyping: true }), completionParts],
+  shortcut: [autocompletion({ defaultKeymap: false, activateOnTyping: false }), completionParts],
+};
+// Read-only text gets no popup at all.
+const suggestions = (options: Pick<FileEditorOptions, 'disabled' | 'suggest'>): Extension =>
+  options.disabled ? [] : suggestionModes[options.suggest === false ? 'shortcut' : 'typing'];
 
 /** The editor font (Settings → Appearance), with today's defaults as fallbacks; SourceView uses the same. */
 export const EDITOR_FONT_SIZE = 'var(--editor-font-size, 0.78rem)';
@@ -140,6 +229,28 @@ const theme = EditorView.theme({
   '.cm-symbol-hover a': { color: 'var(--accent-color)' },
   '.cm-symbol-hover .hover-plain': { margin: '0', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' },
   '.cm-symbol-hover .hover-truncated': { marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' },
+  // Suggestions in the editor font, in the app's colours. The details panel
+  // sits beside the list, inside its box, so the box must not clip.
+  '.cm-tooltip.cm-tooltip-autocomplete': {
+    overflow: 'visible', padding: '2px 0', borderRadius: '6px',
+    backgroundColor: 'var(--bg-primary)', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete > ul': {
+    fontFamily: EDITOR_FONT_FAMILY, maxHeight: '15em', minWidth: '14em', maxWidth: 'min(560px, calc(100vw - 8px))',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li': { padding: '1px 8px', lineHeight: '1.5' },
+  // As specific as CodeMirror's base theme, whose light and dark rows are blue.
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+    backgroundColor: 'color-mix(in srgb, var(--accent-color) 22%, transparent)', color: 'var(--text-primary)',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete-disabled > ul > li[aria-selected]': { backgroundColor: 'var(--hover-bg)' },
+  '.cm-completionMatchedText': { textDecoration: 'none', fontWeight: '600', color: 'var(--accent-color)' },
+  '.cm-completionDetail': { marginLeft: '0.75em', fontStyle: 'normal', color: 'var(--text-muted)' },
+  '.cm-completionIcon': { color: 'var(--text-secondary)' },
+  '.cm-tooltip.cm-completionInfo': {
+    padding: '6px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-primary)', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
+    fontFamily: 'var(--font-sans)', fontSize: '12.5px', lineHeight: '1.5', overflowWrap: 'anywhere',
+  },
   '.cm-panels': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' },
   '& .cm-panels-bottom': { borderTop: '1px solid var(--border-color)' },
   '& .cm-panels-top': { borderBottom: '1px solid var(--border-color)' },
@@ -511,7 +622,7 @@ function freshState(options: FileEditorOptions): EditorState {
       diagnosticLines, clearSavedMarkers, navigation,
       search(), theme, font.of(fontThemes[0]), fitTooltips, indentUnit.of(detectIndent(options.text)), EditorState.tabSize.of(4),
       wrapping.of(options.wrap ? EditorView.lineWrapping : []),
-      editing.of(editable(options.disabled)), language.of([]), coloring.of([]),
+      editing.of(editable(options.disabled)), language.of([]), coloring.of([]), completing.of(suggestions(options)),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...editorLintKeymap]),
       EditorView.updateListener.of(update => {
         if (update.docChanged && !update.transactions.every(tr => tr.annotation(external)))
@@ -566,6 +677,9 @@ function handleKey(view: EditorView, event: KeyboardEvent): boolean {
   } else if (mod && !event.altKey && !event.shiftKey && key === 'f') {
     openSearchPanel(view);
     consumed = true;
+  } else if (event.key === 'Escape' && closeCompletion(view)) {
+    // Suggestions close first: the hover, the search panel and the dialog stay.
+    consumed = true;
   } else if (event.key === 'Escape' && hasHoverTooltips(view.state)) {
     // A hover (a symbol's, or a diagnostic's) closes before the search panel or the dialog.
     view.dispatch({ effects: closeHoverTooltips });
@@ -616,6 +730,7 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
     view.dispatch({ effects: [
       wrapping.reconfigure(options.wrap ? EditorView.lineWrapping : []),
       editing.reconfigure(editable(options.disabled)),
+      completing.reconfigure(suggestions(options)),
     ] });
   }
   function setLanguage() {

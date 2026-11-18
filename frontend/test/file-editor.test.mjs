@@ -10,6 +10,7 @@ import { EditorView, keymap, lineNumberMarkers } from '@codemirror/view';
 import { undo, redo, undoDepth, indentMore, insertNewlineAndIndent } from '@codemirror/commands';
 import { language, indentUnit } from '@codemirror/language';
 import { searchPanelOpen } from '@codemirror/search';
+import { CompletionContext, completionStatus, startCompletion } from '@codemirror/autocomplete';
 import { javascriptLanguage, jsxLanguage, tsxLanguage, typescriptLanguage } from '@codemirror/lang-javascript';
 import { jsonLanguage } from '@codemirror/lang-json';
 import { yamlLanguage } from '@codemirror/lang-yaml';
@@ -153,7 +154,7 @@ async function loadEditorModule() {
   return import(`data:text/javascript,${encodeURIComponent(js)}`);
 }
 
-const { createFileEditor, navigationKeymap, symbolMouseDown, symbolContextMenu, symbolPress, symbolKeyDown, symbolHover, editorPosition, wordAtSide } = await loadEditorModule();
+const { createFileEditor, acceptOrBreakLine, completionKeys, documentWords, navigationKeymap, symbolMouseDown, symbolContextMenu, symbolPress, symbolKeyDown, symbolHover, editorPosition, wordAtSide } = await loadEditorModule();
 
 const isMac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 
@@ -892,7 +893,7 @@ test('after destroy every controller method is an inert no-op and destroy is ide
 const component = await loadServerComponent(COMPONENT_URL, [
   ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
   ["import { filePrompt } from '../../../stores/filePrompt.svelte';", 'const filePrompt = { request: null };'],
-  ["import { preferences } from '../../../stores/preferences.svelte';", "const preferences = { editorFont: '', editorFontSize: null };"],
+  ["import { preferences } from '../../../stores/preferences.svelte';", "const preferences = { editorFont: '', editorFontSize: null, suggestWhileTyping: true };"],
 ]);
 
 test('FileEditor server-renders an empty host and inert command exports before the runtime loads', async () => {
@@ -1173,4 +1174,155 @@ test('symbol hover creates a bounded scrollable CodeMirror tooltip with the shar
     assert.match(created.dom.children[0].innerHTML, /&lt;safe&gt;/);
     assert.match(created.dom.children[1].textContent, /cut short/);
   } finally { globalThis.document = previous; h.editor.destroy(); }
+});
+
+// ---------------------------------------------------------------------------
+// Code completion without a language server (CC-01).
+// ---------------------------------------------------------------------------
+
+const typed = (view, text, at = view.state.selection.main.head) =>
+  view.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length }, userEvent: 'input.type' });
+
+function wordsAt(state, pos = state.doc.length, explicit = false) {
+  return documentWords(new CompletionContext(state, pos, explicit));
+}
+
+test('completion keys: Cmd+I on macOS and Ctrl+Space everywhere open suggestions; Option+` and Option+I stay accents', () => {
+  const opens = completionKeys.filter(b => b.run === startCompletion);
+  assert.deepEqual(opens.map(b => [b.key, b.mac]), [[undefined, 'Cmd-i'], ['Ctrl-Space', undefined]]);
+  const names = completionKeys.flatMap(b => [b.key, b.mac, b.win, b.linux]).filter(Boolean);
+  for (const dead of ['Alt-`', 'Alt-i']) assert.ok(!names.includes(dead), `${dead} must not be bound`);
+  for (const name of ['Escape', 'ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Enter', 'Tab']) assert.ok(names.includes(name), name);
+
+  const { view, editor } = mount();
+  const groups = view.state.facet(keymap);
+  const all = groups.flat();
+  for (const dead of ['Alt-`', 'Alt-i']) assert.ok(!all.some(b => b.key === dead || b.mac === dead), `no keymap binds ${dead}`);
+  // Accepting with Tab or Enter runs before indenting or a new line; without a popup they fall through.
+  const completion = groups.findIndex(g => g.includes(completionKeys[0]));
+  const editing = groups.findIndex(g => g.some(b => b.key === 'Tab' && b.run !== completionKeys.at(-1).run));
+  assert.ok(completion >= 0 && editing > completion, 'completion keys come first');
+  const accept = completionKeys.find(b => b.key === 'Tab');
+  assert.equal(accept.run(view), false, 'no popup: Tab is left to indentation');
+  const enter = completionKeys.find(b => b.key === 'Enter');
+  assert.equal(enter.run, acceptOrBreakLine, 'Enter breaks the line after a name typed in full (checked in Chrome)');
+  assert.equal(enter.run(view), false, 'no popup: Enter is left to the new line');
+  editor.destroy();
+});
+
+test('document words: prefix matches, the whole typed word and language items left out, none past the highlight limit', () => {
+  const state = EditorState.create({ doc: 'alpha alphabet beta\nalp' });
+  const result = wordsAt(state);
+  assert.equal(result.from, state.doc.length - 3);
+  assert.deepEqual(result.options.map(o => o.label).sort(), ['alpha', 'alphabet', 'beta']);
+  assert.ok(result.options.every(o => o.type === 'text'));
+  assert.equal(result.validFor('alph'), true, 'typing on filters locally');
+  assert.equal(result.validFor('alpha'), false, 'a whole word asks again');
+  assert.equal(result.validFor('al-'), false);
+
+  // A name the language offers (a keyword, a property) shows once, as the language's item.
+  const language = EditorState.create({ doc: 'alpha alphabet beta\nalp', extensions: EditorState.languageData.of(() => [
+    { autocomplete: ['alphabet'] },
+    { autocomplete: () => ({ from: 20, options: [{ label: 'beta', type: 'keyword' }] }) },
+    { autocomplete: async () => ({ from: 20, options: [{ label: 'alpha', type: 'variable' }] }) },
+    { autocomplete: () => { throw new Error('broken source'); } },
+  ]) });
+  assert.deepEqual(wordsAt(language).options.map(o => o.label), ['alpha'], 'only answers given at once are left out');
+
+  const whole = EditorState.create({ doc: 'alpha alphabet\nalpha' });
+  assert.deepEqual(wordsAt(whole).options.map(o => o.label), ['alphabet'], 'Enter after a finished word still breaks the line');
+
+  assert.equal(wordsAt(EditorState.create({ doc: 'alpha ' })), null, 'nothing after a space unless asked');
+  assert.ok(wordsAt(EditorState.create({ doc: 'alpha ' }), 6, true).options.some(o => o.label === 'alpha'), 'the shortcut lists words anywhere');
+
+  const large = EditorState.create({ doc: 'word '.repeat(100_001) + 'wo' });
+  assert.ok(large.doc.length > 500_000);
+  assert.equal(wordsAt(large, large.doc.length, true), null);
+});
+
+test('typing opens suggestions when the setting is on; off, only the shortcut does; read-only never', () => {
+  const { view, editor, options } = mount({ text: 'alpha\n', path: 'notes.txt' });
+  assert.ok(view.state.languageDataAt('autocomplete', 0).includes(documentWords));
+  typed(view, 'al');
+  assert.equal(completionStatus(view.state), 'pending');
+  // Options are applied on every keystroke; the same mode leaves an open popup alone.
+  editor.update({ ...options, text: view.state.doc.toString() });
+  assert.equal(completionStatus(view.state), 'pending');
+
+  assert.equal(editor.handleKey(key('Escape')), true);
+  editor.update({ ...options, text: view.state.doc.toString(), suggest: false });
+  assert.equal(completionStatus(view.state), null);
+  typed(view, 'p');
+  assert.equal(completionStatus(view.state), null, 'typing opens nothing with the setting off');
+  assert.equal(startCompletion(view), true);
+  assert.equal(completionStatus(view.state), 'pending', 'the shortcut still does');
+
+  editor.update({ ...options, text: view.state.doc.toString(), suggest: false, disabled: true });
+  assert.equal(startCompletion(view), false, 'read-only: no completion at all');
+  assert.ok(!view.state.languageDataAt('autocomplete', 0).includes(documentWords));
+  assert.equal(editor.handleKey(key('Escape')), false);
+
+  editor.update({ ...options, text: view.state.doc.toString(), disabled: false });
+  typed(view, 'h');
+  assert.equal(completionStatus(view.state), 'pending', 'editable again, with the setting on');
+  editor.destroy();
+});
+
+test('Escape closes suggestions first, then the search panel, then reaches the dialog', () => {
+  const { view, editor } = mount({ text: 'alpha\nal' });
+  assert.equal(editor.find(), true);
+  startCompletion(view);
+  assert.equal(completionStatus(view.state), 'pending');
+  const first = key('Escape');
+  assert.equal(editor.handleKey(first), true);
+  assert.equal(first.prevented, 1);
+  assert.equal(first.stopped, 1);
+  assert.equal(completionStatus(view.state), null);
+  assert.equal(searchPanelOpen(view.state), true, 'the search panel stays');
+  assert.equal(editor.handleKey(key('Escape')), true);
+  assert.equal(searchPanelOpen(view.state), false);
+  const last = key('Escape');
+  assert.equal(editor.handleKey(last), false, 'nothing open: Escape goes to the dialog');
+  assert.equal(last.prevented, 0);
+  editor.destroy();
+});
+
+test('a CSS file offers its properties beside the words, and a property is not repeated as a word', async () => {
+  // lang-css reads the property names from the page's own style object.
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  globalThis.document = { body: { style: { color: '', columnGap: '', cssText: '' } } };
+  try {
+    const { view, editor } = mount({ text: 'a { color: red; } .collapsed {}\nb { col', path: 'site.css' });
+    await languageOf(view, 'site.css');
+    const end = view.state.doc.length;
+    const sources = view.state.languageDataAt('autocomplete', end);
+    assert.ok(sources.includes(documentWords));
+    const css = sources.filter(s => s !== documentWords);
+    assert.ok(css.length > 0, 'the CSS package brings its own completions');
+    const results = await Promise.all(css.map(s => s(new CompletionContext(view.state, end, false))));
+    const labels = results.filter(Boolean).flatMap(r => r.options.map(o => o.label));
+    assert.ok(labels.includes('color') && labels.includes('column-gap'), 'properties are offered');
+    // CodeMirror filters by the typed prefix; the source gives every other word.
+    assert.deepEqual(wordsAt(view.state, end).options.map(o => o.label), ['a', 'red', 'collapsed', 'b'], 'color comes once, as the property');
+    editor.destroy();
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'document', previous);
+    else delete globalThis.document;
+  }
+});
+
+test('the suggestion popup uses the editor font and the app colours', () => {
+  const { view, editor } = mount();
+  const css = themeRules(view.state).join('\n');
+  assert.match(css, /\.cm-tooltip\.cm-tooltip-autocomplete > ul \{[^}]*font-family: var\(--editor-font-family, var\(--font-mono\)\)/);
+  assert.match(css, /\.cm-tooltip\.cm-tooltip-autocomplete > ul > li\[aria-selected\] \{[^}]*var\(--accent-color\)/);
+  assert.match(css, /\.cm-tooltip\.cm-tooltip-autocomplete \{[^}]*overflow: visible/);
+  assert.match(css, /\.cm-tooltip\.cm-completionInfo \{[^}]*var\(--bg-primary\)/);
+  editor.destroy();
+});
+
+test('FileEditor passes the suggestion setting, so changing it reconfigures open editors', () => {
+  const source = readFileSync(COMPONENT_URL, 'utf8');
+  assert.match(source, /suggest: preferences\.suggestWhileTyping/);
+  assert.match(source, /\$effect\(\(\) => \{\s*editor\?\.update\(options\(\)\);/);
 });

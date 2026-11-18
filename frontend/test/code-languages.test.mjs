@@ -22,6 +22,33 @@ const panel = await loadServerComponent(new URL('../src/lib/components/common/go
   ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
 ]);
 
+test('suggestions while typing default to on, persist and survive unavailable storage', () => {
+  const previous = globalThis.localStorage;
+  const values = new Map();
+  globalThis.localStorage = { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v) };
+  try {
+    const fresh = new PreferencesStore();
+    fresh.init();
+    assert.equal(fresh.suggestWhileTyping, true);
+    fresh.setSuggestWhileTyping(false);
+    assert.equal(values.get('agent-sessions:suggest-while-typing'), 'off');
+    const restored = new PreferencesStore();
+    restored.init();
+    assert.equal(restored.suggestWhileTyping, false);
+    restored.setSuggestWhileTyping(true);
+    const again = new PreferencesStore();
+    again.init();
+    assert.equal(again.suggestWhileTyping, true);
+    globalThis.localStorage.getItem = () => { throw new Error('disabled'); };
+    globalThis.localStorage.setItem = () => { throw new Error('disabled'); };
+    const blocked = new PreferencesStore();
+    blocked.init();
+    assert.equal(blocked.suggestWhileTyping, true);
+    blocked.setSuggestWhileTyping(false);
+    assert.equal(blocked.suggestWhileTyping, false, 'the choice still applies for this run');
+  } finally { globalThis.localStorage = previous; }
+});
+
 test('the language table matches the backend IDs and maps providers and files', () => {
   assert.deepEqual(CODE_LANGUAGES.map(l => l.id), ['go', 'typescript', 'svelte', 'python', 'rust', 'ruby', 'java', 'php']);
   assert.deepEqual(codeLanguageIds(['ruby', 'go']), ['go', 'ruby']);
