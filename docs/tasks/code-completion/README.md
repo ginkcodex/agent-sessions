@@ -1,7 +1,7 @@
 # Code completion — tasks
 
 - **Plan:** [code-completion.md](../../plan/code-completion.md)
-- **Progress:** 23/27 done (CC-01 and CC-09 partial)
+- **Progress:** 24/27 done (CC-01 and CC-09 partial)
 
 Suggestions while typing in the Go to File editor: first from the file and
 the language, then from the project's language server.
@@ -34,4 +34,4 @@ the language, then from the project's language server.
 | [CC-24](CC-24.md) | ✅ Done | Fourth review: the session keeps the answer the Manager keeps | 2 h | CC-19 |
 | [CC-25](CC-25.md) | ✅ Done | Fourth review: a resolve wait ends at its own abort; a retention test without GC | 3 h | CC-22 |
 | [CC-26](CC-26.md) | ✅ Done | Fourth review: snippet mirrors in plain text, no accept into a read-only editor | 2 h | CC-07, CC-12 |
-| [CC-27](CC-27.md) | ⬜ Not started | Fourth review: blocker wording, flush on a failed change, mock imports, names and tests | 2 h | CC-05, CC-14, CC-18 |
+| [CC-27](CC-27.md) | ✅ Done | Fourth review: blocker wording, flush on a failed change, mock imports, names and tests | 2 h | CC-05, CC-14, CC-18 |

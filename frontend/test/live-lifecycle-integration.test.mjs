@@ -5,7 +5,7 @@ import { projectSourceDiagnostics } from '../src/lib/sourceDiagnostics.ts';
 import { problemLocation } from '../src/lib/problemNavigation.ts';
 import { editorDiagnostics } from '../src/lib/fileEditor.ts';
 import { EditorState } from '@codemirror/state';
-import { LiveDocumentBridge } from '../src/lib/liveDocuments.ts';
+import { LIVE_DOCUMENT_MAX_BYTES, LiveDocumentBridge } from '../src/lib/liveDocuments.ts';
 
 const lib = name => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
 const { CodeDiagnosticsStore } = await loadServerModule(new URL('../src/lib/stores/codeDiagnostics.svelte.ts', import.meta.url), [
@@ -682,16 +682,36 @@ test('an answer keeps resolves for version 0 and the latest version only', async
   h.off();
 });
 
+test('a flush ends at once when the typing it sends is refused', async () => {
+  const h = await harness(true, { completion: true });
+  h.files.openFile('a.go', { keep: true }); await tick();
+  h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'a\n'); await h.flush();
+  // Over the size limit, still waiting on its debounce.
+  h.files.updateDraft('a.go', 'x'.repeat(LIVE_DOCUMENT_MAX_BYTES + 1));
+  const flushed = h.bridge.flush('a.go', 60_000);
+  assert.equal(await Promise.race([flushed, tick().then(() => 'waiting')]), undefined, 'not waiting for its bound');
+  assert.equal(h.bridge.failure('a.go'), 'limitExceeded');
+  h.off();
+});
+
 test('complete is blocked without the capability and for files no server declares', async () => {
   const off = await harness(true, { navigation: true });
   // complete() swallows a throw, so the calls are counted.
   let asked = 0;
   off.api.completeCode = async () => { asked++; throw new Error('must not be asked'); };
   off.files.openFile('a.go', { keep: true }); await tick();
-  assert.equal(off.checks.completionBlocker('a.go'), 'Code suggestions are not available for this host.');
+  // Why, as for navigation (CC-27).
+  assert.equal(off.checks.completionBlocker('a.go'), "This host's Agent Sessions server is older and does not offer code suggestions.");
   assert.equal(await off.checks.complete('a.go', { line: 0, character: 0 }, { kind: 'invoked' }), undefined);
   assert.equal(asked, 0);
   off.off();
+  const unlive = await harness(false, { completion: true });
+  unlive.api.completeCode = async () => { asked++; throw new Error('must not be asked'); };
+  unlive.files.openFile('a.go', { keep: true }); await tick();
+  assert.equal(unlive.checks.completionBlocker('a.go'), 'This host does not run language servers for open files, so code suggestions are unavailable.');
+  assert.equal(await unlive.checks.complete('a.go', { line: 0, character: 0 }, { kind: 'invoked' }), undefined);
+  assert.equal(asked, 0);
+  unlive.off();
   const md = await harness(true, { completion: true, path: 'notes.md', providers: [{ ...provider('lsp'), documentExtensions: ['.go'] }] });
   md.api.completeCode = async () => { asked++; throw new Error('must not be asked'); };
   md.files.openFile('notes.md', { keep: true }); await tick();

@@ -315,10 +315,10 @@ export class CodeDiagnosticsStore {
   }
   /** Why completion cannot be asked for path now; undefined when it can (the document may still be syncing). */
   completionBlocker(path: string): string | undefined {
-    if (!this.completionEnabled) return 'Code suggestions are not available for this host.';
+    // Says why whenever completionEnabled is false: no live servers or no completion.
     return navigationBlocker({
       feature: 'suggestions',
-      status: this.status, off: this.offLanguage(path)?.name, live: this.liveCapable, navigation: true, approved: this.approved, approvalBlocker: this.approvalBlocker,
+      status: this.status, off: this.offLanguage(path)?.name, live: this.liveCapable, navigation: this.completionCapable, approved: this.approved, approvalBlocker: this.approvalBlocker,
       servers: this.liveServers(path), failure: this.liveDocuments.find(d => d.path === path)?.failure, basis: this.liveBasis(path),
     });
   }

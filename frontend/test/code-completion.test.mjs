@@ -93,6 +93,30 @@ test('the mock suggests words of its open documents and resolves its last answer
   assert.equal(mock.answers.size, 0);
 });
 
+test('the mock imports only between JS and TS files', async () => {
+  const mock = new MockBackendAPI();
+  mock.liveDocuments = true;
+  const { context: c, snapshot } = await mock.attachCodeDiagnostics('/p', 1, 'mock:local');
+  await mock.approveCodeDiagnostics(c, 'session', snapshot.proposal.fingerprint, 'mock:local');
+  await mock.openCodeDiagnosticDocument(c, 'lib.go', 'd1', 1, 'func helperGo() {}\n', undefined, 'mock:local');
+  await mock.openCodeDiagnosticDocument(c, 'lib.py', 'd2', 1, 'def helperPy():\n', undefined, 'mock:local');
+  await mock.openCodeDiagnosticDocument(c, 'lib.tsx', 'd3', 1, 'function helperTs() {}\n', undefined, 'mock:local');
+  await mock.openCodeDiagnosticDocument(c, 'main.go', 'd4', 1, 'hel\n', undefined, 'mock:local');
+  await mock.openCodeDiagnosticDocument(c, 'main.mjs', 'd5', 1, 'hel\n', undefined, 'mock:local');
+  const end = { line: 0, character: 3 };
+  const imports = async documentId => {
+    const got = await mock.completeCode(c, 'q1', documentId, 1, end, invoked, 'mock:local');
+    const out = {};
+    for (const [i, item] of got.items.entries()) {
+      const d = await mock.resolveCodeCompletion(c, 'q2', documentId, got.resultId, i, 1, 'mock:local');
+      out[item.label] = d.extraEdits?.map(e => e.newText) ?? [];
+    }
+    return out;
+  };
+  assert.deepEqual(await imports('d4'), { helperGo: [], helperPy: [], helperTs: [] }, 'a Go file: none');
+  assert.deepEqual(await imports('d5'), { helperGo: [], helperPy: [], helperTs: ["import { helperTs } from './lib';\n"] }, 'a JS file: from TS only');
+});
+
 test('the mock without live documents is unsupported', async () => {
   const mock = new MockBackendAPI();
   const { context: c } = await mock.attachCodeDiagnostics('/p', 1, 'mock:local');

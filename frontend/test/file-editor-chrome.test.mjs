@@ -75,7 +75,10 @@ async function openChrome(dir, url) {
   const close = async () => {
     try { ws?.close(); } catch { /* already closed */ }
     if (chrome.exitCode === null && chrome.signalCode === null) chrome.kill();
-    await within(exited, 5000, 'Chrome to exit').catch(() => chrome.kill('SIGKILL'));
+    await within(exited, 5000, 'Chrome to exit').catch(async () => {
+      chrome.kill('SIGKILL');
+      await within(exited, 5000, 'Chrome to exit after SIGKILL').catch(() => { /* removing its folder may then fail */ });
+    });
   };
   try {
     let log = '';

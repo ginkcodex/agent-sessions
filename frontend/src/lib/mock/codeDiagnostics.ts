@@ -140,7 +140,8 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
   }
   /**
    * The kept answer survives changes. At the current version, a name declared
-   * in another open document also resolves to an import of it, at the top.
+   * in another open JS or TS document also resolves to an import of it, at
+   * the top, when the document asked about is JS or TS too.
    */
   async resolveCodeCompletion(c: CodeDiagnosticsContext, _requestId: string, documentId: string, resultId: string, index: number, version: number, host: string): Promise<CodeCompletionDetails> {
     const d = this.docs(c, host).get(documentId);
@@ -152,7 +153,8 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     if (!kept) throw new CodeDiagnosticsError('invalidArgument', 'No such completion item');
     if (version > 0 && version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The document changed since this request');
     const details: CodeCompletionDetails = { documentId, resultId, index, detail: kept.path, ...(kept.declared ? { documentation: { kind: 'markdown', value: '```\n' + kept.declared + '\n```' } } : {}) };
-    if (version > 0 && kept.declared && kept.path !== d.path) {
+    const script = (path: string) => /\.[cm]?[jt]sx?$/.test(path);
+    if (version > 0 && kept.declared && kept.path !== d.path && script(kept.path) && script(d.path)) {
       const from = './' + kept.path.replace(/^.*\//, '').replace(/\.[^.]*$/, '');
       const top = { line: 0, character: 0 };
       details.version = version;

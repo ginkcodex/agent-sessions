@@ -85,7 +85,7 @@ test('Settings › General: the suggestion checkbox turns suggesting while typin
     checkbox.click();
     flushSync();
     assert.deepEqual(calls, [false, true], 'checking turns it back on');
-    assert.match(target.textContent, new RegExp(`Off, ${suggestShortcutLabel().replace('+', '\\+')} still shows them\\.`));
+    assert.ok(target.textContent.includes(`Off, ${suggestShortcutLabel()} still shows them.`), target.textContent);
   } finally {
     if (component) unmount(component);
     target.remove();

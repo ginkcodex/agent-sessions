@@ -156,6 +156,8 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
       if (d.timer !== undefined && !d.saving) {
         this.cancelTimer(d);
         this.queueChange(att, d);
+        // Refused text fails the document at once, before a listener could hear it.
+        if (d.failed && this.docs.get(path) === d) return undefined;
       }
       const b = this.basis(path);
       return b?.synced ? b : null;

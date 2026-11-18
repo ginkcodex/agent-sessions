@@ -22,7 +22,7 @@ const TRANSCRIPT_MODE_KEY = 'agent-sessions:transcript-mode';
 const AUTO_INSTALL_KEY = 'agent-sessions:auto-install-language-servers';
 const DISABLED_LANGUAGES_KEY = 'agent-sessions:disabled-code-languages';
 const NAVIGATION_COLLAPSED_KEY = 'agent-sessions:navigation-collapsed';
-const SUGGEST_KEY = 'agent-sessions:suggest-while-typing';
+const SUGGEST_WHILE_TYPING_KEY = 'agent-sessions:suggest-while-typing';
 
 export interface PaneWidths {
   sidebar: number;
@@ -146,7 +146,7 @@ export class PreferencesStore {
     }
 
     try {
-      this.suggestWhileTyping = localStorage.getItem(SUGGEST_KEY) !== 'off';
+      this.suggestWhileTyping = localStorage.getItem(SUGGEST_WHILE_TYPING_KEY) !== 'off';
     } catch {
       // Storage disabled; keep suggestions on.
     }
@@ -261,7 +261,7 @@ export class PreferencesStore {
   setSuggestWhileTyping(on: boolean): void {
     this.suggestWhileTyping = on;
     try {
-      localStorage.setItem(SUGGEST_KEY, on ? 'on' : 'off');
+      localStorage.setItem(SUGGEST_WHILE_TYPING_KEY, on ? 'on' : 'off');
     } catch {
       // Storage disabled; the choice still applies for this run.
     }
