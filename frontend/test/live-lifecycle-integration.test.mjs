@@ -467,7 +467,7 @@ test('aborting a completion cancels it on the host; the attachment ending drops 
   const pending = h.checks.complete('a.go', { line: 0, character: 1 }, { kind: 'invoked' }, { signal: controller.signal });
   await tick();
   controller.abort();
-  assert.deepEqual(cancels.length, 1);
+  assert.equal(cancels.length, 1);
   assert.match(cancels[0], /^completion-\d+$/);
   finish();
   assert.equal(await pending, undefined, 'an aborted answer is not used');
@@ -582,13 +582,19 @@ test('extraEdits sends pending typing, resolves at that version, and shares the 
 
 test('complete is blocked without the capability and for files no server declares', async () => {
   const off = await harness(true, { navigation: true });
-  off.api.completeCode = async () => { throw new Error('must not be asked'); };
+  // complete() swallows a throw, so the calls are counted.
+  let asked = 0;
+  off.api.completeCode = async () => { asked++; throw new Error('must not be asked'); };
   off.files.openFile('a.go', { keep: true }); await tick();
   assert.equal(off.checks.completionBlocker('a.go'), 'Code suggestions are not available for this host.');
   assert.equal(await off.checks.complete('a.go', { line: 0, character: 0 }, { kind: 'invoked' }), undefined);
+  assert.equal(asked, 0);
   off.off();
   const md = await harness(true, { completion: true, path: 'notes.md', providers: [{ ...provider('lsp'), documentExtensions: ['.go'] }] });
+  md.api.completeCode = async () => { asked++; throw new Error('must not be asked'); };
   md.files.openFile('notes.md', { keep: true }); await tick();
   assert.ok(md.checks.completionBlocker('notes.md'));
+  assert.equal(await md.checks.complete('notes.md', { line: 0, character: 0 }, { kind: 'invoked' }), undefined);
+  assert.equal(asked, 0);
   md.off();
 });

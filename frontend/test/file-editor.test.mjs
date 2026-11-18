@@ -1200,10 +1200,10 @@ test('completion keys: Cmd+I on macOS and Ctrl+Space everywhere open suggestions
   const all = groups.flat();
   for (const dead of ['Alt-`', 'Alt-i']) assert.ok(!all.some(b => b.key === dead || b.mac === dead), `no keymap binds ${dead}`);
   // Accepting with Tab or Enter runs before indenting or a new line; without a popup they fall through.
-  const completion = groups.findIndex(g => g.includes(completionKeys[0]));
-  const editing = groups.findIndex(g => g.some(b => b.key === 'Tab' && b.run !== completionKeys.at(-1).run));
-  assert.ok(completion >= 0 && editing > completion, 'completion keys come first');
   const accept = completionKeys.find(b => b.key === 'Tab');
+  const completion = groups.findIndex(g => g.includes(completionKeys[0]));
+  const editing = groups.findIndex(g => g.some(b => b.key === 'Tab' && b.run !== accept.run));
+  assert.ok(completion >= 0 && editing > completion, 'completion keys come first');
   assert.equal(accept.run(view), false, 'no popup: Tab is left to indentation');
   const enter = completionKeys.find(b => b.key === 'Enter');
   assert.equal(enter.run, acceptOrBreakLine, 'Enter breaks the line after a name typed in full (checked in Chrome)');
@@ -1658,9 +1658,11 @@ test('snippet fields: mirrors change together, Tab and Shift-Tab move, lines tak
   undo(view);
   const third = await h.suggest(end);
   third.options[0].apply(view, third.options[0], third.from, end);
+  assert.equal(hasNextSnippetField(view.state), true);
   view.dispatch({ selection: { anchor: 0 } });
   assert.equal(multiple(view), false);
-  view.dispatch({ selection: { anchor: 0, head: 1 } });
+  assert.equal(hasNextSnippetField(view.state), false, 'the fields are gone');
+  assert.equal(view.state.selection.ranges.length, 1);
   h.editor.destroy();
 });
 

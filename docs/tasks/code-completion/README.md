@@ -1,7 +1,7 @@
 # Code completion — tasks
 
 - **Plan:** [code-completion.md](../../plan/code-completion.md)
-- **Progress:** 11/15 done (CC-01 and CC-09 partial)
+- **Progress:** 12/15 done (CC-01 and CC-09 partial)
 
 Suggestions while typing in the Go to File editor: first from the file and
 the language, then from the project's language server.
@@ -22,4 +22,4 @@ the language, then from the project's language server.
 | [CC-12](CC-12.md) | ✅ Done | Accepting an item adds the import it resolves to | 3 h | CC-06, CC-10 |
 | [CC-13](CC-13.md) | ✅ Done | Review fixes on the host: conflicting extra edits, resolve guard, kept raw bytes | 3 h | CC-02, CC-03, CC-10 |
 | [CC-14](CC-14.md) | ✅ Done | Review fixes in the editor, store and texts | 3 h | CC-06, CC-12 |
-| [CC-15](CC-15.md) | ⬜ Not started | Review fixes in the completion tests and the Chrome harness | 2 h | CC-12 |
+| [CC-15](CC-15.md) | ✅ Done | Review fixes in the completion tests and the Chrome harness | 2 h | CC-12 |

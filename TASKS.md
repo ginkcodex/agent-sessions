@@ -140,4 +140,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Chat message queue | [chat-message-queue](docs/plan/chat-message-queue.md) | [chat-message-queue/](docs/tasks/chat-message-queue/README.md) | 7/8 ✅ · 1 ⬜ |
 | Tool file links | [tool-file-links](docs/plan/tool-file-links.md) | [tool-file-links/](docs/tasks/tool-file-links/README.md) | 1/2 ✅ · 1 ⬜ |
 | Review fixes (2026-11-14 review) | [review-fixes](docs/plan/review-fixes.md) | [review-fixes/](docs/tasks/review-fixes/README.md) | 27/35 ✅ · 8 ⬜ |
-| Code completion | [code-completion](docs/plan/code-completion.md) | [code-completion/](docs/tasks/code-completion/README.md) | 11/15 ✅ · 2 🟡 · 2 ⬜ |
+| Code completion | [code-completion](docs/plan/code-completion.md) | [code-completion/](docs/tasks/code-completion/README.md) | 12/15 ✅ · 2 🟡 · 1 ⬜ |
