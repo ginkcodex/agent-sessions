@@ -1,4 +1,4 @@
-import { Annotation, CharCategory, Compartment, EditorState, Prec, RangeSet, StateField, type Extension, type SelectionRange, type Text, type TransactionSpec } from '@codemirror/state';
+import { Annotation, CharCategory, Compartment, EditorState, Prec, RangeSet, StateField, type Extension, type SelectionRange, type Text, type Transaction, type TransactionSpec } from '@codemirror/state';
 import { forEachDiagnostic, lintKeymap, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import { projectSourceDiagnostics } from './sourceDiagnostics';
 import type { AttributedCodeDiagnostic, LiveDocumentBasis } from './codeDiagnostics';
@@ -16,9 +16,9 @@ import type { FileLineSelection } from './fileSelection';
 import { fileLanguage } from './files';
 import { textChanges } from './searchReplace';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
-import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completionKeymap, pickedCompletion, selectedCompletion, startCompletion, CompletionContext, type Completion, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete';
+import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completionKeymap, hasNextSnippetField, hasPrevSnippetField, pickedCompletion, selectedCompletion, snippet, startCompletion, CompletionContext, type Completion, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete';
 import type { CodeCompletionItem, CodeCompletionTrigger, CodeDiagnosticPosition } from './codeDiagnostics';
-import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, serverBoosts, snippetText, type EditorCompleter, type EditorCompletionAnswer, type EditorCompletionDetails } from './editorCompletion';
+import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, serverBoosts, snippetText, type CompletionEdit, type EditorCompleter, type EditorCompletionAnswer, type EditorCompletionDetails } from './editorCompletion';
 import { HOVER_DELAY, contextPress, linkModifier, menuKey, wordRange, type SelectionHold, type ViewportPoint } from './sourceNavigation';
 import { handleCopyCodeClick } from './copycode';
 import { severityRank, type OverviewProblem, type ProblemSeverity } from './problemOverview';
@@ -227,6 +227,33 @@ function completionInfo(d: EditorCompletionDetails | undefined): HTMLElement | n
   return dom;
 }
 
+// A snippet's mirrors ($1 twice) are edited together as several selections:
+// allowed while a snippet is active, back to one selection when it ends.
+const mirrors = new Compartment();
+const allowMirrors = EditorState.allowMultipleSelections.of(true);
+const endMirrors = EditorState.transactionFilter.of(tr => {
+  if (mirrors.get(tr.startState) !== allowMirrors) return tr;
+  // Only while mirrors are on, which is rare: the new state is needed to know the snippet ended.
+  const state = tr.state;
+  if (hasNextSnippetField(state) || hasPrevSnippetField(state)) return tr;
+  return [tr, { effects: mirrors.reconfigure([]), selection: state.selection.asSingle(), sequential: true }];
+});
+
+/**
+ * What CodeMirror's snippet() would do to insert template over edit: its
+ * change, the first field selected and the fields made active. Undefined,
+ * so the plain text goes in, when it fails.
+ */
+function snippetFields(state: EditorState, template: string, edit: CompletionEdit): Transaction | undefined {
+  let made: Transaction | undefined;
+  try {
+    snippet(template)({ state, dispatch: tr => { made = tr; } }, null, edit.from, edit.to);
+  } catch {
+    return undefined;
+  }
+  return made;
+}
+
 /** A CodeMirror option for server item index of an answer asked at pos in askedDoc. */
 function serverOption(item: CodeCompletionItem, index: number, boost: number, answer: EditorCompletionAnswer, askedDoc: Text, pos: number, start: number): Completion {
   const label = item.filterText || item.label;
@@ -237,12 +264,24 @@ function serverOption(item: CodeCompletionItem, index: number, boost: number, an
     type: completionType(item.kind),
     boost,
     apply(view, completion, from, to) {
-      const { changes, main, caret } = completionChanges(askedDoc, pos, start, view.state.doc, from, to, item);
-      view.dispatch({
-        changes, selection: { anchor: caretAfter(changes, main, caret) }, scrollIntoView: true, userEvent: 'input.complete',
-        // Accepting is one step to undo, whatever it changed.
-        annotations: [pickedCompletion.of(completion), isolateHistory.of('full')],
-      });
+      const { changes, main, caret, template } = completionChanges(askedDoc, pos, start, view.state.doc, from, to, item);
+      // Accepting is one step to undo, whatever it changed.
+      const annotations = [pickedCompletion.of(completion), isolateHistory.of('full')];
+      let fields = template !== undefined ? snippetFields(view.state, template, changes[main]) : undefined;
+      if (fields?.selection && fields.selection.ranges.length > 1 && !view.state.facet(EditorState.allowMultipleSelections)) {
+        // Selecting every mirror needs several selections before the snippet goes in.
+        view.dispatch({ effects: mirrors.reconfigure(allowMirrors) });
+        fields = snippetFields(view.state, template!, changes[main]);
+      }
+      if (fields) {
+        // The snippet with its fields, and the other edits in the same transaction.
+        view.dispatch(view.state.update(
+          { changes: fields.changes, selection: fields.selection, effects: fields.effects, scrollIntoView: true, userEvent: 'input.complete', annotations },
+          { changes: changes.filter((_, i) => i !== main) },
+        ));
+        return;
+      }
+      view.dispatch({ changes, selection: { anchor: caretAfter(changes, main, caret) }, scrollIntoView: true, userEvent: 'input.complete', annotations });
     },
     ...(answer.details ? { info: async () => completionInfo(await answer.details!(index)) } : {}),
   };
@@ -756,6 +795,7 @@ function freshState(options: FileEditorOptions): EditorState {
       search(), theme, font.of(fontThemes[0]), fitTooltips, indentUnit.of(detectIndent(options.text)), EditorState.tabSize.of(4),
       wrapping.of(options.wrap ? EditorView.lineWrapping : []),
       editing.of(editable(options.disabled)), language.of([]), coloring.of([]), completing.of(suggestions(options)),
+      mirrors.of([]), endMirrors,
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...editorLintKeymap]),
       EditorView.updateListener.of(update => {
         if (update.docChanged && !update.transactions.every(tr => tr.annotation(external)))

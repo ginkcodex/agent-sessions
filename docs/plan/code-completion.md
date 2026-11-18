@@ -98,7 +98,7 @@ Completion follows navigation's path:
 (local or `rpc.Client`) → `codediagnostics.Manager` → `SessionDocuments`.
 
 - `initializeParams` declares `textDocument.completion`: `contextSupport`,
-  `completionItem.snippetSupport: false` (until CC-07),
+  `completionItem.snippetSupport` (false until CC-07, true since),
   `documentationFormat: [markdown, plaintext]`, `labelDetailsSupport`,
   `resolveSupport.properties: [documentation, detail]`, and the item kinds.
   No `insertReplaceSupport`, so servers send one range.

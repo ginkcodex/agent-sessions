@@ -185,7 +185,7 @@ test('Chrome: suggestions open while typing, Tab and Enter accept, Escape closes
   }
 });
 
-test('Chrome: language-server suggestions after a dot, filtered as typed, with details; Enter applies the import in one undo step', { skip: !process.env.AS_TEST_CHROME, timeout: 120000 }, async () => {
+test('Chrome: language-server suggestions after a dot, filtered as typed, with details; Enter applies the import and the snippet in one undo step', { skip: !process.env.AS_TEST_CHROME, timeout: 120000 }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'as-completion-'));
   let server, browser;
   try {
@@ -198,12 +198,13 @@ test('Chrome: language-server suggestions after a dot, filtered as typed, with d
       window.asks = [];
       const items = [
         { label: 'Println', kind: 3, sortText: 'a', snippet: true, detail: 'func(a ...any)',
-          edit: { range: { start: { line: 3, character: 5 }, end: { line: 3, character: 5 } }, newText: 'Println(\${1:a ...any})' },
+          edit: { range: { start: { line: 3, character: 5 }, end: { line: 3, character: 5 } }, newText: 'Println(\${1:a ...any})\$0' },
           extraEdits: [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }, newText: 'import "fmt"\\n' }] },
         { label: 'Printf', kind: 3, sortText: 'b', deprecated: true },
       ];
       const symbols = { ask() {}, hover: async () => undefined, complete(position, trigger) {
         window.asks.push({ position, trigger });
+        if (trigger.kind !== 'character') return Promise.resolve({ items: [], incomplete: false, triggerCharacters: '.' });
         return new Promise(r => setTimeout(() => r({ items, incomplete: false, triggerCharacters: '.',
           details: async i => ({ detail: i ? 'func Printf' : 'func Println(a ...any) (n int, err error)', html: '<p>Writes a line.</p>' }) }), 50));
       } };
@@ -236,12 +237,23 @@ test('Chrome: language-server suggestions after a dot, filtered as typed, with d
     await press('Enter');
     await sleep(150);
     assert.equal(await text(), 'package main\nimport "fmt"\n\nfunc f() {\n\tfmt.Println(a ...any)');
+    assert.equal(await evaluate(`document.querySelector('.cm-snippetField')?.textContent ?? ''`), 'a ...any', 'the placeholder is a field');
+    const undoKey = () => press('z', [isMac ? 'meta' : 'ctrl']);
     await type('X');
+    await sleep(600);
+    assert.equal(await text(), 'package main\nimport "fmt"\n\nfunc f() {\n\tfmt.Println(X)', 'typing replaces the selected placeholder');
+    await press('Tab');
     await sleep(100);
-    assert.equal(await text(), 'package main\nimport "fmt"\n\nfunc f() {\n\tfmt.Println(Xa ...any)', 'the caret is at the first placeholder');
-    await press('z', [isMac ? 'meta' : 'ctrl']);
+    await type(';');
+    await sleep(600);
+    assert.equal(await text(), 'package main\nimport "fmt"\n\nfunc f() {\n\tfmt.Println(X);', 'Tab goes on to $0, after the call');
+    assert.equal(await evaluate(`document.querySelectorAll('.cm-snippetField, .cm-snippetFieldPosition').length`), 0, 'the snippet is done');
+    await undoKey();
     await sleep(100);
-    await press('z', [isMac ? 'meta' : 'ctrl']);
+    await undoKey();
+    await sleep(100);
+    assert.equal(await text(), 'package main\nimport "fmt"\n\nfunc f() {\n\tfmt.Println(a ...any)', 'the typing undoes first');
+    await undoKey();
     await sleep(100);
     assert.equal(await text(), 'package main\n\nfunc f() {\n\tfmt.Pr', 'one undo takes the suggestion and its import back');
   } finally {

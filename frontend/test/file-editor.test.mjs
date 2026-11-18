@@ -10,7 +10,7 @@ import { EditorView, keymap, lineNumberMarkers } from '@codemirror/view';
 import { undo, redo, undoDepth, indentMore, insertNewlineAndIndent } from '@codemirror/commands';
 import { language, indentUnit } from '@codemirror/language';
 import { searchPanelOpen } from '@codemirror/search';
-import { CompletionContext, completionStatus, startCompletion } from '@codemirror/autocomplete';
+import { CompletionContext, clearSnippet, completionStatus, hasNextSnippetField, nextSnippetField, prevSnippetField, startCompletion } from '@codemirror/autocomplete';
 import { javascriptLanguage, jsxLanguage, tsxLanguage, typescriptLanguage } from '@codemirror/lang-javascript';
 import { jsonLanguage } from '@codemirror/lang-json';
 import { yamlLanguage } from '@codemirror/lang-yaml';
@@ -1442,7 +1442,7 @@ test('a slow server is canceled and the words show; CodeMirror ending the query 
   h.editor.destroy();
 });
 
-test('accepting applies the edit and its import as one undo step, with the caret in the snippet', async () => {
+test('accepting applies the edit and its import as one undo step, with the snippet\'s first field selected', async () => {
   const text = 'package main\n\nfunc f() {\n\tfmt.Pr\n}\n';
   const h = serverEditor(text, 'a.go', async () => ({ incomplete: false, items: [{
     label: 'Println', kind: 3, snippet: true,
@@ -1457,16 +1457,74 @@ test('accepting applies the edit and its import as one undo step, with the caret
   const option = result.options[0];
   option.apply(view, option, result.from, end + 1);
   assert.equal(view.state.doc.toString(), 'package main\nimport "fmt"\n\nfunc f() {\n\tfmt.Println(a ...any)\n}\n');
-  assert.equal(view.state.selection.main.head, view.state.doc.line(5).from + '\tfmt.Println('.length);
+  const args = view.state.doc.line(5).from + '\tfmt.Println('.length;
+  assert.deepEqual([view.state.selection.main.from, view.state.selection.main.to], [args, args + 'a ...any'.length], 'the placeholder is selected');
   assert.equal(undoDepth(view.state), depth + 1);
+  assert.equal(hasNextSnippetField(view.state), true);
+  assert.equal(nextSnippetField(view), true, 'Tab moves on');
+  assert.deepEqual([view.state.selection.main.from, view.state.selection.main.to], [args + 'a ...any)'.length, args + 'a ...any)'.length], 'and ends at $0');
+  assert.equal(hasNextSnippetField(view.state), false, 'the snippet is done');
   undo(view);
   assert.equal(view.state.doc.toString(), 'package main\n\nfunc f() {\n\tfmt.Pri\n}\n', 'one undo, the typing stays');
 
-  // An edit elsewhere since asking: only the item's text replaces the typed word.
+  // An edit elsewhere since asking: only the item's text replaces the typed word, still with its fields.
   typed(view, 'X', 0);
   const word = view.state.doc.line(4);
   option.apply(view, option, word.to - 3, word.to);
   assert.equal(view.state.doc.toString(), 'Xpackage main\n\nfunc f() {\n\tfmt.Println(a ...any)\n}\n');
+  assert.equal(view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to), 'a ...any');
+  h.editor.destroy();
+});
+
+test('snippet fields: mirrors change together, Tab and Shift-Tab move, lines take the indentation, Escape leaves', async () => {
+  const text = 'func f() {\n\tfo\n}\n';
+  const reply = async () => ({ incomplete: false, items: [{
+    label: 'for', kind: 15, snippet: true,
+    insertText: 'for ${1:i} := 0; $1 < ${2:n}; $1++ {\n\t$0\n}',
+  }] });
+  const multiple = view => view.state.facet(EditorState.allowMultipleSelections);
+  const h = serverEditor(text, 'a.go', reply);
+  const { view } = h, end = view.state.doc.line(2).to;
+  view.dispatch({ selection: { anchor: end } });
+  const result = await h.suggest(end);
+  const option = result.options[0];
+  assert.equal(multiple(view), false, 'one selection while editing');
+  const depth = undoDepth(view.state);
+  option.apply(view, option, result.from, end);
+  assert.equal(view.state.doc.toString(), 'func f() {\n\tfor i := 0; i < n; i++ {\n\t\t\n\t}\n}\n', 'new lines indented under the first');
+  assert.equal(undoDepth(view.state), depth + 1);
+  assert.deepEqual(view.state.selection.ranges.map(r => view.state.sliceDoc(r.from, r.to)), ['i', 'i', 'i'], 'every $1 is selected');
+  view.dispatch(view.state.replaceSelection('k'));
+  assert.equal(view.state.doc.line(2).text, '\tfor k := 0; k < n; k++ {', 'mirrors change together');
+  assert.equal(nextSnippetField(view), true);
+  assert.deepEqual(view.state.selection.ranges.map(r => view.state.sliceDoc(r.from, r.to)), ['n']);
+  assert.equal(prevSnippetField(view), true);
+  assert.equal(view.state.selection.ranges.length, 3, 'back on $1');
+  nextSnippetField(view);
+  nextSnippetField(view);
+  assert.equal(view.state.selection.main.head, view.state.doc.line(3).to, '$0 inside the body');
+  assert.equal(hasNextSnippetField(view.state), false, 'done at $0');
+  assert.equal(multiple(view), false, 'one selection again');
+  undo(view);
+  assert.equal(view.state.doc.toString(), 'func f() {\n\tfor i := 0; i < n; i++ {\n\t\t\n\t}\n}\n', 'the typing in the field undoes first');
+  undo(view);
+  assert.equal(view.state.doc.toString(), text, 'then the snippet, in one step');
+
+  // Escape leaves the fields and their cursors; one selection is left.
+  const again = await h.suggest(end);
+  again.options[0].apply(view, again.options[0], again.from, end);
+  assert.equal(view.state.selection.ranges.length, 3);
+  assert.equal(clearSnippet(view), true);
+  assert.equal(hasNextSnippetField(view.state), false);
+  assert.equal(view.state.selection.ranges.length, 1);
+  assert.equal(multiple(view), false);
+  // A click elsewhere ends it too.
+  undo(view);
+  const third = await h.suggest(end);
+  third.options[0].apply(view, third.options[0], third.from, end);
+  view.dispatch({ selection: { anchor: 0 } });
+  assert.equal(multiple(view), false);
+  view.dispatch({ selection: { anchor: 0, head: 1 } });
   h.editor.destroy();
 });
 

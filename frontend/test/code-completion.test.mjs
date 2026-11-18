@@ -43,11 +43,15 @@ test('the mock suggests words of its open documents and resolves its last answer
   const { context: c, snapshot } = await mock.attachCodeDiagnostics('/p', 1, 'mock:local');
   await mock.approveCodeDiagnostics(c, 'session', snapshot.proposal.fingerprint, 'mock:local');
   await mock.openCodeDiagnosticDocument(c, 'a.ts', 'd1', 1, 'function helper() {}\nhel\n', undefined, 'mock:local');
-  await mock.openCodeDiagnosticDocument(c, 'b.ts', 'd2', 1, 'const help = 1;\n', undefined, 'mock:local');
+  await mock.openCodeDiagnosticDocument(c, 'b.ts', 'd2', 1, 'const help = 1;\nfunction helping(a, $b) {}\n', undefined, 'mock:local');
   const end = { line: 1, character: 3 };
   const got = await mock.completeCode(c, 'q1', 'd1', 1, end, invoked, 'mock:local');
-  assert.deepEqual(got.items.map(i => i.label), ['help', 'helper']);
-  assert.deepEqual(got.items[1].edit, { range: { start: { line: 1, character: 0 }, end }, newText: 'helper' });
+  assert.deepEqual(got.items.map(i => i.label), ['help', 'helper', 'helping']);
+  assert.deepEqual(got.items[0].edit, { range: { start: { line: 1, character: 0 }, end }, newText: 'help' });
+  assert.equal(got.items[0].snippet, undefined);
+  assert.deepEqual(got.items[1].edit, { range: { start: { line: 1, character: 0 }, end }, newText: 'helper()$0' }, 'a function: a snippet');
+  assert.equal(got.items[1].snippet, true);
+  assert.equal(got.items[2].edit.newText, 'helping(${1:a}, ${2:\\$b})$0', 'parameters are tab stops, escaped');
   const details = await mock.resolveCodeCompletion(c, 'd1', got.resultId, 1, 'mock:local');
   assert.equal(details.detail, 'a.ts');
   assert.match(details.documentation.value, /function helper\(\) \{\}/);

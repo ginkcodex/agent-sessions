@@ -98,45 +98,141 @@ export function answerStart(doc: Text, pos: number, items: readonly CodeCompleti
   return shared !== undefined && shared >= line.from && shared <= pos ? shared : identifierStart(doc, pos);
 }
 
+/** A parsed LSP snippet: text, and tab stops holding their default parts. */
+type SnippetPart = string | { stop: number; parts: SnippetPart[] };
+
 /**
- * Plain text for an LSP snippet: placeholders keep their default text (the
- * first choice), variables theirs, and the caret goes to the first tab stop
- * ($1, else $0, else the end). Snippets with tab stops come in CC-07.
+ * Parses LSP snippet syntax leniently: `$1`, `${1}`, `${1:default}` (nested),
+ * `${1|a,b|}` (the first choice), variables (`$NAME`, `${NAME:default}`:
+ * their default, as their value is not known here), escapes (`\$`, `\}`,
+ * `\\`). A transform inserts nothing; anything that does not parse is text.
  */
-export function snippetText(snippet: string): { text: string; caret: number } {
-  let out = '', i = 0;
-  const stops: { n: number; at: number }[] = [];
-  const parse = (until?: string): void => {
+function parseSnippet(snippet: string): SnippetPart[] {
+  let i = 0;
+  const parse = (inside: boolean): SnippetPart[] => {
+    const parts: SnippetPart[] = [];
+    let text = '';
+    const flush = () => { if (text) { parts.push(text); text = ''; } };
     while (i < snippet.length) {
       const c = snippet[i];
-      if (until && until.includes(c)) return;
-      if (c === '\\' && i + 1 < snippet.length && '$}\\,|'.includes(snippet[i + 1])) { out += snippet[i + 1]; i += 2; continue; }
-      if (c !== '$') { out += c; i++; continue; }
+      if (inside && c === '}') break;
+      if (c === '\\' && i + 1 < snippet.length && '$}\\,|'.includes(snippet[i + 1])) { text += snippet[i + 1]; i += 2; continue; }
+      if (c !== '$') { text += c; i++; continue; }
       const simple = /^\$(\d+|[A-Za-z_]\w*)/.exec(snippet.slice(i));
       if (simple) {
-        if (/^\d/.test(simple[1])) stops.push({ n: Number(simple[1]), at: out.length });
         i += simple[0].length;
+        if (/^\d/.test(simple[1])) { flush(); parts.push({ stop: Number(simple[1]), parts: [] }); }
         continue;
       }
       const open = /^\$\{(\d+|[A-Za-z_]\w*)/.exec(snippet.slice(i));
-      if (!open) { out += c; i++; continue; }
+      // `${name` not followed by what can come next is text.
+      if (!open || i + open[0].length >= snippet.length || !':|/}'.includes(snippet[i + open[0].length])) { text += c; i++; continue; }
       i += open[0].length;
-      if (/^\d/.test(open[1])) stops.push({ n: Number(open[1]), at: out.length });
-      if (snippet[i] === ':') { i++; parse('}'); }
+      let inner: SnippetPart[] = [], transform = false;
+      if (snippet[i] === ':') { i++; inner = parse(true); }
       else if (snippet[i] === '|') {
         const choices = /^\|((?:[^|\\]|\\.)*)\|/.exec(snippet.slice(i));
-        if (choices) { out += choices[1].split(/(?<!\\),/)[0].replace(/\\(.)/g, '$1'); i += choices[0].length; }
+        if (choices) {
+          const first = choices[1].split(/(?<!\\),/)[0].replace(/\\(.)/g, '$1');
+          if (first) inner = [first];
+          i += choices[0].length;
+        }
       } else if (snippet[i] === '/') {
-        // A transform: the variable's value is not known here.
+        // A transform: the text it would change is not known here.
+        transform = true;
         const end = snippet.indexOf('}', i);
         i = end < 0 ? snippet.length : end;
       }
       if (snippet[i] === '}') i++;
+      flush();
+      if (transform) continue;
+      if (/^\d/.test(open[1])) parts.push({ stop: Number(open[1]), parts: inner });
+      else parts.push(...inner);
+    }
+    flush();
+    return parts;
+  };
+  return parse(false);
+}
+
+const partsText = (parts: readonly SnippetPart[]): string => parts.map(p => (typeof p === 'string' ? p : partsText(p.parts))).join('');
+
+/**
+ * Plain text for an LSP snippet: placeholders keep their default text, and
+ * the caret goes to the first tab stop ($1, else $0, else the end).
+ */
+export function snippetText(snippet: string): { text: string; caret: number } {
+  let out = '';
+  const stops: { n: number; at: number }[] = [];
+  const walk = (parts: readonly SnippetPart[]): void => {
+    for (const p of parts) {
+      if (typeof p === 'string') { out += p; continue; }
+      stops.push({ n: p.stop, at: out.length });
+      walk(p.parts);
     }
   };
-  parse();
+  walk(parseSnippet(snippet));
   const first = stops.filter(s => s.n > 0).sort((a, b) => a.n - b.n)[0] ?? stops.find(s => s.n === 0);
   return { text: out, caret: first?.at ?? out.length };
+}
+
+/**
+ * A CodeMirror `snippet()` template for an LSP snippet: tab stops become
+ * fields, with their default text when it is one line without braces (a
+ * CodeMirror field cannot hold those; the stop then sits before its text,
+ * and nested stops keep their own fields). The last stop is `$0`, at the end
+ * when the snippet has none, so Tab ends there as in VS Code.
+ *
+ * CodeMirror reads `${` and `#{` as fields and drops a backslash before a
+ * brace, so a brace after `$`, `#` or `\` is escaped, and only then. Its
+ * escapes shift the fields after them wrongly from the third on one line;
+ * such a snippet has no template (undefined) and goes in as plain text.
+ */
+export function snippetTemplate(snippet: string): string | undefined {
+  // A field's text, when CodeMirror can hold it: one line, no braces, no nested stops,
+  // and no backslash at the end, which would escape a brace after it.
+  const fieldText = (parts: readonly SnippetPart[]) => {
+    const flat = parts.every(q => typeof q === 'string') ? partsText(parts) : undefined;
+    return flat !== undefined && !/[{}\r\n]|\\$/.test(flat) ? flat : undefined;
+  };
+  // Mirrors (`$1` again) show the text of the stop's placeholder.
+  const defaults = new Map<number, string>();
+  const collect = (parts: readonly SnippetPart[]): void => {
+    for (const p of parts) {
+      if (typeof p === 'string') continue;
+      const text = fieldText(p.parts);
+      if (text && !defaults.has(p.stop)) defaults.set(p.stop, text);
+      collect(p.parts);
+    }
+  };
+  const parts = parseSnippet(snippet);
+  collect(parts);
+  // The text's last character so far, and the escapes on the line so far.
+  let prev = '', escapes = 0, final = false, safe = true;
+  const literal = (text: string): string => {
+    let out = '';
+    for (const c of text) {
+      if (c === '\n' || c === '\r') escapes = 0;
+      if ((c === '{' && (prev === '$' || prev === '#')) || ((c === '{' || c === '}') && prev === '\\')) { out += '\\'; escapes++; }
+      out += c;
+      prev = c;
+    }
+    return out;
+  };
+  const field = (stop: number, text: string): string => {
+    if (escapes > 2) safe = false;
+    if (text) prev = text[text.length - 1];
+    return text ? `\${${stop}:${text}}` : `\${${stop}}`;
+  };
+  const render = (parts: readonly SnippetPart[]): string => parts.map(p => {
+    if (typeof p === 'string') return literal(p);
+    if (p.stop === 0) final = true;
+    const text = p.parts.length ? fieldText(p.parts) : defaults.get(p.stop) ?? '';
+    return text !== undefined ? field(p.stop, text) : field(p.stop, '') + render(p.parts);
+  }).join('');
+  let template = render(parts);
+  if (!final) template += field(0, '');
+  return safe ? template : undefined;
 }
 
 export interface CompletionEdit { from: number; to: number; insert: string }
@@ -150,11 +246,14 @@ export interface CompletionEdit { from: number; to: number; insert: string }
  * filter text (the label, when the edit was for other text), as no other
  * offset can be trusted. Changes are sorted and do
  * not overlap; `caret` is where the caret goes, counted from the main edit's
- * start, and `main` is the main edit's index.
+ * start, and `main` is the main edit's index. A snippet item's main edit
+ * inserts its plain text; `template` is then its `snippet()` template, for
+ * the editor to insert in its place with tab stops.
  */
-export function completionChanges(askedDoc: Text, asked: number, start: number, doc: Text, from: number, to: number, item: CodeCompletionItem): { changes: CompletionEdit[]; main: number; caret: number } {
-  const plain = item.snippet ? snippetText(item.edit?.newText ?? item.insertText ?? item.label) : undefined;
-  const insert = plain?.text ?? item.edit?.newText ?? item.insertText ?? item.label;
+export function completionChanges(askedDoc: Text, asked: number, start: number, doc: Text, from: number, to: number, item: CodeCompletionItem): { changes: CompletionEdit[]; main: number; caret: number; template?: string } {
+  const source = item.edit?.newText ?? item.insertText ?? item.label;
+  const plain = item.snippet ? snippetText(source) : undefined;
+  const insert = plain?.text ?? source;
   const caret = plain ? plain.caret : insert.length;
   const range = item.edit && rangeOffsets(askedDoc, item.edit.range);
   // Without the edit's own range, its text fits the filter text only when it replaced exactly that.
@@ -162,7 +261,12 @@ export function completionChanges(askedDoc: Text, asked: number, start: number, 
   const typedOnly = { from, to, insert: fits ? insert : item.label };
   const typedCaret = fits ? caret : item.label.length;
   const clean = start <= asked && from <= to && askedDoc.slice(0, start).eq(doc.slice(0, from)) && askedDoc.slice(asked).eq(doc.slice(to));
-  if (!clean) return { changes: [typedOnly], main: 0, caret: typedCaret };
+  // The label, when the item's own text did not fit, is no snippet.
+  const template = (main: CompletionEdit) => {
+    const t = item.snippet && (main !== typedOnly || fits) ? snippetTemplate(source) : undefined;
+    return t === undefined ? {} : { template: t };
+  };
+  if (!clean) return { changes: [typedOnly], main: 0, caret: typedCaret, ...template(typedOnly) };
   // Asked offsets to now: up to the filter text as they were, after the caret shifted with it.
   const map = (x: number) => (x <= start ? x : x >= asked ? x + (to - asked) : undefined);
   let main = typedOnly, mainCaret = typedCaret;
@@ -181,7 +285,7 @@ export function completionChanges(askedDoc: Text, asked: number, start: number, 
     changes.push({ from: ms, to: me, insert: extra.newText });
   }
   changes.sort((a, b) => a.from - b.from);
-  return { changes, main: changes.indexOf(main), caret: mainCaret };
+  return { changes, main: changes.indexOf(main), caret: mainCaret, ...template(main) };
 }
 
 /** Where the caret goes once `changes` (sorted) are applied: `caret` past the start of change `main`. */

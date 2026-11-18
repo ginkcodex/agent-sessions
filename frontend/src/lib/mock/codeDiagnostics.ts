@@ -110,7 +110,11 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     const words = [...found.keys()].sort();
     const items = words.slice(0, 100).map(word => {
       const { path, declared } = found.get(word)!;
-      return { item: { label: word, kind: declared ? 3 : 1, edit: { range, newText: word } }, path, declared };
+      // A declared function goes in as a snippet with its parameters as tab stops.
+      const params = declared && new RegExp(`\\b${word}\\s*\\(([^)]*)\\)`).exec(declared)?.[1];
+      const snippet = params === undefined ? undefined
+        : `${word}(${params.split(',').map(p => p.trim()).filter(Boolean).map((p, i) => `\${${i + 1}:${p.replace(/[$}\\]/g, '\\$&')}}`).join(', ')})$0`;
+      return { item: { label: word, kind: declared ? 3 : 1, edit: { range, newText: snippet ?? word }, ...(snippet ? { snippet: true } : {}) }, path, declared };
     });
     const resultId = `mock-completion-${++this.serial}`;
     this.answers.set(documentId, { resultId, version, items });

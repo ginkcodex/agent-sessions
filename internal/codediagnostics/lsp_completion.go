@@ -110,9 +110,10 @@ type CompletionProvider interface {
 	ResolveCompletion(ctx context.Context, req CompletionResolveRequest) (CompletionDetails, error)
 }
 
-// completionClientCapabilities is what the client reads in an answer: no
-// snippets yet, no insert/replace pairs (one range per item), documentation
-// in either format, details resolved later.
+// completionClientCapabilities is what the client reads in an answer:
+// snippets (the editor turns their tab stops into fields), no insert/replace
+// pairs (one range per item), documentation in either format, details
+// resolved later.
 func completionClientCapabilities() map[string]any {
 	kinds := make([]int, 25)
 	for i := range kinds {
@@ -121,7 +122,7 @@ func completionClientCapabilities() map[string]any {
 	return map[string]any{
 		"contextSupport": true,
 		"completionItem": map[string]any{
-			"snippetSupport":          false,
+			"snippetSupport":          true,
 			"documentationFormat":     []string{"markdown", "plaintext"},
 			"labelDetailsSupport":     true,
 			"deprecatedSupport":       true,

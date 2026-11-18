@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Text } from '@codemirror/state';
-import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, positionOffset, serverBoosts, snippetText } from '../src/lib/editorCompletion.ts';
+import { EditorState, Text } from '@codemirror/state';
+import { hasNextSnippetField, nextSnippetField, snippet } from '@codemirror/autocomplete';
+import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, positionOffset, serverBoosts, snippetTemplate, snippetText } from '../src/lib/editorCompletion.ts';
 
 // Language-server suggestions in the editor (CC-06): the pure parts.
 
@@ -124,4 +125,80 @@ test('an extra edit whose text changed, or that touches the main edit, is droppe
   // insertText, then the label, when there is no edit.
   const insert = completionChanges(asked, asked.length, asked.length - 2, asked, asked.length - 2, asked.length, { label: 'foo', insertText: 'foo()' });
   assert.equal(apply(asked, insert.changes), 'import a\nx = foo()');
+});
+
+// What CodeMirror makes of a template: the text, then each field's selections as Tab moves through them.
+function fill(template, line = '') {
+  let state = EditorState.create({ doc: line, extensions: [EditorState.allowMultipleSelections.of(true)] });
+  snippet(template)({ state, dispatch: tr => { state = tr.state; } }, null, line.length, line.length);
+  const text = state.doc.toString();
+  const stops = [state.selection.ranges.map(r => text.slice(r.from, r.to) || `@${r.from}`)];
+  while (hasNextSnippetField(state)) {
+    nextSnippetField({ state, dispatch: tr => { state = tr.state; } });
+    stops.push(state.selection.ranges.map(r => text.slice(r.from, r.to) || `@${r.from}`));
+  }
+  return { text, stops };
+}
+
+test('snippet templates: tab stops become CodeMirror fields, ending at $0', () => {
+  assert.equal(snippetTemplate('Println(${1:a ...any})$0'), 'Println(${1:a ...any})${0}');
+  assert.deepEqual(fill(snippetTemplate('Println(${1:a ...any})$0')), { text: 'Println(a ...any)', stops: [['a ...any'], ['@17']] });
+  assert.deepEqual(fill(snippetTemplate('f($1, ${2})')), { text: 'f(, )', stops: [['@2'], ['@4'], ['@5']] }, 'no $0: the end');
+  assert.deepEqual(fill(snippetTemplate('${2:b} ${1:a}')), { text: 'b a', stops: [['a'], ['b'], ['@3']] }, 'in number order');
+  assert.deepEqual(fill(snippetTemplate('x := ${1:v}; use($1, $1)')), { text: 'x := v; use(v, v)', stops: [['v', 'v', 'v'], ['@17']] }, 'mirrors show and select the text');
+  assert.deepEqual(fill(snippetTemplate('${1|one,two|} ${2|\\,a,b|}')), { text: 'one ,a', stops: [['one'], [',a'], ['@6']] }, 'the first choice');
+  assert.deepEqual(fill(snippetTemplate('${0:done}')), { text: 'done', stops: [['done']] });
+});
+
+test('snippet templates keep braces, escapes, variables and other scripts as text', () => {
+  // Braces in the text are no fields: Go bodies, Ruby interpolation, JS templates.
+  assert.deepEqual(fill(snippetTemplate('func() {\n\t$0\n}')), { text: 'func() {\n  \n}', stops: [['@11']] }, 'tabs after a new line are indent units');
+  assert.deepEqual(fill(snippetTemplate('"#{${1:name}}"')), { text: '"#{name}"', stops: [['name'], ['@9']] });
+  assert.deepEqual(fill(snippetTemplate('`${x}` ${1}')).text, '`` ', 'an unknown ${x} variable is nothing');
+  assert.equal(fill(snippetTemplate('\\${not} \\$1 \\} \\\\')).text, '${not} $1 } \\', 'escapes');
+  assert.equal(fill(snippetTemplate('a\\{b} #{c}')).text, 'a\\{b} #{c}', 'text that only looks like syntax');
+  assert.equal(snippetText('a\\{b} #{c} ${d').text, 'a\\{b} #{c} ${d');
+  assert.equal(snippetTemplate('a\\{b} #{c} ${d'), undefined, 'three escapes before the final stop: plain text');
+  assert.deepEqual(fill(snippetTemplate('$TM_FILENAME ${TM_SELECTED_TEXT:${1:sel}} ${CLIPBOARD/(.*)/x/}')), { text: ' sel ', stops: [['sel'], ['@5']] }, 'variables give their default');
+  assert.deepEqual(fill(snippetTemplate('${1/(.*)/$1/} x')).text, ' x', 'a transform inserts nothing');
+  assert.deepEqual(fill(snippetTemplate('名前(${1:値}) 😀$0')), { text: '名前(値) 😀', stops: [['値'], ['@8']] }, 'UTF-16 offsets');
+
+  assert.equal(snippetTemplate('#{${1:a}} \\\\{x}'), '#\\{${1:a}} \\\\{x}${0}', 'only braces CodeMirror would misread are escaped');
+  assert.deepEqual(fill(snippetTemplate('$${1}{x} #{${2:y}}')), { text: '${x} #{y}', stops: [['@1'], ['y'], ['@9']] }, 'a brace after an empty field');
+  assert.deepEqual(fill(snippetTemplate('#{a} #{b} ${1:x}')), { text: '#{a} #{b} x', stops: [['x'], ['@11']] }, 'two escapes before a field are fine');
+  assert.equal(snippetTemplate('#{a} #{b} #{c} ${1:x}'), undefined, "a third one would put CodeMirror's fields in the wrong place");
+  assert.ok(snippetTemplate('#{a} #{b} #{c}\n${1:x}'), 'on another line it does not');
+
+  // Field text CodeMirror cannot hold: the stop goes before it, nested stops keep their own fields.
+  assert.deepEqual(fill(snippetTemplate('${1:outer ${2:inner}}')), { text: 'outer inner', stops: [['@0'], ['inner'], ['@11']] });
+  assert.deepEqual(fill(snippetTemplate('${1:{}} ${2:a\nb}')), { text: '{} a\nb', stops: [['@0'], ['@3'], ['@6']] });
+});
+
+test('malformed snippets read as plain text and never throw', () => {
+  for (const bad of ['${', '${1', '${1:abc', '${1|a,b', '$}', '}}{{', '${1:${2:${3', '\\', '${a b}', '$$$$', '${1/x', '#{', '${}']) {
+    const { text: plain } = snippetText(bad);
+    const template = snippetTemplate(bad);
+    assert.equal(template === undefined ? plain : fill(template).text, plain, bad);
+  }
+  assert.equal(snippetText('${1:abc').text, 'abc');
+  assert.equal(snippetText('${}').text, '${}');
+});
+
+test('accepting a snippet item gives its template, unless only the label fits', () => {
+  const asked = doc('fmt.Pr');
+  const item = { label: 'Println', snippet: true, edit: { range: range(0, 4, 0, 6), newText: 'Println(${1:a})$0' } };
+  assert.equal(completionChanges(asked, 6, 4, asked, 4, 6, item).template, 'Println(${1:a})${0}');
+  assert.equal(completionChanges(asked, 6, 4, doc('xfmt.Pr'), 5, 7, item).template, 'Println(${1:a})${0}', 'the typed word only: still the snippet');
+  const other = { ...item, edit: { range: range(0, 0, 0, 6), newText: 'fmt.Println($1)' } };
+  assert.equal(completionChanges(asked, 6, 4, doc('xfmt.Pr'), 5, 7, other).template, undefined, 'the label instead');
+  assert.equal(completionChanges(asked, 6, 4, asked, 4, 6, { label: 'Println', insertText: 'Println($1)' }).template, undefined, 'not a snippet');
+});
+
+test('a snippet CodeMirror would misplace goes in as plain text, the caret at its first stop', () => {
+  const asked = doc('x = ');
+  const item = { label: 'h', snippet: true, insertText: '"#{a} #{b} #{c} ${1:name}"' };
+  const out = completionChanges(asked, 4, 4, asked, 4, 4, item);
+  assert.equal(out.template, undefined);
+  assert.equal(apply(asked, out.changes), 'x = "#{a} #{b} #{c} name"');
+  assert.equal(caretAfter(out.changes, out.main, out.caret), 4 + '"#{a} #{b} #{c} '.length);
 });

@@ -291,13 +291,13 @@ func TestSessionAdvertisesNoLiveCapability(t *testing.T) {
 	if len(td) != 4 || definition["linkSupport"] != true || td["references"] == nil || len(hover["contentFormat"].([]any)) != 2 {
 		t.Fatalf("textDocument capabilities %v", td)
 	}
-	// Completion: one range per item, no snippets or commit characters yet,
+	// Completion: snippets, one range per item, no commit characters yet,
 	// details resolved later.
 	completion := td["completion"].(map[string]any)
 	item := completion["completionItem"].(map[string]any)
 	resolve, _ := item["resolveSupport"].(map[string]any)
 	kinds, _ := completion["completionItemKind"].(map[string]any)["valueSet"].([]any)
-	if completion["contextSupport"] != true || item["snippetSupport"] != false || item["insertReplaceSupport"] != false ||
+	if completion["contextSupport"] != true || item["snippetSupport"] != true || item["insertReplaceSupport"] != false ||
 		item["commitCharactersSupport"] != false || item["labelDetailsSupport"] != true || item["deprecatedSupport"] != true ||
 		fmt.Sprint(item["documentationFormat"]) != "[markdown plaintext]" || fmt.Sprint(resolve["properties"]) != "[documentation detail]" ||
 		len(kinds) != 25 || kinds[0] != 1.0 || kinds[24] != 25.0 {
