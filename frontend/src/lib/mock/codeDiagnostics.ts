@@ -136,7 +136,7 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     });
     const resultId = `mock-completion-${++this.serial}`;
     this.answers.set(documentId, { resultId, version, items });
-    return { documentId, version, resultId, items: items.map(i => structuredClone(i.item)), triggerCharacters, ...(words.length > items.length ? { isIncomplete: true } : {}) };
+    return { documentId, version, resultId, resolves: true, items: items.map(i => structuredClone(i.item)), triggerCharacters, ...(words.length > items.length ? { isIncomplete: true } : {}) };
   }
   /**
    * The kept answer survives changes. At the current version, a name declared

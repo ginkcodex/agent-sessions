@@ -74,7 +74,9 @@ any command a completion item carries.
   or another edit, none does, and the main edit still applies (CC-14). All of it is one undoable step. vtsls sends its
   import edits only when the item is resolved, whatever the client
   advertises (found in CC-09). CC-10 returns them from a resolve at the
-  document's current version. CC-12 resolves such items on accept: the
+  document's current version. An answer says whether its server resolves
+  (`resolves`, CC-20); only then may an item gain edits that way. CC-12
+  resolves such items on accept: the
   popup closes, and the item goes in with its import once resolved, or
   alone after 500 ms, a failure, or typing meanwhile; nothing goes in when
   the word it replaces was deleted or typed over meanwhile (CC-17). The info panel's
@@ -134,7 +136,8 @@ Completion follows navigation's path:
   part of an import can break the code (CC-13).
 - Triggers: `invoked`, `character` (one of the server's trigger characters,
   checked against the session that answers) and `incomplete` (asking again
-  after an incomplete answer, LSP trigger kind 3).
+  after an incomplete answer, LSP trigger kind 3). Each answer carries the
+  server's trigger characters, empty when it names none (CC-20).
 - Error codes are navigation's (`staleVersion`, `notRunning`,
   `resyncRequired`, `unsupported`, `timeout`, `canceled`, `busy`,
   `toolFailed`).

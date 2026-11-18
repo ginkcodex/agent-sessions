@@ -79,16 +79,19 @@ type CompletionItem struct {
 // to ask again as the user types on rather than filter locally; Truncated
 // reports dropped items or shortened text and implies Incomplete when items
 // were dropped. ResultID names the answer for ResolveCompletion, which takes
-// an item's index in Items. TriggerCharacters are the answering server's,
-// so the editor learns which typed characters to ask after.
+// an item's index in Items; Resolves says the answering server resolves
+// items, so an item may gain extra edits (imports) then. TriggerCharacters
+// are the answering server's, so the editor learns which typed characters to
+// ask after; it is always sent, and empty when the server names none.
 type CompletionResult struct {
 	DocumentID        string           `json:"documentId"`
 	Version           int64            `json:"version"`
 	ResultID          string           `json:"resultId,omitempty"`
+	Resolves          bool             `json:"resolves,omitempty"`
 	Items             []CompletionItem `json:"items"`
 	Incomplete        bool             `json:"isIncomplete,omitempty"`
 	Truncated         bool             `json:"truncated,omitempty"`
-	TriggerCharacters string           `json:"triggerCharacters,omitempty"`
+	TriggerCharacters string           `json:"triggerCharacters"`
 }
 
 // CompletionRequest is one request to the session that holds the document at
@@ -246,6 +249,7 @@ func (m *Manager) Complete(ctx context.Context, c Context, documentID string, ve
 	} else {
 		result.ResultID = ""
 	}
+	result.Resolves = result.ResultID != "" && route.caps.CompletionResolve
 	return result, nil
 }
 

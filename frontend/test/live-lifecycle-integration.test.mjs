@@ -527,7 +527,7 @@ test('extraEdits sends pending typing, resolves at that version, and shares the 
   const imp = { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: 'import "x";\n' };
   const listedImport = { ...imp, newText: 'import "listed";\n' };
   const items = [{ label: 'a' }, { label: 'b', extraEdits: [listedImport] }, { label: 'c' }];
-  h.api.completeCode = async (c, requestId, documentId, version) => ({ documentId, version, resultId: 'r7', items });
+  h.api.completeCode = async (c, requestId, documentId, version) => ({ documentId, version, resultId: 'r7', resolves: true, items });
   let hold;
   h.api.resolveCodeCompletion = async (c, documentId, resultId, index, version) => {
     resolves.push([index, version]);
@@ -577,6 +577,17 @@ test('extraEdits sends pending typing, resolves at that version, and shares the 
   // An older host answers without a version: no edits.
   h.api.resolveCodeCompletion = async (c, documentId, resultId, index) => ({ documentId, resultId, index });
   assert.deepEqual(await got.extraEdits(0, { current: () => true }), []);
+
+  // An answer from a server that does not resolve (or an older host, which
+  // does not say): no extra edits, at once, and no resolve.
+  let asked = 0;
+  h.api.resolveCodeCompletion = async () => { asked++; return {}; };
+  for (const resolves of [false, undefined]) {
+    h.api.completeCode = async (c, requestId, documentId, version) => ({ documentId, version, resultId: 'r8', ...(resolves === undefined ? {} : { resolves }), items });
+    const plain = await h.checks.complete('a.go', { line: 0, character: 1 }, { kind: 'invoked' });
+    assert.deepEqual(plain.extraEdits(0, { current: () => true }), [], String(resolves));
+  }
+  assert.equal(asked, 0);
   h.off();
 });
 

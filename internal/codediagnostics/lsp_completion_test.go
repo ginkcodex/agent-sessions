@@ -108,7 +108,7 @@ func TestCompletionAgainstFakeServer(t *testing.T) {
 	for _, item := range got.Items {
 		labels = append(labels, item.Label)
 	}
-	if got.DocumentID != "d1" || got.Version != 1 || got.ResultID == "" || got.Incomplete || !got.Truncated || fmt.Sprint(labels) != "[Println Printf Print touching long]" {
+	if got.DocumentID != "d1" || got.Version != 1 || got.ResultID == "" || !got.Resolves || got.Incomplete || !got.Truncated || fmt.Sprint(labels) != "[Println Printf Print touching long]" {
 		t.Fatalf("%v %+v", labels, got)
 	}
 	want := CompletionItem{
@@ -613,13 +613,18 @@ func TestCompletionResolveAgainstFakeServer(t *testing.T) {
 
 // A server without resolve: the list's own detail and documentation.
 func TestCompletionResolveWithoutResolveProvider(t *testing.T) {
-	init := strings.Replace(completionInit, `,"resolveProvider":true`, "", 1)
+	// Nor trigger characters: the answer says it has none.
+	init := strings.Replace(completionInit, `"triggerCharacters":[".",":"],"resolveProvider":true`, `"triggerCharacters":[]`, 1)
 	f := newCompletionFixture(t, init, "package a\n")
 	ctx := context.Background()
 	f.srv.set("textDocument/completion", `"result":[{"label":"alpha","detail":"`+strings.Repeat("é", maxCompletionShort)+`","documentation":{"kind":"plaintext","value":"Alpha."}}]`)
 	got, err := f.m.Complete(ctx, f.c, "d1", 1, Position{Line: 0, Character: 7}, CompletionTrigger{Kind: CompletionInvoked})
-	if err != nil || len(got.Items) != 1 {
+	if err != nil || len(got.Items) != 1 || got.ResultID == "" || got.Resolves {
 		t.Fatal(got, err)
+	}
+	var wire map[string]any
+	if err = json.Unmarshal(must(json.Marshal(got)), &wire); err != nil || wire["triggerCharacters"] != "" || wire["resolves"] != nil {
+		t.Fatal(wire, err)
 	}
 	before := len(f.srv.requests)
 	details, err := f.m.ResolveCompletion(ctx, f.c, "d1", got.ResultID, 0, 0)

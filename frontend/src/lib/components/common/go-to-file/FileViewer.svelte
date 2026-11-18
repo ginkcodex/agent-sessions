@@ -1068,12 +1068,15 @@
           if (!d) return undefined;
           return { detail: d.detail, html: d.documentation?.value ? hoverHtml(d.documentation) : undefined, truncated: d.truncated };
         },
-        // An item's import, for the file still shown in this tab.
-        resolveEdits: (index: number, current: () => boolean, signal: AbortSignal) => {
-          if (!shown()) return [];
-          const edits = extraEdits(index, { current: () => shown() && current(), signal });
-          return Array.isArray(edits) ? edits : edits.then(e => shown() ? e : undefined);
-        },
+        // An item's import, for the file still shown in this tab; only from a
+        // server that resolves, so other servers' items go in at once.
+        ...(result.resolves ? {
+          resolveEdits: (index: number, current: () => boolean, signal: AbortSignal) => {
+            if (!shown()) return [];
+            const edits = extraEdits(index, { current: () => shown() && current(), signal });
+            return Array.isArray(edits) ? edits : edits.then(e => shown() ? e : undefined);
+          },
+        } : {}),
       };
     });
   }

@@ -1554,6 +1554,23 @@ test('accepting applies the edit and its import as one undo step, with the snipp
   h.editor.destroy();
 });
 
+test('server suggestions: a server that names no trigger characters is asked after none', async () => {
+  const h = serverEditor('fmt.\nfmt(');
+  const { view } = h;
+  h.reply = async () => ({ items: [{ label: 'Println' }], incomplete: false, triggerCharacters: '' });
+  await h.suggest(4);
+  assert.equal(h.asks.length, 1, 'asked after a likely trigger before the server said');
+  assert.equal(completionTrigger(h.at(4), view, 'a.go'), undefined, "'.'");
+  assert.equal(completionTrigger(h.at(view.state.doc.length), view, 'a.go'), undefined, "'('");
+  assert.deepEqual(completionTrigger(h.at(4, true), view, 'a.go'), { kind: 'invoked' }, 'the shortcut still asks');
+  // An older host that does not say keeps the likely ones.
+  const old = serverEditor('fmt.');
+  old.reply = async () => ({ items: [], incomplete: false });
+  await old.suggest(4);
+  assert.deepEqual(completionTrigger(old.at(4), old.view, 'a.go'), { kind: 'character', character: '.' });
+  h.editor.destroy(); old.editor.destroy();
+});
+
 // An editor offering helperValue, whose import comes only on resolve (vtsls, CC-12).
 async function resolvingEditor(resolveEdits, item = { label: 'helperValue', kind: 6 }) {
   const resolves = [];

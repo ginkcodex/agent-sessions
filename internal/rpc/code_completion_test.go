@@ -104,7 +104,7 @@ func TestCompletionOverRPC(t *testing.T) {
 	}
 	dot := cd.CompletionTrigger{Kind: cd.CompletionCharacter, Character: "."}
 	got, err := c.CompleteCode(ctx, token, "d1", 1, at, dot)
-	if err != nil || got.DocumentID != "d1" || got.Version != 1 || got.ResultID != "r1" || got.TriggerCharacters != "." || len(got.Items) != 2 || got.Items[0].Edit.NewText != "alpha()" || got.Items[1].Documentation.Value != "Beta." {
+	if err != nil || got.DocumentID != "d1" || got.Version != 1 || got.ResultID != "r1" || !got.Resolves || got.TriggerCharacters != "." || len(got.Items) != 2 || got.Items[0].Edit.NewText != "alpha()" || got.Items[1].Documentation.Value != "Beta." {
 		t.Fatal(got, err)
 	}
 	if req := sess.reqs[0]; req.Path != "doc.go" || req.Position != at || req.Trigger != dot || req.Text != "package x\n\nfunc f() { x. }\n" {

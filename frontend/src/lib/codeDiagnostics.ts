@@ -132,10 +132,20 @@ export interface CodeCompletionResult {
   documentId: string;
   version: number;
   resultId?: string;
+  /**
+   * The answering server resolves items, so one may gain extra edits
+   * (imports) then. Absent from hosts before CC-20, whose answers are taken
+   * as not resolving.
+   */
+  resolves?: boolean;
   items: CodeCompletionItem[];
   isIncomplete?: boolean;
   truncated?: boolean;
-  /** The answering server's trigger characters; a character it did not name is answered with nothing. */
+  /**
+   * The answering server's trigger characters; a character it did not name
+   * is answered with nothing. Empty when it names none; absent from hosts
+   * before CC-20.
+   */
   triggerCharacters?: string;
 }
 /**

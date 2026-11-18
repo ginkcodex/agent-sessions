@@ -390,5 +390,24 @@ test('Chrome: Enter on an item whose import comes on resolve adds it with the it
     await press('Enter');
     await answer();
     await until(text, t => t === 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue helperValue', 'the import for the name typed in full');
+
+    // From a server that does not resolve (no resolveEdits), the same item goes
+    // in at once, and typed in full, Enter breaks the line.
+    await evaluate(`(() => {
+      const symbols = { ask() {}, hover: async () => undefined, complete() {
+        return Promise.resolve({ items: [{ label: 'helperValue', kind: 6, labelDescription: './helper.js' }], incomplete: false });
+      } };
+      window.probe.editor.update(window.probe.opts({ text: window.probe.state.text, symbols }));
+    })()`);
+    await caretToEnd(evaluate);
+    await type(' helperVa');
+    await offered('helperValue offered without resolve');
+    await press('Enter');
+    await until(text, t => t.endsWith('helperValue helperValue helperValue'), 'the item at once');
+    await type(' helperValue');
+    await offered('helperValue offered in full without resolve');
+    await press('Enter');
+    await until(text, t => t.endsWith('helperValue helperValue helperValue helperValue\n'), 'a new line after the name typed in full');
+    assert.deepEqual(await evaluate('window.resolves'), [0, 0, 0], 'no resolve');
   });
 });

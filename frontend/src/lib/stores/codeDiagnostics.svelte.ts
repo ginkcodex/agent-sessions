@@ -35,7 +35,8 @@ export interface CompletionItemDetails { detail?: string; documentation?: CodeMa
  * A server's answer, a way to read each item's details, and the extra edits
  * (imports) an item resolves to for the text shown (CC-12): at once when
  * known, else after sending pending typing; undefined when they cannot be
- * known for that text. Items that list their edits resolve to none.
+ * known for that text. Items that list their edits resolve to none, and so
+ * do all items of an answer whose server does not resolve (`resolves`).
  */
 export interface CompletionAnswer {
   result: CodeCompletionResult;
@@ -393,7 +394,7 @@ export class CodeDiagnosticsStore {
       },
       extraEdits: (index, ask = {}) => {
         const item = result.items[index];
-        if (!item || item.extraEdits?.length || !result.resultId) return [];
+        if (!item || item.extraEdits?.length || !result.resultId || !result.resolves) return [];
         // Not for an aborted ask or an ended store, even when known.
         if (ask.signal?.aborted || !this.active(life)) return Promise.resolve(undefined);
         const current = () => ask.current?.() ?? true;
