@@ -216,6 +216,12 @@ type ServerCapabilities struct {
 	Definition      bool // textDocument/definition answered
 	References      bool // textDocument/references answered
 	Hover           bool // textDocument/hover answered
+	// Completion: textDocument/completion answered. CompletionTriggers holds
+	// the server's trigger characters, one rune each, at most 32;
+	// CompletionResolve is set when completionItem/resolve is answered.
+	Completion         bool
+	CompletionTriggers string
+	CompletionResolve  bool
 }
 
 func (c ServerCapabilities) FullSync() bool        { return c.Change == 1 }
@@ -961,9 +967,9 @@ func (s *lspSession) initialize() (ServerCapabilities, error) {
 // initializeParams advertises only what this client implements: the UTF-16
 // position encoding, plus workspace/configuration when the adapter supplies
 // fixed settings and publishDiagnostics (no versionSupport) when it declares
-// diagnostics. Definition (with links), references and hover are requests
-// the client sends; they say what answers it can read, start nothing and are
-// not part of the approval policy. No other textDocument or window
+// diagnostics. Definition (with links), references, hover and completion are
+// requests the client sends; they say what answers it can read, start nothing
+// and are not part of the approval policy. No other textDocument or window
 // capability, no edits, and no dynamic registration except an adapter's
 // AcknowledgeWatchers (acknowledged, never delivered). The one workspace
 // folder and rootUri name only the validated contained Directory (the root
@@ -988,6 +994,7 @@ func (s *lspSession) initializeParams() map[string]any {
 		"definition": map[string]any{"linkSupport": true},
 		"references": map[string]any{},
 		"hover":      map[string]any{"contentFormat": []string{"markdown", "plaintext"}},
+		"completion": completionClientCapabilities(),
 	}
 	if s.config.DeclareDiagnostics {
 		textDocument["publishDiagnostics"] = map[string]any{}
@@ -1282,6 +1289,7 @@ func negotiateCapabilities(raw json.RawMessage) (ServerCapabilities, error) {
 			DefinitionProvider json.RawMessage `json:"definitionProvider"`
 			ReferencesProvider json.RawMessage `json:"referencesProvider"`
 			HoverProvider      json.RawMessage `json:"hoverProvider"`
+			CompletionProvider json.RawMessage `json:"completionProvider"`
 		} `json:"capabilities"`
 	}
 	if json.Unmarshal(raw, &reply) != nil || reply.Capabilities == nil {
@@ -1296,6 +1304,7 @@ func negotiateCapabilities(raw json.RawMessage) (ServerCapabilities, error) {
 	caps.Definition = advertised(c.DefinitionProvider)
 	caps.References = advertised(c.ReferencesProvider)
 	caps.Hover = advertised(c.HoverProvider)
+	caps.Completion, caps.CompletionTriggers, caps.CompletionResolve = completionProvider(c.CompletionProvider)
 	if len(c.TextDocumentSync) == 0 || string(c.TextDocumentSync) == "null" {
 		return ServerCapabilities{}, failure("unsupported", "Language server does not support document synchronization")
 	}

@@ -158,6 +158,15 @@ func (d *LiveDocuments) Navigate(ctx context.Context, req NavigationRequest) (Na
 	return p.documents.Navigate(ctx, req)
 }
 
+// Complete asks the project's running session; it never starts one.
+func (d *LiveDocuments) Complete(ctx context.Context, req CompletionRequest) (CompletionResult, error) {
+	p, ok := d.project(req.Root)
+	if !ok {
+		return CompletionResult{}, failure("unsupported", "Live discovery is unavailable")
+	}
+	return p.documents.Complete(ctx, req)
+}
+
 // watchedFileProviders are the live servers told of saved-file transitions,
 // each for its own files: Go, Ruby, Java and PHP servers can update their
 // closed-file indexes from these events. Other servers get none.

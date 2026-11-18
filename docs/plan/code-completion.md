@@ -111,7 +111,12 @@ Completion follows navigation's path:
   insert format, extra edits, deprecated tag. Ranges are UTF-16 and are
   checked against the document. Caps: 2,000 items (more marks the answer
   incomplete), short fields to 1 KiB, documentation to 64 KiB on a UTF-8
-  boundary, 2 MiB per answer.
+  boundary, 2 MiB per answer. Text an item inserts (insert text, the new
+  text of each edit) is not cut, since cut code would be wrong: an item with
+  more than 16 KiB of it, or with more than 100 extra edits, is left out.
+- Triggers: `invoked`, `character` (one of the server's trigger characters,
+  checked against the session that answers) and `incomplete` (asking again
+  after an incomplete answer, LSP trigger kind 3).
 - Error codes are navigation's (`staleVersion`, `notRunning`,
   `resyncRequired`, `unsupported`, `timeout`, `canceled`, `busy`,
   `toolFailed`).
