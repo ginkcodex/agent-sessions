@@ -365,10 +365,7 @@ func completionItem(raw json.RawMessage, pos Position, lines *lineIndex) (Comple
 			Insert  *Range  `json:"insert"`
 			NewText *string `json:"newText"`
 		} `json:"textEdit"`
-		AdditionalTextEdits []struct {
-			Range   *Range  `json:"range"`
-			NewText *string `json:"newText"`
-		} `json:"additionalTextEdits"`
+		AdditionalTextEdits []wireEdit `json:"additionalTextEdits"`
 	}
 	if json.Unmarshal(raw, &in) != nil || !bounded(in.Label, maxCompletionShort) {
 		return CompletionItem{}, 0, false, false
@@ -408,30 +405,28 @@ func completionItem(raw json.RawMessage, pos Position, lines *lineIndex) (Comple
 		if r == nil {
 			r = in.TextEdit.Insert // an insert/replace pair: the insert range
 		}
-		if r == nil || in.TextEdit.NewText == nil || !lines.contains(*r) || len(*in.TextEdit.NewText) > maxCompletionText {
+		if r == nil || in.TextEdit.NewText == nil {
+			return CompletionItem{}, 0, false, false
+		}
+		edit := TextEdit{Range: *r, NewText: *in.TextEdit.NewText}
+		if _, ok := validEdits([]TextEdit{edit}, lines, nil); !ok {
 			return CompletionItem{}, 0, false, false
 		}
 		if r.Start.Line != pos.Line || r.End.Line != pos.Line || r.Start.Character > pos.Character || r.End.Character < pos.Character {
 			return CompletionItem{}, 0, false, false
 		}
-		item.Edit, main = &TextEdit{Range: *r, NewText: *in.TextEdit.NewText}, *r
+		item.Edit, main = &edit, *r
 	}
-	if len(in.AdditionalTextEdits) > maxCompletionExtraEdits {
+	// Conflicting edits cannot all apply, and part of an import can break the
+	// code: the item is not offered.
+	extra, ok := wireEdits(in.AdditionalTextEdits)
+	if !ok {
 		return CompletionItem{}, 0, false, false
 	}
-	taken := []Range{main}
-	for _, e := range in.AdditionalTextEdits {
-		if e.Range == nil || e.NewText == nil || !lines.contains(*e.Range) || len(*e.NewText) > maxCompletionText {
-			return CompletionItem{}, 0, false, false
-		}
-		// Conflicting edits cannot all apply, and part of an import can break
-		// the code: the item is not offered.
-		if overlapsAny(*e.Range, taken) {
-			return CompletionItem{}, 0, false, false
-		}
-		taken = append(taken, *e.Range)
-		item.ExtraEdits = append(item.ExtraEdits, TextEdit{Range: *e.Range, NewText: *e.NewText})
+	if _, ok := validEdits(extra, lines, []Range{main}); !ok {
+		return CompletionItem{}, 0, false, false
 	}
+	item.ExtraEdits = extra
 	return item, item.size(), truncated, true
 }
 
@@ -530,6 +525,51 @@ func (x *lineIndex) at(p Position) bool {
 	return p.Character <= shape.length && !shape.split[p.Character]
 }
 
+// wireEdit is a text edit as a server sends it; a missing field makes it
+// invalid.
+type wireEdit struct {
+	Range   *Range  `json:"range"`
+	NewText *string `json:"newText"`
+}
+
+// wireEdits reads a server's edits: none (nil) for none, false when there
+// are more than maxCompletionExtraEdits or one misses a field.
+func wireEdits(in []wireEdit) ([]TextEdit, bool) {
+	if len(in) > maxCompletionExtraEdits {
+		return nil, false
+	}
+	var out []TextEdit
+	for _, e := range in {
+		if e.Range == nil || e.NewText == nil {
+			return nil, false
+		}
+		out = append(out, TextEdit{Range: *e.Range, NewText: *e.NewText})
+	}
+	return out, true
+}
+
+// validEdits checks completion edits against the caps: at most
+// maxCompletionExtraEdits of them, each a valid range, inside the text when
+// lines is set (a peer's answer comes without its text), with new text of at
+// most maxCompletionText bytes of UTF-8, and none sharing text with another
+// or with taken. It returns taken with the edits' ranges added.
+func validEdits(edits []TextEdit, lines *lineIndex, taken []Range) ([]Range, bool) {
+	if len(edits) > maxCompletionExtraEdits {
+		return taken, false
+	}
+	for _, e := range edits {
+		inside := validRange(&e.Range)
+		if lines != nil {
+			inside = lines.contains(e.Range)
+		}
+		if !inside || len(e.NewText) > maxCompletionText || !utf8.ValidString(e.NewText) || overlapsAny(e.Range, taken) {
+			return taken, false
+		}
+		taken = append(taken, e.Range)
+	}
+	return taken, true
+}
+
 // overlapsAny reports whether r shares text with any of taken. Two edits at
 // the same place overlap even when empty: their order would be ambiguous.
 func overlapsAny(r Range, taken []Range) bool {
@@ -578,7 +618,7 @@ func validTriggers(s string) bool {
 }
 
 func validCompletionItem(c CompletionItem) bool {
-	if !bounded(c.Label, maxCompletionShort) || c.Kind < 0 || c.Kind > 25 || len(c.ExtraEdits) > maxCompletionExtraEdits {
+	if !bounded(c.Label, maxCompletionShort) || c.Kind < 0 || c.Kind > 25 {
 		return false
 	}
 	for _, s := range []string{c.LabelDetail, c.LabelDescription, c.Detail, c.SortText, c.FilterText} {
@@ -594,16 +634,11 @@ func validCompletionItem(c CompletionItem) bool {
 	}
 	var taken []Range
 	if c.Edit != nil {
-		if !validRange(&c.Edit.Range) || c.Edit.Range.Start.Line != c.Edit.Range.End.Line || len(c.Edit.NewText) > maxCompletionText || !utf8.ValidString(c.Edit.NewText) {
+		var ok bool
+		if taken, ok = validEdits([]TextEdit{*c.Edit}, nil, nil); !ok || c.Edit.Range.Start.Line != c.Edit.Range.End.Line {
 			return false
 		}
-		taken = append(taken, c.Edit.Range)
 	}
-	for _, e := range c.ExtraEdits {
-		if !validRange(&e.Range) || len(e.NewText) > maxCompletionText || !utf8.ValidString(e.NewText) || overlapsAny(e.Range, taken) {
-			return false
-		}
-		taken = append(taken, e.Range)
-	}
-	return true
+	_, ok := validEdits(c.ExtraEdits, nil, taken)
+	return ok
 }

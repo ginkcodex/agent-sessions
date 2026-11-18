@@ -1,7 +1,7 @@
 # Code completion — tasks
 
 - **Plan:** [code-completion.md](../../plan/code-completion.md)
-- **Progress:** 19/23 done (CC-01 and CC-09 partial)
+- **Progress:** 20/23 done (CC-01 and CC-09 partial)
 
 Suggestions while typing in the Go to File editor: first from the file and
 the language, then from the project's language server.
@@ -30,4 +30,4 @@ the language, then from the project's language server.
 | [CC-20](CC-20.md) | ✅ Done | Third review: say which answers resolve, an empty trigger list | 3 h | CC-04, CC-06, CC-12 |
 | [CC-21](CC-21.md) | ✅ Done | Third review: an awaited item at an empty range, language sources run once | 3 h | CC-12, CC-17 |
 | [CC-22](CC-22.md) | ✅ Done | Third review: cancel resolves, drop resolves for old versions | 3 h | CC-04, CC-12 |
-| [CC-23](CC-23.md) | ⬜ Not started | Third review: one check for completion edits | 2 h | CC-02, CC-10, CC-13 |
+| [CC-23](CC-23.md) | ✅ Done | Third review: one check for completion edits | 2 h | CC-02, CC-10, CC-13 |

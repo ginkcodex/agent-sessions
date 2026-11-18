@@ -924,3 +924,81 @@ func TestCompletionKeptThroughTypingWhileAsked(t *testing.T) {
 		t.Fatal(r)
 	}
 }
+
+// One check for every completion edit: a server's item and resolve, and a
+// peer's answer and details.
+func TestValidEdits(t *testing.T) {
+	r := func(l1, c1, l2, c2 int) Range {
+		return Range{Start: Position{Line: l1, Character: c1}, End: Position{Line: l2, Character: c2}}
+	}
+	text := "ab😀c\nde\n" // the emoji is 2 UTF-16 units, columns 2–4
+	many := func(n int) []TextEdit {
+		out := make([]TextEdit, n)
+		for i := range out {
+			out[i] = TextEdit{Range: r(i, 0, i, 0), NewText: "x"}
+		}
+		return out
+	}
+	for _, c := range []struct {
+		name  string
+		edits []TextEdit
+		text  *string // nil: a peer's answer, without the text
+		taken []Range
+		ok    bool
+	}{
+		{name: "none", ok: true},
+		{name: "inside", edits: []TextEdit{{Range: r(0, 0, 0, 2), NewText: "x"}, {Range: r(1, 0, 1, 2), NewText: "y"}}, text: &text, ok: true},
+		{name: "after a surrogate pair", edits: []TextEdit{{Range: r(0, 4, 0, 5)}}, text: &text, ok: true},
+		{name: "inside a surrogate pair", edits: []TextEdit{{Range: r(0, 3, 0, 3)}}, text: &text},
+		{name: "past the line", edits: []TextEdit{{Range: r(1, 0, 1, 3)}}, text: &text},
+		{name: "past the text, with it", edits: []TextEdit{{Range: r(5, 0, 5, 0)}}, text: &text},
+		{name: "past the text, without it", edits: []TextEdit{{Range: r(5, 0, 5, 0)}}, ok: true},
+		{name: "backwards", edits: []TextEdit{{Range: r(0, 2, 0, 1)}}},
+		{name: "negative", edits: []TextEdit{{Range: r(-1, 0, 0, 0)}}},
+		{name: "text at the cap", edits: []TextEdit{{NewText: strings.Repeat("x", maxCompletionText)}}, ok: true},
+		{name: "text over the cap", edits: []TextEdit{{NewText: strings.Repeat("x", maxCompletionText+1)}}},
+		{name: "invalid UTF-8", edits: []TextEdit{{NewText: "\xff"}}},
+		{name: "overlapping each other", edits: []TextEdit{{Range: r(0, 0, 0, 2)}, {Range: r(0, 1, 0, 3)}}},
+		{name: "two at one place", edits: []TextEdit{{Range: r(0, 1, 0, 1)}, {Range: r(0, 1, 0, 1)}}},
+		{name: "side by side", edits: []TextEdit{{Range: r(0, 0, 0, 1)}, {Range: r(0, 1, 0, 2)}}, ok: true},
+		{name: "overlapping the main edit", edits: []TextEdit{{Range: r(0, 1, 0, 2)}}, taken: []Range{r(0, 0, 0, 2)}},
+		{name: "at the cap", edits: many(maxCompletionExtraEdits), ok: true},
+		{name: "over the cap", edits: many(maxCompletionExtraEdits + 1)},
+	} {
+		var lines *lineIndex
+		if c.text != nil {
+			lines = &lineIndex{text: *c.text}
+		}
+		taken, ok := validEdits(c.edits, lines, c.taken)
+		if ok != c.ok {
+			t.Errorf("%s: ok %v", c.name, ok)
+			continue
+		}
+		if ok && len(taken) != len(c.taken)+len(c.edits) {
+			t.Errorf("%s: taken %v", c.name, taken)
+		}
+	}
+	main := r(0, 0, 0, 1)
+	if taken, ok := validEdits([]TextEdit{{Range: r(1, 0, 1, 0)}}, nil, []Range{main}); !ok || !reflect.DeepEqual(taken, []Range{main, r(1, 0, 1, 0)}) {
+		t.Fatal(taken, ok)
+	}
+
+	x, at := "x", r(0, 0, 0, 0)
+	for _, c := range []struct {
+		name string
+		in   []wireEdit
+		want []TextEdit
+		ok   bool
+	}{
+		{name: "none", ok: true},
+		{name: "whole", in: []wireEdit{{Range: &at, NewText: &x}}, want: []TextEdit{{Range: at, NewText: "x"}}, ok: true},
+		{name: "no range", in: []wireEdit{{NewText: &x}}},
+		{name: "no text", in: []wireEdit{{Range: &at}}},
+		{name: "over the cap", in: make([]wireEdit, maxCompletionExtraEdits+1)},
+	} {
+		got, ok := wireEdits(c.in)
+		if ok != c.ok || !reflect.DeepEqual(got, c.want) {
+			t.Errorf("wireEdits %s: %v %v", c.name, got, ok)
+		}
+	}
+}

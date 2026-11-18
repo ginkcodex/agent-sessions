@@ -213,26 +213,17 @@ func (d SessionDocuments) ResolveCompletion(ctx context.Context, req CompletionR
 // The editor checks them against the main edit, which it maps.
 func resolvedEdits(raw json.RawMessage, text string) []TextEdit {
 	var in struct {
-		AdditionalTextEdits []struct {
-			Range   *Range  `json:"range"`
-			NewText *string `json:"newText"`
-		} `json:"additionalTextEdits"`
+		AdditionalTextEdits []wireEdit `json:"additionalTextEdits"`
 	}
-	if json.Unmarshal(raw, &in) != nil || len(in.AdditionalTextEdits) > maxCompletionExtraEdits {
+	if json.Unmarshal(raw, &in) != nil {
 		return nil
 	}
-	lines := &lineIndex{text: text}
-	var out []TextEdit
-	var taken []Range
-	for _, e := range in.AdditionalTextEdits {
-		if e.Range == nil || e.NewText == nil || !lines.contains(*e.Range) || len(*e.NewText) > maxCompletionText || !utf8.ValidString(*e.NewText) {
-			return nil
-		}
-		if overlapsAny(*e.Range, taken) {
-			return nil
-		}
-		taken = append(taken, *e.Range)
-		out = append(out, TextEdit{Range: *e.Range, NewText: *e.NewText})
+	out, ok := wireEdits(in.AdditionalTextEdits)
+	if !ok {
+		return nil
+	}
+	if _, ok := validEdits(out, &lineIndex{text: text}, nil); !ok {
+		return nil
 	}
 	return out
 }
@@ -266,15 +257,11 @@ func (r CompletionDetails) Validate() error {
 		return invalid
 	}
 	// Edits only with the version they fit, and the version only with edits.
-	if r.Version < 0 || (r.Version > 0) != (len(r.ExtraEdits) > 0) || len(r.ExtraEdits) > maxCompletionExtraEdits {
+	if r.Version < 0 || (r.Version > 0) != (len(r.ExtraEdits) > 0) {
 		return invalid
 	}
-	var taken []Range
-	for _, e := range r.ExtraEdits {
-		if !validRange(&e.Range) || len(e.NewText) > maxCompletionText || !utf8.ValidString(e.NewText) || overlapsAny(e.Range, taken) {
-			return invalid
-		}
-		taken = append(taken, e.Range)
+	if _, ok := validEdits(r.ExtraEdits, nil, nil); !ok {
+		return invalid
 	}
 	return nil
 }
