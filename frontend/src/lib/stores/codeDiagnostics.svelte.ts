@@ -22,6 +22,11 @@ const allLanguagesOn: LanguageSetting = { off: [], set() {} };
 
 /** How long a navigation request waits for the language server to catch up with typing. */
 const NAV_SYNC_WAIT = 2000, NAV_SYNC_POLL = 50;
+/** How long a completion request waits for the language server to confirm typing it just sent. */
+export const COMPLETION_SYNC_WAIT = 1000;
+
+/** What a completion request is asked against: the attachment and the confirmed version. */
+export interface CompletionBasis { context: CodeDiagnosticsContext; host: string; basis: LiveDocumentBasis }
 
 /** Whether an opened-documents provider declares path by extension and coverage root. */
 function declares(p: CodeDiagnosticsProvider, path: string): boolean {
@@ -234,6 +239,9 @@ export class CodeDiagnosticsStore {
   private navCapable = $state(false);
   /** The attached host answers definition, references and hover (copy only; never a grant). */
   get navigationEnabled(): boolean { return this.liveCapable && this.navCapable; }
+  private completionCapable = $state(false);
+  /** The attached host suggests code for live documents (copy only; never a grant). */
+  get completionEnabled(): boolean { return this.liveCapable && this.completionCapable; }
   private listeners = new Set<() => void>();
   private reconcileFiles: () => Promise<void> = async () => {};
   private liveRevision = $state(0);
@@ -241,6 +249,9 @@ export class CodeDiagnosticsStore {
   private readLiveBasis: (path: string) => LiveDocumentBasis | undefined = () => undefined;
   /** Bridge-owned protocol identity only; never text or editor state. */
   setLiveBasis(read: (path: string) => LiveDocumentBasis | undefined): void { this.readLiveBasis = read; }
+  private flushLive: (path: string, bound: number) => Promise<LiveDocumentBasis | undefined> = async () => undefined;
+  /** Sends a document's pending typing now; the bridge's `flush`. */
+  setLiveFlush(flush: (path: string, bound: number) => Promise<LiveDocumentBasis | undefined>): void { this.flushLive = flush; }
   private readLiveStatus: () => LiveDocumentStatus[] = () => [];
   private reopenLive: (path: string, documentId: string) => void = () => {};
   setLiveRecovery(read: () => LiveDocumentStatus[], reopen: (path: string, documentId: string) => void): void {
@@ -267,6 +278,21 @@ export class CodeDiagnosticsStore {
   liveBasis(path: string): LiveDocumentBasis | undefined {
     this.liveRevision;
     return this.liveAttachment ? this.readLiveBasis(path) : undefined;
+  }
+  /**
+   * Sends path's pending typing at once and returns what a completion request
+   * asks against: the attachment and the version the server confirmed. Undefined
+   * when completion is not available, the document is not synced within
+   * `bound` ms, or the attachment changed meanwhile. Never throws.
+   */
+  async completionBasis(path: string, bound = COMPLETION_SYNC_WAIT): Promise<CompletionBasis | undefined> {
+    const att = this.liveAttachment, life = this.lifetime;
+    if (!att || !this.completionEnabled) return undefined;
+    let basis: LiveDocumentBasis | undefined;
+    try { basis = await this.flushLive(path, bound); } catch { return undefined; }
+    const now = this.liveAttachment;
+    if (!basis?.synced || !now || now.token !== att.token || !this.active(life) || !this.completionEnabled) return undefined;
+    return { context: att.context, host: att.host, basis };
   }
   async invalidatePath(dir: string, path: string): Promise<void> {
     const c = this.context, life = this.lifetime;
@@ -440,7 +466,7 @@ export class CodeDiagnosticsStore {
     this.directory = undefined;
     this.project = undefined; this.snapshot = undefined; this.status = 'detached'; this.error = undefined;
     this.pending = undefined; this.revoking = false; this.pendingRuns = [];
-    this.liveCapable = false; this.navCapable = false; this.languagesCapable = false; this.attachedOff = [];
+    this.liveCapable = false; this.navCapable = false; this.completionCapable = false; this.languagesCapable = false; this.attachedOff = [];
     this.emit();
     if (c) { try { await this.backend.detachCodeDiagnostics(c, host); } catch { /* Never retry mutations across a connection change. */ } }
   }
@@ -454,7 +480,7 @@ export class CodeDiagnosticsStore {
     this.clearBuffers(); this.recovering = false;
     this.pending = undefined; this.pendingRuns = []; this.revoking = false;
     this.status = 'disconnected'; this.stale(true);
-    this.liveCapable = false; this.navCapable = false; this.languagesCapable = false;
+    this.liveCapable = false; this.navCapable = false; this.completionCapable = false; this.languagesCapable = false;
     this.emit();
   }
   async attach(dir: string, connection: ConnectionState) {
@@ -467,6 +493,7 @@ export class CodeDiagnosticsStore {
     }
     this.liveCapable = !!connection.capabilities.liveCodeDiagnostics;
     this.navCapable = !!connection.capabilities.codeNavigation;
+    this.completionCapable = !!connection.capabilities.codeCompletion;
     this.languagesCapable = !!connection.capabilities.codeDiagnosticsLanguages;
     const off = [...this.languageSetting.off];
     this.attachedOff = off;

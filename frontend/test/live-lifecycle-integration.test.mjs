@@ -23,7 +23,7 @@ const context = { connectionId: 'c', attachmentId: 'a', generation: 'g' };
 const provider = id => ({ providerId: id, availability: 'available', phase: 'idle', freshness: 'uncertain', truncated: false, coverage: { kind: 'openedDocuments', roots: [''], partial: false, externalChanges: 'unwatched' } });
 const content = text => ({ path: 'a.go', text, revision: 'r1', size: text.length, edit: { eligible: true, newline: 'lf' } });
 
-async function harness(live = true, { path = 'a.go', providers = [provider('lsp'), provider('checker')], navigation = false } = {}) {
+async function harness(live = true, { path = 'a.go', providers = [provider('lsp'), provider('checker')], navigation = false, completion = false } = {}) {
   const calls = [], listeners = new Map(), timers = new Map();
   const fileContent = text => ({ ...content(text), path });
   let seq = 0, id = 0, doc;
@@ -44,12 +44,13 @@ async function harness(live = true, { path = 'a.go', providers = [provider('lsp'
   const files = new FilesStore(), checks = new CodeDiagnosticsStore(api, () => 0);
   const bridge = new LiveDocumentBridge({ api, store: checks, source: () => ({ dir: files.dir, documents: files.displayedDocuments() }), newId: () => `d${++id}`, timers: { set(fn) { timers.set(fn, fn); return fn; }, clear(fn) { timers.delete(fn); } } });
   checks.setLiveBasis(path => bridge.basis(path));
+  checks.setLiveFlush((p, bound) => bridge.flush(p, bound));
   checks.setLiveRecovery(() => bridge.statuses, (path, id) => bridge.reopen(path, id));
   bridge.onChange(() => checks.liveChanged());
   files.observe(bridge);
   const off = checks.onLifecycle(() => bridge.sync());
   await files.show('/p');
-  await checks.attach('/p', { phase: 'connected', generation: 1, hostId: 'h', capabilities: { codeDiagnostics: true, ...(live ? { liveCodeDiagnostics: true } : {}), ...(navigation ? { codeNavigation: true } : {}) } });
+  await checks.attach('/p', { phase: 'connected', generation: 1, hostId: 'h', capabilities: { codeDiagnostics: true, ...(live ? { liveCodeDiagnostics: true } : {}), ...(navigation ? { codeNavigation: true } : {}), ...(completion ? { codeCompletion: true } : {}) } });
   function emit(version = doc?.version, documentId = doc?.documentId, providers = ['lsp']) {
     const d = { path: 'a.go', severity: 'error', message: '<script>&😀', source: 'fixture', freshness: version ? 'current' : 'uncertain', basis: { kind: 'document', documentId, ...(version ? { version } : {}) }, range: { start: { line: 0, character: 1 }, end: { line: 0, character: 3 } } };
     const s = snapshot(providers.map(providerId => ({ providerId, origin: 'lsp', scope: { kind: 'document', path: 'a.go', documentId }, diagnostics: [d] })));
@@ -384,4 +385,37 @@ test('Ruff shape: .py/.pyi go live inside covered projects; versioned pushes dra
   listeners.get('codeDiagnostics:updated')({ contractVersion: 1, context, sequence: clear.sequence, updateId: 'clear', partIndex: 0, partCount: 1, snapshot: clear });
   assert.equal(checks.counts.warning, 0); assert.equal(checks.countsUnder('svc'), 0);
   await checks.detach();
+});
+
+test('completionBasis sends pending typing at once and names the attachment it was confirmed on', async () => {
+  const h = await harness(true, { completion: true });
+  assert.equal(h.checks.completionEnabled, true);
+  h.files.openFile('a.go', { keep: true }); await tick();
+  h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'package a\n'); await tick();
+  assert.equal(h.timers.size, 1); // the debounce
+  const before = h.bridge.basis('a.go');
+  assert.equal(before.synced, false);
+  const got = await h.checks.completionBasis('a.go');
+  const version = before.version + 1;
+  assert.deepEqual(got, { context, host: 'h', basis: { documentId: 'd1', version, synced: true } });
+  assert.deepEqual(h.calls.at(-1), ['change', version, 'package a\n']);
+  assert.equal(h.timers.size, 0);
+  // The attachment ends while the change is answered: no basis.
+  h.files.updateDraft('a.go', 'package b\n');
+  const late = h.checks.completionBasis('a.go');
+  h.checks.disconnect();
+  assert.equal(await late, undefined);
+  h.off();
+});
+
+test('completionBasis is undefined without the completion capability and sends nothing', async () => {
+  const h = await harness(true, { navigation: true });
+  assert.equal(h.checks.completionEnabled, false);
+  h.files.openFile('a.go', { keep: true }); await tick();
+  h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'package a\n'); await tick();
+  const sent = h.calls.length;
+  assert.equal(await h.checks.completionBasis('a.go'), undefined);
+  assert.equal(h.calls.length, sent);
+  assert.equal(h.timers.size, 1); // the debounce is left as it was
+  h.off();
 });

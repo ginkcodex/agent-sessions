@@ -138,6 +138,54 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
     const synced = !d.pending && !d.inflight && !d.saving && d.timer === undefined && d.confirmed === d.version && d.latest === d.queuedText;
     return { documentId: d.id, version: d.confirmed, synced };
   }
+  /**
+   * Sends typing that waits on its debounce now, and resolves with the basis
+   * once the server confirmed it and the document is synced. Resolves
+   * `undefined` after `bound` ms, when the document fails, is not live or not
+   * tracked, while paused, or when the attachment changes. A save in progress
+   * is waited for, as typing waits for it; a recovered lifecycle is followed
+   * by path. Typing during the wait is flushed too.
+   */
+  flush(path: string, bound: number): Promise<LiveDocumentBasis | undefined> {
+    const token = this.token;
+    // undefined: settled with no basis; null: keep waiting.
+    const step = (): LiveDocumentBasis | undefined | null => {
+      const att = this.deps.store.liveAttachment;
+      const d = this.docs.get(path);
+      if (!att || token === undefined || att.token !== token || this.token !== token || this.paused || !d || d.failed || this.blocked.has(path)) return undefined;
+      if (d.timer !== undefined && !d.saving) {
+        this.cancelTimer(d);
+        this.queueChange(att, d);
+      }
+      const b = this.basis(path);
+      return b?.synced ? b : null;
+    };
+    const first = step();
+    if (first !== null) return Promise.resolve(first);
+    return new Promise(resolve => {
+      let done = false, scheduled = false;
+      const finish = (b: LiveDocumentBasis | undefined) => {
+        if (done) return;
+        done = true;
+        off();
+        this.timers.clear(timer);
+        resolve(b);
+      };
+      // Checked after the change that woke it completes: recovery closes and
+      // reopens a path within one call.
+      const off = this.onChange(() => {
+        if (scheduled || done) return;
+        scheduled = true;
+        queueMicrotask(() => {
+          scheduled = false;
+          if (done) return;
+          const b = step();
+          if (b !== null) finish(b);
+        });
+      });
+      const timer = this.timers.set(() => finish(undefined), Math.max(0, bound));
+    });
+  }
   /** Failed synchronization is surfaced, never hidden behind fresh-looking results. */
   failure(path: string): string | undefined { return this.docs.get(path)?.failed; }
   get tracked(): string[] { return [...this.docs.keys()]; }
