@@ -55,13 +55,15 @@ type keptAnswer struct {
 // their opaque data, which never leave the host; bytes is their raw size.
 // Pending names the request in flight, whose answer replaces them; until it
 // does, the answer shown in the editor still resolves. Id is empty while no
-// answer is kept yet.
+// answer is kept yet. Order is the latest request order begun for the URI:
+// the Manager's, so the session keeps the answer the Manager keeps.
 type keptItems struct {
 	id      string
 	seq     uint64
 	items   []json.RawMessage
 	bytes   int
 	pending string
+	order   uint64
 }
 
 // maxKeptCompletion caps the raw item bytes a session keeps for resolve,
@@ -267,9 +269,11 @@ func (r CompletionDetails) Validate() error {
 }
 
 // beginCompletion starts a request for an open uri and returns its result ID.
-// It becomes the URI's pending request, so an earlier request that answers
-// later is not kept; the kept answer stays until this one is stored.
-func (s *lspSession) beginCompletion(uri string) string {
+// The request with the latest order becomes the URI's pending request, so
+// one ordered before it is not kept, whichever answers or starts first; the
+// kept answer stays until the pending one is stored. Order 0 is after every
+// request begun.
+func (s *lspSession) beginCompletion(uri string, order uint64) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.completionIDs++
@@ -279,7 +283,9 @@ func (s *lspSession) beginCompletion(uri string) string {
 			s.completions = make(map[string]keptItems)
 		}
 		k := s.completions[uri]
-		k.pending = id
+		if order == 0 || order > k.order {
+			k.pending, k.order = id, max(k.order, order)
+		}
 		s.completions[uri] = k
 	}
 	return id
@@ -309,7 +315,7 @@ func (s *lspSession) keepCompletion(uri, id string, items []json.RawMessage) boo
 		items = []json.RawMessage{}
 	}
 	seq, _ := strconv.ParseUint(id, 10, 64)
-	s.completions[uri] = keptItems{id: id, seq: seq, items: items, bytes: n}
+	s.completions[uri] = keptItems{id: id, seq: seq, items: items, bytes: n, order: k.order}
 	for total := s.keptCompletionBytes(); total > maxKeptCompletion; {
 		oldest := ""
 		for other, o := range s.completions {
@@ -317,13 +323,10 @@ func (s *lspSession) keepCompletion(uri, id string, items []json.RawMessage) boo
 				oldest = other
 			}
 		}
+		// The slot stays, holding the request in flight and the order.
 		o := s.completions[oldest]
 		total -= o.bytes
-		if o.pending != "" {
-			s.completions[oldest] = keptItems{pending: o.pending}
-		} else {
-			delete(s.completions, oldest)
-		}
+		s.completions[oldest] = keptItems{pending: o.pending, order: o.order}
 	}
 	return true
 }
@@ -343,11 +346,7 @@ func (s *lspSession) dropCompletion(uri, id string) {
 	defer s.mu.Unlock()
 	if k, ok := s.completions[uri]; ok && k.pending == id {
 		k.pending = ""
-		if k.id == "" {
-			delete(s.completions, uri)
-		} else {
-			s.completions[uri] = k
-		}
+		s.completions[uri] = k
 	}
 }
 

@@ -336,8 +336,13 @@ func TestCompletionChoosesTheLanguageServer(t *testing.T) {
 		t.Fatal(got, err)
 	}
 	// The provider checks ranges against the text the position refers to.
-	if req := docs.reqs[len(docs.reqs)-1]; req.Owner.ProviderID != "pyright" || req.Generation != "g-pyright" || req.Path != "source.go" || req.Position != at || req.Trigger != dot || req.Text != "x = 1\nx.\n" {
+	if req := docs.reqs[len(docs.reqs)-1]; req.Owner.ProviderID != "pyright" || req.Generation != "g-pyright" || req.Path != "source.go" || req.Position != at || req.Trigger != dot || req.Text != "x = 1\nx.\n" || req.Order == 0 {
 		t.Fatalf("went to %+v", req)
+	}
+	// The session orders requests as the Manager does (CC-24).
+	order := docs.reqs[len(docs.reqs)-1].Order
+	if _, err := m.Complete(ctx, c, "d1", 1, at, dot); err != nil || docs.reqs[len(docs.reqs)-1].Order <= order {
+		t.Fatal(docs.reqs, err)
 	}
 	// Both offer completion: the one with more navigation answers.
 	ruffCaps.Completion, ruffCaps.CompletionTriggers = true, "."
@@ -790,7 +795,7 @@ func TestCompletionKeptBytesAreCapped(t *testing.T) {
 	quarter := json.RawMessage(`"` + strings.Repeat("x", maxKeptCompletion/4) + `"`)
 	keep := func(uri string, items ...json.RawMessage) string {
 		t.Helper()
-		id := s.beginCompletion(uri)
+		id := s.beginCompletion(uri, 0)
 		if !s.keepCompletion(uri, id, items) {
 			t.Fatal("not kept")
 		}
@@ -820,18 +825,24 @@ func TestCompletionKeptBytesAreCapped(t *testing.T) {
 	if _, ok := s.keptCompletion("b", b, 3); ok {
 		t.Fatal("an item past the cap was kept")
 	}
-	if _, ok := s.keptCompletion("c", c, 0); ok || len(s.completions) != 1 || s.keptCompletionBytes() > maxKeptCompletion {
-		t.Fatalf("%d answers, %d bytes", len(s.completions), s.keptCompletionBytes())
+	answers := 0
+	for _, k := range s.completions {
+		if k.id != "" {
+			answers++
+		}
+	}
+	if _, ok := s.keptCompletion("c", c, 0); ok || answers != 1 || s.keptCompletionBytes() > maxKeptCompletion {
+		t.Fatalf("%d answers, %d bytes", answers, s.keptCompletionBytes())
 	}
 	// A pending request's slot holds no bytes and is not dropped.
-	pending := s.beginCompletion("a")
+	pending := s.beginCompletion("a", 0)
 	keep("c", quarter)
 	if k := s.completions["a"]; k.pending != pending {
 		t.Fatal("a pending slot was dropped")
 	}
 	// Dropping a kept answer for the cap leaves the request in flight pending.
 	keep("a", quarter)
-	pending = s.beginCompletion("a")
+	pending = s.beginCompletion("a", 0)
 	keep("b", quarter, quarter, quarter, quarter)
 	if k := s.completions["a"]; k.id != "" || k.pending != pending || !s.keepCompletion("a", pending, []json.RawMessage{quarter}) {
 		t.Fatalf("%+v", k)
@@ -844,13 +855,13 @@ func TestCompletionKeptBytesAreCapped(t *testing.T) {
 func TestCompletionKeptWhileAskingAgain(t *testing.T) {
 	s := &lspSession{wireBases: map[string]int64{"a": 1}}
 	item := json.RawMessage(`{"label":"x"}`)
-	first := s.beginCompletion("a")
+	first := s.beginCompletion("a", 0)
 	if !s.keepCompletion("a", first, []json.RawMessage{item}) {
 		t.Fatal("not kept")
 	}
 	resolvable := func(id string) bool { _, ok := s.keptCompletion("a", id, 0); return ok }
 	// Held, then failed or timed out: the kept answer stays.
-	failed := s.beginCompletion("a")
+	failed := s.beginCompletion("a", 0)
 	if !resolvable(first) || resolvable(failed) {
 		t.Fatal("a request in flight replaced the kept answer")
 	}
@@ -859,7 +870,7 @@ func TestCompletionKeptWhileAskingAgain(t *testing.T) {
 		t.Fatal("a failed request changed the kept answer")
 	}
 	// Of two requests, only the later one's answer is stored.
-	older, newer := s.beginCompletion("a"), s.beginCompletion("a")
+	older, newer := s.beginCompletion("a", 0), s.beginCompletion("a", 0)
 	if s.keepCompletion("a", older, []json.RawMessage{item}) || !resolvable(first) {
 		t.Fatal("an earlier request replaced the kept answer")
 	}
@@ -867,8 +878,24 @@ func TestCompletionKeptWhileAskingAgain(t *testing.T) {
 	if !s.keepCompletion("a", newer, []json.RawMessage{item}) || resolvable(first) || !resolvable(newer) {
 		t.Fatal("the newer answer did not replace the kept one")
 	}
+	// Ordered by the Manager: a request ordered earlier that starts later is
+	// not kept, so the session keeps the answer the Manager keeps (CC-24).
+	later := s.beginCompletion("a", 7)
+	earlier := s.beginCompletion("a", 6)
+	if s.keepCompletion("a", earlier, []json.RawMessage{item}) || !resolvable(newer) {
+		t.Fatal("a request ordered earlier replaced the kept answer")
+	}
+	if !s.keepCompletion("a", later, []json.RawMessage{item}) || !resolvable(later) {
+		t.Fatal("the latest request's answer was not kept")
+	}
+	// The order outlives a failed request and the answer it replaced.
+	failed = s.beginCompletion("a", 9)
+	s.dropCompletion("a", failed)
+	if stale := s.beginCompletion("a", 8); s.keepCompletion("a", stale, []json.RawMessage{item}) || !resolvable(later) {
+		t.Fatal("a request ordered before a failed one was kept")
+	}
 	// A request for a document that is not open keeps nothing.
-	closed := s.beginCompletion("b")
+	closed := s.beginCompletion("b", 0)
 	if s.keepCompletion("b", closed, []json.RawMessage{item}) {
 		t.Fatal("kept an answer for a closed document")
 	}

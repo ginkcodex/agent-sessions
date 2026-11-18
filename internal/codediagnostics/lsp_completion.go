@@ -104,6 +104,9 @@ type CompletionRequest struct {
 	Position   Position
 	Trigger    CompletionTrigger
 	Text       string // the document at the requested version
+	// Order is the Manager's request sequence: of a document's requests, the
+	// session keeps only the answer to the latest one, as the Manager does.
+	Order uint64
 }
 
 // CompletionProvider sends completion requests to running sessions. Like
@@ -222,7 +225,7 @@ func (m *Manager) Complete(ctx context.Context, c Context, documentID string, ve
 		return CompletionResult{DocumentID: documentID, Version: version, Items: []CompletionItem{}, TriggerCharacters: triggers}, nil
 	}
 	r := route.req
-	result, err := provider.Complete(ctx, CompletionRequest{Root: r.Root, Owner: r.Owner, Generation: r.Generation, Path: r.Path, Position: pos, Trigger: trigger, Text: route.text})
+	result, err := provider.Complete(ctx, CompletionRequest{Root: r.Root, Owner: r.Owner, Generation: r.Generation, Path: r.Path, Position: pos, Trigger: trigger, Text: route.text, Order: seq})
 	if err != nil {
 		return CompletionResult{}, err
 	}
@@ -274,7 +277,7 @@ func (d SessionDocuments) Complete(ctx context.Context, req CompletionRequest) (
 		"position":     lspPosition{req.Position.Line, req.Position.Character},
 		"context":      why,
 	}
-	id := s.beginCompletion(uri)
+	id := s.beginCompletion(uri, req.Order)
 	cctx, cancel := s.deadline(ctx, completionTimeout)
 	defer cancel()
 	if err := s.reindex(cctx, tr); err != nil {
