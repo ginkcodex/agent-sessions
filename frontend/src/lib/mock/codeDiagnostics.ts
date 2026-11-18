@@ -85,12 +85,15 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
    * the position, replacing that word. A declared name resolves to its
    * declaring line, as navigateCode finds it.
    */
-  async completeCode(c: CodeDiagnosticsContext, _requestId: string, documentId: string, version: number, position: CodeDiagnosticPosition, _trigger: CodeCompletionTrigger, host: string): Promise<CodeCompletionResult> {
+  async completeCode(c: CodeDiagnosticsContext, _requestId: string, documentId: string, version: number, position: CodeDiagnosticPosition, trigger: CodeCompletionTrigger, host: string): Promise<CodeCompletionResult> {
     const m = this.docs(c, host), d = m.get(documentId);
     if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
     if (version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The document changed since this request');
     const line = d.text.split('\n')[position.line];
     if (line === undefined || position.character > line.length) throw new CodeDiagnosticsError('invalidArgument', 'Position is outside the document');
+    // Like a server whose only trigger character is '.'.
+    const triggerCharacters = '.';
+    if (trigger.kind === 'character' && !triggerCharacters.includes(trigger.character)) return { documentId, version, items: [], triggerCharacters };
     const prefix = /\w*$/.exec(line.slice(0, position.character))![0];
     const range = { start: { line: position.line, character: position.character - prefix.length }, end: position };
     const found = new Map<string, { path: string; declared?: string }>();
@@ -111,7 +114,7 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     });
     const resultId = `mock-completion-${++this.serial}`;
     this.answers.set(documentId, { resultId, version, items });
-    return { documentId, version, resultId, items: items.map(i => structuredClone(i.item)), ...(words.length > items.length ? { isIncomplete: true } : {}) };
+    return { documentId, version, resultId, items: items.map(i => structuredClone(i.item)), triggerCharacters, ...(words.length > items.length ? { isIncomplete: true } : {}) };
   }
   async resolveCodeCompletion(c: CodeDiagnosticsContext, documentId: string, resultId: string, index: number, host: string): Promise<CodeCompletionDetails> {
     const d = this.docs(c, host).get(documentId);

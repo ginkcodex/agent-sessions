@@ -144,6 +144,7 @@ async function loadEditorModule() {
   source = source.replace("'./files'", JSON.stringify(new URL('files.ts', EDITOR_URL).href));
   source = source.replace("'./searchReplace'", JSON.stringify(new URL('searchReplace.ts', EDITOR_URL).href));
   source = source.replace("'./sourceNavigation'", JSON.stringify(new URL('sourceNavigation.ts', EDITOR_URL).href));
+  source = source.replace("'./editorCompletion'", JSON.stringify(new URL('editorCompletion.ts', EDITOR_URL).href));
   source = source.replace("import { handleCopyCodeClick } from './copycode';", "const handleCopyCodeClick = () => {};");
   source = source.replace("'./codeHighlight'", JSON.stringify(new URL('codeHighlight.ts', EDITOR_URL).href));
   source = source.replace("'@replit/codemirror-lang-svelte'", JSON.stringify(import.meta.resolve('@replit/codemirror-lang-svelte')));
@@ -154,7 +155,7 @@ async function loadEditorModule() {
   return import(`data:text/javascript,${encodeURIComponent(js)}`);
 }
 
-const { createFileEditor, acceptOrBreakLine, completionKeys, documentWords, navigationKeymap, symbolMouseDown, symbolContextMenu, symbolPress, symbolKeyDown, symbolHover, editorPosition, wordAtSide } = await loadEditorModule();
+const { createFileEditor, acceptOrBreakLine, completionKeys, documentWords, codeSuggestions, completionTrigger, SERVER_SUGGESTION_WAIT, navigationKeymap, symbolMouseDown, symbolContextMenu, symbolPress, symbolKeyDown, symbolHover, editorPosition, wordAtSide } = await loadEditorModule();
 
 const isMac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 
@@ -1242,7 +1243,7 @@ test('document words: prefix matches, the whole typed word and language items le
 
 test('typing opens suggestions when the setting is on; off, only the shortcut does; read-only never', () => {
   const { view, editor, options } = mount({ text: 'alpha\n', path: 'notes.txt' });
-  assert.ok(view.state.languageDataAt('autocomplete', 0).includes(documentWords));
+  assert.ok(view.state.languageDataAt('autocomplete', 0).includes(codeSuggestions));
   typed(view, 'al');
   assert.equal(completionStatus(view.state), 'pending');
   // Options are applied on every keystroke; the same mode leaves an open popup alone.
@@ -1259,7 +1260,7 @@ test('typing opens suggestions when the setting is on; off, only the shortcut do
 
   editor.update({ ...options, text: view.state.doc.toString(), suggest: false, disabled: true });
   assert.equal(startCompletion(view), false, 'read-only: no completion at all');
-  assert.ok(!view.state.languageDataAt('autocomplete', 0).includes(documentWords));
+  assert.ok(!view.state.languageDataAt('autocomplete', 0).includes(codeSuggestions));
   assert.equal(editor.handleKey(key('Escape')), false);
 
   editor.update({ ...options, text: view.state.doc.toString(), disabled: false });
@@ -1296,8 +1297,8 @@ test('a CSS file offers its properties beside the words, and a property is not r
     await languageOf(view, 'site.css');
     const end = view.state.doc.length;
     const sources = view.state.languageDataAt('autocomplete', end);
-    assert.ok(sources.includes(documentWords));
-    const css = sources.filter(s => s !== documentWords);
+    assert.ok(sources.includes(codeSuggestions));
+    const css = sources.filter(s => s !== codeSuggestions);
     assert.ok(css.length > 0, 'the CSS package brings its own completions');
     const results = await Promise.all(css.map(s => s(new CompletionContext(view.state, end, false))));
     const labels = results.filter(Boolean).flatMap(r => r.options.map(o => o.label));
@@ -1325,4 +1326,170 @@ test('FileEditor passes the suggestion setting, so changing it reconfigures open
   const source = readFileSync(COMPONENT_URL, 'utf8');
   assert.match(source, /suggest: preferences\.suggestWhileTyping/);
   assert.match(source, /\$effect\(\(\) => \{\s*editor\?\.update\(options\(\)\);/);
+});
+
+// ---------------------------------------------------------------------------
+// Language-server suggestions (CC-06).
+// ---------------------------------------------------------------------------
+
+function serverEditor(text, path = 'a.go', reply = async () => ({ items: [], incomplete: false })) {
+  const asks = [];
+  const h = { asks, reply };
+  const symbols = { ask() {}, hover: async () => undefined, complete(position, trigger, current, signal) { asks.push({ position, trigger, current, signal }); return h.reply(position, trigger); } };
+  Object.assign(h, mount({ text, path, symbols }));
+  h.at = (pos = h.view.state.doc.length, explicit = false) => new CompletionContext(h.view.state, pos, explicit, h.view);
+  h.suggest = (pos, explicit) => codeSuggestions(h.at(pos, explicit));
+  return h;
+}
+
+test('server suggestions: why the server is asked, and trigger characters it names replace the likely ones', async () => {
+  const h = serverEditor('fmt.\nx = 1 \nal\nfmt:');
+  const { view } = h, line = n => view.state.doc.line(n);
+  assert.deepEqual(completionTrigger(h.at(4), view, 'a.go'), { kind: 'character', character: '.' }, 'a likely trigger before the server said');
+  assert.deepEqual(completionTrigger(h.at(line(3).to), view, 'a.go'), { kind: 'invoked' }, 'typing a name');
+  assert.deepEqual(completionTrigger(h.at(line(2).to, true), view, 'a.go'), { kind: 'invoked' }, 'the shortcut, anywhere');
+  assert.equal(completionTrigger(h.at(line(2).to), view, 'a.go'), undefined, 'after a space: words only');
+  assert.equal(completionTrigger(h.at(0), view, 'a.go'), undefined);
+
+  h.reply = async () => ({ items: [{ label: 'Println' }], incomplete: false, triggerCharacters: '.' });
+  await h.suggest(4);
+  assert.deepEqual(h.asks[0].position, { line: 0, character: 4 });
+  assert.deepEqual(h.asks[0].trigger, { kind: 'character', character: '.' });
+  assert.equal(completionTrigger(h.at(line(4).to), view, 'a.go'), undefined, "':' is not this server's");
+  assert.deepEqual(completionTrigger(h.at(4), view, 'a.go'), { kind: 'character', character: '.' });
+  assert.deepEqual(completionTrigger(h.at(line(4).to), view, 'b.rb'), { kind: 'character', character: ':' }, 'another file: likely ones again');
+  assert.equal(h.asks[0].current(), true);
+  typed(view, 'P', 4);
+  assert.equal(h.asks[0].current(), false, 'the asked text changed');
+
+  // An incomplete answer: typing on in the same word asks again as such; the shortcut starts over.
+  h.reply = async () => ({ items: [{ label: 'alpha' }], incomplete: true });
+  const end = view.state.doc.line(3).to;
+  const result = await h.suggest(end);
+  assert.equal(result.validFor, undefined, 'never filtered locally');
+  typed(view, 'p', end);
+  assert.deepEqual(completionTrigger(h.at(end + 1), view, 'a.go'), { kind: 'incomplete' });
+  assert.deepEqual(completionTrigger(h.at(end + 1, true), view, 'a.go'), { kind: 'invoked' });
+  assert.deepEqual(completionTrigger(h.at(end + 1), view, 'a.go'), { kind: 'invoked' });
+  h.editor.destroy();
+});
+
+test('server suggestions come above the words they do not repeat, in the server order, with kinds and details', async () => {
+  const h = serverEditor('alpha alphabet\nal', 'a.ts', async () => ({ incomplete: false, items: [
+    { label: 'alpha', kind: 6, sortText: 'b', detail: 'let alpha: number' },
+    { label: 'alert', kind: 3, sortText: 'a', labelDetail: '(message?: any)', deprecated: true },
+    { label: 'all', filterText: 'allx', kind: 14, sortText: 'c' },
+  ] }));
+  const result = await h.suggest();
+  assert.equal(result.from, 15);
+  assert.equal(result.validFor.test('alp'), true, 'a complete answer filters as the user types on');
+  assert.equal(result.validFor.test('al.'), false);
+  assert.deepEqual(result.options.map(o => o.label), ['alpha', 'alert', 'allx', 'alphabet'], 'alpha once, as the server item');
+  const [alpha, alert, all, word] = result.options;
+  assert.ok(alert.boost > alpha.boost && alpha.boost > all.boost && all.boost > 0 && !word.boost);
+  assert.deepEqual([alpha.type, alert.type, all.type, word.type], ['variable', 'function', 'keyword', 'text']);
+  assert.equal(alpha.detail, 'let alpha: number');
+  assert.equal(alert.detail, '(message?: any)');
+  assert.equal(all.displayLabel, 'all', 'matched on filterText, shown as the label');
+  assert.equal(alpha.displayLabel, undefined);
+  assert.equal(alpha.info, undefined, 'no details to show');
+  h.editor.destroy();
+});
+
+test('words alone, at once, when no server can be asked; asked again next time when it fails or answers nothing', async () => {
+  const h = serverEditor('alpha alphabet\nal', 'a.ts');
+  h.reply = () => undefined;
+  const sync = h.suggest();
+  assert.ok(!(sync instanceof Promise), 'no server: no waiting');
+  assert.deepEqual(sync.options.map(o => o.label), ['alpha', 'alphabet']);
+  assert.equal(typeof sync.validFor, 'function');
+
+  for (const reply of [async () => undefined, async () => { throw new Error('gone'); }]) {
+    h.reply = reply;
+    const words = await h.suggest();
+    assert.deepEqual(words.options.map(o => o.label), ['alpha', 'alphabet']);
+    assert.equal(words.validFor, undefined, 'the next keystroke asks the server again');
+  }
+  h.reply = async () => ({ items: [], incomplete: false });
+  assert.deepEqual((await h.suggest()).options.map(o => o.label), ['alpha', 'alphabet']);
+  assert.equal(await h.suggest(6), null, 'after a space with nothing to offer');
+
+  // Words from another start than the server's edits are left out.
+  h.reply = async () => ({ incomplete: false, items: [{ label: '@alpha', edit: { range: { start: { line: 1, character: 0 }, end: { line: 1, character: 2 } }, newText: '@alpha' } }] });
+  assert.deepEqual((await h.suggest()).options.map(o => o.label), ['@alpha', 'alpha', 'alphabet'], 'same start: kept');
+  h.editor.destroy();
+  const ruby = serverEditor('@alpha alphabet\n@al', 'a.rb', async () => ({ incomplete: false, items: [{ label: '@alpha', edit: { range: { start: { line: 1, character: 0 }, end: { line: 1, character: 3 } }, newText: '@alpha' } }] }));
+  const ivar = await ruby.suggest();
+  assert.equal(ivar.from, 16, 'the edit starts at the sigil');
+  assert.deepEqual(ivar.options.map(o => o.label), ['@alpha'], 'words start after it');
+  ruby.editor.destroy();
+});
+
+test('a slow server is canceled and the words show; CodeMirror ending the query cancels it too', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = serverEditor('alpha alphabet\nal', 'a.ts', () => new Promise(() => {}));
+  const pending = h.suggest();
+  assert.equal(h.asks[0].signal.aborted, false);
+  t.mock.timers.tick(SERVER_SUGGESTION_WAIT);
+  const words = await pending;
+  assert.equal(h.asks[0].signal.aborted, true);
+  assert.deepEqual(words.options.map(o => o.label), ['alpha', 'alphabet']);
+
+  const context = h.at();
+  void codeSuggestions(context);
+  for (const listener of context.abortListeners) listener();
+  assert.equal(h.asks[1].signal.aborted, true);
+  h.editor.destroy();
+});
+
+test('accepting applies the edit and its import as one undo step, with the caret in the snippet', async () => {
+  const text = 'package main\n\nfunc f() {\n\tfmt.Pr\n}\n';
+  const h = serverEditor(text, 'a.go', async () => ({ incomplete: false, items: [{
+    label: 'Println', kind: 3, snippet: true,
+    edit: { range: { start: { line: 3, character: 5 }, end: { line: 3, character: 7 } }, newText: 'Println(${1:a ...any})$0' },
+    extraEdits: [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }, newText: 'import "fmt"\n' }],
+  }] }));
+  const { view } = h, end = view.state.doc.line(4).to;
+  view.dispatch({ selection: { anchor: end } });
+  const result = await h.suggest(end);
+  typed(view, 'i', end);
+  const depth = undoDepth(view.state);
+  const option = result.options[0];
+  option.apply(view, option, result.from, end + 1);
+  assert.equal(view.state.doc.toString(), 'package main\nimport "fmt"\n\nfunc f() {\n\tfmt.Println(a ...any)\n}\n');
+  assert.equal(view.state.selection.main.head, view.state.doc.line(5).from + '\tfmt.Println('.length);
+  assert.equal(undoDepth(view.state), depth + 1);
+  undo(view);
+  assert.equal(view.state.doc.toString(), 'package main\n\nfunc f() {\n\tfmt.Pri\n}\n', 'one undo, the typing stays');
+
+  // An edit elsewhere since asking: only the item's text replaces the typed word.
+  typed(view, 'X', 0);
+  const word = view.state.doc.line(4);
+  option.apply(view, option, word.to - 3, word.to);
+  assert.equal(view.state.doc.toString(), 'Xpackage main\n\nfunc f() {\n\tfmt.Println(a ...any)\n}\n');
+  h.editor.destroy();
+});
+
+test('the details panel shows the signature and the documentation the owner rendered', async () => {
+  const asked = [];
+  const h = serverEditor('al', 'a.ts', async () => ({ incomplete: false, items: [{ label: 'alpha' }, { label: 'alert' }],
+    details: async index => { asked.push(index); return index ? undefined : { detail: 'let alpha: number', html: '<p>Docs</p>', truncated: true }; } }));
+  const [alpha, alert] = (await h.suggest()).options;
+  const previous = globalThis.document;
+  try {
+    globalThis.document = { createElement: () => ({ children: [], style: {}, appendChild(child) { this.children.push(child); return child; }, addEventListener() {} }) };
+    const dom = await alpha.info(alpha);
+    assert.equal(dom.className, 'cm-symbol-hover cm-completion-docs');
+    assert.deepEqual(dom.children.map(c => c.className), ['cm-completion-signature', 'hover-body', 'hover-truncated']);
+    assert.equal(dom.children[0].textContent, 'let alpha: number', 'the signature is text, never HTML');
+    assert.equal(dom.children[1].innerHTML, '<p>Docs</p>');
+    assert.equal(await alert.info(alert), null);
+    assert.deepEqual(asked, [0, 1], 'by the index in the answer');
+  } finally { globalThis.document = previous; h.editor.destroy(); }
+});
+
+test('deprecated suggestions are struck through', () => {
+  const source = readFileSync(EDITOR_URL, 'utf8');
+  assert.match(source, /optionClass/);
+  assert.match(source, /'\.cm-completion-deprecated \.cm-completionLabel': \{ textDecoration: 'line-through'/);
 });

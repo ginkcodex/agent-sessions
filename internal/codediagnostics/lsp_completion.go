@@ -79,14 +79,16 @@ type CompletionItem struct {
 // to ask again as the user types on rather than filter locally; Truncated
 // reports dropped items or shortened text and implies Incomplete when items
 // were dropped. ResultID names the answer for ResolveCompletion, which takes
-// an item's index in Items.
+// an item's index in Items. TriggerCharacters are the answering server's,
+// so the editor learns which typed characters to ask after.
 type CompletionResult struct {
-	DocumentID string           `json:"documentId"`
-	Version    int64            `json:"version"`
-	ResultID   string           `json:"resultId,omitempty"`
-	Items      []CompletionItem `json:"items"`
-	Incomplete bool             `json:"isIncomplete,omitempty"`
-	Truncated  bool             `json:"truncated,omitempty"`
+	DocumentID        string           `json:"documentId"`
+	Version           int64            `json:"version"`
+	ResultID          string           `json:"resultId,omitempty"`
+	Items             []CompletionItem `json:"items"`
+	Incomplete        bool             `json:"isIncomplete,omitempty"`
+	Truncated         bool             `json:"truncated,omitempty"`
+	TriggerCharacters string           `json:"triggerCharacters,omitempty"`
 }
 
 // CompletionRequest is one request to the session that holds the document at
@@ -169,14 +171,15 @@ func completionProvider(raw json.RawMessage) (bool, string, bool) {
 	return true, string(triggers), options.ResolveProvider
 }
 
-// validTrigger checks a trigger against the session that answers: a trigger
-// character must be one the server named.
-func validTrigger(t CompletionTrigger, caps ServerCapabilities) bool {
+// validTrigger checks a trigger's shape: a character trigger names one
+// printable character.
+func validTrigger(t CompletionTrigger) bool {
 	switch t.Kind {
 	case CompletionInvoked, CompletionIncomplete:
 		return t.Character == ""
 	case CompletionCharacter:
-		return utf8.RuneCountInString(t.Character) == 1 && strings.Contains(caps.CompletionTriggers, t.Character)
+		r, n := utf8.DecodeRuneInString(t.Character)
+		return n == len(t.Character) && r != utf8.RuneError && !unicode.IsControl(r)
 	}
 	return false
 }
@@ -199,15 +202,21 @@ func (m *Manager) Complete(ctx context.Context, c Context, documentID string, ve
 	if err != nil {
 		return CompletionResult{}, err
 	}
-	if !validTrigger(trigger, route.caps) {
+	if !validTrigger(trigger) {
 		return CompletionResult{}, failure("invalidArgument", "Unknown completion trigger")
+	}
+	triggers := route.caps.CompletionTriggers
+	// The editor asks after characters before it knows the server's: one the
+	// server did not name is answered with nothing, without asking it.
+	if trigger.Kind == CompletionCharacter && !strings.Contains(triggers, trigger.Character) {
+		return CompletionResult{DocumentID: documentID, Version: version, Items: []CompletionItem{}, TriggerCharacters: triggers}, nil
 	}
 	r := route.req
 	result, err := provider.Complete(ctx, CompletionRequest{Root: r.Root, Owner: r.Owner, Generation: r.Generation, Path: r.Path, Position: pos, Trigger: trigger, Text: route.text})
 	if err != nil {
 		return CompletionResult{}, err
 	}
-	result.DocumentID, result.Version = documentID, version
+	result.DocumentID, result.Version, result.TriggerCharacters = documentID, version, triggers
 	if result.Items == nil {
 		result.Items = []CompletionItem{}
 	}
@@ -520,7 +529,7 @@ func overlapsAny(r Range, taken []Range) bool {
 // local server would.
 func (r CompletionResult) Validate() error {
 	invalid := failure("toolFailed", "The completion answer is invalid")
-	if len(r.Items) > maxCompletionItems || r.ResultID != "" && !bounded(r.ResultID, 64) {
+	if len(r.Items) > maxCompletionItems || r.ResultID != "" && !bounded(r.ResultID, 64) || !validTriggers(r.TriggerCharacters) {
 		return invalid
 	}
 	total := 0
@@ -534,6 +543,20 @@ func (r CompletionResult) Validate() error {
 		return invalid
 	}
 	return nil
+}
+
+// validTriggers checks trigger characters as completionProvider keeps them:
+// distinct printable characters, at most 32.
+func validTriggers(s string) bool {
+	if !utf8.ValidString(s) || utf8.RuneCountInString(s) > maxCompletionTriggers {
+		return false
+	}
+	for i, r := range s {
+		if unicode.IsControl(r) || strings.ContainsRune(s[:i], r) {
+			return false
+		}
+	}
+	return true
 }
 
 func validCompletionItem(c CompletionItem) bool {

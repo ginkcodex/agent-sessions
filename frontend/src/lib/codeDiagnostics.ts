@@ -134,6 +134,8 @@ export interface CodeCompletionResult {
   items: CodeCompletionItem[];
   isIncomplete?: boolean;
   truncated?: boolean;
+  /** The answering server's trigger characters; a character it did not name is answered with nothing. */
+  triggerCharacters?: string;
 }
 /** An item's detail and documentation, from completionItem/resolve. */
 export interface CodeCompletionDetails {

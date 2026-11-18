@@ -6,7 +6,7 @@ import { aggregateCodeDiagnostics } from '../codeDiagnosticCounts';
 import { epoch } from '../link';
 import type { BackendAPI } from '../api';
 import type { ConnectionState, FileContent } from '../types';
-import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsProvider, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun, CodeDiagnosticPosition, CodeNavigationOp } from '../codeDiagnostics';
+import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsProvider, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun, CodeDiagnosticPosition, CodeNavigationOp, CodeCompletionResult, CodeCompletionTrigger, CodeMarkupText } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CODE_DIAGNOSTICS_LIMITS as limits, CodeDiagnosticsError, codeDiagnosticsError, sameAttachment, sameContext, encodedBytes, resultSetKey, groupCodeDiagnostics, inlineCodeDiagnostic, liveDocumentEligibility } from '../codeDiagnostics';
 import type { CodeNavigationAsk, CodeNavigationOutcome } from '../codeNavigation';
 import { externalReadFailure, navigationBlocker, navigationFailure } from '../codeNavigation';
@@ -27,6 +27,13 @@ export const COMPLETION_SYNC_WAIT = 1000;
 
 /** What a completion request is asked against: the attachment and the confirmed version. */
 export interface CompletionBasis { context: CodeDiagnosticsContext; host: string; basis: LiveDocumentBasis }
+/** How a completion request is asked: `current` says the editor text is still the asked text. */
+export interface CompletionAsk { current?: () => boolean; signal?: AbortSignal; wait?: number }
+/** An item's detail and documentation for the info panel. */
+export interface CompletionItemDetails { detail?: string; documentation?: CodeMarkupText; truncated?: boolean }
+/** A server's answer and a way to read each item's details. */
+export interface CompletionAnswer { result: CodeCompletionResult; details(index: number): Promise<CompletionItemDetails | undefined> }
+let completionRequests = 0;
 
 /** Whether an opened-documents provider declares path by extension and coverage root. */
 function declares(p: CodeDiagnosticsProvider, path: string): boolean {
@@ -293,6 +300,59 @@ export class CodeDiagnosticsStore {
     const now = this.liveAttachment;
     if (!basis?.synced || !now || now.token !== att.token || !this.active(life) || !this.completionEnabled) return undefined;
     return { context: att.context, host: att.host, basis };
+  }
+  /** Why completion cannot be asked for path now; undefined when it can (the document may still be syncing). */
+  completionBlocker(path: string): string | undefined {
+    if (!this.completionEnabled) return 'Code completion is not available for this host.';
+    return navigationBlocker({
+      status: this.status, off: this.offLanguage(path)?.name, live: this.liveCapable, navigation: true, approved: this.approved, approvalBlocker: this.approvalBlocker,
+      servers: this.liveServers(path), failure: this.liveDocuments.find(d => d.path === path)?.failure, basis: this.liveBasis(path),
+    });
+  }
+  /**
+   * Asks path's language server for completions at position. Pending typing
+   * is sent first. Undefined, never a throw, when completion is unavailable,
+   * fails, is aborted through `ask.signal` (which cancels the request on the
+   * host), or `ask.current` says the text changed before asking. An answer is
+   * kept while the document is the same one: the editor maps typing since.
+   */
+  async complete(path: string, position: CodeDiagnosticPosition, trigger: CodeCompletionTrigger, ask: CompletionAsk = {}): Promise<CompletionAnswer | undefined> {
+    const life = this.lifetime, signal = ask.signal;
+    if (this.completionBlocker(path)) return undefined;
+    const at = await this.completionBasis(path, ask.wait);
+    if (!at || signal?.aborted || !(ask.current?.() ?? true) || !this.active(life)) return undefined;
+    const { context: c, host, basis } = at;
+    const requestId = `completion-${++completionRequests}`;
+    const cancel = () => { this.backend.cancelCodeCompletion(requestId).catch(() => { /* finished or gone */ }); };
+    signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      const result = await this.backend.completeCode(c, requestId, basis.documentId, basis.version, position, trigger, host);
+      const same = this.active(life) && !!this.context && sameContext(c, this.context) && this.liveBasis(path)?.documentId === basis.documentId;
+      if (signal?.aborted || !same || result.documentId !== basis.documentId || result.version !== basis.version) return undefined;
+      return { result, details: index => this.completionDetails(c, host, result, index, life) };
+    } catch {
+      return undefined;
+    } finally {
+      signal?.removeEventListener('abort', cancel);
+    }
+  }
+  /**
+   * Item index's detail and documentation, resolved by the server. The
+   * listed ones when it cannot say: the answer is no longer the document's
+   * last (it changed since), or resolving failed.
+   */
+  private async completionDetails(c: CodeDiagnosticsContext, host: string, result: CodeCompletionResult, index: number, life: number): Promise<CompletionItemDetails | undefined> {
+    const item = result.items[index];
+    if (!item) return undefined;
+    const listed: CompletionItemDetails = { detail: item.detail, documentation: item.documentation };
+    if (!result.resultId) return listed;
+    try {
+      const d = await this.backend.resolveCodeCompletion(c, result.documentId, result.resultId, index, host);
+      if (!this.active(life) || d.documentId !== result.documentId || d.resultId !== result.resultId || d.index !== index) return listed;
+      return { detail: d.detail ?? item.detail, documentation: d.documentation ?? item.documentation, truncated: d.truncated };
+    } catch {
+      return listed;
+    }
   }
   async invalidatePath(dir: string, path: string): Promise<void> {
     const c = this.context, life = this.lifetime;

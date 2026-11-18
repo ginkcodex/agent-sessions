@@ -96,7 +96,7 @@ func TestCompletionOverRPC(t *testing.T) {
 	}
 	dot := cd.CompletionTrigger{Kind: cd.CompletionCharacter, Character: "."}
 	got, err := c.CompleteCode(ctx, token, "d1", 1, at, dot)
-	if err != nil || got.DocumentID != "d1" || got.Version != 1 || got.ResultID != "r1" || len(got.Items) != 2 || got.Items[0].Edit.NewText != "alpha()" || got.Items[1].Documentation.Value != "Beta." {
+	if err != nil || got.DocumentID != "d1" || got.Version != 1 || got.ResultID != "r1" || got.TriggerCharacters != "." || len(got.Items) != 2 || got.Items[0].Edit.NewText != "alpha()" || got.Items[1].Documentation.Value != "Beta." {
 		t.Fatal(got, err)
 	}
 	if req := sess.reqs[0]; req.Path != "doc.go" || req.Position != at || req.Trigger != dot || req.Text != "package x\n\nfunc f() { x. }\n" {
@@ -113,6 +113,12 @@ func TestCompletionOverRPC(t *testing.T) {
 	if got, err = c.CompleteCode(ctx, token, "d1", 1, at, cd.CompletionTrigger{Kind: cd.CompletionInvoked}); err != nil || got.Items == nil || len(got.Items) != 0 {
 		t.Fatal(got, err)
 	}
+	// A character the server did not name is answered with nothing, and its own named, without asking it.
+	asked := len(sess.reqs)
+	paren := cd.CompletionTrigger{Kind: cd.CompletionCharacter, Character: "("}
+	if got, err = c.CompleteCode(ctx, token, "d1", 1, at, paren); err != nil || len(got.Items) != 0 || got.TriggerCharacters != "." || len(sess.reqs) != asked {
+		t.Fatal(got, err)
+	}
 
 	// The manager's own refusals keep their codes across the wire.
 	for name, tc := range map[string]struct {
@@ -121,7 +127,7 @@ func TestCompletionOverRPC(t *testing.T) {
 	}{
 		"old version": {func() error { _, e := c.CompleteCode(ctx, token, "d1", 2, at, dot); return e }, "staleVersion"},
 		"outside":     {func() error { _, e := c.CompleteCode(ctx, token, "d1", 1, cd.Position{Line: 40}, dot); return e }, "invalidArgument"},
-		"trigger":     {func() error { _, e := c.CompleteCode(ctx, token, "d1", 1, at, cd.CompletionTrigger{Kind: cd.CompletionCharacter, Character: "("}); return e }, "invalidArgument"},
+		"trigger":     {func() error { _, e := c.CompleteCode(ctx, token, "d1", 1, at, cd.CompletionTrigger{Kind: cd.CompletionCharacter, Character: "(("}); return e }, "invalidArgument"},
 		"replaced":    {func() error { _, e := c.ResolveCodeCompletion(ctx, token, "d1", "r1", 0); return e }, "staleVersion"},
 		"index":       {func() error { _, e := c.ResolveCodeCompletion(ctx, token, "d1", "r2", 5); return e }, "invalidArgument"},
 	} {

@@ -139,7 +139,7 @@ func TestCompletionAgainstFakeServer(t *testing.T) {
 
 	// A trigger character, and asking again after an incomplete answer.
 	srv.set("textDocument/completion", `"result":[{"label":"x"}]`)
-	if got, err = complete(CompletionTrigger{Kind: CompletionCharacter, Character: "."}); err != nil || len(got.Items) != 1 || got.Incomplete || got.Truncated {
+	if got, err = complete(CompletionTrigger{Kind: CompletionCharacter, Character: "."}); err != nil || len(got.Items) != 1 || got.Incomplete || got.Truncated || got.TriggerCharacters != ".:" {
 		t.Fatal(got, err)
 	}
 	if fmt.Sprint(srv.last()["context"]) != "map[triggerCharacter:. triggerKind:2]" {
@@ -189,10 +189,16 @@ func TestCompletionAgainstFakeServer(t *testing.T) {
 	if _, err = m.Complete(ctx, c, "d1", 1, Position{Line: 9}, invoked); errCode(err) != "invalidArgument" {
 		t.Fatal(err)
 	}
-	for _, trigger := range []CompletionTrigger{{Kind: CompletionCharacter, Character: "("}, {Kind: CompletionCharacter, Character: ".:"}, {Kind: CompletionCharacter}, {Kind: "typed"}, {Kind: CompletionInvoked, Character: "."}} {
+	for _, trigger := range []CompletionTrigger{{Kind: CompletionCharacter, Character: ".:"}, {Kind: CompletionCharacter}, {Kind: CompletionCharacter, Character: "\n"}, {Kind: CompletionCharacter, Character: "\xff"}, {Kind: "typed"}, {Kind: CompletionInvoked, Character: "."}} {
 		if _, err = complete(trigger); errCode(err) != "invalidArgument" {
 			t.Fatal(trigger, err)
 		}
+	}
+	// A character the server did not name is answered with nothing, and with
+	// the server's trigger characters.
+	if got, err = complete(CompletionTrigger{Kind: CompletionCharacter, Character: "("}); err != nil || got.Items == nil || len(got.Items) != 0 ||
+		got.ResultID != "" || got.TriggerCharacters != ".:" || got.DocumentID != "d1" || got.Version != 1 || got.Validate() != nil {
+		t.Fatal(got, err)
 	}
 	if _, err = m.Complete(ctx, c, "nope", 1, at, invoked); errCode(err) != "notFound" {
 		t.Fatal(err)
@@ -323,8 +329,9 @@ func TestCompletionChoosesTheLanguageServer(t *testing.T) {
 	ruffCaps.CompletionTriggers = ":"
 	p.entries[0].Capabilities = ruffCaps
 	p.entries[1].Err = failure("staleContext", "Language session is not running")
-	if _, err = m.Complete(ctx, c, "d1", 1, at, dot); errCode(err) != "invalidArgument" {
-		t.Fatal(err)
+	asked := len(docs.reqs)
+	if got, err := m.Complete(ctx, c, "d1", 1, at, dot); err != nil || len(got.Items) != 0 || got.TriggerCharacters != ":" || len(docs.reqs) != asked {
+		t.Fatal(got, err)
 	}
 	if _, err = m.Complete(ctx, c, "d1", 1, at, CompletionTrigger{Kind: CompletionInvoked}); err != nil || docs.reqs[len(docs.reqs)-1].Owner.ProviderID != "ruff" {
 		t.Fatal(err)
@@ -415,6 +422,16 @@ func TestCompletionResultValidate(t *testing.T) {
 	for _, id := range []string{strings.Repeat("r", 65), "r\n1"} {
 		if err := (CompletionResult{ResultID: id}).Validate(); errCode(err) != "toolFailed" {
 			t.Fatal(id, err)
+		}
+	}
+	for _, triggers := range []string{"", ".:", "é ", "ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`"} {
+		if err := (CompletionResult{TriggerCharacters: triggers}).Validate(); err != nil {
+			t.Fatal(triggers, err)
+		}
+	}
+	for _, triggers := range []string{"..", "a\n", "\xff", "ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`!"} {
+		if err := (CompletionResult{TriggerCharacters: triggers}).Validate(); errCode(err) != "toolFailed" {
+			t.Fatal(triggers, err)
 		}
 	}
 }

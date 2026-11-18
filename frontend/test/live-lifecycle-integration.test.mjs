@@ -419,3 +419,98 @@ test('completionBasis is undefined without the completion capability and sends n
   assert.equal(h.timers.size, 1); // the debounce is left as it was
   h.off();
 });
+
+test('complete asks at the confirmed version under a fresh request ID and drops answers for another document', async () => {
+  const h = await harness(true, { completion: true });
+  const asks = [], cancels = [];
+  let answer = (documentId, version) => ({ documentId, version, resultId: 'r1', items: [{ label: 'Println', detail: 'func()' }], triggerCharacters: '.' });
+  h.api.completeCode = async (c, requestId, documentId, version, position, trigger, host) => { asks.push({ c, requestId, documentId, version, position, trigger, host }); return answer(documentId, version); };
+  h.api.cancelCodeCompletion = async requestId => { cancels.push(requestId); };
+  h.files.openFile('a.go', { keep: true }); await tick();
+  h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'fmt.\n'); await tick();
+  assert.equal(h.checks.completionBlocker('a.go'), undefined);
+  const dot = { kind: 'character', character: '.' }, at = { line: 0, character: 4 };
+  const got = await h.checks.complete('a.go', at, dot, { current: () => true });
+  const version = h.bridge.basis('a.go').version;
+  assert.deepEqual(asks[0], { c: context, requestId: asks[0].requestId, documentId: 'd1', version, position: at, trigger: dot, host: 'h' });
+  assert.match(asks[0].requestId, /^completion-\d+$/);
+  assert.equal(got.result.items[0].label, 'Println');
+  assert.equal(got.result.triggerCharacters, '.');
+  await h.checks.complete('a.go', at, dot);
+  assert.notEqual(asks[1].requestId, asks[0].requestId, 'each request its own ID');
+
+  // An answer for another version or document is not this text's.
+  answer = (documentId, version) => ({ documentId, version: version + 1, items: [] });
+  assert.equal(await h.checks.complete('a.go', at, dot), undefined);
+  answer = (_d, version) => ({ documentId: 'other', version, items: [] });
+  assert.equal(await h.checks.complete('a.go', at, dot), undefined);
+  // The editor text changed before asking: nothing is sent.
+  const sent = asks.length;
+  assert.equal(await h.checks.complete('a.go', at, dot, { current: () => false }), undefined);
+  assert.equal(asks.length, sent);
+  // A failing server is no suggestions, never a throw.
+  h.api.completeCode = async () => { throw Object.assign(new Error('timeout'), { code: 'timeout' }); };
+  assert.equal(await h.checks.complete('a.go', at, dot), undefined);
+  assert.deepEqual(cancels, [], 'nothing was aborted');
+  h.off();
+});
+
+test('aborting a completion cancels it on the host; the attachment ending drops its answer', async () => {
+  const h = await harness(true, { completion: true });
+  const cancels = [];
+  let finish;
+  h.api.completeCode = (c, requestId, documentId, version) => new Promise(resolve => { finish = () => resolve({ documentId, version, items: [{ label: 'x' }] }); });
+  h.api.cancelCodeCompletion = async requestId => { cancels.push(requestId); throw new Error('already finished'); };
+  h.files.openFile('a.go', { keep: true }); await tick();
+  h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'x\n'); await tick();
+  const controller = new AbortController();
+  const pending = h.checks.complete('a.go', { line: 0, character: 1 }, { kind: 'invoked' }, { signal: controller.signal });
+  await tick();
+  controller.abort();
+  assert.deepEqual(cancels.length, 1);
+  assert.match(cancels[0], /^completion-\d+$/);
+  finish();
+  assert.equal(await pending, undefined, 'an aborted answer is not used');
+
+  const aborted = new AbortController(); aborted.abort();
+  assert.equal(await h.checks.complete('a.go', { line: 0, character: 1 }, { kind: 'invoked' }, { signal: aborted.signal }), undefined);
+
+  const late = h.checks.complete('a.go', { line: 0, character: 1 }, { kind: 'invoked' });
+  await tick();
+  h.checks.disconnect();
+  finish();
+  assert.equal(await late, undefined);
+  assert.ok(h.checks.completionBlocker('a.go'), 'disconnected: blocked');
+  h.off();
+});
+
+test('completion details come from the server, else the listed ones once the document changed', async () => {
+  const h = await harness(true, { completion: true });
+  const resolves = [];
+  h.api.completeCode = async (c, requestId, documentId, version) => ({ documentId, version, resultId: 'r7', items: [{ label: 'a', detail: 'listed', documentation: { kind: 'plaintext', value: 'old' } }, { label: 'b' }] });
+  h.api.resolveCodeCompletion = async (c, documentId, resultId, index, host) => { resolves.push([c, documentId, resultId, index, host]); return { documentId, resultId, index, detail: 'func a()', documentation: { kind: 'markdown', value: '**A**' }, truncated: true }; };
+  h.files.openFile('a.go', { keep: true }); await tick();
+  h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'a\n'); await tick();
+  const got = await h.checks.complete('a.go', { line: 0, character: 1 }, { kind: 'invoked' });
+  assert.deepEqual(await got.details(0), { detail: 'func a()', documentation: { kind: 'markdown', value: '**A**' }, truncated: true });
+  assert.deepEqual(resolves[0], [context, 'd1', 'r7', 0, 'h']);
+  assert.equal(await got.details(5), undefined, 'no such item');
+  h.api.resolveCodeCompletion = async () => { throw Object.assign(new Error('staleVersion'), { code: 'staleVersion' }); };
+  assert.deepEqual(await got.details(0), { detail: 'listed', documentation: { kind: 'plaintext', value: 'old' } });
+  h.api.resolveCodeCompletion = async (c, documentId, resultId) => ({ documentId, resultId, index: 1, detail: 'wrong item' });
+  assert.deepEqual(await got.details(0), { detail: 'listed', documentation: { kind: 'plaintext', value: 'old' } }, 'an answer about another item is not used');
+  h.off();
+});
+
+test('complete is blocked without the capability and for files no server declares', async () => {
+  const off = await harness(true, { navigation: true });
+  off.api.completeCode = async () => { throw new Error('must not be asked'); };
+  off.files.openFile('a.go', { keep: true }); await tick();
+  assert.match(off.checks.completionBlocker('a.go'), /not available for this host/);
+  assert.equal(await off.checks.complete('a.go', { line: 0, character: 0 }, { kind: 'invoked' }), undefined);
+  off.off();
+  const md = await harness(true, { completion: true, path: 'notes.md', providers: [{ ...provider('lsp'), documentExtensions: ['.go'] }] });
+  md.files.openFile('notes.md', { keep: true }); await tick();
+  assert.ok(md.checks.completionBlocker('notes.md'));
+  md.off();
+});

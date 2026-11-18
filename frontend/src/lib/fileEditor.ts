@@ -16,8 +16,9 @@ import type { FileLineSelection } from './fileSelection';
 import { fileLanguage } from './files';
 import { textChanges } from './searchReplace';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
-import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completionKeymap, selectedCompletion, startCompletion, CompletionContext, type Completion, type CompletionSource } from '@codemirror/autocomplete';
-import type { CodeDiagnosticPosition } from './codeDiagnostics';
+import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completionKeymap, pickedCompletion, selectedCompletion, startCompletion, CompletionContext, type Completion, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete';
+import type { CodeCompletionItem, CodeCompletionTrigger, CodeDiagnosticPosition } from './codeDiagnostics';
+import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, serverBoosts, snippetText, type EditorCompleter, type EditorCompletionAnswer, type EditorCompletionDetails } from './editorCompletion';
 import { HOVER_DELAY, contextPress, linkModifier, menuKey, wordRange, type SelectionHold, type ViewportPoint } from './sourceNavigation';
 import { handleCopyCodeClick } from './copycode';
 import { severityRank, type OverviewProblem, type ProblemSeverity } from './problemOverview';
@@ -35,6 +36,8 @@ export interface EditorSymbols {
   menu?(position: CodeDiagnosticPosition, word: string, at: ViewportPoint, current: () => boolean): void;
   /** A context menu on selected text: Copy only. */
   selectionMenu?(text: string, at: ViewportPoint, hold: SelectionHold): void;
+  /** Language-server suggestions at position (edit mode); see EditorCompleter. */
+  complete?: EditorCompleter;
 }
 
 export interface FileEditorOptions {
@@ -90,9 +93,11 @@ const editable = (disabled = false): Extension => [
 export function acceptOrBreakLine(view: EditorView): boolean {
   const selected = selectedCompletion(view.state);
   const { head, empty } = view.state.selection.main;
-  const start = head - (selected?.label.length ?? 0);
-  if (selected && empty && start >= 0 && (selected.apply === undefined || selected.apply === selected.label)
-    && view.state.sliceDoc(start, head) === selected.label
+  // What accepting would put there: a server item's own text when it changes nothing else.
+  const text = !selected ? undefined : selected.apply === undefined ? selected.label : typeof selected.apply === 'string' ? selected.apply : plainInserts.get(selected);
+  const start = head - (text?.length ?? 0);
+  if (selected && text !== undefined && empty && start >= 0
+    && view.state.sliceDoc(start, head) === text
     && (start === 0 || view.state.charCategorizer(start)(view.state.sliceDoc(start - 1, start)) !== CharCategory.Word)) {
     closeCompletion(view);
     return false;
@@ -120,7 +125,7 @@ function languageLabels(context: CompletionContext): Set<string> {
   const labels = new Set<string>();
   const add = (option: string | Completion) => labels.add(typeof option === 'string' ? option : option.label);
   for (const source of context.state.languageDataAt<CompletionSource | readonly (string | Completion)[]>('autocomplete', context.pos)) {
-    if (source === documentWords) continue;
+    if (source === documentWords || source === codeSuggestions) continue;
     if (typeof source !== 'function') { source.forEach(add); continue; }
     try {
       const result = source(new CompletionContext(context.state, context.pos, context.explicit, context.view));
@@ -153,15 +158,140 @@ export const documentWords: CompletionSource = context => {
   };
 };
 
+/** How long suggestions wait for the language server before the document's words show alone. */
+export const SERVER_SUGGESTION_WAIT = 1500;
+
+// Per view, what its language server said: the characters it suggests after,
+// and where an incomplete answer's word starts, so typing on asks again as such.
+const learnedTriggers = new WeakMap<EditorView, { path: string; triggers: string }>();
+const unfinished = new WeakMap<EditorView, { path: string; start: number }>();
+// Server items struck through, and what an item inserts when it changes nothing else.
+const deprecatedOptions = new WeakSet<Completion>();
+const plainInserts = new WeakMap<Completion, string>();
+
+/**
+ * Why the language server is asked at context, or undefined to offer words
+ * only: on request; while an identifier is typed (again as `incomplete` after
+ * an incomplete answer for the same word); right after one of the server's
+ * trigger characters, or a likely one until the server has named its own.
+ */
+export function completionTrigger(context: CompletionContext, view: EditorView, path: string): CodeCompletionTrigger | undefined {
+  if (context.explicit) { unfinished.delete(view); return { kind: 'invoked' }; }
+  const { doc } = context.state, pos = context.pos;
+  const start = identifierStart(doc, pos);
+  if (start < pos) {
+    const last = unfinished.get(view);
+    return last?.path === path && last.start === start ? { kind: 'incomplete' } : { kind: 'invoked' };
+  }
+  const line = doc.lineAt(pos);
+  const character = Array.from(line.text.slice(0, pos - line.from)).pop();
+  const known = learnedTriggers.get(view);
+  const triggers = known?.path === path ? known.triggers : LIKELY_TRIGGERS;
+  return character && triggers.includes(character) ? { kind: 'character', character } : undefined;
+}
+
+function wordsOnly(context: CompletionContext): CompletionResult | null {
+  const words = documentWords(context);
+  return words instanceof Promise ? null : words;
+}
+
+/** Resolves undefined, and aborts the request, when the server takes longer than wait. */
+function answerWithin(answer: Promise<EditorCompletionAnswer | undefined>, wait: number, controller: AbortController): Promise<EditorCompletionAnswer | undefined> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { controller.abort(); resolve(undefined); }, wait);
+    answer.then(a => { clearTimeout(timer); resolve(a); }, () => { clearTimeout(timer); resolve(undefined); });
+  });
+}
+
+/** The info panel: the item's signature, then its documentation (HTML the owner rendered). */
+function completionInfo(d: EditorCompletionDetails | undefined): HTMLElement | null {
+  if (!d || (!d.detail && !d.html)) return null;
+  const dom = document.createElement('div');
+  dom.className = 'cm-symbol-hover cm-completion-docs';
+  if (d.detail) {
+    const detail = dom.appendChild(document.createElement('div'));
+    detail.className = 'cm-completion-signature';
+    detail.textContent = d.detail;
+  }
+  if (d.html) {
+    const body = dom.appendChild(document.createElement('div'));
+    body.className = 'hover-body';
+    body.innerHTML = d.html;
+  }
+  if (d.truncated) {
+    const note = dom.appendChild(document.createElement('div'));
+    note.className = 'hover-truncated';
+    note.textContent = 'The description was cut short.';
+  }
+  dom.addEventListener('click', handleCopyCodeClick);
+  return dom;
+}
+
+/** A CodeMirror option for server item index of an answer asked at pos in askedDoc. */
+function serverOption(item: CodeCompletionItem, index: number, boost: number, answer: EditorCompletionAnswer, askedDoc: Text, pos: number, start: number): Completion {
+  const label = item.filterText || item.label;
+  const option: Completion = {
+    label,
+    ...(label !== item.label ? { displayLabel: item.label } : {}),
+    detail: completionDetail(item),
+    type: completionType(item.kind),
+    boost,
+    apply(view, completion, from, to) {
+      const { changes, main, caret } = completionChanges(askedDoc, pos, start, view.state.doc, from, to, item);
+      view.dispatch({
+        changes, selection: { anchor: caretAfter(changes, main, caret) }, scrollIntoView: true, userEvent: 'input.complete',
+        // Accepting is one step to undo, whatever it changed.
+        annotations: [pickedCompletion.of(completion), isolateHistory.of('full')],
+      });
+    },
+    ...(answer.details ? { info: async () => completionInfo(await answer.details!(index)) } : {}),
+  };
+  if (item.deprecated) deprecatedOptions.add(option);
+  if (!item.extraEdits?.length) plainInserts.set(option, item.snippet ? snippetText(item.edit?.newText ?? item.insertText ?? item.label).text : item.edit?.newText ?? item.insertText ?? item.label);
+  return option;
+}
+
+/**
+ * Suggestions in the editor: the language server's, when its owner can ask
+ * one (EditorSymbols.complete), above the document's words it did not offer.
+ * Words alone while no server can answer, and when it fails or is slow.
+ */
+export const codeSuggestions: CompletionSource = context => {
+  const view = context.view, owner = view && owners.get(view), complete = owner?.symbols?.complete;
+  const trigger = view && owner && complete && completionTrigger(context, view, owner.path);
+  if (!view || !owner || !complete || !trigger) return wordsOnly(context);
+  const askedDoc = context.state.doc, pos = context.pos, path = owner.path;
+  const controller = new AbortController();
+  context.addEventListener('abort', () => controller.abort());
+  const pending = complete(editorPosition(context.state, pos), trigger, () => view.state.doc === askedDoc, controller.signal);
+  if (!pending) return wordsOnly(context);
+  return answerWithin(pending, SERVER_SUGGESTION_WAIT, controller).then(answer => {
+    const words = wordsOnly(context);
+    // Asked again on the next keystroke: the server may answer then.
+    if (!answer) return words && { ...words, validFor: undefined };
+    if (answer.triggerCharacters !== undefined) learnedTriggers.set(view, { path, triggers: answer.triggerCharacters });
+    if (answer.incomplete) unfinished.set(view, { path, start: identifierStart(askedDoc, pos) });
+    else unfinished.delete(view);
+    const items = answer.items, start = answerStart(askedDoc, pos, items), boosts = serverBoosts(items);
+    const offered = new Set(items.map(item => item.label));
+    const options = items.map((item, index) => serverOption(item, index, boosts[index], answer, askedDoc, pos, start));
+    if (words && words.from === start) options.push(...words.options.filter(option => !offered.has(option.label)));
+    if (!options.length) return null;
+    // An incomplete answer is asked again as the user types on.
+    return { from: start, options, ...(answer.incomplete ? {} : { validFor: IDENTIFIER }) };
+  });
+};
+
 // One extension per mode, made once: options are applied on every keystroke,
 // and the same extension again changes nothing (an open popup stays).
 const completionParts: Extension = [
   Prec.highest(keymap.of(completionKeys)),
-  EditorState.languageData.of(() => [{ autocomplete: documentWords }]),
+  EditorState.languageData.of(() => [{ autocomplete: codeSuggestions }]),
 ];
+const optionClass = (option: Completion) => (deprecatedOptions.has(option) ? 'cm-completion-deprecated' : '');
 const suggestionModes = {
-  typing: [autocompletion({ defaultKeymap: false, activateOnTyping: true }), completionParts],
-  shortcut: [autocompletion({ defaultKeymap: false, activateOnTyping: false }), completionParts],
+  typing: [autocompletion({ defaultKeymap: false, activateOnTyping: true, optionClass }), completionParts],
+  shortcut: [autocompletion({ defaultKeymap: false, activateOnTyping: false, optionClass }), completionParts],
 };
 // Read-only text gets no popup at all.
 const suggestions = (options: Pick<FileEditorOptions, 'disabled' | 'suggest'>): Extension =>
@@ -247,6 +377,9 @@ const theme = EditorView.theme({
   '.cm-completionMatchedText': { textDecoration: 'none', fontWeight: '600', color: 'var(--accent-color)' },
   '.cm-completionDetail': { marginLeft: '0.75em', fontStyle: 'normal', color: 'var(--text-muted)' },
   '.cm-completionIcon': { color: 'var(--text-secondary)' },
+  '.cm-completion-deprecated .cm-completionLabel': { textDecoration: 'line-through', opacity: '0.75' },
+  '.cm-completion-docs .cm-completion-signature': { fontFamily: EDITOR_FONT_FAMILY, whiteSpace: 'pre-wrap', margin: '0 0 4px' },
+  '.cm-completion-docs > :last-child': { marginBottom: '0' },
   '.cm-tooltip.cm-completionInfo': {
     padding: '6px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-primary)', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
     fontFamily: 'var(--font-sans)', fontSize: '12.5px', lineHeight: '1.5', overflowWrap: 'anywhere',

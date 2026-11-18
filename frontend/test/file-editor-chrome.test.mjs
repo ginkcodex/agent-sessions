@@ -78,12 +78,14 @@ async function openChrome(dir, url) {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const MODIFIERS = { alt: 1, ctrl: 2, meta: 4, shift: 8 };
-const KEY_CODES = { Tab: 9, Enter: 13, Escape: 27, ' ': 32 };
+// Punctuation has its own key codes: '.' as its char code (46) would be Delete.
+const KEY_CODES = { Tab: 9, Enter: 13, Escape: 27, ' ': 32, '.': 190 };
+const KEY_NAMES = { ' ': 'Space', '.': 'Period' };
 
 function keyboard(page) {
   async function press(key, mods = []) {
     const modifiers = mods.reduce((all, m) => all | MODIFIERS[m], 0);
-    const code = key === ' ' ? 'Space' : key.length === 1 ? `Key${key.toUpperCase()}` : key;
+    const code = KEY_NAMES[key] ?? (key.length === 1 ? `Key${key.toUpperCase()}` : key);
     const text = mods.length || key.length > 1 ? undefined : key;
     const windowsVirtualKeyCode = KEY_CODES[key] ?? key.toUpperCase().charCodeAt(0);
     await page('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', key, code, windowsVirtualKeyCode, modifiers, text, unmodifiedText: text });
@@ -176,6 +178,72 @@ test('Chrome: suggestions open while typing, Tab and Enter accept, Escape closes
     await press(' ', ['ctrl']);
     await sleep(300);
     assert.deepEqual(await popup(), [], 'read-only: no popup');
+  } finally {
+    browser?.close();
+    server?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Chrome: language-server suggestions after a dot, filtered as typed, with details; Enter applies the import in one undo step', { skip: !process.env.AS_TEST_CHROME, timeout: 120000 }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'as-completion-'));
+  let server, browser;
+  try {
+    const dist = await buildPage(dir, 'package main\n\nfunc f() {\n\t', 'a.go');
+    server = await serve(dist);
+    browser = await openChrome(dir, `http://127.0.0.1:${server.address().port}/`);
+    const { evaluate, page } = browser;
+    const { press, type } = keyboard(page);
+    await evaluate(`(() => {
+      window.asks = [];
+      const items = [
+        { label: 'Println', kind: 3, sortText: 'a', snippet: true, detail: 'func(a ...any)',
+          edit: { range: { start: { line: 3, character: 5 }, end: { line: 3, character: 5 } }, newText: 'Println(\${1:a ...any})' },
+          extraEdits: [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }, newText: 'import "fmt"\\n' }] },
+        { label: 'Printf', kind: 3, sortText: 'b', deprecated: true },
+      ];
+      const symbols = { ask() {}, hover: async () => undefined, complete(position, trigger) {
+        window.asks.push({ position, trigger });
+        return new Promise(r => setTimeout(() => r({ items, incomplete: false, triggerCharacters: '.',
+          details: async i => ({ detail: i ? 'func Printf' : 'func Println(a ...any) (n int, err error)', html: '<p>Writes a line.</p>' }) }), 50));
+      } };
+      window.probe.editor.update(window.probe.opts({ text: window.probe.state.text, symbols }));
+    })()`);
+    const popup = () => evaluate(`[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map(li => li.textContent)`);
+    const text = () => evaluate('window.probe.state.text');
+    await evaluate(`(() => { const c = document.querySelector('.cm-content'); c.focus(); const s = getSelection(); s.selectAllChildren(c); s.collapseToEnd(); })()`);
+    const isMac = /Mac/.test(await evaluate('navigator.platform'));
+    await sleep(100);
+
+    await type('fmt.');
+    await sleep(500);
+    const asks = await evaluate('window.asks');
+    assert.deepEqual(asks.at(-1), { position: { line: 3, character: 5 }, trigger: { kind: 'character', character: '.' } });
+    const items = await popup();
+    assert.match(items[0] ?? '', /^Println/, `server items first: ${items}`);
+    assert.ok(items.some(i => i.startsWith('Printf')));
+    assert.equal(await evaluate(`[...document.querySelectorAll('.cm-tooltip-autocomplete li')].find(li => li.textContent.startsWith('Printf')).classList.contains('cm-completion-deprecated')`), true);
+    const struck = await evaluate(`getComputedStyle(document.querySelector('.cm-completion-deprecated .cm-completionLabel')).textDecorationLine`);
+    assert.equal(struck, 'line-through');
+
+    await type('Pr');
+    await sleep(400);
+    assert.equal((await evaluate('window.asks')).length, asks.length, 'typing on filters the answer, without asking again');
+    assert.match((await popup())[0] ?? '', /^Println/);
+    const info = await evaluate(`document.querySelector('.cm-completionInfo')?.textContent ?? ''`);
+    assert.match(info, /func Println\(a \.\.\.any\).*Writes a line\./s, `details panel: ${info}`);
+
+    await press('Enter');
+    await sleep(150);
+    assert.equal(await text(), 'package main\nimport "fmt"\n\nfunc f() {\n\tfmt.Println(a ...any)');
+    await type('X');
+    await sleep(100);
+    assert.equal(await text(), 'package main\nimport "fmt"\n\nfunc f() {\n\tfmt.Println(Xa ...any)', 'the caret is at the first placeholder');
+    await press('z', [isMac ? 'meta' : 'ctrl']);
+    await sleep(100);
+    await press('z', [isMac ? 'meta' : 'ctrl']);
+    await sleep(100);
+    assert.equal(await text(), 'package main\n\nfunc f() {\n\tfmt.Pr', 'one undo takes the suggestion and its import back');
   } finally {
     browser?.close();
     server?.close();
