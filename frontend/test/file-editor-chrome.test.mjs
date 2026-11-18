@@ -82,6 +82,16 @@ const MODIFIERS = { alt: 1, ctrl: 2, meta: 4, shift: 8 };
 const KEY_CODES = { Tab: 9, Enter: 13, Escape: 27, ' ': 32, '.': 190 };
 const KEY_NAMES = { ' ': 'Space', '.': 'Period' };
 
+// Puts the caret at the end, and waits until the editor took it: its active line is the last one.
+async function caretToEnd(evaluate) {
+  for (let i = 0; i < 40; i++) {
+    await evaluate(`(() => { const c = document.querySelector('.cm-content'); c.focus(); const s = getSelection(); s.selectAllChildren(c); s.collapseToEnd(); })()`);
+    await sleep(50);
+    if (await evaluate(`document.querySelector('.cm-content > .cm-line:last-child')?.classList.contains('cm-activeLine') ?? false`)) return;
+  }
+  throw new Error('the editor did not take the caret');
+}
+
 function keyboard(page) {
   async function press(key, mods = []) {
     const modifiers = mods.reduce((all, m) => all | MODIFIERS[m], 0);
@@ -212,7 +222,7 @@ test('Chrome: language-server suggestions after a dot, filtered as typed, with d
     })()`);
     const popup = () => evaluate(`[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map(li => li.textContent)`);
     const text = () => evaluate('window.probe.state.text');
-    await evaluate(`(() => { const c = document.querySelector('.cm-content'); c.focus(); const s = getSelection(); s.selectAllChildren(c); s.collapseToEnd(); })()`);
+    await caretToEnd(evaluate);
     const isMac = /Mac/.test(await evaluate('navigator.platform'));
     await sleep(100);
 
@@ -256,6 +266,59 @@ test('Chrome: language-server suggestions after a dot, filtered as typed, with d
     await undoKey();
     await sleep(100);
     assert.equal(await text(), 'package main\n\nfunc f() {\n\tfmt.Pr', 'one undo takes the suggestion and its import back');
+  } finally {
+    browser?.close();
+    server?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Chrome: Enter on an item whose import comes on resolve adds it with the item in one undo step; typing during the wait keeps the typing', { skip: !process.env.AS_TEST_CHROME, timeout: 120000 }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'as-completion-resolve-'));
+  let server, browser;
+  try {
+    const dist = await buildPage(dir, 'export {};\n', 'a.ts');
+    server = await serve(dist);
+    browser = await openChrome(dir, `http://127.0.0.1:${server.address().port}/`);
+    const { evaluate, page } = browser;
+    const { press, type } = keyboard(page);
+    await evaluate(`(() => {
+      window.resolves = [];
+      const imp = { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: 'import { helperValue } from "./helper.js";\\n' };
+      const symbols = { ask() {}, hover: async () => undefined, complete() {
+        return Promise.resolve({ items: [{ label: 'helperValue', kind: 6, labelDescription: './helper.js' }], incomplete: false,
+          resolveEdits: (index, current, signal) => { window.resolves.push(index); return new Promise(r => setTimeout(() => r(signal.aborted ? undefined : [imp]), 150)); } });
+      } };
+      window.probe.editor.update(window.probe.opts({ text: window.probe.state.text, symbols }));
+    })()`);
+    const popup = () => evaluate(`[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map(li => li.textContent)`);
+    const text = () => evaluate('window.probe.state.text');
+    await caretToEnd(evaluate);
+    const isMac = /Mac/.test(await evaluate('navigator.platform'));
+    await sleep(100);
+
+    await type('helperVa');
+    await sleep(500);
+    assert.match((await popup())[0] ?? '', /^helperValue/);
+    await press('Enter');
+    await sleep(50);
+    assert.equal(await evaluate(`document.querySelector('.cm-tooltip-autocomplete') === null`), true, 'the popup closes at once');
+    await sleep(600);
+    assert.equal(await text(), 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue');
+    assert.deepEqual(await evaluate('window.resolves'), [0]);
+    await press('z', [isMac ? 'meta' : 'ctrl']);
+    await sleep(600);
+    assert.equal(await text(), 'export {};\nhelperVa', 'one undo takes the item and its import back');
+
+    // Typed on before the import came: the typing stays, the item goes in alone.
+    await type('l');
+    await sleep(500);
+    assert.match((await popup())[0] ?? '', /^helperValue/);
+    await press('Enter');
+    await press(' ');
+    await sleep(800);
+    assert.equal(await text(), 'export {};\nhelperValue ');
+    assert.deepEqual(await evaluate('window.resolves'), [0, 0]);
   } finally {
     browser?.close();
     server?.close();

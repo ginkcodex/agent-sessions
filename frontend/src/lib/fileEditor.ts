@@ -1,4 +1,4 @@
-import { Annotation, CharCategory, Compartment, EditorState, Prec, RangeSet, StateField, type Extension, type SelectionRange, type Text, type Transaction, type TransactionSpec } from '@codemirror/state';
+import { Annotation, ChangeSet, CharCategory, Compartment, EditorState, Prec, RangeSet, StateEffect, StateField, type Extension, type SelectionRange, type Text, type Transaction, type TransactionSpec } from '@codemirror/state';
 import { forEachDiagnostic, lintKeymap, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import { projectSourceDiagnostics } from './sourceDiagnostics';
 import type { AttributedCodeDiagnostic, LiveDocumentBasis } from './codeDiagnostics';
@@ -17,8 +17,8 @@ import { fileLanguage } from './files';
 import { textChanges } from './searchReplace';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
 import { acceptCompletion, autocompletion, closeCompletion, completeAnyWord, completionKeymap, hasNextSnippetField, hasPrevSnippetField, pickedCompletion, selectedCompletion, snippet, startCompletion, CompletionContext, type Completion, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete';
-import type { CodeCompletionItem, CodeCompletionTrigger, CodeDiagnosticPosition } from './codeDiagnostics';
-import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, serverBoosts, snippetText, type CompletionEdit, type EditorCompleter, type EditorCompletionAnswer, type EditorCompletionDetails } from './editorCompletion';
+import type { CodeCompletionItem, CodeCompletionTrigger, CodeDiagnosticPosition, CodeTextEdit } from './codeDiagnostics';
+import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, serverBoosts, snippetText, withExtraEdits, type CompletionAccept, type CompletionEdit, type EditorCompleter, type EditorCompletionAnswer, type EditorCompletionDetails } from './editorCompletion';
 import { HOVER_DELAY, contextPress, linkModifier, menuKey, wordRange, type SelectionHold, type ViewportPoint } from './sourceNavigation';
 import { handleCopyCodeClick } from './copycode';
 import { severityRank, type OverviewProblem, type ProblemSeverity } from './problemOverview';
@@ -254,6 +254,98 @@ function snippetFields(state: EditorState, template: string, edit: CompletionEdi
   return made;
 }
 
+/**
+ * Applies an accepted item as one step to undo, whatever it changed. With
+ * `typedSince`, the user typed while its import was awaited: the selection
+ * stays theirs, mapped, and a snippet goes in as plain text.
+ */
+function applyAccept(view: EditorView, completion: Completion, accept: CompletionAccept, typedSince = false, effects: StateEffect<unknown>[] = []): ChangeSet {
+  const { changes, main, caret, template } = accept;
+  const annotations = [pickedCompletion.of(completion), isolateHistory.of('full')];
+  const send = (tr: Transaction) => { view.dispatch(tr); return tr.changes; };
+  if (typedSince) return send(view.state.update({ changes, effects, userEvent: 'input.complete', annotations }));
+  let fields = template !== undefined ? snippetFields(view.state, template, changes[main]) : undefined;
+  if (fields?.selection && fields.selection.ranges.length > 1 && !view.state.facet(EditorState.allowMultipleSelections)) {
+    // Selecting every mirror needs several selections before the snippet goes in.
+    view.dispatch({ effects: mirrors.reconfigure(allowMirrors) });
+    fields = snippetFields(view.state, template!, changes[main]);
+  }
+  if (fields) {
+    // The snippet with its fields, and the other edits in the same transaction.
+    return send(view.state.update(
+      { changes: fields.changes, selection: fields.selection, effects: [...(fields.effects ? [fields.effects].flat() : []), ...effects], scrollIntoView: true, userEvent: 'input.complete', annotations },
+      { changes: changes.filter((_, i) => i !== main) },
+    ));
+  }
+  return send(view.state.update({ changes, selection: { anchor: caretAfter(changes, main, caret) }, effects, scrollIntoView: true, userEvent: 'input.complete', annotations }));
+}
+
+/** How long accepting an item waits for the import its server gives only on resolve (CC-12). */
+export const RESOLVE_ACCEPT_WAIT = 500;
+
+// An accepted item awaiting its import: the text it replaces, followed through typing.
+interface PendingPick { id: number; from: number; to: number }
+const setPendingPick = StateEffect.define<PendingPick | null>();
+const pendingPick = StateField.define<PendingPick | null>({
+  create: () => null,
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setPendingPick)) value = e.value;
+    if (!value || !tr.docChanged) return value;
+    // Text typed at either end stays outside it.
+    const from = tr.changes.mapPos(value.from, 1), to = tr.changes.mapPos(value.to, -1);
+    return { id: value.id, from, to: Math.max(from, to) };
+  },
+});
+let pickIds = 0;
+// Per view, how to put its awaited item in now, without the import; the change it made.
+const pendingPicks = new WeakMap<EditorView, () => ChangeSet | undefined>();
+
+/** Puts an item still awaiting its import in now; from and to mapped through it. */
+function settleEarlierPick(view: EditorView, from: number, to: number): [number, number] {
+  const changes = pendingPicks.get(view)?.();
+  if (!changes) return [from, to];
+  const mapped = changes.mapPos(from, 1);
+  return [mapped, Math.max(mapped, changes.mapPos(to, -1))];
+}
+
+/**
+ * Accepting a server item whose import comes only on resolve (vtsls): with
+ * the import when it is known for the text shown. Otherwise the popup
+ * closes and the item goes in once its import is resolved, or without it
+ * after RESOLVE_ACCEPT_WAIT, a failure, or typing meanwhile; what was typed
+ * stays. Accepting again puts an awaited item in at once.
+ */
+function acceptResolving(view: EditorView, completion: Completion, item: CodeCompletionItem, index: number, answer: EditorCompletionAnswer, askedDoc: Text, pos: number, start: number, from: number, to: number): void {
+  const owner = owners.get(view), shown = view.state.doc;
+  const accept = (doc: Text, from: number, to: number) => completionChanges(askedDoc, pos, start, doc, from, to, item);
+  const controller = new AbortController();
+  let got: CodeTextEdit[] | Promise<CodeTextEdit[] | undefined>;
+  try { got = answer.resolveEdits!(index, askedText(view), controller.signal); } catch { got = []; }
+  if (Array.isArray(got)) { applyAccept(view, completion, withExtraEdits(accept(shown, from, to), shown, got)); return; }
+  const id = ++pickIds;
+  view.dispatch({ effects: setPendingPick.of({ id, from, to }) });
+  closeCompletion(view);
+  let done = false;
+  const settle = (edits?: CodeTextEdit[]): ChangeSet | undefined => {
+    if (done) return undefined;
+    done = true;
+    clearTimeout(timer);
+    controller.abort();
+    if (pendingPicks.get(view) === now) pendingPicks.delete(view);
+    const pick = view.state.field(pendingPick, false), still = owners.get(view);
+    // Another file or tab in the editor, or the editor gone: nothing goes in.
+    if (!pick || pick.id !== id || !owner || still?.id !== owner.id || still.path !== owner.path) return undefined;
+    const doc = view.state.doc, typed = doc !== shown;
+    let changes = accept(doc, pick.from, pick.to);
+    if (!typed && edits?.length) changes = withExtraEdits(changes, doc, edits);
+    return applyAccept(view, completion, changes, typed, [setPendingPick.of(null)]);
+  };
+  const now = () => settle();
+  const timer = setTimeout(now, RESOLVE_ACCEPT_WAIT);
+  pendingPicks.set(view, now);
+  got.then(settle, () => settle());
+}
+
 /** A CodeMirror option for server item index of an answer asked at pos in askedDoc. */
 function serverOption(item: CodeCompletionItem, index: number, boost: number, answer: EditorCompletionAnswer, askedDoc: Text, pos: number, start: number): Completion {
   const label = item.filterText || item.label;
@@ -264,24 +356,10 @@ function serverOption(item: CodeCompletionItem, index: number, boost: number, an
     type: completionType(item.kind),
     boost,
     apply(view, completion, from, to) {
-      const { changes, main, caret, template } = completionChanges(askedDoc, pos, start, view.state.doc, from, to, item);
-      // Accepting is one step to undo, whatever it changed.
-      const annotations = [pickedCompletion.of(completion), isolateHistory.of('full')];
-      let fields = template !== undefined ? snippetFields(view.state, template, changes[main]) : undefined;
-      if (fields?.selection && fields.selection.ranges.length > 1 && !view.state.facet(EditorState.allowMultipleSelections)) {
-        // Selecting every mirror needs several selections before the snippet goes in.
-        view.dispatch({ effects: mirrors.reconfigure(allowMirrors) });
-        fields = snippetFields(view.state, template!, changes[main]);
-      }
-      if (fields) {
-        // The snippet with its fields, and the other edits in the same transaction.
-        view.dispatch(view.state.update(
-          { changes: fields.changes, selection: fields.selection, effects: fields.effects, scrollIntoView: true, userEvent: 'input.complete', annotations },
-          { changes: changes.filter((_, i) => i !== main) },
-        ));
-        return;
-      }
-      view.dispatch({ changes, selection: { anchor: caretAfter(changes, main, caret) }, scrollIntoView: true, userEvent: 'input.complete', annotations });
+      [from, to] = settleEarlierPick(view, from, to);
+      // Listed imports go in with the item; others may come on resolve.
+      if (!item.extraEdits?.length && answer.resolveEdits) acceptResolving(view, completion, item, index, answer, askedDoc, pos, start, from, to);
+      else applyAccept(view, completion, completionChanges(askedDoc, pos, start, view.state.doc, from, to, item));
     },
     ...(answer.details ? { info: async () => completionInfo(await answer.details!(index)) } : {}),
   };
@@ -325,6 +403,7 @@ export const codeSuggestions: CompletionSource = context => {
 // One extension per mode, made once: options are applied on every keystroke,
 // and the same extension again changes nothing (an open popup stays).
 const completionParts: Extension = [
+  pendingPick,
   Prec.highest(keymap.of(completionKeys)),
   EditorState.languageData.of(() => [{ autocomplete: codeSuggestions }]),
 ];

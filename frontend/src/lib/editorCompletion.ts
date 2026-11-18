@@ -1,5 +1,5 @@
 import type { Text } from '@codemirror/state';
-import type { CodeCompletionItem, CodeCompletionTrigger, CodeDiagnosticPosition, CodeDiagnosticRange } from './codeDiagnostics';
+import type { CodeCompletionItem, CodeCompletionTrigger, CodeDiagnosticPosition, CodeDiagnosticRange, CodeTextEdit } from './codeDiagnostics';
 
 /**
  * Language-server completion for the file editor (CC-06): what the editor
@@ -18,6 +18,14 @@ export interface EditorCompletionAnswer {
   triggerCharacters?: string;
   /** Item `index`'s details; undefined shows none. */
   details?(index: number): Promise<EditorCompletionDetails | undefined>;
+  /**
+   * Item `index`'s extra edits (imports) that its server gives only on
+   * resolve (CC-12), in the offsets of the text the editor shows when asked;
+   * `current` says it still does. An array, at once, when they are already
+   * known (empty for none); else a promise, undefined when they cannot be had
+   * for that text. Absent when the answer cannot be resolved.
+   */
+  resolveEdits?(index: number, current: () => boolean, signal: AbortSignal): CodeTextEdit[] | Promise<CodeTextEdit[] | undefined>;
 }
 
 /** Asks for completions; undefined, without a promise, when no server can answer. */
@@ -237,6 +245,14 @@ export function snippetTemplate(snippet: string): string | undefined {
 
 export interface CompletionEdit { from: number; to: number; insert: string }
 
+/** What accepting an item changes: see completionChanges. */
+export interface CompletionAccept { changes: CompletionEdit[]; main: number; caret: number; template?: string }
+
+/** Whether from..to touches one of changes: overlaps it, is an insert at or in it, or holds its insert. */
+function touches(changes: readonly CompletionEdit[], from: number, to: number): boolean {
+  return changes.some(c => (from < c.to && to > c.from) || (from === to && from >= c.from && from <= c.to) || (c.from === c.to && c.from >= from && c.from <= to));
+}
+
 /**
  * Edits for accepting `item` from an answer asked at `asked` (the caret) in
  * `askedDoc`, whose filter text started at `start`. `from` and `to` are where
@@ -250,7 +266,7 @@ export interface CompletionEdit { from: number; to: number; insert: string }
  * inserts its plain text; `template` is then its `snippet()` template, for
  * the editor to insert in its place with tab stops.
  */
-export function completionChanges(askedDoc: Text, asked: number, start: number, doc: Text, from: number, to: number, item: CodeCompletionItem): { changes: CompletionEdit[]; main: number; caret: number; template?: string } {
+export function completionChanges(askedDoc: Text, asked: number, start: number, doc: Text, from: number, to: number, item: CodeCompletionItem): CompletionAccept {
   const source = item.edit?.newText ?? item.insertText ?? item.label;
   const plain = item.snippet ? snippetText(source) : undefined;
   const insert = plain?.text ?? source;
@@ -281,11 +297,27 @@ export function completionChanges(askedDoc: Text, asked: number, start: number, 
     const ms = r && map(r[0]), me = r && map(r[1]);
     if (ms === undefined || me === undefined) continue;
     // Extra edits are elsewhere; one touching another edit is dropped.
-    if (changes.some(c => (ms < c.to && me > c.from) || (ms === me && ms >= c.from && ms <= c.to) || (c.from === c.to && c.from >= ms && c.from <= me))) continue;
+    if (touches(changes, ms, me)) continue;
     changes.push({ from: ms, to: me, insert: extra.newText });
   }
   changes.sort((a, b) => a.from - b.from);
   return { changes, main: changes.indexOf(main), caret: mainCaret, ...template(main) };
+}
+
+/**
+ * accept with the extra edits an item resolved to (CC-12), given in the
+ * offsets of doc, the text accept applies to. As with listed ones, an edit
+ * outside doc, or touching the main edit or another, is dropped.
+ */
+export function withExtraEdits(accept: CompletionAccept, doc: Text, edits: readonly CodeTextEdit[]): CompletionAccept {
+  const main = accept.changes[accept.main], changes = [...accept.changes];
+  for (const extra of edits) {
+    const r = rangeOffsets(doc, extra.range);
+    if (!r || touches(changes, r[0], r[1])) continue;
+    changes.push({ from: r[0], to: r[1], insert: extra.newText });
+  }
+  changes.sort((a, b) => a.from - b.from);
+  return { ...accept, changes, main: changes.indexOf(main) };
 }
 
 /** Where the caret goes once `changes` (sorted) are applied: `caret` past the start of change `main`. */

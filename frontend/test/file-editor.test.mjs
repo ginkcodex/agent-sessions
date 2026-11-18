@@ -155,7 +155,7 @@ async function loadEditorModule() {
   return import(`data:text/javascript,${encodeURIComponent(js)}`);
 }
 
-const { createFileEditor, acceptOrBreakLine, completionKeys, documentWords, codeSuggestions, completionTrigger, SERVER_SUGGESTION_WAIT, navigationKeymap, symbolMouseDown, symbolContextMenu, symbolPress, symbolKeyDown, symbolHover, editorPosition, wordAtSide } = await loadEditorModule();
+const { createFileEditor, acceptOrBreakLine, completionKeys, documentWords, codeSuggestions, completionTrigger, SERVER_SUGGESTION_WAIT, RESOLVE_ACCEPT_WAIT, navigationKeymap, symbolMouseDown, symbolContextMenu, symbolPress, symbolKeyDown, symbolHover, editorPosition, wordAtSide } = await loadEditorModule();
 
 const isMac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 
@@ -1475,6 +1475,123 @@ test('accepting applies the edit and its import as one undo step, with the snipp
   option.apply(view, option, word.to - 3, word.to);
   assert.equal(view.state.doc.toString(), 'Xpackage main\n\nfunc f() {\n\tfmt.Println(a ...any)\n}\n');
   assert.equal(view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to), 'a ...any');
+  h.editor.destroy();
+});
+
+// An editor offering helperValue, whose import comes only on resolve (vtsls, CC-12).
+async function resolvingEditor(resolveEdits, item = { label: 'helperValue', kind: 6 }) {
+  const resolves = [];
+  const h = serverEditor('export {};\nhelperVa', 'a.ts', async () => ({ incomplete: false, items: [item],
+    resolveEdits: (index, current, signal) => { resolves.push({ index, current, signal }); return resolveEdits(index); } }));
+  const end = h.view.state.doc.length;
+  h.view.dispatch({ selection: { anchor: end } });
+  const result = await h.suggest(end);
+  h.resolves = resolves;
+  h.end = end;
+  h.accept = (to = end) => { const o = result.options[0]; o.apply(h.view, o, result.from, to); };
+  return h;
+}
+const helperImport = { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: 'import { helperValue } from "./helper.js";\n' };
+const settled = () => new Promise(resolve => setImmediate(resolve));
+
+test('accepting an item whose import comes on resolve waits for it and applies both as one undo step', async () => {
+  let answer;
+  const h = await resolvingEditor(() => new Promise(resolve => { answer = resolve; }));
+  const { view } = h, depth = undoDepth(view.state);
+  h.accept();
+  assert.equal(view.state.doc.toString(), 'export {};\nhelperVa', 'waits');
+  assert.equal(completionStatus(view.state), null, 'the popup closed');
+  assert.equal(h.resolves[0].index, 0);
+  assert.equal(h.resolves[0].current(), true, 'asked for the text shown');
+  answer([helperImport]);
+  await settled();
+  assert.equal(view.state.doc.toString(), 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue');
+  assert.equal(view.state.selection.main.head, view.state.doc.length);
+  assert.equal(h.resolves[0].signal.aborted, true, 'done with');
+  assert.equal(undoDepth(view.state), depth + 1);
+  undo(view);
+  assert.equal(view.state.doc.toString(), 'export {};\nhelperVa', 'one undo removes both');
+  h.editor.destroy();
+});
+
+test('an import known for the text shown applies at once; listed imports never wait', async () => {
+  const h = await resolvingEditor(() => [helperImport]);
+  h.accept();
+  assert.equal(h.view.state.doc.toString(), 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue');
+  h.editor.destroy();
+  const listed = await resolvingEditor(() => { throw new Error('must not resolve'); }, { label: 'helperValue', extraEdits: [{ ...helperImport, newText: 'import "listed";\n' }] });
+  listed.accept();
+  assert.equal(listed.view.state.doc.toString(), 'import "listed";\nexport {};\nhelperValue');
+  assert.equal(listed.resolves.length, 0);
+  listed.editor.destroy();
+  const throwing = await resolvingEditor(() => { throw new Error('gone'); });
+  throwing.accept();
+  assert.equal(throwing.view.state.doc.toString(), 'export {};\nhelperValue', 'a throw: the item alone');
+  throwing.editor.destroy();
+});
+
+test('a slow, failing or empty resolve inserts the item alone', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let answer;
+  const slow = await resolvingEditor(() => new Promise(resolve => { answer = resolve; }));
+  slow.accept();
+  t.mock.timers.tick(RESOLVE_ACCEPT_WAIT - 1);
+  assert.equal(slow.view.state.doc.toString(), 'export {};\nhelperVa');
+  t.mock.timers.tick(1);
+  assert.equal(slow.view.state.doc.toString(), 'export {};\nhelperValue');
+  assert.equal(slow.resolves[0].signal.aborted, true);
+  answer([helperImport]);
+  await settled();
+  assert.equal(slow.view.state.doc.toString(), 'export {};\nhelperValue', 'a late import is not added');
+  slow.editor.destroy();
+  for (const resolveEdits of [() => Promise.reject(new Error('staleVersion')), () => Promise.resolve(undefined), () => Promise.resolve([])]) {
+    const h = await resolvingEditor(resolveEdits);
+    h.accept();
+    await settled();
+    assert.equal(h.view.state.doc.toString(), 'export {};\nhelperValue');
+    assert.equal(h.view.state.selection.main.head, h.view.state.doc.length);
+    h.editor.destroy();
+  }
+});
+
+test('typing while the import is awaited stays, and the item still goes in without it', async () => {
+  let answer;
+  const h = await resolvingEditor(() => new Promise(resolve => { answer = resolve; }));
+  const { view } = h;
+  h.accept();
+  typed(view, '// note\n', 0);
+  typed(view, '(', view.state.doc.length);
+  answer([helperImport]);
+  await settled();
+  assert.equal(view.state.doc.toString(), '// note\nexport {};\nhelperValue(', 'the typed text kept, no import');
+  assert.equal(view.state.selection.main.head, view.state.doc.length, 'the caret stays after the typing');
+  undo(view);
+  assert.equal(view.state.doc.toString(), '// note\nexport {};\nhelperVa(');
+  h.editor.destroy();
+});
+
+test('accepting again puts an awaited item in first; another file in the editor gets nothing', async () => {
+  const answers = [];
+  const h = await resolvingEditor(() => new Promise(resolve => answers.push(resolve)));
+  const { view } = h;
+  h.accept();
+  typed(view, ' helperVa', h.end);
+  const end = view.state.doc.length, result = await h.suggest(end), o = result.options[0];
+  o.apply(view, o, result.from, end);
+  assert.equal(view.state.doc.toString(), 'export {};\nhelperValue helperVa', 'the first goes in at once, the second waits');
+  answers[1]([helperImport]);
+  answers[0]([helperImport]);
+  await settled();
+  assert.equal(view.state.doc.toString(), 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue helperValue');
+
+  let late;
+  const other = await resolvingEditor(() => new Promise(resolve => { late = resolve; }));
+  other.accept();
+  other.editor.update({ ...other.options, id: {}, path: 'b.ts', text: 'const b = 1;\n' });
+  late([helperImport]);
+  await settled();
+  assert.equal(other.view.state.doc.toString(), 'const b = 1;\n');
+  other.editor.destroy();
   h.editor.destroy();
 });
 

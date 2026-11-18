@@ -1059,13 +1059,20 @@
     if (!path || !tab || !editing || completionBlocked) return undefined;
     return codeDiagnostics.complete(path, position, trigger, { current, signal }).then(answer => {
       if (!answer || files.activeTab !== tab || files.selectedPath !== path) return undefined;
-      const { result, details } = answer;
+      const { result, details, extraEdits } = answer;
+      const shown = () => files.activeTab === tab && files.selectedPath === path;
       return {
         items: result.items, incomplete: Boolean(result.isIncomplete), triggerCharacters: result.triggerCharacters,
         details: async (index: number) => {
           const d = await details(index);
           if (!d) return undefined;
           return { detail: d.detail, html: d.documentation?.value ? hoverHtml(d.documentation) : undefined, truncated: d.truncated };
+        },
+        // An item's import, for the file still shown in this tab.
+        resolveEdits: (index: number, current: () => boolean, signal: AbortSignal) => {
+          if (!shown()) return [];
+          const edits = extraEdits(index, { current: () => shown() && current(), signal });
+          return Array.isArray(edits) ? edits : edits.then(e => shown() ? e : undefined);
         },
       };
     });

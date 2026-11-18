@@ -6,7 +6,7 @@ import { aggregateCodeDiagnostics } from '../codeDiagnosticCounts';
 import { epoch } from '../link';
 import type { BackendAPI } from '../api';
 import type { ConnectionState, FileContent } from '../types';
-import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsProvider, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun, CodeDiagnosticPosition, CodeNavigationOp, CodeCompletionResult, CodeCompletionTrigger, CodeMarkupText } from '../codeDiagnostics';
+import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsProvider, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun, CodeDiagnosticPosition, CodeNavigationOp, CodeCompletionDetails, CodeCompletionResult, CodeCompletionTrigger, CodeMarkupText, CodeTextEdit } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CODE_DIAGNOSTICS_LIMITS as limits, CodeDiagnosticsError, codeDiagnosticsError, sameAttachment, sameContext, encodedBytes, resultSetKey, groupCodeDiagnostics, inlineCodeDiagnostic, liveDocumentEligibility } from '../codeDiagnostics';
 import type { CodeNavigationAsk, CodeNavigationOutcome } from '../codeNavigation';
 import { externalReadFailure, navigationBlocker, navigationFailure } from '../codeNavigation';
@@ -31,8 +31,17 @@ export interface CompletionBasis { context: CodeDiagnosticsContext; host: string
 export interface CompletionAsk { current?: () => boolean; signal?: AbortSignal; wait?: number }
 /** An item's detail and documentation for the info panel. */
 export interface CompletionItemDetails { detail?: string; documentation?: CodeMarkupText; truncated?: boolean }
-/** A server's answer and a way to read each item's details. */
-export interface CompletionAnswer { result: CodeCompletionResult; details(index: number): Promise<CompletionItemDetails | undefined> }
+/**
+ * A server's answer, a way to read each item's details, and the extra edits
+ * (imports) an item resolves to for the text shown (CC-12): at once when
+ * known, else after sending pending typing; undefined when they cannot be
+ * known for that text. Items that list their edits resolve to none.
+ */
+export interface CompletionAnswer {
+  result: CodeCompletionResult;
+  details(index: number): Promise<CompletionItemDetails | undefined>;
+  extraEdits(index: number, ask?: CompletionAsk): CodeTextEdit[] | Promise<CodeTextEdit[] | undefined>;
+}
 let completionRequests = 0;
 
 /** Whether an opened-documents provider declares path by extension and coverage root. */
@@ -329,7 +338,7 @@ export class CodeDiagnosticsStore {
       const result = await this.backend.completeCode(c, requestId, basis.documentId, basis.version, position, trigger, host);
       const same = this.active(life) && !!this.context && sameContext(c, this.context) && this.liveBasis(path)?.documentId === basis.documentId;
       if (signal?.aborted || !same || result.documentId !== basis.documentId || result.version !== basis.version) return undefined;
-      return { result, details: index => this.completionDetails(c, host, result, index, life) };
+      return this.completionAnswer(path, c, host, result, life);
     } catch {
       return undefined;
     } finally {
@@ -337,22 +346,69 @@ export class CodeDiagnosticsStore {
     }
   }
   /**
-   * Item index's detail and documentation, resolved by the server. The
-   * listed ones when it cannot say: the answer is no longer the document's
-   * last (it changed since), or resolving failed.
+   * An answer whose items resolve once per index and version, shared by the
+   * info panel and accept. Details resolve at the document's confirmed
+   * version when it is this answer's, so the item's import is usually known
+   * by the time it is accepted; else at version 0, which gives details only.
    */
-  private async completionDetails(c: CodeDiagnosticsContext, host: string, result: CodeCompletionResult, index: number, life: number): Promise<CompletionItemDetails | undefined> {
-    const item = result.items[index];
-    if (!item) return undefined;
-    const listed: CompletionItemDetails = { detail: item.detail, documentation: item.documentation };
-    if (!result.resultId) return listed;
-    try {
-      const d = await this.backend.resolveCodeCompletion(c, result.documentId, result.resultId, index, 0, host);
-      if (!this.active(life) || d.documentId !== result.documentId || d.resultId !== result.resultId || d.index !== index) return listed;
-      return { detail: d.detail ?? item.detail, documentation: d.documentation ?? item.documentation, truncated: d.truncated };
-    } catch {
-      return listed;
-    }
+  private completionAnswer(path: string, c: CodeDiagnosticsContext, host: string, result: CodeCompletionResult, life: number): CompletionAnswer {
+    const resolves = new Map<string, Promise<CodeCompletionDetails>>();
+    const settled = new Map<string, CodeCompletionDetails>();
+    const resolveAt = (index: number, version: number): Promise<CodeCompletionDetails> => {
+      const key = `${index}@${version}`;
+      let p = resolves.get(key);
+      if (p) return p;
+      p = this.backend.resolveCodeCompletion(c, result.documentId, result.resultId!, index, version, host).then(d => {
+        if (!this.active(life) || d.documentId !== result.documentId || d.resultId !== result.resultId || d.index !== index) throw new Error('another answer');
+        settled.set(key, d);
+        return d;
+      });
+      // A failure is asked again next time.
+      p.catch(() => { if (resolves.get(key) === p) resolves.delete(key); });
+      resolves.set(key, p);
+      return p;
+    };
+    // The confirmed version when the document is this answer's and synced.
+    const synced = (): number | undefined => {
+      const b = this.liveBasis(path);
+      return b?.synced && b.documentId === result.documentId ? b.version : undefined;
+    };
+    const editsAt = (d: CodeCompletionDetails, version: number) => d.version === version ? d.extraEdits ?? [] : [];
+    return {
+      result,
+      details: async index => {
+        const item = result.items[index];
+        if (!item) return undefined;
+        const listed: CompletionItemDetails = { detail: item.detail, documentation: item.documentation };
+        if (!result.resultId) return listed;
+        const version = synced();
+        let d: CodeCompletionDetails;
+        try {
+          d = await (version !== undefined ? resolveAt(index, version).catch(() => resolveAt(index, 0)) : resolveAt(index, 0));
+        } catch {
+          return listed;
+        }
+        return { detail: d.detail ?? item.detail, documentation: d.documentation ?? item.documentation, truncated: d.truncated };
+      },
+      extraEdits: (index, ask = {}) => {
+        const item = result.items[index];
+        if (!item || item.extraEdits?.length || !result.resultId) return [];
+        const current = () => ask.current?.() ?? true;
+        const known = synced();
+        const done = known !== undefined && current() ? settled.get(`${index}@${known}`) : undefined;
+        if (done) return editsAt(done, known!);
+        return (async () => {
+          const at = await this.completionBasis(path, ask.wait);
+          if (!at || ask.signal?.aborted || !current() || !this.active(life) || !sameContext(at.context, c) || at.basis.documentId !== result.documentId) return undefined;
+          const version = at.basis.version;
+          let d: CodeCompletionDetails;
+          try { d = await resolveAt(index, version); } catch { return undefined; }
+          // The edits fit only the version they were resolved at, still shown.
+          if (ask.signal?.aborted || !current() || synced() !== version) return undefined;
+          return editsAt(d, version);
+        })();
+      },
+    };
   }
   async invalidatePath(dir: string, path: string): Promise<void> {
     const c = this.context, life = this.lifetime;

@@ -74,7 +74,10 @@ any command a completion item carries.
   main edit still applies. All of it is one undoable step. vtsls sends its
   import edits only when the item is resolved, whatever the client
   advertises (found in CC-09). CC-10 returns them from a resolve at the
-  document's current version, and CC-12 resolves such items on accept.
+  document's current version. CC-12 resolves such items on accept: the
+  popup closes, and the item goes in with its import once resolved, or
+  alone after 500 ms, a failure, or typing meanwhile. The info panel's
+  resolve is shared, so a selected item's import is usually ready.
 - **Item details come later and stay on the host.** The backend keeps the
   last answer per document, through later typing, and resolves an item (`completionItem/resolve`)
   by result and index, so the server's opaque `data` never crosses the wire.

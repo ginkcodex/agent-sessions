@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EditorState, Text } from '@codemirror/state';
 import { hasNextSnippetField, nextSnippetField, snippet } from '@codemirror/autocomplete';
-import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, positionOffset, serverBoosts, snippetTemplate, snippetText } from '../src/lib/editorCompletion.ts';
+import { IDENTIFIER, LIKELY_TRIGGERS, answerStart, caretAfter, completionChanges, completionDetail, completionType, identifierStart, positionOffset, serverBoosts, snippetTemplate, snippetText, withExtraEdits } from '../src/lib/editorCompletion.ts';
 
 // Language-server suggestions in the editor (CC-06): the pure parts.
 
@@ -125,6 +125,26 @@ test('an extra edit whose text changed, or that touches the main edit, is droppe
   // insertText, then the label, when there is no edit.
   const insert = completionChanges(asked, asked.length, asked.length - 2, asked, asked.length - 2, asked.length, { label: 'foo', insertText: 'foo()' });
   assert.equal(apply(asked, insert.changes), 'import a\nx = foo()');
+});
+
+test('resolved imports join the accepted edit, in the current text; ones that do not fit or touch an edit are dropped', () => {
+  const now = doc('export {};\nhelperVa');
+  const from = now.length - 8, to = now.length;
+  const accept = completionChanges(now, to, from, now, from, to, { label: 'helperValue' });
+  const imp = { range: range(0, 0, 0, 0), newText: 'import { helperValue } from "./helper.js";\n' };
+  const out = withExtraEdits(accept, now, [imp]);
+  assert.equal(apply(now, out.changes), 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue');
+  assert.equal(out.main, 1, 'the main edit, after the import');
+  assert.equal(caretAfter(out.changes, out.main, out.caret), apply(now, out.changes).length);
+
+  const dropped = withExtraEdits(accept, now, [
+    { range: range(1, 2, 1, 2), newText: 'inside' },
+    { range: range(4, 0, 4, 0), newText: 'outside' },
+    imp,
+    { range: range(0, 0, 0, 0), newText: 'same place' },
+  ]);
+  assert.equal(apply(now, dropped.changes), 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue');
+  assert.deepEqual(withExtraEdits(accept, now, []), { ...accept, changes: accept.changes });
 });
 
 // What CodeMirror makes of a template: the text, then each field's selections as Tab moves through them.

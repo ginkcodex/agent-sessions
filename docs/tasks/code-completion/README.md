@@ -1,7 +1,7 @@
 # Code completion — tasks
 
 - **Plan:** [code-completion.md](../../plan/code-completion.md)
-- **Progress:** 8/12 done (CC-01 and CC-09 partial)
+- **Progress:** 9/12 done (CC-01 and CC-09 partial)
 
 Suggestions while typing in the Go to File editor: first from the file and
 the language, then from the project's language server.
@@ -19,4 +19,4 @@ the language, then from the project's language server.
 | [CC-09](CC-09.md) | 🟡 Partial (local real servers done; SSH latency, native GUI and IME, rust-analyzer, PHP, Java, Windows and Linux not checked) | Real-server and SSH latency QA | 3 h | CC-07, CC-08 |
 | [CC-10](CC-10.md) | ✅ Done | Import edits from resolve, on the host and the wire (vtsls) | 4 h | CC-03, CC-04 |
 | [CC-11](CC-11.md) | ⬜ Not started (needs a decision) | Pyright auto-imports from project files not opened | 3 h | CC-08 |
-| [CC-12](CC-12.md) | ⬜ Not started | Accepting an item adds the import it resolves to | 3 h | CC-06, CC-10 |
+| [CC-12](CC-12.md) | ✅ Done | Accepting an item adds the import it resolves to | 3 h | CC-06, CC-10 |

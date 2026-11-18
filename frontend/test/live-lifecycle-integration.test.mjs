@@ -484,21 +484,97 @@ test('aborting a completion cancels it on the host; the attachment ending drops 
   h.off();
 });
 
-test('completion details come from the server, else the listed ones once the document changed', async () => {
+test('completion details resolve once per item, at the synced version, else details only or the listed ones', async () => {
   const h = await harness(true, { completion: true });
   const resolves = [];
-  h.api.completeCode = async (c, requestId, documentId, version) => ({ documentId, version, resultId: 'r7', items: [{ label: 'a', detail: 'listed', documentation: { kind: 'plaintext', value: 'old' } }, { label: 'b' }] });
-  h.api.resolveCodeCompletion = async (c, documentId, resultId, index, version, host) => { resolves.push([c, documentId, resultId, index, version, host]); return { documentId, resultId, index, detail: 'func a()', documentation: { kind: 'markdown', value: '**A**' }, truncated: true }; };
+  const items = ['a', 'b', 'c', 'd', 'e'].map(label => ({ label, detail: 'listed', documentation: { kind: 'plaintext', value: 'old' } }));
+  h.api.completeCode = async (c, requestId, documentId, version) => ({ documentId, version, resultId: 'r7', items });
+  let resolve = async (c, documentId, resultId, index) => ({ documentId, resultId, index, detail: 'func a()', documentation: { kind: 'markdown', value: '**A**' }, truncated: true });
+  h.api.resolveCodeCompletion = async (...args) => { resolves.push(args); return resolve(...args); };
   h.files.openFile('a.go', { keep: true }); await tick();
   h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'a\n'); await tick();
   const got = await h.checks.complete('a.go', { line: 0, character: 1 }, { kind: 'invoked' });
+  const version = got.result.version;
   assert.deepEqual(await got.details(0), { detail: 'func a()', documentation: { kind: 'markdown', value: '**A**' }, truncated: true });
-  assert.deepEqual(resolves[0], [context, 'd1', 'r7', 0, 0, 'h'], 'the info panel asks for details only');
-  assert.equal(await got.details(5), undefined, 'no such item');
+  assert.deepEqual(resolves[0], [context, 'd1', 'r7', 0, version, 'h'], 'at the synced version, so accept can reuse it');
+  await got.details(0);
+  assert.equal(resolves.length, 1, 'one resolve per item and version');
+  assert.equal(await got.details(9), undefined, 'no such item');
+  // The version is refused (an older answer, a newer host state): details only.
+  resolve = async (c, documentId, resultId, index, v) => {
+    if (v > 0) throw Object.assign(new Error('staleVersion'), { code: 'staleVersion' });
+    return { documentId, resultId, index, detail: 'details only' };
+  };
+  assert.equal((await got.details(1)).detail, 'details only');
+  assert.deepEqual(resolves.slice(1).map(r => [r[3], r[4]]), [[1, version], [1, 0]]);
   h.api.resolveCodeCompletion = async () => { throw Object.assign(new Error('staleVersion'), { code: 'staleVersion' }); };
-  assert.deepEqual(await got.details(0), { detail: 'listed', documentation: { kind: 'plaintext', value: 'old' } });
+  assert.deepEqual(await got.details(2), { detail: 'listed', documentation: { kind: 'plaintext', value: 'old' } });
   h.api.resolveCodeCompletion = async (c, documentId, resultId) => ({ documentId, resultId, index: 1, detail: 'wrong item' });
-  assert.deepEqual(await got.details(0), { detail: 'listed', documentation: { kind: 'plaintext', value: 'old' } }, 'an answer about another item is not used');
+  assert.deepEqual(await got.details(3), { detail: 'listed', documentation: { kind: 'plaintext', value: 'old' } }, 'an answer about another item is not used');
+  // Typing not yet sent: the confirmed version is not the text's, so details only.
+  h.files.updateDraft('a.go', 'ab\n'); await tick();
+  assert.equal(h.bridge.basis('a.go').synced, false);
+  const late = [];
+  h.api.resolveCodeCompletion = async (c, documentId, resultId, index, v) => { late.push(v); return { documentId, resultId, index, detail: 'late' }; };
+  assert.equal((await got.details(4)).detail, 'late');
+  assert.deepEqual(late, [0]);
+  h.off();
+});
+
+test('extraEdits sends pending typing, resolves at that version, and shares the resolve with details', async () => {
+  const h = await harness(true, { completion: true });
+  const resolves = [];
+  const imp = { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: 'import "x";\n' };
+  const listedImport = { ...imp, newText: 'import "listed";\n' };
+  const items = [{ label: 'a' }, { label: 'b', extraEdits: [listedImport] }, { label: 'c' }];
+  h.api.completeCode = async (c, requestId, documentId, version) => ({ documentId, version, resultId: 'r7', items });
+  let hold;
+  h.api.resolveCodeCompletion = async (c, documentId, resultId, index, version) => {
+    resolves.push([index, version]);
+    if (hold) await hold;
+    return { documentId, resultId, index, ...(version > 0 ? { version, extraEdits: [imp] } : {}) };
+  };
+  h.files.openFile('a.go', { keep: true }); await tick();
+  h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'a\n'); await tick();
+  const got = await h.checks.complete('a.go', { line: 0, character: 1 }, { kind: 'invoked' });
+  assert.deepEqual(got.extraEdits(1), [], 'listed edits go in with the item, no resolve');
+  assert.equal(resolves.length, 0);
+
+  // The user typed on: the typing is sent first, then the item resolves at its version.
+  h.files.updateDraft('a.go', 'ab\n');
+  const pending = got.extraEdits(0, { current: () => true });
+  assert.ok(pending instanceof Promise, 'not known yet');
+  assert.deepEqual(await pending, [imp]);
+  const version = h.bridge.basis('a.go').version;
+  assert.ok(version > got.result.version);
+  assert.deepEqual(resolves, [[0, version]]);
+  assert.deepEqual(got.extraEdits(0, { current: () => true }), [imp], 'known for this text: at once');
+  await got.details(0);
+  assert.equal(resolves.length, 1, 'details reuse the resolve');
+
+  // Selected first: the info panel's resolve is the one accept uses.
+  await got.details(2);
+  assert.deepEqual(got.extraEdits(2), [imp]);
+  assert.equal(resolves.length, 2);
+
+  // The editor text changed during the resolve: no edits.
+  h.files.updateDraft('a.go', 'abc\n');
+  let release; hold = new Promise(r => { release = r; });
+  let shown = true;
+  const changed = got.extraEdits(0, { current: () => shown });
+  await tick(); await tick();
+  shown = false; release();
+  assert.equal(await changed, undefined);
+  hold = undefined;
+  // Aborted or failing: undefined, never a throw.
+  const aborted = new AbortController(); aborted.abort();
+  h.files.updateDraft('a.go', 'abcd\n');
+  assert.equal(await got.extraEdits(0, { current: () => true, signal: aborted.signal }), undefined);
+  h.api.resolveCodeCompletion = async () => { throw Object.assign(new Error('staleVersion'), { code: 'staleVersion' }); };
+  assert.equal(await got.extraEdits(0, { current: () => true }), undefined);
+  // An older host answers without a version: no edits.
+  h.api.resolveCodeCompletion = async (c, documentId, resultId, index) => ({ documentId, resultId, index });
+  assert.deepEqual(await got.extraEdits(0, { current: () => true }), []);
   h.off();
 });
 
