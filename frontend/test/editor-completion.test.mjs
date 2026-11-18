@@ -100,15 +100,21 @@ test('accepting applies the server edit and its imports where they were asked', 
   assert.equal(apply(doc('x.Prifoo()'), moved.changes), 'x.Print()');
 });
 
-test('an extra edit whose text changed, or that touches the main edit, is dropped; other changes give the plain label', () => {
+test('extra edits are all or none: one that does not fit, or touches an edit, drops them; other changes give the plain label', () => {
   const asked = doc('import a\nx = fo');
-  const item = { label: 'foo', extraEdits: [
-    { range: range(0, 0, 0, 8), newText: 'import a, foo' },
-    { range: range(1, 4, 1, 4), newText: 'bad' },
-    { range: range(5, 0, 5, 0), newText: 'outside' },
-  ] };
+  const imp = { range: range(0, 0, 0, 8), newText: 'import a, foo' };
+  const item = { label: 'foo', extraEdits: [imp] };
   const out = completionChanges(asked, asked.length, asked.length - 2, asked, asked.length - 2, asked.length, item);
-  assert.equal(apply(asked, out.changes), 'import a, foo\nx = foo', 'the import applies; the overlapping and invalid ones do not');
+  assert.equal(apply(asked, out.changes), 'import a, foo\nx = foo', 'the import applies');
+  for (const bad of [
+    { range: range(1, 4, 1, 4), newText: 'touches the main edit' },
+    { range: range(5, 0, 5, 0), newText: 'outside' },
+    { range: range(0, 2, 0, 2), newText: 'inside the import' },
+  ]) {
+    const none = completionChanges(asked, asked.length, asked.length - 2, asked, asked.length - 2, asked.length, { ...item, extraEdits: [imp, bad] });
+    assert.equal(apply(asked, none.changes), 'import a\nx = foo', bad.newText);
+    assert.equal(none.main, 0);
+  }
 
   // Something else changed (another edit above): only the label replaces the typed text.
   const edited = doc('import b\nx = foo');
@@ -127,7 +133,7 @@ test('an extra edit whose text changed, or that touches the main edit, is droppe
   assert.equal(apply(asked, insert.changes), 'import a\nx = foo()');
 });
 
-test('resolved imports join the accepted edit, in the current text; ones that do not fit or touch an edit are dropped', () => {
+test('resolved imports join the accepted edit, in the current text; one that does not fit or touches an edit drops them all', () => {
   const now = doc('export {};\nhelperVa');
   const from = now.length - 8, to = now.length;
   const accept = completionChanges(now, to, from, now, from, to, { label: 'helperValue' });
@@ -137,13 +143,15 @@ test('resolved imports join the accepted edit, in the current text; ones that do
   assert.equal(out.main, 1, 'the main edit, after the import');
   assert.equal(caretAfter(out.changes, out.main, out.caret), apply(now, out.changes).length);
 
-  const dropped = withExtraEdits(accept, now, [
+  for (const bad of [
     { range: range(1, 2, 1, 2), newText: 'inside' },
     { range: range(4, 0, 4, 0), newText: 'outside' },
-    imp,
     { range: range(0, 0, 0, 0), newText: 'same place' },
-  ]);
-  assert.equal(apply(now, dropped.changes), 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue');
+  ]) {
+    const dropped = withExtraEdits(accept, now, [imp, bad]);
+    assert.equal(apply(now, dropped.changes), 'export {};\nhelperValue', bad.newText);
+    assert.equal(dropped.main, 0);
+  }
   assert.deepEqual(withExtraEdits(accept, now, []), { ...accept, changes: accept.changes });
 });
 

@@ -46,7 +46,13 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     this.snapshots.set(context.attachmentId, snapshot);
     return structuredClone({ project: { hostId: host, root: dir }, context, snapshot });
   }
-  async detachCodeDiagnostics(c: CodeDiagnosticsContext, host: string) { this.get(c, host); this.snapshots.delete(c.attachmentId); this.documents.delete(c.attachmentId); this.grants.delete(c.attachmentId); return { context: c }; }
+  async detachCodeDiagnostics(c: CodeDiagnosticsContext, host: string) {
+    this.get(c, host);
+    // The documents' kept completion answers go with them.
+    for (const documentId of this.documents.get(c.attachmentId)?.keys() ?? []) this.answers.delete(documentId);
+    this.snapshots.delete(c.attachmentId); this.documents.delete(c.attachmentId); this.grants.delete(c.attachmentId);
+    return { context: c };
+  }
   private docs(c: CodeDiagnosticsContext, host: string) {
     const s = this.get(c, host);
     if (!this.liveDocuments) throw new CodeDiagnosticsError('unsupported', 'Mock live diagnostics are unavailable');

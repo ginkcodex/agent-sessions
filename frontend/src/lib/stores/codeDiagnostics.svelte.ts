@@ -312,8 +312,9 @@ export class CodeDiagnosticsStore {
   }
   /** Why completion cannot be asked for path now; undefined when it can (the document may still be syncing). */
   completionBlocker(path: string): string | undefined {
-    if (!this.completionEnabled) return 'Code completion is not available for this host.';
+    if (!this.completionEnabled) return 'Code suggestions are not available for this host.';
     return navigationBlocker({
+      feature: 'suggestions',
       status: this.status, off: this.offLanguage(path)?.name, live: this.liveCapable, navigation: true, approved: this.approved, approvalBlocker: this.approvalBlocker,
       servers: this.liveServers(path), failure: this.liveDocuments.find(d => d.path === path)?.failure, basis: this.liveBasis(path),
     });
@@ -393,6 +394,8 @@ export class CodeDiagnosticsStore {
       extraEdits: (index, ask = {}) => {
         const item = result.items[index];
         if (!item || item.extraEdits?.length || !result.resultId) return [];
+        // Not for an aborted ask or an ended store, even when known.
+        if (ask.signal?.aborted || !this.active(life)) return Promise.resolve(undefined);
         const current = () => ask.current?.() ?? true;
         const known = synced();
         const done = known !== undefined && current() ? settled.get(`${index}@${known}`) : undefined;

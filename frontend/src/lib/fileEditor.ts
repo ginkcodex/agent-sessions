@@ -93,8 +93,7 @@ const editable = (disabled = false): Extension => [
 export function acceptOrBreakLine(view: EditorView): boolean {
   const selected = selectedCompletion(view.state);
   const { head, empty } = view.state.selection.main;
-  // What accepting would put there: a server item's own text when it changes nothing else.
-  const text = !selected ? undefined : selected.apply === undefined ? selected.label : typeof selected.apply === 'string' ? selected.apply : plainInserts.get(selected);
+  const text = selected && plainText(selected);
   const start = head - (text?.length ?? 0);
   if (selected && text !== undefined && empty && start >= 0
     && view.state.sliceDoc(start, head) === text
@@ -103,6 +102,14 @@ export function acceptOrBreakLine(view: EditorView): boolean {
     return false;
   }
   return acceptCompletion(view);
+}
+
+/** What accepting option puts in when it changes nothing else; undefined when it may. */
+function plainText(option: Completion): string | undefined {
+  if (option.apply === undefined) return option.label;
+  if (typeof option.apply === 'string') return option.apply;
+  // A server item's own text.
+  return plainInserts.get(option);
 }
 
 /**
@@ -129,7 +136,9 @@ function languageLabels(context: CompletionContext): Set<string> {
     if (typeof source !== 'function') { source.forEach(add); continue; }
     try {
       const result = source(new CompletionContext(context.state, context.pos, context.explicit, context.view));
-      if (result && !(result instanceof Promise)) result.options.forEach(add);
+      // Not waited for: a rejection is CodeMirror's to report when it runs the source.
+      if (result instanceof Promise) result.catch(() => {});
+      else if (result) result.options.forEach(add);
     } catch { /* A failing source offers nothing; CodeMirror reports it when it runs it. */ }
   }
   return labels;
@@ -364,8 +373,21 @@ function serverOption(item: CodeCompletionItem, index: number, boost: number, an
     ...(answer.details ? { info: async () => completionInfo(await answer.details!(index)) } : {}),
   };
   if (item.deprecated) deprecatedOptions.add(option);
-  if (!item.extraEdits?.length) plainInserts.set(option, item.snippet ? snippetText(item.edit?.newText ?? item.insertText ?? item.label).text : item.edit?.newText ?? item.insertText ?? item.label);
+  const plain = itemText(item, answer);
+  if (plain !== undefined) plainInserts.set(option, plain);
   return option;
+}
+
+/**
+ * What accepting item inserts, as plain text, when it changes nothing else;
+ * undefined when it may. Listed extra edits do; so may an item that names a
+ * module (vtsls's auto-imports, in labelDescription) when its answer
+ * resolves edits on accept.
+ */
+function itemText(item: CodeCompletionItem, answer: EditorCompletionAnswer): string | undefined {
+  if (item.extraEdits?.length || (answer.resolveEdits && item.labelDescription)) return undefined;
+  const source = item.edit?.newText ?? item.insertText ?? item.label;
+  return item.snippet ? snippetText(source).text : source;
 }
 
 /**

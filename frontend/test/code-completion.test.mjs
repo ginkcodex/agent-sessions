@@ -81,6 +81,12 @@ test('the mock suggests words of its open documents and resolves its last answer
   await mock.closeCodeDiagnosticDocument(c, 'd1', 'mock:local');
   await assert.rejects(mock.completeCode(c, 'q1', 'd1', 2, end, invoked, 'mock:local'), e => codeDiagnosticsError(e).code === 'notFound');
   await mock.cancelCodeCompletion('q1');
+  assert.equal(mock.answers.size, 0, 'a close drops the answer');
+  // A detach drops the answers of the documents still open.
+  await mock.completeCode(c, 'q2', 'd2', 1, { line: 0, character: 4 }, invoked, 'mock:local');
+  assert.equal(mock.answers.size, 1);
+  await mock.detachCodeDiagnostics(c, 'mock:local');
+  assert.equal(mock.answers.size, 0);
 });
 
 test('the mock without live documents is unsupported', async () => {

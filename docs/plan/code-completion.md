@@ -70,8 +70,8 @@ any command a completion item carries.
 - **Edits are applied against the version they were computed for.** An
   item's replacement range and its extra edits (`additionalTextEdits`, such
   as gopls and vtsls adding an import) are mapped through the edits typed
-  since. Extra edits that touch text changed since are dropped, and the
-  main edit still applies. All of it is one undoable step. vtsls sends its
+  since. Extra edits go in all or none: when one touches text changed since,
+  or another edit, none does, and the main edit still applies (CC-14). All of it is one undoable step. vtsls sends its
   import edits only when the item is resolved, whatever the client
   advertises (found in CC-09). CC-10 returns them from a resolve at the
   document's current version. CC-12 resolves such items on accept: the

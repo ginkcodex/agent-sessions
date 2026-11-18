@@ -177,7 +177,7 @@ test('the panel names only the languages that are on and explains off and ignore
   const off = await render({ languagesOff: ['python', 'rust'], providers: [saved, live('ruff', undefined, 'disabled'), { ...saved, providerId: 'cargo-check', availability: 'disabled', notice: 'Off in Settings', coverage: { ...saved.coverage, roots: [] } }] });
   assert.match(off, /For Go, TypeScript\/JavaScript and Svelte, a missing supported server/);
   assert.doesNotMatch(off, /Ruff plus Pyright|npm install -g pyright|uv tool install ruff/);
-  assert.match(off, /Python and Rust are off in Settings and get no code checks, navigation or downloads/);
+  assert.match(off, /Python and Rust are off in Settings and get no code checks, navigation, language-server suggestions or downloads/);
   assert.match(off, /Off in Settings<\/span>/);
   assert.match(off, /Turn this language on under Settings › Code checks/);
   // Rust guidance is for Rust projects that are checked, not for a muted row.
@@ -202,10 +202,10 @@ test('Ruby: RuboCop setup text and install hints, never an app download or a Rub
   assert.ok(!renderedButtons(missing).some(b => /^Install /.test(b.text)));
   // Approval names RuboCop as giving no navigation, unless Ruby is off.
   const approval = await render({ providers: [live('gopls', ['.go'], 'approvalRequired'), rubocop('approvalRequired')], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [{ providerId: 'rubocop', executable: '/r/bin/ruby', configPaths: ['Gemfile'] }] } } });
-  assert.match(approval, /Ruff alone does not provide navigation\. RuboCop alone does not provide navigation for Ruby\./);
+  assert.match(approval, /Ruff alone does not provide navigation or code suggestions\. RuboCop alone does not provide navigation or code suggestions for Ruby\./);
   assert.doesNotMatch(/suggestions with available language servers: ([^<]*?)\. Ruff/.exec(approval)?.[1] ?? 'missing RuboCop', /RuboCop/);
   const rubyOff = await render({ languagesOff: ['ruby'], providers: [live('gopls', ['.go'], 'approvalRequired'), rubocop('disabled')], approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [] } } });
-  assert.doesNotMatch(rubyOff, /RuboCop alone does not provide navigation|RuboCop is never downloaded|gem install rubocop|ruby-lsp/);
+  assert.doesNotMatch(rubyOff, /RuboCop alone does not provide|RuboCop is never downloaded|gem install rubocop|ruby-lsp/);
   assert.match(rubyOff, /Ruby is off in Settings/);
   // A folder without Ruby files has only the muted row and no Ruby setup text.
   const other = await render({ providers: [saved, { ...rubocop('unsupported', 'No Ruby file was found in this project.'), coverage: { ...rubocop().coverage, roots: [] } }] });

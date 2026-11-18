@@ -164,16 +164,18 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
     if (first !== null) return Promise.resolve(first);
     return new Promise(resolve => {
       let done = false, scheduled = false;
+      // Declared first: a timer that fires at once finishes before set returns.
+      let off: (() => void) | undefined, timer: unknown;
       const finish = (b: LiveDocumentBasis | undefined) => {
         if (done) return;
         done = true;
-        off();
-        this.timers.clear(timer);
+        off?.();
+        if (timer !== undefined) this.timers.clear(timer);
         resolve(b);
       };
       // Checked after the change that woke it completes: recovery closes and
       // reopens a path within one call.
-      const off = this.onChange(() => {
+      off = this.onChange(() => {
         if (scheduled || done) return;
         scheduled = true;
         queueMicrotask(() => {
@@ -183,7 +185,7 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
           if (b !== null) finish(b);
         });
       });
-      const timer = this.timers.set(() => finish(undefined), Math.max(0, bound));
+      timer = this.timers.set(() => finish(undefined), Math.max(0, bound));
     });
   }
   /** Failed synchronization is surfaced, never hidden behind fresh-looking results. */

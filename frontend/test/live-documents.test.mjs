@@ -447,6 +447,21 @@ test('flush with a change in flight sends later typing after it and resolves wit
   assert.deepEqual(s.calls.slice(1), [['change', 2, 'a'], ['change', 3, 'ab']]);
 });
 
+test('flush settles with a timer that fires at once', async () => {
+  const held = gate();
+  const s = await setup({ apiOverrides: { change: () => held.p } });
+  s.store.openFile('a.txt', { keep: true }); await tick();
+  s.store.startEditing('a.txt'); s.store.updateDraft('a.txt', 'a');
+  const set = s.timers.set;
+  s.timers.set = (fn) => { fn(); return 'fired'; };
+  try {
+    assert.equal(await s.bridge.flush('a.txt', 0), undefined, 'the bound passed before the change was confirmed');
+  } finally {
+    s.timers.set = set;
+  }
+  held.open();
+});
+
 test('flush during a save waits for the save, then sends the held typing', async () => {
   const s = await setup();
   const saving = gate();

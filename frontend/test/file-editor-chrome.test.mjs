@@ -273,7 +273,7 @@ test('Chrome: language-server suggestions after a dot, filtered as typed, with d
   }
 });
 
-test('Chrome: Enter on an item whose import comes on resolve adds it with the item in one undo step; typing during the wait keeps the typing', { skip: !process.env.AS_TEST_CHROME, timeout: 120000 }, async () => {
+test('Chrome: Enter on an item whose import comes on resolve adds it with the item in one undo step, even typed in full; typing during the wait keeps the typing', { skip: !process.env.AS_TEST_CHROME, timeout: 120000 }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'as-completion-resolve-'));
   let server, browser;
   try {
@@ -319,6 +319,14 @@ test('Chrome: Enter on an item whose import comes on resolve adds it with the it
     await sleep(800);
     assert.equal(await text(), 'export {};\nhelperValue ');
     assert.deepEqual(await evaluate('window.resolves'), [0, 0]);
+
+    // Typed in full, an item that may gain an import is accepted, not a new line.
+    await type('helperValue');
+    await sleep(500);
+    assert.match((await popup())[0] ?? '', /^helperValue/);
+    await press('Enter');
+    await sleep(600);
+    assert.equal(await text(), 'import { helperValue } from "./helper.js";\nexport {};\nhelperValue helperValue');
   } finally {
     browser?.close();
     server?.close();

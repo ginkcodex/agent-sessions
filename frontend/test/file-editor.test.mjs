@@ -1211,6 +1211,23 @@ test('completion keys: Cmd+I on macOS and Ctrl+Space everywhere open suggestions
   editor.destroy();
 });
 
+test('document words: a language source that answers later and fails leaves no unhandled rejection', async () => {
+  let rejected = 0;
+  const failing = () => { rejected++; return Promise.reject(new Error('gone')); };
+  const state = EditorState.create({ doc: 'alpha alphabet\nalp', extensions: EditorState.languageData.of(() => [{ autocomplete: failing }]) });
+  const unhandled = [];
+  const record = reason => unhandled.push(reason);
+  process.on('unhandledRejection', record);
+  try {
+    assert.deepEqual(wordsAt(state).options.map(o => o.label).sort(), ['alpha', 'alphabet']);
+    await new Promise(resolve => setImmediate(resolve));
+  } finally {
+    process.off('unhandledRejection', record);
+  }
+  assert.equal(rejected, 1);
+  assert.deepEqual(unhandled, []);
+});
+
 test('document words: prefix matches, the whole typed word and language items left out, none past the highlight limit', () => {
   const state = EditorState.create({ doc: 'alpha alphabet beta\nalp' });
   const result = wordsAt(state);

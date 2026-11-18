@@ -66,6 +66,17 @@ test('each reason navigation is unavailable says what is missing', () => {
   assert.match(navigationBlocker({ ...ready, servers: [rubocop], off: 'Ruby' }), /^Ruby is off in Settings/);
   // A server that navigates beside it still answers.
   assert.equal(navigationBlocker({ ...ready, servers: [rubocop, gopls] }), undefined);
+  // Code suggestions get their own wording.
+  const suggestions = { ...ready, feature: 'suggestions' };
+  for (const [change, reason] of [
+    [{ status: 'unsupported' }, 'Code suggestions are not available for this host.'],
+    [{ status: 'disconnected' }, 'The host is disconnected. Reconnect to use code suggestions.'],
+    [{ off: 'Rust' }, 'Rust is off in Settings, so code suggestions are not offered for this file. Turn it on under Settings › Code checks.'],
+    [{ live: false }, 'This host does not run language servers for open files, so code suggestions are unavailable.'],
+    [{ approved: false }, 'Approve code checks for this project in Code checks to use code suggestions.'],
+    [{ servers: [rubocop] }, 'No language server provides code suggestions for Ruby files; RuboCop reports lint and syntax problems only.'],
+  ]) assert.equal(navigationBlocker({ ...suggestions, ...change }), reason, JSON.stringify(change));
+  assert.equal(navigationBlocker({ ...ready, live: false }), 'This host does not run language servers for open files, so code navigation is unavailable.');
   // One of two servers running is enough.
   assert.equal(navigationBlocker({ ...ready, servers: [{ ...gopls, providerId: 'ruff', phase: 'failed' }, gopls] }), undefined);
 

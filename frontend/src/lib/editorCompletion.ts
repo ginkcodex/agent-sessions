@@ -66,10 +66,16 @@ export function completionDetail(item: CodeCompletionItem): string | undefined {
  */
 export function serverBoosts(items: readonly CodeCompletionItem[]): number[] {
   const order = items.map((item, index) => ({ key: item.sortText ?? item.label, index }));
-  order.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.index - b.index));
+  order.sort((a, b) => compareKeys(a.key, b.key) || a.index - b.index);
   const boosts = new Array<number>(items.length);
   order.forEach(({ index }, rank) => { boosts[index] = 99 - Math.floor(rank * 98 / Math.max(1, items.length)); });
   return boosts;
+}
+
+/** Orders strings by code unit, as servers' sortText is meant to be read. */
+function compareKeys(a: string, b: string): number {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
 }
 
 /** The document offset of an LSP position; undefined when it is not inside the document. */
@@ -291,32 +297,39 @@ export function completionChanges(askedDoc: Text, asked: number, start: number, 
     // An edit starting or ending inside the typed text is the server's guess at text it never saw.
     if (ms !== undefined && me !== undefined && ms <= from && me >= to) { main = { from: ms, to: me, insert }; mainCaret = caret; }
   }
-  const changes = [main];
-  for (const extra of item.extraEdits ?? []) {
+  const changes = withEdits([main], (item.extraEdits ?? []).map(extra => {
     const r = rangeOffsets(askedDoc, extra.range);
     const ms = r && map(r[0]), me = r && map(r[1]);
-    if (ms === undefined || me === undefined) continue;
-    // Extra edits are elsewhere; one touching another edit is dropped.
-    if (touches(changes, ms, me)) continue;
-    changes.push({ from: ms, to: me, insert: extra.newText });
-  }
-  changes.sort((a, b) => a.from - b.from);
+    return ms === undefined || me === undefined ? undefined : { from: ms, to: me, insert: extra.newText };
+  }));
   return { changes, main: changes.indexOf(main), caret: mainCaret, ...template(main) };
 }
 
 /**
+ * changes with extra, sorted. Extra edits are elsewhere, and part of an import
+ * can break the code: when one is undefined (it does not fit the text) or
+ * touches another edit, none is added.
+ */
+function withEdits(changes: readonly CompletionEdit[], extra: readonly (CompletionEdit | undefined)[]): CompletionEdit[] {
+  const out = [...changes];
+  for (const e of extra) {
+    if (!e || touches(out, e.from, e.to)) return [...changes];
+    out.push(e);
+  }
+  return out.sort((a, b) => a.from - b.from);
+}
+
+/**
  * accept with the extra edits an item resolved to (CC-12), given in the
- * offsets of doc, the text accept applies to. As with listed ones, an edit
- * outside doc, or touching the main edit or another, is dropped.
+ * offsets of doc, the text accept applies to. As with listed ones, all or
+ * none: an edit outside doc, or touching the main edit or another, drops them.
  */
 export function withExtraEdits(accept: CompletionAccept, doc: Text, edits: readonly CodeTextEdit[]): CompletionAccept {
-  const main = accept.changes[accept.main], changes = [...accept.changes];
-  for (const extra of edits) {
+  const main = accept.changes[accept.main];
+  const changes = withEdits(accept.changes, edits.map(extra => {
     const r = rangeOffsets(doc, extra.range);
-    if (!r || touches(changes, r[0], r[1])) continue;
-    changes.push({ from: r[0], to: r[1], insert: extra.newText });
-  }
-  changes.sort((a, b) => a.from - b.from);
+    return r && { from: r[0], to: r[1], insert: extra.newText };
+  }));
   return { ...accept, changes, main: changes.indexOf(main) };
 }
 

@@ -549,6 +549,8 @@ test('extraEdits sends pending typing, resolves at that version, and shares the 
   assert.ok(version > got.result.version);
   assert.deepEqual(resolves, [[0, version]]);
   assert.deepEqual(got.extraEdits(0, { current: () => true }), [imp], 'known for this text: at once');
+  const gone = new AbortController(); gone.abort();
+  assert.equal(await got.extraEdits(0, { current: () => true, signal: gone.signal }), undefined, 'known, but aborted');
   await got.details(0);
   assert.equal(resolves.length, 1, 'details reuse the resolve');
 
@@ -582,7 +584,7 @@ test('complete is blocked without the capability and for files no server declare
   const off = await harness(true, { navigation: true });
   off.api.completeCode = async () => { throw new Error('must not be asked'); };
   off.files.openFile('a.go', { keep: true }); await tick();
-  assert.match(off.checks.completionBlocker('a.go'), /not available for this host/);
+  assert.equal(off.checks.completionBlocker('a.go'), 'Code suggestions are not available for this host.');
   assert.equal(await off.checks.complete('a.go', { line: 0, character: 0 }, { kind: 'invoked' }), undefined);
   off.off();
   const md = await harness(true, { completion: true, path: 'notes.md', providers: [{ ...provider('lsp'), documentExtensions: ['.go'] }] });
