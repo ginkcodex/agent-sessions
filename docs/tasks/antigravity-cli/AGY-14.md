@@ -1,6 +1,6 @@
 # AGY-14 — Spike: what deleting an Antigravity session must remove
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 2 h
 - **Depends on:** [AGY-03](AGY-03.md)
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
@@ -69,3 +69,43 @@ On a throwaway session, with agy closed and then with agy running:
   macOS. It says what agy does after each kind of removal, and gives the
   decision AGY-15 implements.
 - No session other than the throwaway one is changed.
+
+## Evidence
+
+The record is [antigravity-cli-delete.md](../../plan/antigravity-cli-delete.md).
+
+Run on Linux with agy 1.5.12. The user's store was only listed and read.
+Every removal was made in a separate store (`HOME=/tmp/agy14/home`) holding
+6 sessions made for the spike, a subagent among them.
+
+Found:
+
+- With the session's files removed and its index row left:
+  - agy's `session/list` hides the session;
+  - `agy --conversation <id>` warns "not found" and starts a new one;
+  - `agy -c` continues the newest session left;
+  - the app's scan drops it;
+  - nothing crashed, and agy rebuilt no files.
+- Index rows deleted with agy closed come back on the next agy start, from
+  `jetbox_summaries_proto.pb`.
+- Presence locks are left behind after a clean exit, and `agy acp` makes
+  none, so they do not show a running session.
+
+Decided (for AGY-15):
+
+- Move the session's own files to the Trash: `brain/<id>/`,
+  `conversations/<id>.db` and `annotations/<id>.pbtxt`, its subagents' too.
+- Write nothing else in agy's store, the index included.
+- Block the delete while an `agy` TUI or print-mode process runs, and for
+  sessions in a chat or active in the last 10 minutes.
+
+Partly checked:
+
+- Midway the user's own `agy acp` moved its credential into the keyring.
+  After that the separate store could not sign in, so these were not run:
+  - the running-TUI case;
+  - agy listing a session again once its files are put back. The app's scan
+    does list it again.
+- macOS was not checked.
+- No session in the user's store was changed. The two throwaway sessions
+  from AGY-13 and AGY-17 are still there.

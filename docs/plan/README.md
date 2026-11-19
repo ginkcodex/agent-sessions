@@ -164,6 +164,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 **[antigravity-cli.md](antigravity-cli.md):**
 - [antigravity-cli-spike.md](antigravity-cli-spike.md): Live `agy acp` and `~/.gemini/antigravity-cli/` storage verification spike (2026-11-19)
+- [antigravity-cli-delete.md](antigravity-cli-delete.md): What deleting an Antigravity session must remove (AGY-14 spike, 2026-11-19)
 
 Reference: [../formats.md](../formats.md) holds the verified on-disk formats
 of each tool; [../perf.md](../perf.md) holds performance measurements.

@@ -298,16 +298,20 @@ New package `internal/provider/antigravity` implementing `provider.Provider`,
    semantics are separately spiked. Handoff *into* Antigravity is the
    exception: it writes nothing to the agy store, so it is supported and
    starts `agy -i <prompt>`; see [AGY-10](../tasks/antigravity-cli/AGY-10.md).
-   Delete is being reconsidered after desktop QA: the
-   [AGY-14](../tasks/antigravity-cli/AGY-14.md) spike decides what it
-   removes, and whether the app may write agy's store for it.
+   Delete is the other exception, after desktop QA. The
+   [AGY-14](../tasks/antigravity-cli/AGY-14.md) spike
+   ([antigravity-cli-delete.md](antigravity-cli-delete.md)) decided to move
+   a session's own files to the Trash, and to write nothing else in agy's
+   store, its index included.
 
 ## Non-goals (v1)
 
-- Destructive session management (trash, delete, rename) for Antigravity
-  sessions (`internal/manage`). Desktop QA asked for delete, so it is now
-  follow-up work: [AGY-14](../tasks/antigravity-cli/AGY-14.md) (spike) and
-  [AGY-15](../tasks/antigravity-cli/AGY-15.md). Trash and rename stay out.
+- Destructive session management for Antigravity sessions
+  (`internal/manage`) other than delete. Desktop QA asked for delete: it
+  moves the session to the Trash
+  ([antigravity-cli-delete.md](antigravity-cli-delete.md),
+  [AGY-15](../tasks/antigravity-cli/AGY-15.md)). Permanent delete and rename
+  stay out.
 - Cross-agent handoff into/out of Antigravity (`internal/handoff`) and portable
   bundle restore (`internal/bundle`). Export is follow-up work from desktop
   QA: share-safe in [AGY-18](../tasks/antigravity-cli/AGY-18.md), complete
