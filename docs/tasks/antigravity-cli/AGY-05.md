@@ -76,9 +76,16 @@ Done:
   `AgentAntigravity` in the default `intersectAgents` list.
 - Tests that counted three agents (`app`, `engine` and `rpc` agent settings)
   now count four.
+- `cmd/agent-sessions-cli` `serve_test.go` `rootsKey` rebuilt the engine's
+  index key by hand with the Antigravity root missing (since AGY-02) and the
+  old agent list, so three `TestServe_*` lock tests failed. It now has the
+  root and the sorted list `antigravity, claude-code, codex, opencode`, as
+  `engine.indexKey` does. Fixed after the first AGY-05 commit: its
+  `go test ./...` run hid those failures behind a truncated log.
 
 Tests (all pass; `go test -race` on `watch`, `index`, `provider/...` and
-`group`; `go test ./...` before the commit; `go vet ./...` and lint on the
+`group`; then `go test -race ./...`, 51 packages ok; `go vet ./...` for
+linux, windows and darwin, and lint on the
 touched packages clean):
 
 - `TestProviders` (`provider/all`): four providers, ID order, `Canonical`.
