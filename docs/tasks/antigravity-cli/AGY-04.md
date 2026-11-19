@@ -1,6 +1,6 @@
 # AGY-04 — Antigravity provider: transcript Load, LoadIncremental and Blob
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 4 h
 - **Depends on:** [AGY-03](AGY-03.md)
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
@@ -68,3 +68,75 @@ large outputs. Background tasks, `SYSTEM_MESSAGE`, `CHECKPOINT` and
   `PLANNER_RESPONSE` + later `GENERIC` result (`FirstChanged` regression test),
   truncated/rewritten file fallback.
 - `Blob` tests for clipped outputs and invalid/out-of-range keys.
+
+## Evidence
+
+- **Done:**
+  - `parse.go`: the step loader on `transcriptbuild.Builder`.
+    - `USER_INPUT` shows the `<USER_REQUEST>` text; plain text passes through.
+    - `PLANNER_RESPONSE` is an assistant message `step-<s>` with reasoning,
+      text, tool parts `step-<s>-<k>`, the model and tokens.
+    - The result of call *k* is step `s + 1 + k`. `DONE` → completed,
+      `ERROR` → error (the `error` text when the output is empty),
+      `RUNNING` → pending (AGY-09 completes it). A call whose result step is
+      passed over is error; the last call with none stays pending.
+    - Results lose every leading `Created At:` / `Completed At:` line, `\r\n`
+      becomes `\n`, and outputs over 64 KiB are clipped on a rune boundary
+      with a `rec:<lineStart>:<step>` ref.
+    - `invoke_subagent` links `Child` when the output names a
+      `conversationId` whose transcript exists.
+    - A `GENERIC` that is no call's result is an `IsMeta` notice. Other step
+      types are skipped.
+  - `load.go`: `Load`, `LoadIncremental` and `Blob`.
+    - The ID must be one `brain/` entry name (no separators, `:`, NUL or
+      leading dot), found the way `discover` does, on every call.
+    - Lines feed both the loader and the scan's checkpoint, and the row and
+      turn are settled the same way, so `Load`'s meta equals `Scan`'s.
+      `scanSource` now shares `settle` / `sessionMeta` with it.
+    - Incremental state follows Codex: a continuity mark, an unterminated
+      tail parsed on a fork, the state dropped after a concurrent write, a
+      64 MiB cap.
+    - `Blob` reads one line at the key's offset and checks it is the
+      `GENERIC` step the key names.
+  - `discover.go`: the per-ID lookup is now `transcript()`, shared by
+    `discover` and `resolve`.
+- **Decisions:**
+  - `LoadFromSource` / `BlobFromSource` are not implemented. They are
+    optional; `Load` already resolves an ID with a few stats, so a hint would
+    save nothing, and `LoadWithSource` falls back to `Load`.
+  - `Load` reads the whole index for the one row (a `shortcut:` comment):
+    one small row per session.
+  - A pending call is not turned to unknown in a dead session: the task asks
+    for pending.
+- **Tests run (Linux):**
+  - `go test -race ./internal/provider/...`: pass.
+  - New tests in `internal/provider/antigravity`:
+    - golden `testdata/golden/load_session.json` from
+      `testdata/session.jsonl`: multi-turn, three parallel calls with the
+      middle result missing, a macOS-style denied `ERROR`, an `ERROR` with
+      only `error` text, thinking, a subagent call, a `RUNNING` background
+      task, an unpaired `GENERIC`, an unknown step type, `\r\n` output and a
+      final call with no result;
+    - no `Child` before the child's transcript exists;
+    - `Load`'s meta deep-equals `Scan`'s;
+    - an 80 KiB multibyte output clipped and served whole by `Blob`, and
+      eight bad keys (malformed, negative, past the end, wrong step) and a
+      path in the ID rejected;
+    - incremental: unchanged, a later `GENERIC` filling the earlier
+      response (`FirstChanged` = that response), an unterminated tail shown
+      then committed, an appended reply, and a rewrite rebuilding; each
+      result deep-equals a cold load and earlier snapshots are unchanged;
+    - `providertest.IncrementalHarness` over every line boundary of the
+      fixture, unterminated and complete;
+    - a missing result is error only once a later step exists;
+    - bad refs (`..`, separators, missing, wrong agent);
+    - `resultText` with 1, 2 and 4 header lines.
+  - `go vet` (also `GOOS=windows` and `GOOS=darwin`) and
+    `golangci-lint run --new-from-rev=HEAD`: clean.
+  - A throwaway test loaded the 6 real sessions read-only: `Load`'s meta
+    equalled `Scan`'s for all; the parent's subagent call linked its child;
+    the subagent's 40 `error` calls are its 40 `ERROR` results; the 3
+    `pending` are `RUNNING` background tasks. The test was deleted.
+- **Not checked:**
+  - No real output reached 64 KiB, so `Blob` ran only on fixtures.
+  - Windows and macOS: compiled, not run.

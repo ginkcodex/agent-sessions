@@ -1,0 +1,280 @@
+{
+  "meta": {
+    "ref": {
+      "agent": "antigravity",
+      "id": "2b9a4c81-215f-47af-9395-99d2b08be416"
+    },
+    "sourcePath": "<fixture>",
+    "cwd": "<cwd>",
+    "title": "Read the guide",
+    "firstPrompt": "Read AGENTS.md, then list the files",
+    "model": "gemini-4-neon-high",
+    "agentName": "self",
+    "createdAt": "2026-11-19T04:00:00Z",
+    "updatedAt": "2026-11-19T04:00:15Z",
+    "counts": {
+      "user": 2,
+      "assistant": 5,
+      "toolCalls": 8
+    },
+    "tokens": {
+      "input": 7000,
+      "output": 112,
+      "reasoning": 0,
+      "cacheRead": 5000,
+      "cacheWrite": 0
+    },
+    "turn": "done"
+  },
+  "messages": [
+    {
+      "id": "step-0",
+      "role": "user",
+      "time": "2026-11-19T04:00:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Read AGENTS.md, then list the files"
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-1",
+      "role": "assistant",
+      "time": "2026-11-19T04:00:01Z",
+      "model": "gemini-4-neon-high",
+      "parts": [
+        {
+          "kind": "reasoning",
+          "text": "I should read the file and list the tree."
+        },
+        {
+          "kind": "text",
+          "text": "Reading the guide and listing files."
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-1-0",
+            "name": "read_file",
+            "input": {
+              "AbsolutePath": "/work/AGENTS.md"
+            },
+            "output": "Showing lines 1 to 2\n# Agents\nBe brief.\n",
+            "status": "completed"
+          }
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-1-1",
+            "name": "run_command",
+            "input": {
+              "CommandLine": "find . -maxdepth 2",
+              "Cwd": "/work"
+            },
+            "status": "error"
+          }
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-1-2",
+            "name": "list_dir",
+            "input": {
+              "DirectoryPath": "/work"
+            },
+            "output": "AGENTS.md\ngo.mod\n",
+            "status": "completed"
+          }
+        }
+      ],
+      "tokens": {
+        "input": 1200,
+        "output": 40,
+        "reasoning": 0,
+        "cacheRead": 800,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-5",
+      "role": "assistant",
+      "time": "2026-11-19T04:00:05Z",
+      "model": "gemini-4-neon-high",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "There are two files."
+        }
+      ],
+      "tokens": {
+        "input": 1300,
+        "output": 12,
+        "reasoning": 0,
+        "cacheRead": 900,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-6",
+      "role": "user",
+      "time": "2026-11-19T04:00:06Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "plain follow-up, no tags"
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-8",
+      "role": "assistant",
+      "time": "2026-11-19T04:00:08Z",
+      "model": "gemini-4-neon-high",
+      "parts": [
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-8-0",
+            "name": "run_command",
+            "input": {
+              "CommandLine": "rm -rf build",
+              "Cwd": "/work"
+            },
+            "output": "Encountered error in step execution: permission check failed for unsandboxed \"rm -rf build\": user denied permission",
+            "status": "error"
+          }
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-8-1",
+            "name": "run_command",
+            "input": {
+              "CommandLine": "false",
+              "Cwd": "/work"
+            },
+            "output": "exit status 1",
+            "status": "error"
+          }
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-8-2",
+            "name": "invoke_subagent",
+            "input": {
+              "Task": "Check the docs"
+            },
+            "output": "Created the following subagent:\n{\n  \"conversationId\":  \"0ce5ddc2-779f-452d-9c81-281712caf621\",\n  \"logAbsoluteUri\":  \"file:///x\"\n}",
+            "status": "completed",
+            "child": {
+              "agent": "antigravity",
+              "id": "0ce5ddc2-779f-452d-9c81-281712caf621"
+            }
+          }
+        }
+      ],
+      "tokens": {
+        "input": 1400,
+        "output": 30,
+        "reasoning": 0,
+        "cacheRead": 1000,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-12",
+      "role": "assistant",
+      "time": "2026-11-19T04:00:12Z",
+      "model": "gemini-4-neon-high",
+      "parts": [
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-12-0",
+            "name": "run_command",
+            "input": {
+              "CommandLine": "make test",
+              "Cwd": "/work"
+            },
+            "output": "Tool is running as a background task with task id: 2b9a4c81-215f-47af-9395-99d2b08be416/task-13\nTask Description: make test",
+            "status": "pending"
+          }
+        }
+      ],
+      "tokens": {
+        "input": 1500,
+        "output": 20,
+        "reasoning": 0,
+        "cacheRead": 1100,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-14",
+      "role": "system",
+      "time": "2026-11-19T04:00:14Z",
+      "parts": [
+        {
+          "kind": "notice",
+          "text": "an unpaired result"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-15",
+      "role": "assistant",
+      "time": "2026-11-19T04:00:15Z",
+      "model": "gemini-4-neon-high",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Waiting for approval."
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-15-0",
+            "name": "write_file",
+            "input": {
+              "TargetFile": "/work/NOTES.md",
+              "CodeContent": "hi"
+            },
+            "status": "pending"
+          }
+        }
+      ],
+      "tokens": {
+        "input": 1600,
+        "output": 10,
+        "reasoning": 0,
+        "cacheRead": 1200,
+        "cacheWrite": 0
+      }
+    }
+  ]
+}

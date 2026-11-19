@@ -293,26 +293,10 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 		}
 	}
 
-	r := cp.Row
-	if rows != nil {
-		r = nil
-		if found, ok := rows[src.ID]; ok {
-			r = &found
-		}
-	}
-	turn := p.turn(&cp, r, info.ModTime())
-	if unchanged && sameRow(cp.Row, r) && turn == cp.Published {
+	if !p.settle(&cp, rows, info.ModTime()) && unchanged {
 		return out
 	}
-	cp.Row, cp.Published = r, turn
-
-	out.meta = cp.meta(src, r, info.ModTime())
-	if out.meta.CWD != "" {
-		out.meta.CWDMissing = !pathutil.Exists(out.meta.CWD)
-		if repo, ok := p.git.Resolve(out.meta.CWD); ok {
-			out.meta.RepoRoot = repo.MainRoot
-		}
-	}
+	out.meta = p.sessionMeta(&cp, src, info.ModTime())
 	data, err := json.Marshal(cp)
 	if err != nil {
 		out.err = fmt.Errorf("marshal scan checkpoint %s: %w", src.Path, err)
@@ -321,6 +305,35 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 	out.changed = true
 	out.state = provider.SourceState{Size: size, ModTimeNs: modNs, Offset: end, Checkpoint: data}
 	return out
+}
+
+// settle takes the session's index row (the last one read when rows is nil,
+// the index being unreadable) and gates the turn with it. It reports whether
+// either changed since the last publication.
+func (p *Provider) settle(c *checkpoint, rows map[string]row, modTime time.Time) bool {
+	r := c.Row
+	if rows != nil {
+		r = nil
+		if found, ok := rows[c.ID]; ok {
+			r = &found
+		}
+	}
+	turn := p.turn(c, r, modTime)
+	changed := !sameRow(c.Row, r) || turn != c.Published
+	c.Row, c.Published = r, turn
+	return changed
+}
+
+// sessionMeta is the published meta of a settled checkpoint.
+func (p *Provider) sessionMeta(c *checkpoint, src source, modTime time.Time) model.SessionMeta {
+	meta := c.meta(src, c.Row, modTime)
+	if meta.CWD != "" {
+		meta.CWDMissing = !pathutil.Exists(meta.CWD)
+		if repo, ok := p.git.Resolve(meta.CWD); ok {
+			meta.RepoRoot = repo.MainRoot
+		}
+	}
+	return meta
 }
 
 // read consumes the transcript from offset and returns the offset of the

@@ -41,25 +41,33 @@ func (p *Provider) discover(ctx context.Context, diag *provider.Diagnostics) ([]
 		if strings.HasPrefix(id, ".") {
 			continue
 		}
-		logs := filepath.Join(p.brainDir(), id, ".system_generated", "logs")
-		for _, name := range transcriptNames {
-			path := filepath.Join(logs, name)
-			if _, err := os.Lstat(path); err != nil {
-				continue
-			}
-			if !pathutil.WithinRoot(p.root, path) {
-				diag.Warn(path, 0, "transcript symlink escapes the Antigravity root or is broken")
-				break
-			}
-			if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
-				diag.Warn(path, 0, "not a regular transcript")
-				break
-			}
-			sources = append(sources, source{ID: id, Path: path})
-			break
+		if src, ok := p.transcript(id, diag); ok {
+			sources = append(sources, src)
 		}
 	}
 	return sources, nil
+}
+
+// transcript finds session id's transcript under brain/. Links leaving the
+// store and non-regular files are rejected with a warning.
+func (p *Provider) transcript(id string, diag *provider.Diagnostics) (source, bool) {
+	logs := filepath.Join(p.brainDir(), id, ".system_generated", "logs")
+	for _, name := range transcriptNames {
+		path := filepath.Join(logs, name)
+		if _, err := os.Lstat(path); err != nil {
+			continue
+		}
+		if !pathutil.WithinRoot(p.root, path) {
+			diag.Warn(path, 0, "transcript symlink escapes the Antigravity root or is broken")
+			return source{}, false
+		}
+		if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+			diag.Warn(path, 0, "not a regular transcript")
+			return source{}, false
+		}
+		return source{ID: id, Path: path}, true
+	}
+	return source{}, false
 }
 
 // sessionID is the brain/<id> directory a transcript path lies in.
