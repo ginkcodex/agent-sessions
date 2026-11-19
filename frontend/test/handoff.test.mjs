@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
-import { BUDGET_PRESETS, targetAgentsFor } from '../src/lib/portable.ts';
-import { renderHandoffDialog } from './helpers.mjs';
+import { BUDGET_PRESETS, canRestoreNative, targetAgentsFor } from '../src/lib/portable.ts';
+import { renderExportDialog, renderHandoffDialog } from './helpers.mjs';
 
 test('MockBackendAPI copyResumeCommand formats provider-specific resume commands', async () => {
   const mock = new MockBackendAPI();
@@ -159,4 +159,14 @@ test('HandoffDialog offers Open in Terminal when the session can open locally', 
   const copyOnly = await renderHandoffDialog({ launcher: { canOpen: false } });
   assert.doesNotMatch(copyOnly, /Open in Terminal/);
   assert.match(copyOnly, /class="btn primary-btn[^"]*"[^>]*>\s*Copy Launch Command/);
+});
+
+test('ExportDialog calls Complete restorable only for agents the app can restore into', async () => {
+  const claude = await renderExportDialog({ session: { ref: { agent: 'claude-code', id: 's1' } } });
+  assert.match(claude, /Restorable\. Includes the original session records\./);
+  const agy = await renderExportDialog({ session: { ref: { agent: 'antigravity', id: 's1' } } });
+  assert.doesNotMatch(agy, /Restorable/);
+  assert.match(agy, /Includes the original session records\. Restore is not supported yet\./);
+  assert.equal(canRestoreNative('antigravity'), false);
+  assert.equal(canRestoreNative('opencode'), true);
 });

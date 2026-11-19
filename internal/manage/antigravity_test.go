@@ -214,3 +214,56 @@ func (s *switchProc) Cmdlines() (map[int][]string, error) {
 	}
 	return map[int][]string{}, nil
 }
+
+func TestCapture_Antigravity_SessionAndSubagent(t *testing.T) {
+	root, catalog := agyStore(t)
+	catalog[0].UpdatedAt = time.Now() // export ignores recency
+	m, _ := agyManager(t, root)
+	got, err := m.CaptureSession(context.Background(), catalog[0], catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels := func(c Capture) (out []string) {
+		for _, f := range c.Files {
+			out = append(out, f.Rel)
+		}
+		return out
+	}
+	brain := func(id string) []string {
+		return []string{
+			"brain/" + id + "/.system_generated/logs/transcript_full.jsonl",
+			"brain/" + id + "/.system_generated/steps/0.json",
+			"brain/" + id + "/scratch/notes.md",
+		}
+	}
+	wantA := append(brain(uuidA), "conversations/"+uuidA+".db", "conversations/"+uuidA+".db-wal", "annotations/"+uuidA+".pbtxt")
+	wantB := append(brain(uuidB), "conversations/"+uuidB+".db")
+	if len(got) != 2 || got[0].Ref.ID != uuidA || got[1].Ref.ID != uuidB || got[1].ParentID != uuidA ||
+		!reflect.DeepEqual(rels(got[0]), wantA) || !reflect.DeepEqual(rels(got[1]), wantB) {
+		t.Fatalf("captured %+v", got)
+	}
+}
+
+func TestCapture_Antigravity_Refused(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		edit   func(t *testing.T, root string, c []model.SessionMeta)
+		reason string
+	}{
+		{name: "running turn", edit: func(_ *testing.T, _ string, c []model.SessionMeta) { c[0].Turn = model.TurnWorking }, reason: "running"},
+		{name: "running subagent", edit: func(_ *testing.T, _ string, c []model.SessionMeta) { c[1].Turn = model.TurnTool }, reason: "running"},
+		{name: "credential in brain", edit: func(t *testing.T, root string, _ []model.SessionMeta) {
+			writeGuardFixture(t, filepath.Join(root, "brain", uuidB, ".user_uploaded", "antigravity-oauth-token"))
+		}, reason: "protected"},
+		{name: "path of another session", edit: func(_ *testing.T, _ string, c []model.SessionMeta) { c[0].SourcePath = c[2].SourcePath }, reason: "does not match"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, catalog := agyStore(t)
+			tc.edit(t, root, catalog)
+			m, _ := agyManager(t, root)
+			if _, err := m.CaptureSession(context.Background(), catalog[0], catalog); err == nil || !strings.Contains(err.Error(), tc.reason) {
+				t.Fatalf("err = %v, want %q", err, tc.reason)
+			}
+		})
+	}
+}

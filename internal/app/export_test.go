@@ -219,3 +219,83 @@ func TestExportBundleIsZip(t *testing.T) {
 		}
 	}
 }
+
+// A Complete bundle of an Antigravity session carries the session's own
+// files byte for byte, none of agy's shared ones, and offers no restore.
+func TestExportBundleAntigravityComplete(t *testing.T) {
+	root := t.TempDir()
+	agyRoot := filepath.Join(root, "antigravity-cli")
+	own := map[string]string{
+		"brain/" + exportSessionID + "/.system_generated/logs/transcript_full.jsonl": `{"type":"USER_INPUT"}` + "\n",
+		"brain/" + exportSessionID + "/scratch/notes.md":                             "notes",
+		"conversations/" + exportSessionID + ".db":                                   "SQLite format 3\x00conversation",
+		"annotations/" + exportSessionID + ".pbtxt":                                  "last_user_view_time {}",
+	}
+	shared := []string{"antigravity-oauth-token", "history.jsonl", "conversation_summaries.db", "jetbox_summaries_proto.pb", "presence/" + exportSessionID + ".lock"}
+	for rel, data := range own {
+		writeAgyFile(t, filepath.Join(agyRoot, filepath.FromSlash(rel)), data)
+	}
+	for _, rel := range shared {
+		writeAgyFile(t, filepath.Join(agyRoot, filepath.FromSlash(rel)), "private")
+	}
+
+	ref := model.SessionRef{Agent: model.AgentAntigravity, ID: exportSessionID}
+	meta := model.SessionMeta{
+		Ref: ref, Title: "Export agy", CWD: "/work/project", Turn: model.TurnDone,
+		SourcePath: filepath.Join(agyRoot, "brain", exportSessionID, ".system_generated", "logs", "transcript_full.jsonl"),
+		CreatedAt:  time.Now(), UpdatedAt: time.Now(),
+	}
+	fake := providertest.NewFake(model.AgentAntigravity, "Antigravity")
+	fake.Transcripts[exportSessionID] = &model.Transcript{Meta: meta, Messages: []model.Message{
+		{Role: model.RoleUser, Parts: []model.Part{{Kind: model.PartText, Text: "export this agy session"}}},
+	}}
+	catalog := scan.NewCatalog()
+	catalog.Apply(provider.ScanResult{Changed: []model.SessionMeta{meta}})
+	svc := NewService(catalog, provider.Set{fake})
+	app := NewAppWithService(svc)
+	mgr, err := manage.New(paths.Roots{Antigravity: agyRoot, Config: filepath.Join(root, "config")}, filepath.Join(root, "config", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.manageOverride = mgr
+	dest := filepath.Join(t.TempDir(), "out.agent-session.zip")
+	app.saveDialogOverride = func(context.Context, string) (string, error) { return dest, nil }
+
+	if _, err := app.ExportBundle(ExportRequest{Ref: ref, Profile: "complete"}); err != nil {
+		t.Fatalf("ExportBundle: %v", err)
+	}
+	b, err := bundle.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Native) != len(own) {
+		t.Fatalf("native entries = %d, want %d", len(b.Native), len(own))
+	}
+	for rel, data := range own {
+		if got, ok := b.Native["native/antigravity/"+rel]; !ok || string(got) != data {
+			t.Errorf("%s = %q, %v", rel, got, ok)
+		}
+	}
+
+	data, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, err := svc.OpenBundleBytes(context.Background(), "out.agent-session.zip", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.RestoreAvailable || !summary.HandoffAvailable || summary.NativeFilesCount != len(own) {
+		t.Fatalf("summary = %+v", summary)
+	}
+}
+
+func writeAgyFile(t *testing.T, path, data string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}

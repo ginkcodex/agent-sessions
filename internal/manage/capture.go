@@ -50,6 +50,8 @@ func (m *Manager) CaptureSession(ctx context.Context, root model.SessionMeta, ca
 		return m.captureCodex(ctx, root, catalog)
 	case model.AgentOpenCode:
 		return m.captureOpenCode(ctx, root)
+	case model.AgentAntigravity:
+		return m.captureAntigravity(ctx, root, catalog)
 	default:
 		return nil, ErrUnsupportedAction
 	}
@@ -108,6 +110,39 @@ func (m *Manager) captureCodex(ctx context.Context, root model.SessionMeta, cata
 			return nil, errors.New("codex session has ambiguous rollout paths")
 		}
 		files, err := captureFiles(m.codex.ps, m.codex.root, paths)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, Capture{Ref: meta.Ref, ParentID: meta.ParentID, Files: files})
+	}
+	return out, nil
+}
+
+// captureAntigravity copies the files AGY-14 lists for the session and each
+// catalog subagent, parent first. agy's index row stays out: the bundle's
+// manifest already has its title.
+func (m *Manager) captureAntigravity(ctx context.Context, root model.SessionMeta, catalog []model.SessionMeta) ([]Capture, error) {
+	if m.antigravity == nil {
+		return nil, ErrUnsupportedAction
+	}
+	children, err := newCatalogIndex(catalog).descendants(root.Ref)
+	if err != nil {
+		return nil, err
+	}
+	sessions := append([]model.SessionMeta{root}, children...)
+	out := make([]Capture, 0, len(sessions))
+	for _, meta := range sessions {
+		// shortcut: conversations/<id>.db is copied as plain files, so a
+		// running turn could give a torn copy; read it through SQLite if
+		// exports of running sessions are needed.
+		if running(meta) {
+			return nil, fmt.Errorf("%w: session is running; export it once its turn is done", ErrLive)
+		}
+		paths, err := m.antigravity.paths(ctx, meta)
+		if err != nil {
+			return nil, err
+		}
+		files, err := captureFiles(m.antigravity.ps, m.antigravity.ps.root, paths)
 		if err != nil {
 			return nil, err
 		}

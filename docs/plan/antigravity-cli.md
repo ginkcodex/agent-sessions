@@ -302,7 +302,9 @@ New package `internal/provider/antigravity` implementing `provider.Provider`,
    [AGY-14](../tasks/antigravity-cli/AGY-14.md) spike
    ([antigravity-cli-delete.md](antigravity-cli-delete.md)) decided to move
    a session's own files to the Trash, and to write nothing else in agy's
-   store, its index included.
+   store, its index included. Export only reads: a Complete bundle carries
+   the same files ([AGY-19](../tasks/antigravity-cli/AGY-19.md)), and
+   restoring it stays out.
 
 ## Non-goals (v1)
 
@@ -315,7 +317,9 @@ New package `internal/provider/antigravity` implementing `provider.Provider`,
 - Cross-agent handoff into/out of Antigravity (`internal/handoff`) and portable
   bundle restore (`internal/bundle`). Export is follow-up work from desktop
   QA: share-safe in [AGY-18](../tasks/antigravity-cli/AGY-18.md), complete
-  (without restore) in [AGY-19](../tasks/antigravity-cli/AGY-19.md).
+  in [AGY-19](../tasks/antigravity-cli/AGY-19.md). A Complete bundle of an
+  Antigravity session can be inspected and continued through a handoff,
+  not restored.
 - Antigravity IDE (`~/.gemini/antigravity/`) separate from Antigravity CLI
   (`~/.gemini/antigravity-cli/`).
 - Plugin and skill slash-command inventory (`PluginLister`, skills in

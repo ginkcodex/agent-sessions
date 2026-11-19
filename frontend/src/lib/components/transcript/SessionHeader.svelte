@@ -5,7 +5,7 @@
   import { appState } from '../../stores/appState.svelte';
   import { handoff } from '../../stores/handoff.svelte';
   import { exporter } from '../../stores/export.svelte';
-  import { ALL_AGENTS, copyToClipboard } from '../../portable';
+  import { ALL_AGENTS, canRestoreNative, copyToClipboard } from '../../portable';
   import { agentSettings } from '../../stores/agentSettings.svelte';
   import { copyFailed } from '../../guidance';
   import { toast } from '../../stores/toast.svelte';
@@ -499,14 +499,16 @@
               type="button"
               class="action-menu-item"
               role="menuitem"
-              title="Export a bundle that can restore this session"
+              title={canRestoreNative(meta.ref.agent)
+                ? 'Export a bundle that can restore this session'
+                : "Export a bundle with this session's original records"}
               onclick={() => {
                 moreMenuOpen = false;
                 exporter.open(meta, 'complete');
               }}
             >
               <Icon name="package" size={14} />
-              <span>Complete (Restorable)…</span>
+              <span>Complete{canRestoreNative(meta.ref.agent) ? ' (Restorable)' : ''}…</span>
             </button>
             <button
               type="button"

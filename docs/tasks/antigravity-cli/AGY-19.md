@@ -1,6 +1,6 @@
 # AGY-19 — Complete export of Antigravity sessions
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 3 h
 - **Depends on:** [AGY-14](AGY-14.md), [AGY-18](AGY-18.md)
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
@@ -76,3 +76,68 @@ on.
 - Go: capture against a fixture store (files, subagent, refused paths), and
   an export → inspect round trip.
 - Manual: Complete export in the desktop app on macOS.
+
+## Evidence
+
+Done:
+
+- `internal/manage/capture.go` `captureAntigravity`: copies the files the
+  [AGY-14 spike](../../plan/antigravity-cli-delete.md) lists, for the
+  session and then each catalog subagent:
+  - every file under `brain/<id>/`;
+  - `conversations/<id>.db` (plus `-wal`/`-shm` if present);
+  - `annotations/<id>.pbtxt` if present.
+  It uses the same path checks as delete (`antigravityManager.paths`):
+  a UUID ID, `SourcePath` in that ID's `brain/`, no symlinks or protected
+  names in the tree. The index row, jetbox, `presence/`, `history.jsonl`
+  and `antigravity-oauth-token` are never copied.
+- SQLite consistency: a session or subagent whose turn is not done is
+  refused ("session is running; export it once its turn is done"). Idle
+  sessions are copied as plain files, with their WAL. Reading through
+  SQLite was not needed for idle sessions, and is noted in the code as the
+  upgrade if running sessions must be exported.
+- Restore:
+  - `internal/engine/import.go`: an Antigravity bundle's summary has
+    `restoreAvailable` false;
+  - `internal/manage/restore.go`: a restore into an agent without one
+    fails with "restoring <agent> sessions is not supported yet".
+- Frontend (`canRestoreNative` in `portable.ts`):
+  - the export dialog's Complete card reads "Includes the original session
+    records. Restore is not supported yet." for Antigravity, and
+    "Restorable…" for the other agents;
+  - the session's ⋯ menu says "Complete…" for Antigravity, and
+    "Complete (Restorable)…" for the other agents;
+  - the import dialog shows "Restore Not Supported Yet" for a Complete
+    bundle it cannot restore, with Continue in Agent. Before, it would
+    have fallen through to the share-safe text.
+- `docs/plan/antigravity-cli.md` decision 5 and the non-goals say so.
+
+Tests:
+
+- `internal/manage/antigravity_test.go`:
+  - capture of a parent and subagent: the exact file list of each, parent
+    first, with the WAL and annotation; recency does not block;
+  - refused: a running turn, a running subagent, the credential's name in
+    a subagent's `brain/`, another session's path.
+- `internal/app/export_test.go` `TestExportBundleAntigravityComplete`:
+  - a Complete export of a fixture store holds the session's 4 files byte
+    for byte, and none of the 5 shared files;
+  - opening the bundle gives `restoreAvailable` false, a handoff, and
+    4 native files.
+- `frontend/test/handoff.test.mjs`: the export dialog's Complete text for
+  Claude Code and Antigravity, and `canRestoreNative`.
+- Go: `go test ./internal/manage/... ./internal/engine/... ./internal/app/...
+  ./internal/bundle/... ./cmd/...` all pass. `golangci-lint run` on
+  manage, engine and app: the same issues as before the change (35, 38,
+  32), none new.
+- Frontend: `npm test` 1629 tests, 1624 pass, 0 fail.
+  `npm run check`: 0 errors, 0 warnings.
+
+Not checked:
+
+- A Complete export in the desktop app on macOS, and the import dialog
+  with the bundle.
+- The import dialog's "Restore Not Supported Yet" card has no frontend
+  test; it was only checked by `npm run check`.
+- A real agy store: the tests use fixture files. The file list comes from
+  the AGY-14 spike's store.

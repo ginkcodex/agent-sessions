@@ -32,18 +32,15 @@ func newAntigravityManager(root string, trash Trash, now NowFunc) (*antigravityM
 	return &antigravityManager{ps: ps, trash: trash, now: now}, nil
 }
 
-// plan derives one session's files from its ID, checks they are safe to
-// move and that the session is idle.
-func (am *antigravityManager) plan(ctx context.Context, m model.SessionMeta) ([]itemFile, error) {
-	if am.trash == nil {
-		return nil, errors.New("trash transport is unavailable on this platform")
-	}
+// paths derives one session's own files from its ID: brain/<id>/ first,
+// then those of conversations/ and annotations/ that exist. The brain tree
+// is checked for protected names and symlinks.
+func (am *antigravityManager) paths(ctx context.Context, m model.SessionMeta) ([]string, error) {
 	if m.Ref.Agent != model.AgentAntigravity || !uuidPattern.MatchString(m.Ref.ID) {
 		return nil, errors.New("invalid session ID format")
 	}
 	brain := filepath.Join(am.ps.root, "brain", m.Ref.ID)
-	src := filepath.Clean(m.SourcePath)
-	if filepath.Dir(src) != filepath.Join(brain, ".system_generated", "logs") {
+	if filepath.Dir(filepath.Clean(m.SourcePath)) != filepath.Join(brain, ".system_generated", "logs") {
 		return nil, errors.New("session path does not match session ID")
 	}
 	if err := am.ps.checkTree(ctx.Err, brain); err != nil {
@@ -62,6 +59,18 @@ func (am *antigravityManager) plan(ctx context.Context, m model.SessionMeta) ([]
 			return nil, errors.New("cannot inspect session files")
 		}
 	}
+	return paths, nil
+}
+
+// plan checks one session's files are safe to move and that it is idle.
+func (am *antigravityManager) plan(ctx context.Context, m model.SessionMeta) ([]itemFile, error) {
+	if am.trash == nil {
+		return nil, errors.New("trash transport is unavailable on this platform")
+	}
+	paths, err := am.paths(ctx, m)
+	if err != nil {
+		return nil, err
+	}
 	files, err := filesForPaths(am.ps, paths)
 	if err != nil {
 		return nil, safePathError(err)
@@ -74,14 +83,16 @@ func (am *antigravityManager) plan(ctx context.Context, m model.SessionMeta) ([]
 		}
 	}
 	// The transcript is inside brain/, whose own mtime does not follow it.
-	if err := checkRecent(am.now(), m, append([]itemFile{{Path: src}}, files...)); err != nil {
+	if err := checkRecent(am.now(), m, append([]itemFile{{Path: m.SourcePath}}, files...)); err != nil {
 		return nil, err
 	}
-	if m.Turn != "" && m.Turn != model.TurnDone {
+	if running(m) {
 		return nil, fmt.Errorf("%w: session is currently active", ErrLive)
 	}
 	return files, nil
 }
+
+func running(m model.SessionMeta) bool { return m.Turn != "" && m.Turn != model.TurnDone }
 
 func (m *Manager) planAntigravity(ctx context.Context, meta model.SessionMeta, idx *catalogIndex, procLive map[string]string, procErr error) (operation, error) {
 	if m.antigravity == nil {

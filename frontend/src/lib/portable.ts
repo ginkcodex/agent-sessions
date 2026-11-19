@@ -47,6 +47,11 @@ export const ALL_AGENTS: AgentOption[] = [
   { id: 'antigravity', label: 'Antigravity' },
 ];
 
+/** Whether a Complete bundle can be restored into the agent. No restore writes Antigravity's store yet. */
+export function canRestoreNative(agent?: string): boolean {
+  return agent !== 'antigravity';
+}
+
 export function targetAgentsFor(sourceAgent?: string): AgentOption[] {
   return ALL_AGENTS.filter((a) => a.id !== sourceAgent);
 }

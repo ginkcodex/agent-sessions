@@ -382,3 +382,19 @@ export function loadAppearanceSettings() {
   })();
   return appearanceSettingsModule;
 }
+
+const EXPORT_DIALOG_URL = new URL('../src/lib/components/common/ExportDialog.svelte', import.meta.url);
+
+let exportDialogModule;
+
+export async function renderExportDialog(exporter) {
+  const lib = (rel) => JSON.stringify(new URL(rel, EXPORT_DIALOG_URL).href);
+  exportDialogModule ??= await loadServerComponent(EXPORT_DIALOG_URL, [
+    ["'../../portable'", lib('../../portable.ts')],
+    ["'../../format'", lib('../../format.ts')],
+    ["import { exporter } from '../../stores/export.svelte';", fixtureStore('exporter')],
+  ]);
+  return renderWithFixture(exportDialogModule, {
+    exporter: { dialogOpen: true, profile: 'complete', budget: 80000, redactSecrets: true, ...exporter },
+  });
+}

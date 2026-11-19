@@ -1,7 +1,7 @@
 # Antigravity CLI — tasks
 
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
-- **Progress:** 17/19 done
+- **Progress:** 18/19 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -23,4 +23,4 @@
 | [AGY-16](AGY-16.md) | ✅ Done | Tool cards: agy's `Path` / `StartLine` / `CommandLine` arguments for the file link and summary; real argument names in fixtures | 2 h | AGY-04 |
 | [AGY-17](AGY-17.md) | ✅ Done | Effort picker says "Extra" where agy says `xhigh` | 1 h | AGY-06 |
 | [AGY-18](AGY-18.md) | ✅ Done | Share-safe export and import: `antigravity` missing from the bundle's `safeAgent` list | 1 h | AGY-10 |
-| [AGY-19](AGY-19.md) | ⬜ Not started | Complete export: capture agy's native records (list from AGY-14); restore stays unsupported and is said so | 3 h | AGY-14, AGY-18 |
+| [AGY-19](AGY-19.md) | ✅ Done | Complete export: capture agy's native records (list from AGY-14); restore stays unsupported and is said so | 3 h | AGY-14, AGY-18 |
