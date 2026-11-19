@@ -106,7 +106,7 @@
             "id": "step-2-2",
             "name": "invoke_subagent",
             "input": {
-              "Task": "Review the diff"
+              "Prompt": "Review the diff"
             },
             "output": "Created the following subagent:\n{\n  \"conversationId\":  \"0ce5ddc2-779f-452d-9c81-281712caf621\",\n  \"logAbsoluteUri\":  \"file:///x\"\n}\n\n# Review\n\nLooks good.",
             "status": "completed",

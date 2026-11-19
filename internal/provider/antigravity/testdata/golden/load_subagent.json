@@ -62,7 +62,7 @@
             "id": "step-1-0",
             "name": "read_file",
             "input": {
-              "AbsolutePath": "/work/x.go"
+              "Path": "/work/x.go"
             },
             "output": "package x",
             "status": "completed"

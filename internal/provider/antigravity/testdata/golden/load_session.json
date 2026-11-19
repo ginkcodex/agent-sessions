@@ -65,7 +65,7 @@
             "id": "step-1-0",
             "name": "read_file",
             "input": {
-              "AbsolutePath": "/work/AGENTS.md"
+              "Path": "/work/AGENTS.md"
             },
             "output": "Showing lines 1 to 2\n# Agents\nBe brief.\n",
             "status": "completed"
@@ -179,7 +179,7 @@
             "id": "step-8-2",
             "name": "invoke_subagent",
             "input": {
-              "Task": "Check the docs"
+              "Prompt": "Check the docs"
             },
             "output": "Created the following subagent:\n{\n  \"conversationId\":  \"0ce5ddc2-779f-452d-9c81-281712caf621\",\n  \"logAbsoluteUri\":  \"file:///x\"\n}",
             "status": "completed",
@@ -261,8 +261,8 @@
             "id": "step-15-0",
             "name": "write_file",
             "input": {
-              "TargetFile": "/work/NOTES.md",
-              "CodeContent": "hi"
+              "Path": "/work/NOTES.md",
+              "Content": "hi"
             },
             "status": "pending"
           }

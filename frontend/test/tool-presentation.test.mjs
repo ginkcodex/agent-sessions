@@ -32,6 +32,9 @@ test('summaries show command/path arguments, not hidden arbitrary parameters', (
   assert.equal(toolInputSummary({ query: 'needle' }), 'needle');
   assert.equal(toolInputSummary('unstructured hidden parameters'), '');
   assert.equal(toolInputSummary(null), '');
+  // Antigravity's argument names.
+  assert.equal(toolInputSummary({ CommandLine: 'make test', WaitMsBeforeAsync: 5000, toolSummary: 'run tests' }), 'make test');
+  assert.equal(toolInputSummary({ Path: '/w/a.go', StartLine: 3 }), '/w/a.go');
 });
 
 const tool = await loadServerComponent(new URL('../src/lib/components/transcript/parts/ToolPart.svelte', import.meta.url), [
@@ -89,4 +92,13 @@ test('Read opens at its offset; the path is never URI-decoded', () => {
   // OpenCode's read may count from 0, so only Claude Code's Read gets a line.
   assert.deepEqual(toolFileTarget('read', { filePath: 'a.go', offset: 120 }), { path: 'a.go' });
   assert.deepEqual(toolFileTarget('Edit', { file_path: 'docs/100%25 done.md' }), { path: 'docs/100%25 done.md' });
+  // Antigravity: Path on its file tools, read_file's StartLine from 1.
+  assert.deepEqual(toolFileTarget('read_file', { Path: '/w/a.go' }), { path: '/w/a.go' });
+  assert.deepEqual(toolFileTarget('read_file', { Path: '/w/a.go', StartLine: 800, EndLine: 929 }), { path: '/w/a.go', line: 800 });
+  assert.deepEqual(toolFileTarget('read_file', { Path: '/w/a.go', StartLine: 0 }), { path: '/w/a.go' });
+  assert.deepEqual(toolFileTarget('write_file', { Path: '/w/n.md', Content: 'x', Overwrite: true }), { path: '/w/n.md' });
+  assert.deepEqual(toolFileTarget('edit_file', { Path: '/w/a.go', Target: 'a', Replacement: 'b' }), { path: '/w/a.go' });
+  assert.equal(toolFileTarget('run_command', { CommandLine: 'cat a.txt' }), null);
+  assert.equal(toolFileTarget('Grep', { Path: 'src' }), null);
+  assert.deepEqual(toolFileTarget('Edit', { file_path: 'a.go', StartLine: 5 }), { path: 'a.go' });
 });

@@ -1,6 +1,6 @@
 # AGY-16 — Tool calls show no file path or command
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 2 h
 - **Depends on:** [AGY-04](AGY-04.md)
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
@@ -79,3 +79,48 @@ is small.
 - Go: goldens after the fixture rename.
 - Manual: the "General Greeting" style session on macOS at the Activity
   level.
+
+## Evidence
+
+Done:
+
+- `toolPresentation.ts`:
+  - `toolFileTarget` treats `read_file`, `write_file` and `edit_file` as
+    file tools, and reads their `Path`.
+  - `read_file`'s `StartLine` gives the line, as Claude Code's `Read`
+    offset does. agy counts it from 1: a saved call with `StartLine` 800
+    answers "Showing lines 800-929".
+  - `toolInputSummary` reads `CommandLine` after `command`/`cmd`, and `Path`
+    after `path`.
+- Fixtures use the real argument names:
+  - `AbsolutePath` and `TargetFile` → `Path`;
+  - `CodeContent` → `Content`;
+  - `Task` → `Prompt`.
+
+  The regenerated goldens differ only in those names. `list_dir`'s
+  `DirectoryPath` stays: no real `list_dir` call was seen to check it.
+- `internal/handoff/build.go` maps Antigravity tools by name only. No Go
+  code reads agy's arguments by name, so nothing else changed.
+- `mockApi.ts` has no agy tool calls; unchanged.
+
+Tests:
+
+- `frontend/test/tool-presentation.test.mjs` covers:
+  - `Path` on the three file tools;
+  - `StartLine` 800, and 0 ignored;
+  - `run_command` with no file;
+  - `Path` ignored on a non-file tool;
+  - `StartLine` ignored on Claude's `Edit`;
+  - summaries from `CommandLine` and `Path`.
+- `npm test`: 1627 tests, 1622 pass, 0 fail, 5 skipped. `npm run check`:
+  0 errors, 0 warnings.
+- `go test ./internal/provider/antigravity/`: ok.
+
+Not checked / left:
+
+- The desktop app on macOS.
+- Live chat cards: their name is agy's ACP title (`File ../../…`), not
+  `read_file`, so they still have no file link. They are replaced by the
+  saved card, which has the link, once the turn is saved. Linking them would
+  use ACP `locations`, which every agent sends, so it is left for a separate
+  task if wanted.
