@@ -166,6 +166,60 @@ Columns (probe at runtime; presence varies by version): `id`, `rollout_path`, `c
 
 ---
 
+## Antigravity CLI (`agy`) (verified 2026-11-19, agy 1.5.12, Linux and macOS)
+
+**Root:** `~/.gemini/antigravity-cli` (Windows unverified). `agy` reads no
+variable for it; `ANTIGRAVITY_CLI_DIR` is this app's own override. Details and
+probes: [plan/antigravity-cli-spike.md](plan/antigravity-cli-spike.md).
+
+```
+conversation_summaries.db                     SQLite (WAL) session index
+brain/<id>/.system_generated/logs/
+    transcript_full.jsonl                     the transcript (transcript.jsonl if absent)
+    chunks/                                   100 KiB pieces of the same bytes; never read
+brain/<id>/scratch/, .system_generated/steps/ agent working files; not read
+```
+
+- **Never read** `antigravity-oauth-token` (Linux credentials; on macOS they
+  are in the keyring), `history.jsonl`, `conversations/*.db` or
+  `presence/*.lock`. The store is never written; opening the index read-only
+  may still create its `-shm`.
+
+### `conversation_summaries` (one row per session)
+
+Read: `conversation_id`, `title`, `preview` (both may be empty),
+`workspace_uris` (JSON array of `file://` URIs; the **first** is the cwd, as
+agy's own `session/list` reports; Windows drives are `file:///C:/...`),
+`status` (`CASCADE_RUN_STATUS_IDLE`, `…_RUNNING`, `…_CANCELING`, or `""`),
+`last_modified_time` (text, `2026-11-19 01:50:40.875170637+00:00`),
+`not_fully_idle` and `killed` (0/1), `agent_name` (`self`, `research` on a
+subagent), `parent_conversation_id`. There is no creation time, and
+`step_count` lags live writes. `conversation_parents(conversation_id,
+parent_id)` was empty in every store seen; it is only a fallback.
+
+The row is **not** a turn signal on its own: rows stay `RUNNING` with
+`not_fully_idle = 1` after a clean exit, and `CANCELING` long after the
+process died. The scan reports `working` only when the row is `RUNNING` or
+`CANCELING`, not fully idle, not killed, written to (row or transcript) in
+the last 10 minutes, **and** the transcript's last step has not ended the
+turn.
+
+### Transcript steps (one JSON object per line)
+
+Common fields: `step_index` (unique, increasing), `source` (`USER_EXPLICIT`,
+`MODEL`, `SYSTEM`), `type`, `status`, `created_at` (RFC3339 UTC, seconds).
+
+| `type` | Notes |
+|---|---|
+| `USER_INPUT` | `content`: `<USER_REQUEST>\n…\n</USER_REQUEST>` then `<ADDITIONAL_METADATA>` and sometimes `<USER_SETTINGS_CHANGE>` blocks. Only the request is the prompt. |
+| `PLANNER_RESPONSE` | `model`, `input_tokens`, `cache_read_tokens`, `output_tokens`, `thinking`, `content`, `tool_calls: [{name, args}]`. No `tool_calls` ends the turn. |
+| `GENERIC` | Step `s + 1 + k` is the result of call *k* of the response at step `s`. `status` `DONE`, `ERROR` (+ `error`) or `RUNNING` (a background task). `content` starts with `Created At:` / `Completed At:` lines. A denied call may have no result step. |
+| `SYSTEM_MESSAGE` | `content` wraps `<SYSTEM_MESSAGE>\n[Message] timestamp=… sender=… priority=… content=<text>\n</SYSTEM_MESSAGE>`. `sender` is `system`, a session ID (a parent's task, which opens a subagent transcript in place of `USER_INPUT`, or a child's report) or `<session>/task-<step>` (a background task's result). |
+| `CHECKPOINT` | A compaction summary. |
+| `ERROR_MESSAGE` | After a cancelled turn's partial reply (macOS). Ends the turn. |
+
+---
+
 ## Spike results: export, import, restore (verified 2026-09-29, M6-02)
 
 Verified on Ubuntu 26.04 with Claude Code 2.1.284, Codex CLI 0.158.0, and OpenCode 2.0.18:

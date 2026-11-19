@@ -221,7 +221,7 @@ func (p *Provider) indexRolloutPath(raw string) (string, error) {
 	if !strings.HasPrefix(name, "rollout-") || !strings.HasSuffix(name, ".jsonl") {
 		return "", fmt.Errorf("rollout_path %q is not a rollout JSONL file", raw)
 	}
-	if !withinRoot(p.root, candidate) {
+	if !pathutil.WithinRoot(p.root, candidate) {
 		return "", fmt.Errorf("rollout_path %q is missing or escapes Codex root", raw)
 	}
 	info, err := os.Stat(candidate)

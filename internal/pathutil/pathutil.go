@@ -36,6 +36,22 @@ func NormalizeDir(p string) string {
 	return p
 }
 
+// WithinRoot resolves symlinks in path and reports whether it stays inside
+// root. Unlike a lexical check it rejects a link pointing outside root, and a
+// broken link.
+func WithinRoot(root, path string) bool {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+	root = NormalizeDir(root)
+	rel, err := filepath.Rel(root, resolved)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 // Exists reports whether p names an existing file or directory. Broken
 // symlinks do not count as existing, and neither do absolute paths in the
 // other OS's style.

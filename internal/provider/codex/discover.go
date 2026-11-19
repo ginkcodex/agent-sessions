@@ -67,7 +67,7 @@ func (p *Provider) visitDirs(ctx context.Context, dir string, widths []int, file
 		}
 		// Reject symlink escapes (and broken symlinks); only regular files are
 		// sources. os.Open tests readability, unlike os.Stat.
-		if !withinRoot(p.root, path) {
+		if !pathutil.WithinRoot(p.root, path) {
 			warn(diag, path, "rollout symlink escapes Codex root or is broken")
 			continue
 		}
@@ -105,21 +105,6 @@ func digits(s string, width int) bool {
 	return true
 }
 
-// withinRoot resolves symlinks and checks containment. Unlike a lexical-only
-// check it does not allow files pointing outside the configured Codex root.
-func withinRoot(root, path string) bool {
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return false
-	}
-	root = pathutil.NormalizeDir(root)
-	rel, err := filepath.Rel(root, resolved)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
 func warn(diag *provider.Diagnostics, path, format string, args ...any) {
 	if diag != nil {
 		diag.Warn(path, 0, format, args...)
@@ -155,7 +140,7 @@ func (p *Provider) indexDBPath() (string, error) {
 			continue
 		}
 		path := filepath.Join(p.root, name)
-		if !withinRoot(p.root, path) {
+		if !pathutil.WithinRoot(p.root, path) {
 			continue
 		}
 		info, err := entry.Info()
