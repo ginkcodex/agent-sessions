@@ -255,6 +255,8 @@ func agentNode(key string, agent model.AgentID) *treeNode {
 		label = "Codex"
 	case model.AgentOpenCode:
 		label = "OpenCode"
+	case model.AgentAntigravity:
+		label = "Antigravity"
 	}
 	return &treeNode{Node: Node{Key: key, Label: label, Kind: Agent, Agent: agent}}
 }

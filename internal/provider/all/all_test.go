@@ -1,6 +1,7 @@
 package all_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ginkcode/agent-sessions/internal/model"
@@ -13,12 +14,19 @@ func TestProviders(t *testing.T) {
 		Claude:       "/tmp/fake-claude",
 		Codex:        "/tmp/fake-codex",
 		OpenCodeData: "/tmp/fake-opencode",
+		Antigravity:  "/tmp/fake-antigravity",
 	}
 	set := all.Providers(roots, nil)
-	if len(set) != 3 {
-		t.Fatalf("expected 3 providers, got %d", len(set))
+	if len(set) != 4 {
+		t.Fatalf("expected 4 providers, got %d", len(set))
 	}
-	for _, id := range []model.AgentID{model.AgentClaude, model.AgentCodex, model.AgentOpenCode} {
+	if got := strings.Join(all.IDs(), ","); got != "claude-code,codex,opencode,antigravity" {
+		t.Fatalf("IDs = %s", got)
+	}
+	if got, err := all.Canonical([]string{"antigravity", "claude-code", "antigravity"}); err != nil || strings.Join(got, ",") != "claude-code,antigravity" {
+		t.Fatalf("Canonical = %v, %v", got, err)
+	}
+	for _, id := range []model.AgentID{model.AgentClaude, model.AgentCodex, model.AgentOpenCode, model.AgentAntigravity} {
 		p, ok := set.Get(id)
 		if !ok || p == nil {
 			t.Fatalf("expected %s provider in set", id)

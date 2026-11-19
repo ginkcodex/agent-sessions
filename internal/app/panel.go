@@ -119,6 +119,8 @@ func agentLabel(agent model.AgentID) string {
 		return "Codex"
 	case model.AgentOpenCode:
 		return "OpenCode"
+	case model.AgentAntigravity:
+		return "Antigravity"
 	}
 	return "Agent"
 }

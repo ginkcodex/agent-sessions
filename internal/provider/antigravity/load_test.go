@@ -294,7 +294,7 @@ func TestLoadIncrementalEveryBoundary(t *testing.T) {
 				writeTranscript(t, root, childID, systemStep(0, parentID, "Check the docs"))
 			}
 			path := writeTranscript(t, root, parentID)
-			p, cold := commandless{newTestProvider(t, root, loadNow)}, commandless{newTestProvider(t, root, loadNow)}
+			p, cold := newTestProvider(t, root, loadNow), newTestProvider(t, root, loadNow)
 			var h providertest.IncrementalHarness
 			for i := range data {
 				if data[i] != '\n' {
@@ -313,9 +313,12 @@ func TestLoadIncrementalEveryBoundary(t *testing.T) {
 	}
 }
 
-// commandless completes provider.Provider until the terminal commands land
-// (AGY-05).
-type commandless struct{ *Provider }
-
-func (commandless) ResumeCommand(model.SessionMeta) provider.Command { return provider.Command{} }
-func (commandless) NewSessionCommand(string) provider.Command        { return provider.Command{} }
+func TestCommands(t *testing.T) {
+	p := New(t.TempDir(), nil)
+	if got := p.NewSessionCommand("/work"); !reflect.DeepEqual(got, provider.Command{Argv: []string{"agy"}, Dir: "/work"}) {
+		t.Errorf("NewSessionCommand = %+v", got)
+	}
+	if got := p.ResumeCommand(model.SessionMeta{Ref: ref(parentID), CWD: "/work"}); !reflect.DeepEqual(got, provider.Command{Argv: []string{"agy", "--conversation", parentID}, Dir: "/work"}) {
+		t.Errorf("ResumeCommand = %+v", got)
+	}
+}

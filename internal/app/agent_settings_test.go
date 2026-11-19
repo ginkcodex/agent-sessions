@@ -25,7 +25,7 @@ func TestAgentSettingsBindingRoutesOnlyToActiveHost(t *testing.T) {
 		t.Fatalf("get=%+v %v", loaded, err)
 	}
 	localGot, err := local.GetAgentSettings(t.Context())
-	if err != nil || len(localGot.Enabled) != 3 {
+	if err != nil || len(localGot.Enabled) != 4 {
 		t.Fatalf("local settings changed=%+v %v", localGot, err)
 	}
 	a.backend = offlineBackend{host: "unsupported"}
@@ -36,7 +36,7 @@ func TestAgentSettingsBindingRoutesOnlyToActiveHost(t *testing.T) {
 		t.Fatalf("set=%v", err)
 	}
 	localGot, err = local.GetAgentSettings(t.Context())
-	if err != nil || len(localGot.Enabled) != 3 {
+	if err != nil || len(localGot.Enabled) != 4 {
 		t.Fatal("unsupported route fell back to local")
 	}
 }

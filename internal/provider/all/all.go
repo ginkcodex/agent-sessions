@@ -9,6 +9,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/provider/antigravity"
 	"github.com/ginkcode/agent-sessions/internal/provider/claude"
 	"github.com/ginkcode/agent-sessions/internal/provider/codex"
 	"github.com/ginkcode/agent-sessions/internal/provider/opencode"
@@ -28,6 +29,9 @@ var registry = []registration{
 	{Agent{string(model.AgentClaude), "Claude Code"}, func(r paths.Roots, g *pathutil.GitResolver) provider.Provider { return claude.New(r.Claude, g) }},
 	{Agent{"codex", "Codex"}, func(r paths.Roots, g *pathutil.GitResolver) provider.Provider { return codex.New(r.Codex, g) }},
 	{Agent{"opencode", "OpenCode"}, func(r paths.Roots, g *pathutil.GitResolver) provider.Provider { return opencode.New(r.OpenCodeData, g) }},
+	{Agent{"antigravity", "Antigravity"}, func(r paths.Roots, g *pathutil.GitResolver) provider.Provider {
+		return antigravity.New(r.Antigravity, g)
+	}},
 }
 
 // Supported is independent of installed or enabled providers.
