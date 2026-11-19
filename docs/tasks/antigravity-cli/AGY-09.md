@@ -19,10 +19,22 @@ spike's second pass ([antigravity-cli-spike.md](../../plan/antigravity-cli-spike
    "<session>/task-<step>" finished with result:` followed by the output.
 2. **Subagent reports.** A `SYSTEM_MESSAGE` with `sender=<child session id>`
    carries the subagent's report to its parent.
-3. **Other `SYSTEM_MESSAGE`s** (the
+3. **Subagent task prompts.** A subagent's transcript starts with a
+   `SYSTEM_MESSAGE` from `sender=<parent id>` carrying its task, and has no
+   `USER_INPUT` (macOS pass).
+4. **Other `SYSTEM_MESSAGE`s** (the
    `The following is a <SYSTEM_MESSAGE> not actually sent by the user…`
-   preamble).
-4. **`CHECKPOINT`**: a compaction summary (`# Resuming from a compaction`).
+   preamble), such as `sender=system` `[Notice] All your subagents and
+   background tasks have been stopped due to server restart…`, saved
+   between the prompt and the reply after every resume.
+5. **`CHECKPOINT`**: a compaction summary (`# Resuming from a compaction`).
+6. **`ERROR_MESSAGE`**: `Error: The stream was interrupted…`, saved after
+   the partial reply of a cancelled turn (macOS pass).
+
+`brain/<id>/.system_generated/steps/<n>/output.txt` holds step *n*'s final
+output, including a background task's. If a task-result message is
+missing, it may complete the call instead. Optional: not needed for the
+criteria below.
 
 ## Likely files
 
@@ -48,13 +60,20 @@ spike's second pass ([antigravity-cli-spike.md](../../plan/antigravity-cli-spike
   `invoke_subagent` tool call whose result named that child, as a
   background task's result is; that call keeps its `Child` link. With no
   such call it falls back to a meta notice. No new `model.Message` field.
+- In a subagent transcript, the first `SYSTEM_MESSAGE` from
+  `sender=<parent id>` is a user message holding just the task text (the
+  preamble and the `[Message] … content=` header removed), counted as the
+  first prompt.
 - Other `SYSTEM_MESSAGE`s are `IsMeta: true`: hidden at default verbosity
   and never counted as user prompts.
 - `CHECKPOINT` becomes a `PartCompaction` part with the summary text.
+- `ERROR_MESSAGE` is an `IsMeta: true` notice, never an error that stops
+  the load.
 
 ## Tests
 
 - Golden transcript tests: background task completed later; background task
   never completed (stays running); malformed task message; subagent report;
-  plain system notice; checkpoint.
+  subagent transcript opening with its parent's task message; restart
+  notice after a resume; cancelled turn with `ERROR_MESSAGE`; checkpoint.
 - Incremental load test: task result appended after the `RUNNING` result.

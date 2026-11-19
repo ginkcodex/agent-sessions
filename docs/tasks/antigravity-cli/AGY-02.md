@@ -23,7 +23,8 @@ allowlist across shared backend packages before implementing the provider.
   check and `editPolicy()` protected roots.
 - `internal/engine/cache.go` — include `e.roots.Antigravity` in `indexKey()`.
 - `internal/rpc/server.go` — add `ANTIGRAVITY_CLI_DIR` to `allowlistedEnvKeys`.
-- `internal/launch/find.go` — add `~/.local/bin` (verified) and
+- `internal/launch/find.go` — add `~/.local/bin` (verified on Linux and
+  macOS) and
   `%LOCALAPPDATA%\agy\bin` (a guess, unverified), `"agy"` label
   (`"Antigravity"`), and install hint.
 

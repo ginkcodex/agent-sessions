@@ -236,8 +236,109 @@ once the provider lands: `3c96184f` ("AGENTS.md File Reference Analysis",
 left `CANCELING`) and `85a681f9` ("Execute Shell Command And Read File",
 cwd `/tmp/agy-acp-ws`).
 
+## Third pass: macOS (2026-11-19)
+
+### Setup
+
+- **Host:** macOS (Darwin 27.2, arm64), `agy` `1.5.12`
+  (`~/.local/bin/agy`, a Mach-O arm64 binary, not a symlink), already logged
+  in.
+- **Client:** a throwaway Go program, not committed, driving `agy acp`
+  through this repo's own `internal/acp.Client` (`Start`, `NewSession`,
+  `SetConfigOption`, `Prompt`, `Cancel`, `ResumeSession`, `Close`) with
+  `OnPermission` and `OnElicitation` set, as `internal/engine/chat.go` does.
+  A Python script, also not committed, tested `session/close`.
+- **Store reads:** read-only. The SQLite DB was queried from a copy in
+  `/tmp` (see the `-shm` note below). Every session in the store was checked
+  with a throwaway script: record types, keys, `s + 1 + k` pairing,
+  `chunks/` identity, header lines.
+- **Sessions:** `286a8386` (an interactive "Hi"), `7b174297` and its
+  subagent `c75623da` (the user asked agy to verify ACP on this Mac; the
+  subagent ran its own ACP probe as `e358782b`), and this pass's probe
+  `e0a445f7` (cwd `/tmp/agy-acp-mac-ws`, 29 steps).
+
+### Confirmed on macOS
+
+- The root is `~/.gemini/antigravity-cli`, with the same layout as on Linux:
+  `conversation_summaries.db`, `brain/<id>/.system_generated/logs/transcript_full.jsonl`,
+  `conversations/<id>.db`, `presence/<id>.lock`. The `conversation_summaries`
+  schema and the timestamp format are the same as on Linux.
+- `agy --conversation <id> -p …` resumed the ACP-made session `e0a445f7`:
+  it appended to the same transcript and made no new session.
+- `initialize`: same capabilities, `authMethods` and `agentInfo` as on
+  Linux; `CanResume() == true`, `CanSteer() == false`. Start took 0.07–0.28 s.
+- `session/new` (1.0 s), `session/set_config_option` (`thought_level: low`),
+  `session/resume` in a new process (1.27 s, context kept: it recalled the
+  first turn's echo output), and stdin-close exit (0.8–1.0 s).
+- Permission: options `allow` (`allow_once`) and `deny` (`reject_once`);
+  allow ran the command; both turns ended `end_turn`.
+- `session/cancel` while text streamed: `stopReason: cancelled` 0.01 s
+  later, one more chunk after the cancel, and the next prompt worked.
+- No `messageId` and no `_meta` on any frame; `toolCallId` is
+  `call_<digits>` and is not saved; `tool_call` `args` equal the saved
+  `tool_calls[k].args`.
+- `s + 1 + k` pairing matched every result (17 in older sessions, 3 in the
+  probe); `step_index` was unique and increasing; `chunks/` was
+  byte-identical to `transcript_full.jsonl`.
+- The `RUNNING` background task result and its later `SYSTEM_MESSAGE`
+  (`sender=<session>/task-7 … finished with result:`) look as they do on
+  Linux. So do subagent reports (`sender=<child id>`) and the
+  `invoke_subagent` result `"conversationId":  "<uuid>"` with two spaces.
+
+### Differences from the first two passes
+
+| Check | Observed on macOS |
+|---|---|
+| Denied ACP call | **Writes a result step**: `GENERIC` `ERROR` at `s + 1`, `error: permission check failed for unsandboxed "…": user denied permission to run command: …`. The first pass's denied call left no step. Both shapes must be handled |
+| ACP denied update | `tool_call_update` `status: failed`, `rawOutput: {"output": ""}`, one empty text `content` block |
+| Completed `run_command` update | `rawOutput: {"output": "…", "exit_code": 0}` **and** a `content` text block with the same text. The first pass saw no `content` block. `read_file` still completes with neither |
+| Cancelled turn on disk | The partial `PLANNER_RESPONSE`, then a **new step type `ERROR_MESSAGE`**: `Error: The stream was interrupted. Please continue the task you were working on.` |
+| After every resume | The first prompt saves `USER_INPUT`, then a `SYSTEM_MESSAGE` `sender=system priority=MESSAGE_PRIORITY_LOW content=[Notice] All your subagents and background tasks have been stopped due to server restart…`, then the reply |
+| `mode` values | **4**: `default`, `accept-edits`, `auto` ("Approve edits and safe commands; ask before irreversible actions"), `plan`. The CLI's `--mode` flag lists the same (except `default`). Same version as the Linux pass, which saw 3 |
+| `thought_level` default | `high` (`low`, `medium`, `high`, `xhigh`) |
+| Model list | The same 9 `model` options as on Linux |
+| `config_option_update` | Pushed at the start of the first prompt after `set_config_option` |
+| Summary row after exit | **Intermittently stale**: twice, after a clean stdin-close exit, the row stayed `CASCADE_RUN_STATUS_RUNNING`, `not_fully_idle = 1`, with `step_count` 2 behind the transcript (12 of 14, then 18 of 20). Two later runs, one with and one without `session/close`, left `IDLE`. `session/close` is not the trigger: the app's `Client.Close` never sends it, and agy recovers on the next CLI run |
+| Interactive session | `286a8386` ("Hi") has `status` `""` and `last_user_input_time` `0001-01-01`, though it is a top-level user session |
+| Subagent row | `agent_name: "self"` and an **empty `title` and `preview`** |
+| Subagent transcript | Starts with a `SYSTEM_MESSAGE` from `sender=<parent id>` carrying the task prompt; it has **no `USER_INPUT`** at all |
+| Result header lines | 4 lines (`Created At`/`Completed At` twice) on `DONE`, 2 on `ERROR`, 1 (`Created At`) on `RUNNING`. They use local time (`+07:00`), while `created_at` is UTC |
+| Command output | Saved with `\r\n` line ends (PTY output) |
+| `antigravity-oauth-token` | **Absent**: on macOS the credential is in the keyring (the binary has `secret not found in keyring`) |
+| `-wal` / `-shm` | Absent while no `agy` runs. A read-only open then has to create `-shm`. It fails with `SQLITE_CANTOPEN` (14) when the directory is not writable; this session's sandbox hit that. The real store directory is writable by the user, so `sqliteread.Open` (`mode=ro`) works there |
+| Env strings | The binary does contain `ANTIGRAVITY_CONFIG_REL_DIR`, `ANTIGRAVITY_EXECUTABLE_DATA_DIR` and `ANTIGRAVITY_PLUGIN_SHIM_DIR`, but they are variables agy *sets* for its sidecars and plugins, not ones that move its store. The conclusion stands: only `--gemini-dir` / `--app-data-dir` move it |
+| `/tmp` workspace | Saved as `file:///tmp/agy-acp-mac-ws` (not resolved to `/private/tmp`) |
+
+### Files not seen in the first two passes
+
+All under `brain/<id>/.system_generated/`, none needed for v1:
+
+- `steps/<n>/output.txt`: a tool result's output, with one header pair and
+  `\n` line ends. For a background task (`steps/7`) it holds the **final**
+  output, which the `RUNNING` step never does. A fallback for AGY-09 when
+  the task-result message is missing.
+- `tasks/task-<n>.log`: a background task's raw output.
+- `messages/<uuid>.json` (`sender`, `recipient`, `timestamp`,
+  `renderDetails.messageTitle`, `content`), `messages/read.json`,
+  `messages/undelivered/`: the inter-agent messages behind `SYSTEM_MESSAGE`s.
+- `subagents/<child>.json` in the parent: `conversationId`,
+  `subagentDescriptor: {typeName, role}`, `state`, `spawnStepIndex`,
+  `workspaceUris`. A structured parent→child link and a role
+  ("Antigravity ACP Verifier") usable as a title for an untitled subagent.
+- At the root: `history.jsonl` (`0600`, prompt history; not read),
+  `annotations/`, `implicit/`, `persistent_terminals/`, `updater/`,
+  `jetbox_summaries_proto.pb`, `jetski_state.pbtxt`, `installation_id`.
+
+### Side effects
+
+Probe session `e0a445f7` ("Shell Command Execution and File Reading", cwd
+`/tmp/agy-acp-mac-ws`) is a real session in the store. agy's own
+verification sessions `7b174297`, `c75623da` and `e358782b` predate this
+pass.
+
 ### Still not checked
 
-Windows and macOS installs, remote hosts, `elicitation/create`, image
-prompts, logged-out flow, and a transcript long enough to compact through
-ACP.
+Windows installs, remote hosts, `elicitation/create`, image prompts,
+logged-out flow, a transcript long enough to compact through ACP, the
+interactive TUI (only print mode `-p` was run), and a tool output large
+enough to show whether `transcript_full.jsonl` clips it.

@@ -11,7 +11,8 @@ Implement full and incremental transcript parsing (`Load`, `LoadIncremental`,
 `LoadFromSource`, `Blob`) for Antigravity's `transcript_full.jsonl` (falling
 back to `transcript.jsonl`), with clean prompt extraction, tool-call/result
 pairing by `step_index`, subagent child links, and lazy blob retrieval for
-large outputs. Background tasks, `SYSTEM_MESSAGE` and `CHECKPOINT` steps are
+large outputs. Background tasks, `SYSTEM_MESSAGE`, `CHECKPOINT` and
+`ERROR_MESSAGE` steps are
 [AGY-09](AGY-09.md); here they are skipped like any unknown step type.
 
 ## Likely files
@@ -21,8 +22,10 @@ large outputs. Background tasks, `SYSTEM_MESSAGE` and `CHECKPOINT` steps are
   `<USER_SETTINGS_CHANGE>`), `PLANNER_RESPONSE` mapping (thinking, text,
   `tool_calls`, model, token usage), `GENERIC` pairing (step `s + 1 + k` is
   the result of call *k* of the response at step *s*), result cleanup (the
-  repeated `Created At:` / `Completed At:` header lines stripped; the `error`
-  field used when `content` is empty), `invoke_subagent` `Child` link
+  leading `Created At:` / `Completed At:` header lines stripped, however
+  many: 4 on `DONE`, 2 on `ERROR`, 1 on `RUNNING`, local-time offsets;
+  `\r\n` normalized; the `error` field used when `content` is empty),
+  `invoke_subagent` `Child` link
   extraction, and 64 KiB output clipping with `OutputRef`.
 - `internal/provider/antigravity/load.go` — `Load`, `LoadFromSource`
   (canonical ownership check + `ErrStaleSource`), `LoadIncremental` (resuming
@@ -31,8 +34,10 @@ large outputs. Background tasks, `SYSTEM_MESSAGE` and `CHECKPOINT` steps are
   call), and `Blob` / `BlobFromSource`.
 - `internal/provider/antigravity/testdata/` — redacted golden fixtures (multi-turn,
   multi-tool parallel step, denied and cancelled calls with missing result
-  steps, `ERROR` result with `error` text, thinking block, subagent call,
-  oversized output, unknown future step type).
+  steps, a denied call with an `ERROR` `permission check failed … user
+  denied permission` result (macOS ACP), `ERROR` result with `error` text,
+  thinking block, subagent call, oversized output, unknown future step
+  type).
 
 ## Acceptance criteria
 
@@ -41,8 +46,9 @@ large outputs. Background tasks, `SYSTEM_MESSAGE` and `CHECKPOINT` steps are
 - A `PLANNER_RESPONSE` at step *s* with N `tool_calls` pairs call *k* with
   step `s + 1 + k`, never by position: when a denied call's result step is
   missing, the following calls still get their own results. `DONE` →
-  `completed`, `ERROR` → `error`; a call with no result step is `error` once
-  a later step exists, else pending. Outputs over 64 KiB are clipped with a
+  `completed`, `ERROR` → `error` (a denied call may have either an `ERROR`
+  result or none); a call with no result step is `error` once a later step
+  exists, else pending. Outputs over 64 KiB are clipped with a
   working `Blob` ref.
 - Tool outputs start at the tool's own text, without agy's `Created At:` /
   `Completed At:` lines.

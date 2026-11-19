@@ -15,7 +15,13 @@ protocol behaviors uncovered in [antigravity-cli-spike.md](../../plan/antigravit
    `agent_thought_chunk`, and `transcript_full.jsonl` does not persist ACP
    `toolCallId`.
 2. Completed `run_command` `tool_call_update` frames carry output in
-   `rawOutput.output` (object) rather than a `content` text block.
+   `rawOutput.output` (object). On Linux there was no `content` text block;
+   on macOS (same 1.5.12) there is one too, with the same text, so the
+   `rawOutput` path is a fallback. A denied call ends `failed` with empty
+   output in both.
+3. After a resume, agy saves a `sender=system` restart notice between the
+   prompt and the reply; after a cancel, an `ERROR_MESSAGE` after the
+   partial reply. Both are `IsMeta` and must not break the match.
 
 ## Likely files
 
@@ -29,7 +35,8 @@ protocol behaviors uncovered in [antigravity-cli-spike.md](../../plan/antigravit
     clearing the turn's streamed thoughts, tool calls, and reply together.
     For a turn with no final text (tool-only or cancelled), match its
     streamed tool calls to the saved ones by `name` and `args`, in order:
-    ACP sends the same `args` that `transcript_full.jsonl` saves.
+    ACP sends the same `args` that `transcript_full.jsonl` saves. Saved
+    `IsMeta` messages between the prompt and the reply are skipped.
   - Extend `toolOutput(t)` to extract `t.rawOutput.output` when it is a string
     and `t.text` / `t.terminal?.output` are empty.
 - `frontend/src/lib/chatTail.test.ts` — add regression tests covering ID-less
@@ -62,4 +69,8 @@ protocol behaviors uncovered in [antigravity-cli-spike.md](../../plan/antigravit
   - single and multi-turn ID-less reconciliation;
   - identical repeated user prompts across two turns;
   - tool-only or cancelled ID-less turn followed by a later saved turn;
-  - `toolOutput()` with `rawOutput: { output: "..." }`.
+  - a resumed turn whose saved prompt and reply have an `IsMeta` notice
+    between them;
+  - `toolOutput()` with `rawOutput: { output: "..." }` alone, and with both
+    `rawOutput.output` and a `content` text block (no doubled output);
+  - the `mode` picker with `auto` (not treated as skipping permissions).

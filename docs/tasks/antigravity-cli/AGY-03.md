@@ -34,8 +34,9 @@ format in `docs/formats.md`.
 
 ## Acceptance criteria
 
-- Never reads `antigravity-oauth-token`, `conversations/*.db`, or
-  `presence/*.lock`, and never writes to the Antigravity store.
+- Never reads `antigravity-oauth-token` (Linux; absent on macOS),
+  `history.jsonl`, `conversations/*.db`, or `presence/*.lock`, and never
+  writes to the Antigravity store (SQLite's own `-shm` aside).
 - Symlinks escaping the root are rejected (`withinRoot`).
 - `Scan` populates accurate `CWD`, `RepoRoot`, `GitBranch`, `CreatedAt` (from
   first JSONL record), `UpdatedAt`, `Title`, cleaned `FirstPrompt`, `ParentID`
@@ -47,15 +48,26 @@ format in `docs/formats.md`.
 - `Detect` reports the store's presence from the filesystem only and runs no
   program, like the other providers.
 - `ParentID` comes from `parent_conversation_id` (`conversation_parents` was
-  empty in every session seen) and `AgentName` from `agent_name`.
+  empty in every session seen) and `AgentName` from `agent_name` (`"self"`
+  and `"research"` seen).
+- A subagent transcript has no `USER_INPUT`: its `FirstPrompt` is the task
+  text of its first `SYSTEM_MESSAGE` from `sender=<parent id>`, and that
+  is its title when the row's `title` and `preview` are empty.
 - `Turn` is `working` only for `RUNNING` or `CANCELING` with
-  `not_fully_idle`, not `killed`, and a recent `last_modified_time`; a
-  session left `CANCELING` after its process exited is not `working`.
+  `not_fully_idle`, not `killed`, and a recent `last_modified_time`, **and**
+  a transcript whose last step has not ended the turn (a `PLANNER_RESPONSE`
+  with no `tool_calls`, or an `ERROR_MESSAGE`, ends it). Not `working`: a
+  session left `CANCELING` after its process exited, and a row left
+  `RUNNING` with a recent time after a clean exit (both seen live). An
+  empty `status` (seen on an interactive session) is not `working`.
 
 ## Tests
 
 - Unit tests with synthetic SQLite + JSONL fixtures covering: main session +
   subagent parentage, POSIX and Windows `file://` `workspace_uris` with spaces,
   missing/corrupt SQLite fallback, incremental append rescan, deleted session
-  pruning, symlink escape rejection, a stale `CANCELING` row, and a
-  `chunks/` folder that must not be listed as a session.
+  pruning, symlink escape rejection, a stale `CANCELING` row, a recent
+  `RUNNING` row whose transcript ends in a final reply, an untitled
+  subagent row whose transcript starts with the parent's `SYSTEM_MESSAGE`,
+  a WAL DB with no `-shm` in a read-only directory (JSONL-only fallback),
+  and a `chunks/` folder that must not be listed as a session.

@@ -68,6 +68,28 @@
   `toolCallId` not saved, `rawOutput.output` for `run_command`,
   `configOptions`; also seen: identical tool `args` in ACP and on disk, and
   `read_file` completing with no output.
-- Not checked: Windows and macOS installs, remote hosts, `session/load`
-  (not used: chat resume uses `session/resume`), `elicitation/create`,
-  image prompts, logged-out flow.
+- **Third pass (macOS, 2026-11-19):** `agy` 1.5.12 on Darwin arm64,
+  driven through this repo's own `internal/acp.Client` by a throwaway Go
+  program (not committed), plus read-only checks of all 5 sessions in the
+  store; recorded in the spike's "Third pass: macOS" section. Passed: same
+  root and layout, `initialize` capabilities, `session/new`,
+  `set_config_option`, permission allow and deny, `session/cancel`
+  (`cancelled` in 0.01 s), `session/resume` in a new process with context
+  kept, `agy --conversation <id> -p` on an ACP-made session, no
+  `messageId`/`_meta`, `s + 1 + k` pairing (20/20), `chunks/` identity.
+  Corrected or added to the plan and to AGY-03, AGY-04, AGY-06 and AGY-09:
+  - a denied ACP call can write an `ERROR` result step, not only none;
+  - the new `ERROR_MESSAGE` step after a cancelled turn;
+  - the summary row stays `RUNNING` after a clean exit at times, so `Turn`
+    also checks the transcript's last step;
+  - subagent transcripts start with the parent's `SYSTEM_MESSAGE` and have
+    no `USER_INPUT`; subagent rows can have an empty title;
+  - a restart notice is saved between prompt and reply after every resume;
+  - `mode` has a 4th value, `auto`;
+  - the completed `run_command` update also has a `content` block;
+  - result header lines vary (1, 2 or 4);
+  - there is no `antigravity-oauth-token` on macOS (keyring);
+  - a read-only DB open needs `-shm` creation when no agy runs.
+- Not checked: Windows installs, remote hosts, `session/load` (not used:
+  chat resume uses `session/resume`), `elicitation/create`, image prompts,
+  logged-out flow, the interactive TUI (macOS ran print mode only).
