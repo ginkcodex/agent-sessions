@@ -147,7 +147,8 @@ Not checked:
 - A live `agy acp` chat in the app. That is AGY-08.
 - A repeated prompt whose earlier copy was never saved (a failed turn) takes
   the later saved copy. The later turn then waits for the next saved prompt.
-  This is marked `shortcut:` in `idlessSavedTurns`.
+  This is marked `shortcut:` in `idlessSavedTurns`. Fixed in [AGY-11](AGY-11.md), with file-only
+  prompts and the size of `sent`.
 - A live prompt still drops by its text as soon as any saved prompt within
   60 s has that text, as for every agent. Only the prompt's live item goes;
   the turn's other items stay.

@@ -117,11 +117,15 @@ export interface ChatTail {
   /** Context in use, in tokens, from the latest usage_update. */
   usage?: { used: number; size: number };
   /**
-   * The prompts sent from this window with text, kept after their items go:
-   * the turns of an agent that streams no message IDs (Antigravity) are
-   * matched to the saved ones by prompt, in order.
+   * The prompts sent from this window, kept while their turn runs or has
+   * items left (a prompt's own item goes by its text before its turn is
+   * saved): the turns of an agent that streams no message IDs (Antigravity)
+   * are matched to the saved ones by prompt, in order. Text is "" for a
+   * prompt of only files.
    */
   sent?: { turn: number; text: string; sentAt: number }[];
+  /** The ID of the saved prompt the latest such turn matched; later turns match after it. */
+  sentAfter?: string;
 }
 
 export function emptyTail(): ChatTail {
@@ -141,9 +145,8 @@ export function addPrompt(tail: ChatTail, prompt?: TailPrompt): ChatTail {
   const attachments = prompt?.attachments?.length ? prompt.attachments : undefined;
   if (!prompt || (!prompt.text && !attachments)) return tail;
   const item: TailText = { type: 'text', key: `i${tail.nextKey}`, turn: tail.turn, role: 'user', text: prompt.text, sentAt: prompt.sentAt, ...(attachments && { attachments }) };
-  const text = prompt.text.trim();
-  const sent = text ? [...(tail.sent ?? []), { turn: tail.turn, text, sentAt: prompt.sentAt }] : tail.sent;
-  return { ...tail, items: [...tail.items, item], nextKey: tail.nextKey + 1, ...(sent && { sent }) };
+  const sent = [...(tail.sent ?? []), { turn: tail.turn, text: prompt.text.trim(), sentAt: prompt.sentAt }];
+  return { ...tail, items: [...tail.items, item], nextKey: tail.nextKey + 1, sent };
 }
 
 export function endTurn(tail: ChatTail): ChatTail {
@@ -387,10 +390,15 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
   tail.items.forEach((it, i) => {
     if ((it.type === 'text' && it.role === 'assistant') || it.type === 'thought') lastMessage.set(it.turn, i);
   });
+  const isCovered = tail.items.map(covered);
   for (const [turn, i] of lastMessage) {
-    if (ended(turn) && covered(tail.items[i], i)) savedTurns.add(turn);
+    if (ended(turn) && isCovered[i]) savedTurns.add(turn);
   }
-  for (const turn of idlessSavedTurns(tail, saved, ended, tools)) savedTurns.add(turn);
+  // A turn that ended with nothing left to show (a failed prompt, its item
+  // gone by its text) does not take a saved prompt from a later turn.
+  const live = new Set(tail.items.filter((_, i) => !isCovered[i]).map((it) => it.turn));
+  const idless = idlessSavedTurns(tail, saved, ended, tools, (turn) => !ended(turn) || live.has(turn));
+  for (const turn of idless.turns) savedTurns.add(turn);
 
   // The latest turn the saved messages reach by an agent's own ID.
   let reached = 0;
@@ -400,6 +408,8 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
     const id = tool ? (it.toolCallId ?? '') : it.type !== 'plan' && it.messageId ? savedMessageId(it.messageId) : '';
     if (id && (tool ? tools.has(id) : byId.has(id))) reached = it.turn;
   }
+  // Without IDs, a turn matched by prompt reaches it as well.
+  for (const turn of idless.turns) reached = Math.max(reached, turn);
 
   // The last item the saved messages reach by an agent's own ID. The agent
   // saved everything it streamed before that item, in order.
@@ -413,24 +423,38 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
   });
   const unsaved = (it: TailItem, i: number) => i < anchor && (it.type === 'thought' || (it.type === 'tool' && isCompaction(it)));
 
-  const items = tail.items.filter((it, i) => it.turn >= reached && !savedTurns.has(it.turn) && !covered(it, i) && !unsaved(it, i));
-  return items.length === tail.items.length ? tail : { ...tail, items };
+  const items = tail.items.filter((it, i) => it.turn >= reached && !savedTurns.has(it.turn) && !isCovered[i] && !unsaved(it, i));
+  const left = new Set(items.map((it) => it.turn));
+  const sent = tail.sent?.filter((p) => !ended(p.turn) || left.has(p.turn));
+  const sentAfter = idless.after ?? tail.sentAfter;
+  if (items.length === tail.items.length && sent?.length === tail.sent?.length && sentAfter === tail.sentAfter) return tail;
+  return { ...tail, items, ...(sent && { sent }), ...(sentAfter && { sentAfter }) };
 }
 
 /**
  * The ended turns, among those whose agent items carry no IDs the saved
- * messages have (Antigravity), that the saved messages show. Each prompt sent
- * stands for the first saved prompt with its text after the one the prompt
- * before it stands for. A turn is saved once, after its last prompt, the
- * saved messages have its last reply, the next prompt, or (with no reply)
- * its tool calls by name and input, in order. Notices (isMeta) are skipped.
+ * messages have (Antigravity), that the saved messages show, and the ID of
+ * the latest saved prompt they matched. Each prompt sent (of a turn that
+ * matches) stands for the first saved prompt with its text after the one the
+ * prompt before it stands for, starting after tail.sentAfter. A turn is saved
+ * once, after its last prompt, the saved messages have its last reply, the
+ * next prompt, or (with no reply) its tool calls by name and input, in
+ * order. Notices (isMeta) are skipped.
  */
-function idlessSavedTurns(tail: ChatTail, saved: readonly Message[], ended: (turn: number) => boolean, tools: ReadonlyMap<string, string>): number[] {
+function idlessSavedTurns(
+  tail: ChatTail,
+  saved: readonly Message[],
+  ended: (turn: number) => boolean,
+  tools: ReadonlyMap<string, string>,
+  matches: (turn: number) => boolean,
+): { turns: number[]; after?: string } {
   const isPrompt = (m: Message) => m.role === 'user' && !m.isMeta;
-  // shortcut: a prompt never saved (a failed turn) takes the next saved one with its text; a later identical prompt then waits for the one after.
+  // shortcut: a failed prompt whose turn still shows something (a prompt of only files) takes the next saved copy of its text, holding back a later identical turn until a later turn is saved; track failed prompts if that shows up.
+  // shortcut: a prompt of only files matches a saved prompt with no text; agy's saved form of one was not seen (agy acp would not sign in here), and if it differs the turn goes once a later turn is saved.
   const last = new Map<number, number>();
-  let c = 0;
+  let c = tail.sentAfter ? saved.findIndex((m) => m.id === tail.sentAfter) + 1 : 0;
   for (const p of tail.sent ?? []) {
+    if (!matches(p.turn)) continue;
     for (let j = c; j < saved.length; j++) {
       const m = saved[j];
       const time = Date.parse(m.time);
@@ -442,6 +466,7 @@ function idlessSavedTurns(tail: ChatTail, saved: readonly Message[], ended: (tur
     }
   }
   const out: number[] = [];
+  let after = -1;
   for (const [turn, j] of last) {
     const items = tail.items.filter((it) => it.turn === turn);
     const agent = items.filter((it) => it.type === 'thought' || it.type === 'tool' || (it.type === 'text' && it.role === 'assistant'));
@@ -461,9 +486,12 @@ function idlessSavedTurns(tail: ChatTail, saved: readonly Message[], ended: (tur
       for (const t of savedTools) if (k < streamed.length && t.name === streamed[k].name && canonical(t.input) === canonical(streamed[k].input)) k++;
       done = streamed.length > 0 && k === streamed.length;
     }
-    if (done) out.push(turn);
+    if (done) {
+      out.push(turn);
+      after = Math.max(after, j);
+    }
   }
-  return out;
+  return { turns: out, ...(after >= 0 && { after: saved[after].id }) };
 }
 
 function messageText(m: Message): string {

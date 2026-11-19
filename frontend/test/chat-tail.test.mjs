@@ -456,6 +456,41 @@ test('Antigravity: a repeated prompt waits for its own saved copy, not the earli
   assert.deepEqual(reconcile(t, both).items, []);
 });
 
+test('Antigravity: a failed prompt never saved does not take its identical retry\'s saved copy', () => {
+  // The first send failed: its turn ended with nothing but the prompt, which agy never saved.
+  let t = endTurn(agyTurn(emptyTail(), 'continue', '2026-11-11T10:00:00Z'));
+  t = endTurn(agyTurn(t, 'continue', '2026-11-11T10:00:05Z', chunk('agent_message_chunk', 'done')));
+  const saved = [saidUser('s0', 'continue', '2026-11-11T10:00:06Z'), saidAgent('s1', 'done', '2026-11-11T10:00:07Z')];
+  t = reconcile(t, saved);
+  assert.deepEqual(t.items, []);
+  assert.deepEqual(t.sent, [], 'reconciled turns drop their sent prompts');
+  assert.equal(t.sentAfter, 's0');
+});
+
+test('Antigravity: a prompt of only files matches a saved prompt with no text', () => {
+  const files = [{ kind: 'image', name: 'a.png', mimeType: 'image/png', data: 'AA==' }];
+  let t = apply(beginTurn(emptyTail(), { text: '', attachments: files, sentAt: Date.parse('2026-11-11T10:00:00Z') }), chunk('agent_message_chunk', 'A red dot.'));
+  assert.deepEqual(t.sent, [{ turn: 1, text: '', sentAt: Date.parse('2026-11-11T10:00:00Z') }]);
+  t = endTurn(t);
+  const saved = [saidUser('s0', '', '2026-11-11T10:00:01Z'), saidAgent('s1', 'A red dot.', '2026-11-11T10:00:02Z')];
+  assert.deepEqual(reconcile(t, saved).items, []);
+});
+
+test('sent prompts go with their turns, for ID-based agents too', () => {
+  let t = emptyTail();
+  for (let i = 0; i < 3; i++) {
+    t = endTurn(apply(beginTurn(t, { text: `q${i}`, sentAt: Date.parse('2026-11-11T10:00:00Z') }), chunk('agent_message_chunk', 'a', `msg_${i}`)));
+    t = reconcile(t, [saidUser(`u${i}`, `q${i}`, '2026-11-11T10:00:01Z'), saidAgent(`msg_${i}`, 'a', '2026-11-11T10:00:02Z')]);
+  }
+  assert.deepEqual(t.items, []);
+  assert.deepEqual(t.sent, []);
+  // An open turn keeps its prompt after the prompt's own item goes by its text.
+  t = beginTurn(t, { text: 'next', sentAt: Date.parse('2026-11-11T10:01:00Z') });
+  t = reconcile(t, [saidUser('u9', 'next', '2026-11-11T10:01:01Z')]);
+  assert.deepEqual(t.items, []);
+  assert.equal(t.sent.length, 1);
+});
+
 test('Antigravity: a tool-only turn goes once its tool calls are saved; a cancelled one once the next prompt is', () => {
   let t = endTurn(agyTurn(emptyTail(), 'run it', '2026-11-11T10:00:00Z', agyTool(false, 'in_progress'), agyTool(true, 'completed')));
   const prompt = saidUser('s0', 'run it', '2026-11-11T10:00:01Z');

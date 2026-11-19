@@ -1110,7 +1110,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   }
 
   async panelNewSession(agent: AgentID, dir: string, size: TerminalSize): Promise<TerminalTab> {
-    const label = agent === 'claude-code' ? 'Claude Code' : agent === 'codex' ? 'Codex' : agent === 'opencode' ? 'OpenCode' : agent === 'antigravity' ? 'Antigravity' : 'Agent';
+    const label = ({ 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', antigravity: 'Antigravity' } as Record<string, string>)[agent] ?? 'Agent';
     const banner = `[mock] ${this.newSessionCommand(agent, dir)}`;
     const tab = this.startPanel('agent', size, banner, true, dir, { label, agent });
     this.panelTerminals.get(tab.id)!.fresh = true;
