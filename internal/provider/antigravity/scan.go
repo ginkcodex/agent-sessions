@@ -19,7 +19,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
-const checkpointVersion = 1
+const checkpointVersion = 2 // 2 added Prefix
 
 // liveWindow is how long after the last write a session the index still
 // calls running may count as working.
@@ -44,6 +44,9 @@ type checkpoint struct {
 	Turn       string `json:"turn,omitempty"`
 	ToolsUntil int64  `json:"toolsUntil,omitempty"`
 	LinesRead  int    `json:"linesRead,omitempty"`
+	// Prefix is provider.PrefixDigest of the bytes read: a grown file resumes
+	// only if they are unchanged.
+	Prefix string `json:"prefix,omitempty"`
 	// Row and Published are the index row and turn of the last published meta.
 	Row       *row   `json:"row,omitempty"`
 	Published string `json:"published,omitempty"`
@@ -237,15 +240,15 @@ func (p *Provider) Scan(ctx context.Context, prev provider.ScanState) (provider.
 		if present[path] {
 			continue
 		}
+		if ids[sessionID(path)] {
+			continue // the session is tracked under its other transcript name
+		}
 		if _, err := os.Lstat(path); !os.IsNotExist(err) {
 			result.State.Sources[path] = old
 			diag.Warn(path, 0, "previous transcript unavailable; retaining previous scan state")
 			continue
 		}
-		// A session whose transcript moved to its other name is not removed.
-		if id := sessionID(path); !ids[id] {
-			result.Removed = append(result.Removed, model.SessionRef{Agent: model.AgentAntigravity, ID: id})
-		}
+		result.Removed = append(result.Removed, model.SessionRef{Agent: model.AgentAntigravity, ID: sessionID(path)})
 	}
 	sort.Slice(result.Removed, func(i, j int) bool { return result.Removed[i].Key() < result.Removed[j].Key() })
 	result.Diag = diag
@@ -278,6 +281,12 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 	if resume && !unchanged && old.Size == size {
 		resume = false
 	}
+	// Nor is a larger file whose bytes read so far changed (a replacement).
+	if resume && !unchanged {
+		if digest, err := provider.PrefixDigest(ctx, src.Path, old.Offset); err != nil || digest != cp.Prefix {
+			resume = false
+		}
+	}
 	if !resume {
 		cp = checkpoint{Version: checkpointVersion, ID: src.ID}
 	}
@@ -292,6 +301,8 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 			out.err = err
 			return out
 		}
+		// On error the next growth rebuilds.
+		cp.Prefix, _ = provider.PrefixDigest(ctx, src.Path, end)
 	}
 
 	if !p.settle(&cp, rows, info.ModTime()) && unchanged {

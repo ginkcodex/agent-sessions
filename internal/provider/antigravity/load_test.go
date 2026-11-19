@@ -148,6 +148,58 @@ func TestLoadReportBlob(t *testing.T) {
 	}
 }
 
+// A child whose transcript appears after the call's result is linked on the
+// next incremental load, with nothing appended to the parent.
+func TestLoadIncrementalLinksLateChild(t *testing.T) {
+	root := t.TempDir()
+	writeTranscript(t, root, parentID, userStep(0, "go"), plannerStep(1, "", "invoke_subagent"),
+		mustJSON(map[string]any{"step_index": 2, "type": stepGeneric, "status": "DONE", "created_at": at(2), "content": `{"conversationId": "` + childID + `"}`}))
+	p := newTestProvider(t, root, loadNow)
+	res := load(t, p, nil)
+	if c := tool(t, res.Transcript, "step-1", 0); c.Child != nil {
+		t.Fatalf("linked before the child exists: %+v", c.Child)
+	}
+	writeTranscript(t, root, childID, systemStep(0, parentID, "task"))
+	res2 := load(t, p, res.State)
+	if !res2.Resumed || res2.FirstChanged != 1 {
+		t.Fatalf("resumed=%v first=%d", res2.Resumed, res2.FirstChanged)
+	}
+	if c := tool(t, res2.Transcript, "step-1", 0); c.Child == nil || c.Child.ID != childID {
+		t.Fatalf("child = %+v", c.Child)
+	}
+	if tool(t, res.Transcript, "step-1", 0).Child != nil {
+		t.Fatal("an earlier snapshot was mutated")
+	}
+}
+
+// Past maxSegments reports the Blob key stops growing and ends in ",more";
+// Blob still serves it, saying the later reports are left out.
+func TestLoadCapsReportSegments(t *testing.T) {
+	root := t.TempDir()
+	writeTranscript(t, root, childID, systemStep(0, parentID, "task"))
+	steps := []string{
+		userStep(0, "go"), plannerStep(1, "", "invoke_subagent"),
+		mustJSON(map[string]any{"step_index": 2, "type": stepGeneric, "status": "DONE", "created_at": at(2), "content": `{"conversationId": "` + childID + `"}`}),
+	}
+	report := strings.Repeat("r", 2<<10)
+	for i := range maxSegments + 5 {
+		steps = append(steps, systemStep(3+i, childID, report))
+	}
+	writeTranscript(t, root, parentID, steps...)
+	p := newTestProvider(t, root, loadNow)
+	c := tool(t, load(t, p, nil).Transcript, "step-1", 0)
+	if !c.OutputTruncated || !strings.HasSuffix(c.OutputRef, ",more") || strings.Count(c.OutputRef, ",") != maxSegments {
+		t.Fatalf("truncated=%v ref has %d commas, ends %q", c.OutputTruncated, strings.Count(c.OutputRef, ","), c.OutputRef[max(0, len(c.OutputRef)-12):])
+	}
+	full, err := p.Blob(context.Background(), ref(parentID), c.OutputRef)
+	if err != nil || strings.Count(string(full), report) != maxSegments-1 || !strings.HasSuffix(string(full), "Open the subagent's session to read them.]") {
+		t.Fatalf("Blob = %d bytes, %d reports, %v", len(full), strings.Count(string(full), report), err)
+	}
+	if _, err := p.Blob(context.Background(), ref(parentID), "rec:more"); err == nil {
+		t.Error("Blob accepted a key of only the marker")
+	}
+}
+
 func TestLoadClipsOutputAndServesBlob(t *testing.T) {
 	root := t.TempDir()
 	big := "Created At: 2026-11-19T11:00:00+07:00\nCompleted At: 2026-11-19T11:00:01+07:00\n" + strings.Repeat("é", 40<<10) + "end"

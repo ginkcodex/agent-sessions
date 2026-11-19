@@ -340,7 +340,9 @@ func TestScanReadOnlyWALWithoutShm(t *testing.T) {
 
 func TestScanIncrementalAppend(t *testing.T) {
 	root := platform.TempDir(t)
-	path := writeTranscript(t, root, parentID, userStep(0, "first"), plannerStep(1, "one"))
+	// The long reply puts the middle of the file outside the windows the
+	// checkpoint's prefix digest covers.
+	path := writeTranscript(t, root, parentID, userStep(0, "first"), plannerStep(1, strings.Repeat("one ", 4<<10)))
 	p := New(root, nil)
 	first := scan(t, p, provider.ScanState{})
 	if len(first.Changed) != 1 {
@@ -350,12 +352,12 @@ func TestScanIncrementalAppend(t *testing.T) {
 		t.Fatalf("unchanged rescan republished %d", len(again.Changed))
 	}
 
-	// Garble the consumed bytes in place: a resumed scan never reads them.
+	// Garble consumed bytes in place: a resumed scan never reads them.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	copy(data, strings.Repeat("x", 10))
+	copy(data[len(data)/2:], strings.Repeat("x", 10))
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -374,6 +376,24 @@ func TestScanIncrementalAppend(t *testing.T) {
 	}
 }
 
+// A larger transcript whose head changed (a replacement, not an append) is
+// read from the start.
+func TestScanRebuildsReplacedTranscript(t *testing.T) {
+	root := platform.TempDir(t)
+	path := writeTranscript(t, root, parentID, userStep(0, "first"), plannerStep(1, "one"))
+	p := New(root, nil)
+	first := scan(t, p, provider.ScanState{})
+	writeTranscript(t, root, parentID, userStep(0, "other"), plannerStep(1, "two"), userStep(2, "more"))
+	res := scan(t, p, first.State)
+	m := byID(res)[parentID]
+	if want := (model.MessageCounts{User: 2, Assistant: 1}); m.Counts != want || m.FirstPrompt != "other" {
+		t.Fatalf("counts/prompt = %+v %q", m.Counts, m.FirstPrompt)
+	}
+	if info, _ := os.Stat(path); res.State.Sources[path].Offset != info.Size() {
+		t.Fatalf("state = %+v", res.State.Sources[path])
+	}
+}
+
 func TestScanPrunesDeletedSession(t *testing.T) {
 	root := platform.TempDir(t)
 	writeTranscript(t, root, parentID, userStep(0, "a"))
@@ -389,6 +409,35 @@ func TestScanPrunesDeletedSession(t *testing.T) {
 	}
 	if _, ok := res.State.Sources[transcriptPath(root, childID)]; ok {
 		t.Error("removed session kept its state")
+	}
+}
+
+// A session read from transcript.jsonl that gains transcript_full.jsonl is
+// tracked under the new name: the old file's state goes, with no warning.
+func TestScanTranscriptRenamed(t *testing.T) {
+	root := platform.TempDir(t)
+	short := filepath.Join(root, "brain", parentID, ".system_generated", "logs", "transcript.jsonl")
+	if err := os.MkdirAll(filepath.Dir(short), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(short, []byte(userStep(0, "short")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := New(root, nil)
+	first := scan(t, p, provider.ScanState{})
+	full := writeTranscript(t, root, parentID, userStep(0, "full"))
+	for range 2 {
+		res := scan(t, p, first.State)
+		if len(res.Diag.Warnings) != 0 || len(res.Removed) != 0 {
+			t.Fatalf("warnings %+v, removed %+v", res.Diag.Warnings, res.Removed)
+		}
+		if _, ok := res.State.Sources[short]; ok || len(res.State.Sources) != 1 {
+			t.Fatalf("sources = %v", res.State.Sources)
+		}
+		if _, ok := res.State.Sources[full]; !ok {
+			t.Fatalf("sources = %v", res.State.Sources)
+		}
+		first = res
 	}
 }
 

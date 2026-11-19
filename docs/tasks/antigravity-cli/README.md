@@ -1,7 +1,7 @@
 # Antigravity CLI — tasks
 
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
-- **Progress:** 10/11 done
+- **Progress:** 11/12 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -16,3 +16,4 @@
 | [AGY-09](AGY-09.md) | ✅ Done | Background task results, subagent reports, system notices and `CHECKPOINT` compactions | 3 h | AGY-04 |
 | [AGY-10](AGY-10.md) | ✅ Done | Handoff into Antigravity: `agy -i <prompt>` with `--add-dir`, adapter and source names, resume command | 1 h | AGY-05 |
 | [AGY-11](AGY-11.md) | ✅ Done | Live-tail review fixes: failed prompt vs. identical retry, file-only prompts, bounded `sent`, mock label map | 2 h | AGY-06 |
+| [AGY-12](AGY-12.md) | ✅ Done | Provider review fixes: capped report Blob keys, late child links, scan prefix digest, renamed transcripts | 2 h | AGY-03, AGY-09 |

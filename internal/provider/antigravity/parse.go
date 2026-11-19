@@ -122,11 +122,9 @@ func (l *loader) step(line []byte, start int64) {
 		ref := segment(start, s.Index)
 		if call.Name == "invoke_subagent" {
 			if m := childRE.FindStringSubmatch(out); m != nil {
+				// linkChildren links it once the child's transcript exists.
 				put(&l.children, m[1], loc)
 				put(&l.refs, loc, ref)
-				if l.exists != nil && l.exists(m[1]) {
-					call.Child = &model.SessionRef{Agent: model.AgentAntigravity, ID: m[1]}
-				}
 			}
 		}
 		setOutput(call, out, ref)
@@ -178,8 +176,15 @@ func (l *loader) step(line []byte, start int64) {
 			notice(text)
 			return
 		}
-		// A child's report extends the output of the call that started it.
-		ref := l.refs[loc] + "," + strings.TrimPrefix(segment(start, s.Index), "rec:")
+		// A child's report extends the output of the call that started it. A
+		// Blob key names at most maxSegments steps: past them it ends in
+		// ",more", and Blob says the later reports are left out.
+		ref := l.refs[loc]
+		if strings.Count(ref, ",")+1 < maxSegments {
+			ref += "," + strings.TrimPrefix(segment(start, s.Index), "rec:")
+		} else if !strings.HasSuffix(ref, ","+moreSegments) {
+			ref += "," + moreSegments
+		}
 		l.refs[loc] = ref
 		call := l.store.Tool(loc)
 		truncated := call.OutputTruncated
@@ -192,6 +197,19 @@ func (l *loader) step(line []byte, start int64) {
 		l.store.Append(model.Message{ID: id, Role: model.RoleSystem, Time: stamp, IsMeta: true, Parts: []model.Part{{Kind: model.PartCompaction, Text: model.TruncateRunes(strings.TrimSpace(s.Content), maxCompactionRunes)}}})
 	case stepErrorMessage:
 		notice(strings.TrimSpace(s.Content + s.Error))
+	}
+}
+
+// linkChildren links each invoke_subagent call to its child session once the
+// child's transcript exists, which may be after the call's result was read.
+func (l *loader) linkChildren() {
+	if l.exists == nil {
+		return
+	}
+	for id, loc := range l.children {
+		if l.store.At(loc.Message).Parts[loc.Part].Tool.Child == nil && l.exists(id) {
+			l.store.Tool(loc).Child = &model.SessionRef{Agent: model.AgentAntigravity, ID: id}
+		}
 	}
 }
 

@@ -153,11 +153,13 @@ func (p *Provider) LoadIncremental(ctx context.Context, ref model.SessionRef, pr
 	if after, err := f.Stat(); err != nil || after.Size() != info.Size() || !after.ModTime().Equal(info.ModTime()) {
 		keep = false // do not certify a parse spanning a concurrent write
 	}
+	st.l.linkChildren()
 	committed, parserFirst := st.l.store.Freeze()
 	messages, tailFirst := committed, len(committed)
 	if tail != nil {
 		fork := st.l.fork()
 		fork.step(tail, st.offset)
+		fork.linkChildren()
 		tailFirst = fork.store.Changed()
 		messages, _ = fork.store.Freeze()
 	}
@@ -209,15 +211,24 @@ func (s *loadState) retainedBytes(committed, published []model.Message) int64 {
 	return n + transcriptbuild.Unshared(committed, published)
 }
 
-// maxSegments bounds the steps one Blob key may name.
-const maxSegments = 64
+// maxSegments bounds the steps one Blob key may name. A key that would name
+// more ends in moreSegments instead.
+const (
+	maxSegments  = 64
+	moreSegments = "more"
+)
 
 // Blob returns a tool's full output. Keys are rec:<lineStart>:<stepIndex>,
 // naming a result step, with ",<lineStart>:<stepIndex>" for each child
-// report appended to it; nothing else is ever read.
+// report appended to it, and ",more" when reports past maxSegments are left
+// out; nothing else is ever read.
 func (p *Provider) Blob(ctx context.Context, ref model.SessionRef, key string) ([]byte, error) {
 	rest, ok := strings.CutPrefix(key, "rec:")
 	segments := strings.Split(rest, ",")
+	more := len(segments) > 1 && segments[len(segments)-1] == moreSegments
+	if more {
+		segments = segments[:len(segments)-1]
+	}
 	if !ok || len(segments) > maxSegments {
 		return nil, fmt.Errorf("antigravity: Blob: malformed key %q", key)
 	}
@@ -241,6 +252,9 @@ func (p *Provider) Blob(ctx context.Context, ref model.SessionRef, key string) (
 			return nil, fmt.Errorf("antigravity: Blob %q: %w", key, err)
 		}
 		parts = append(parts, out)
+	}
+	if more {
+		parts = append(parts, "[Later subagent reports are left out here. Open the subagent's session to read them.]")
 	}
 	return []byte(strings.Join(parts, "\n\n")), nil
 }
