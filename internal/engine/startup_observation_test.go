@@ -230,7 +230,7 @@ func TestStartupPublicationQueryableDuringWatcherSetup(t *testing.T) {
 		t.Run(fmt.Sprint(reader), func(t *testing.T) {
 			dir := t.TempDir()
 			roots := paths.Roots{Claude: filepath.Join(dir, "generated"), Cache: filepath.Join(dir, "cache")}
-			key := index.RootsKey(roots.Claude, "", "", `agents-v1:["claude-code"]`)
+			key := index.RootsKey(roots.Claude, "", "", "", `agents-v1:["claude-code"]`)
 			db, err := index.Open(t.Context(), roots.Cache, key)
 			if err != nil {
 				t.Fatal(err)

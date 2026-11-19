@@ -27,10 +27,12 @@ func FromEnv(getenv func(string) string, home string) Roots {
 	}
 
 	// TODO(M5-01): finalize Darwin cache/config locations.
+	// ANTIGRAVITY_CLI_DIR is this app's own override: agy reads none.
 	return Roots{
 		Claude:       toolRoot("CLAUDE_CONFIG_DIR", ".claude"),
 		Codex:        toolRoot("CODEX_HOME", ".codex"),
 		OpenCodeData: filepath.Join(dataBase, "opencode"),
+		Antigravity:  toolRoot("ANTIGRAVITY_CLI_DIR", filepath.Join(".gemini", "antigravity-cli")),
 		Cache:        filepath.Join(home, "Library", "Caches", "agent-sessions"),
 		Config:       filepath.Join(home, "Library", "Application Support", "agent-sessions"),
 		Data:         filepath.Join(home, "Library", "Application Support", "agent-sessions"),

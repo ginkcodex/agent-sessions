@@ -69,9 +69,10 @@ func TestFindWindowsBundledCLIs(t *testing.T) {
 	h.file(filepath.Join(h.local, "OpenAI", "Codex", "bin", "cccc", "rg.exe"), 0)
 	openc := h.file(filepath.Join(h.local, "Programs", "@opencodedesktop", "resources", "opencode-cli.exe"), time.Hour)
 	claude := h.file(filepath.Join(h.local, "Packages", "Claude_pzs8sxrjxfjjc", "LocalCache", "Roaming", "Claude", "claude-code", "2.1.286", "claude.exe"), time.Hour)
+	agy := h.file(filepath.Join(h.local, "agy", "bin", "agy.exe"), time.Hour)
 	f := h.finder("amd64")
 
-	for name, want := range map[string]string{"codex": codexNew, "opencode": openc, "claude": claude} {
+	for name, want := range map[string]string{"codex": codexNew, "opencode": openc, "claude": claude, "agy": agy} {
 		got, err := f.find(name)
 		if err != nil || got.Path != want || got.OnPath {
 			t.Errorf("find(%s) = %+v, %v; want %s", name, got, err, want)
@@ -283,6 +284,14 @@ func TestFindPosixInstallDirs(t *testing.T) {
 	claude := exe(filepath.Join(home, ".local", "bin", "claude"), 0o755)
 	if got, _ := f.find("claude"); got.Path != claude {
 		t.Fatalf("native claude: %q", got.Path)
+	}
+
+	if _, err := f.find("agy"); !errors.Is(err, ErrAgentNotFound) || !strings.Contains(err.Error(), "Antigravity was not found on PATH") {
+		t.Fatalf("agy not installed: %v", err)
+	}
+	agy := exe(filepath.Join(home, ".local", "bin", "agy"), 0o755)
+	if got, _ := f.find("agy"); got.Path != agy {
+		t.Fatalf("agy installer dir: %q", got.Path)
 	}
 
 	custom := exe(filepath.Join(t.TempDir(), "opencode"), 0o755)

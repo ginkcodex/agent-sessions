@@ -13,6 +13,7 @@ func TestFromEnvDarwin(t *testing.T) {
 		Claude:       filepath.Join(home, ".claude"),
 		Codex:        filepath.Join(home, ".codex"),
 		OpenCodeData: filepath.Join(home, ".local", "share", "opencode"),
+		Antigravity:  filepath.Join(home, ".gemini", "antigravity-cli"),
 		Cache:        filepath.Join(home, "Library", "Caches", "agent-sessions"),
 		Config:       filepath.Join(home, "Library", "Application Support", "agent-sessions"),
 		Data:         filepath.Join(home, "Library", "Application Support", "agent-sessions"),
@@ -25,16 +26,19 @@ func TestFromEnvDarwin(t *testing.T) {
 	}{
 		{name: "home fallback", want: defaults},
 		{name: "Claude override", env: map[string]string{"CLAUDE_CONFIG_DIR": "/tmp/custom_claude"}, want: Roots{
-			Claude: "/tmp/custom_claude", Codex: defaults.Codex, OpenCodeData: defaults.OpenCodeData, Cache: defaults.Cache, Config: defaults.Config, Data: defaults.Data,
+			Claude: "/tmp/custom_claude", Codex: defaults.Codex, OpenCodeData: defaults.OpenCodeData, Antigravity: defaults.Antigravity, Cache: defaults.Cache, Config: defaults.Config, Data: defaults.Data,
 		}},
 		{name: "Codex override", env: map[string]string{"CODEX_HOME": "/opt/codex"}, want: Roots{
-			Claude: defaults.Claude, Codex: "/opt/codex", OpenCodeData: defaults.OpenCodeData, Cache: defaults.Cache, Config: defaults.Config, Data: defaults.Data,
+			Claude: defaults.Claude, Codex: "/opt/codex", OpenCodeData: defaults.OpenCodeData, Antigravity: defaults.Antigravity, Cache: defaults.Cache, Config: defaults.Config, Data: defaults.Data,
+		}},
+		{name: "Antigravity override", env: map[string]string{"ANTIGRAVITY_CLI_DIR": "/opt/agy/"}, want: Roots{
+			Claude: defaults.Claude, Codex: defaults.Codex, OpenCodeData: defaults.OpenCodeData, Antigravity: "/opt/agy", Cache: defaults.Cache, Config: defaults.Config, Data: defaults.Data,
 		}},
 		{name: "data override", env: map[string]string{"XDG_DATA_HOME": "/opt/data"}, want: Roots{
-			Claude: defaults.Claude, Codex: defaults.Codex, OpenCodeData: "/opt/data/opencode", Cache: defaults.Cache, Config: defaults.Config, Data: defaults.Data,
+			Claude: defaults.Claude, Codex: defaults.Codex, OpenCodeData: "/opt/data/opencode", Antigravity: defaults.Antigravity, Cache: defaults.Cache, Config: defaults.Config, Data: defaults.Data,
 		}},
 		{name: "relative values ignored", env: map[string]string{
-			"CLAUDE_CONFIG_DIR": "relative/claude", "CODEX_HOME": "./codex", "XDG_DATA_HOME": "data",
+			"CLAUDE_CONFIG_DIR": "relative/claude", "CODEX_HOME": "./codex", "ANTIGRAVITY_CLI_DIR": "agy", "XDG_DATA_HOME": "data",
 		}, want: defaults},
 		{name: "empty values ignored", env: map[string]string{
 			"CLAUDE_CONFIG_DIR": "", "CODEX_HOME": "", "XDG_DATA_HOME": "",

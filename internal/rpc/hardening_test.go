@@ -165,3 +165,17 @@ func TestServer_NoIdleTimeoutByDefault(t *testing.T) {
 		t.Fatal("Serve did not return on cancel")
 	}
 }
+
+// A client may point the server at each agent's store, and at nothing else.
+func TestAllowlistedEnvKeys(t *testing.T) {
+	for _, k := range []string{"CLAUDE_CONFIG_DIR", "CODEX_HOME", "ANTIGRAVITY_CLI_DIR", "XDG_DATA_HOME"} {
+		if !allowlistedEnvKeys[k] {
+			t.Errorf("%s is not allowlisted", k)
+		}
+	}
+	for _, k := range []string{"PATH", "HOME", "LD_PRELOAD"} {
+		if allowlistedEnvKeys[k] {
+			t.Errorf("%s is allowlisted", k)
+		}
+	}
+}

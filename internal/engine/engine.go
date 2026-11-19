@@ -181,12 +181,12 @@ func NewEngine(opts ...Option) *Engine {
 
 	if e.svc == nil {
 		roots := e.roots
-		if !e.rootsExplicit && roots.Claude == "" && roots.Codex == "" && roots.OpenCodeData == "" {
+		if !e.rootsExplicit && roots.Claude == "" && roots.Codex == "" && roots.OpenCodeData == "" && roots.Antigravity == "" {
 			roots, _ = paths.Default()
 			e.roots = roots
 		}
 		var provs provider.Set
-		if roots.Claude != "" || roots.Codex != "" || roots.OpenCodeData != "" || roots.Config != "" {
+		if roots.Claude != "" || roots.Codex != "" || roots.OpenCodeData != "" || roots.Antigravity != "" || roots.Config != "" {
 			provs, e.agentSettingsErr = all.EnabledProviders(roots, pathutil.NewGitResolver())
 		}
 		catalog := scan.NewCatalog()
@@ -622,7 +622,7 @@ func (e *Engine) editPolicy() files.EditPolicy {
 	var p files.EditPolicy
 	seen := map[string]bool{}
 	for _, roots := range []paths.Roots{e.roots, defaults} {
-		for _, r := range []string{roots.Claude, roots.Codex, roots.OpenCodeData, roots.Cache, roots.Config, roots.Data} {
+		for _, r := range []string{roots.Claude, roots.Codex, roots.OpenCodeData, roots.Antigravity, roots.Cache, roots.Config, roots.Data} {
 			if r != "" && filepath.IsAbs(r) && !seen[r] {
 				seen[r] = true
 				p.ProtectedRoots = append(p.ProtectedRoots, r)

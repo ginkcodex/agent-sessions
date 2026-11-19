@@ -26,7 +26,7 @@ const defaultPromoteEvery = 5 * time.Second
 // engine never reads or overwrites another set of roots' sessions.
 func (e *Engine) indexKey() string {
 	ids, _ := json.Marshal(all.EffectiveIDs(e.svc.Providers()))
-	return index.RootsKey(e.roots.Claude, e.roots.Codex, e.roots.OpenCodeData, "agents-v1:"+string(ids))
+	return index.RootsKey(e.roots.Claude, e.roots.Codex, e.roots.OpenCodeData, e.roots.Antigravity, "agents-v1:"+string(ids))
 }
 
 // startCache starts the engine as writer or reader. It returns false when
