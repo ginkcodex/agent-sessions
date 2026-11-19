@@ -30,6 +30,9 @@ test('pickers show every select and boolean option with the value the agent repo
   assert.deepEqual(codex.choices.filter((c) => c.skipsPermissions).map((c) => c.value), ['agent-full-access']);
   // The same value names nothing for another agent.
   assert.equal(skipsPermissions('opencode', CODEX_MODE, 'agent-full-access'), false);
+  // Antigravity's auto mode still asks before irreversible actions.
+  const AGY_MODE = { id: 'mode', name: 'Mode', category: 'mode', type: 'select', currentValue: 'default', options: ['default', 'accept-edits', 'auto', 'plan'].map((value) => ({ value, name: value })) };
+  assert.ok(pickers('antigravity', [AGY_MODE])[0].choices.every((c) => !c.skipsPermissions));
 
   const [model] = pickers('opencode', [OPENCODE_MODEL]);
   assert.deepEqual(model.choices.map((c) => [c.value, c.group]), [['anthropic/claude-fable-5-2', 'Anthropic'], ['openai/gpt-x', 'OpenAI']]);

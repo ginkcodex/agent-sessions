@@ -1,6 +1,6 @@
 # AGY-06 — Built-in ACP launcher and ID-less live-tail reconciliation
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 3 h
 - **Depends on:** [AGY-05](AGY-05.md)
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
@@ -74,3 +74,80 @@ protocol behaviors uncovered in [antigravity-cli-spike.md](../../plan/antigravit
   - `toolOutput()` with `rawOutput: { output: "..." }` alone, and with both
     `rawOutput.output` and a `content` text block (no doubled output);
   - the `mode` picker with `auto` (not treated as skipping permissions).
+
+## Evidence
+
+Done:
+
+- `internal/provider/antigravity/commands.go`: the provider implements
+  `provider.ACPLauncher` with `ACPAdapter{Executable: "agy", Args: ["acp"]}`.
+  This is the provider's existing command file, not a new `acp.go`.
+- `frontend/src/lib/chatTail.ts`:
+  - The tail keeps the prompts sent from this window (`sent`). The
+    per-prompt rule drops a prompt's live item as soon as its text is saved,
+    and agy saves the prompt while the turn runs, so the turn match cannot
+    rely on that item.
+  - `reconcile` maps each sent prompt, in order, to the first saved prompt
+    after the previous match that has its text, within
+    `PROMPT_CLOCK_SLACK_MS`. A saved prompt that an earlier turn used is not
+    matched again.
+  - An ended turn goes whole when it has agent items and none of them
+    carries a message ID or a saved tool call ID. It goes once the saved
+    messages after its prompt have one of these:
+    - its last reply text;
+    - the next saved prompt;
+    - with no reply, its tool calls by `name` and `input`, in order. The
+      comparison ignores key order.
+  - `isMeta` notices are skipped. ID-based turns (Claude Code, Codex,
+    OpenCode) never take this path.
+  - `toolOutput` falls back to `rawOutput.output` when it is a string. Content
+    text, when present, still wins, so the output never shows twice.
+- The `args` fallback for a tool's input was not needed: the spike capture
+  shows `rawInput` on agy's first `tool_call` frame too.
+
+Tests (the task named `chatTail.test.ts`/Vitest, but the project's frontend
+tests are `node --test` files in `frontend/test/`):
+
+- `internal/engine/chat_launch_test.go`:
+  - `TestProvidersDeclareACPAdapters` has an agy row.
+  - `TestDecodeChatAdapters` accepts `antigravity = "/opt/agy"`.
+  - `TestChatLaunchAntigravity`: `ChatAgents` reports agy available with a
+    stubbed `agy` on PATH; `ChatLaunch` gives `[agy, acp]`; a
+    `[chat.adapters]` override gives `[<override>, acp]`.
+- `frontend/test/chat-tail.test.mjs`, five Antigravity tests:
+  - a multi-turn ID-less turn: it stays while running and while ended but
+    unsaved, then goes whole;
+  - a repeated prompt with the same reply 10 s later waits for its own saved
+    copy;
+  - a tool-only turn, including an input whose keys are in another order and
+    an input that does not match;
+  - a turn cancelled while thinking (`ERROR_MESSAGE` notice) goes once the
+    next prompt is saved;
+  - a restart notice between the prompt and the reply; a Claude turn with a
+    message ID is not matched by text;
+  - `rawOutput.output` alone, with an identical content block (shown once),
+    and a `read_file` card with no output.
+- `frontend/test/chat-options.test.mjs`: none of agy's `default`,
+  `accept-edits`, `auto` or `plan` modes is marked as skipping permissions.
+
+Results:
+
+- `npm test` in `frontend/`: 1624 tests, 1619 pass, 0 fail, 5 skipped. This
+  includes the unchanged `chat-reconcile-agents` fixtures for Claude Code,
+  Codex and OpenCode.
+- `npm run check`: 0 errors, 0 warnings.
+- `go test -race ./internal/engine/ ./internal/provider/antigravity/`: ok.
+- `golangci-lint run` on both packages: none in the changed files and none
+  in `internal/provider/antigravity`. `internal/engine` has 38 older issues
+  (errcheck, unused, unparam and others) in files this task does not touch.
+  `golangci-lint fmt --diff`: no changes.
+
+Not checked:
+
+- A live `agy acp` chat in the app. That is AGY-08.
+- A repeated prompt whose earlier copy was never saved (a failed turn) takes
+  the later saved copy. The later turn then waits for the next saved prompt.
+  This is marked `shortcut:` in `idlessSavedTurns`.
+- A live prompt still drops by its text as soon as any saved prompt within
+  60 s has that text, as for every agent. Only the prompt's live item goes;
+  the turn's other items stay.

@@ -116,6 +116,12 @@ export interface ChatTail {
   title?: string;
   /** Context in use, in tokens, from the latest usage_update. */
   usage?: { used: number; size: number };
+  /**
+   * The prompts sent from this window with text, kept after their items go:
+   * the turns of an agent that streams no message IDs (Antigravity) are
+   * matched to the saved ones by prompt, in order.
+   */
+  sent?: { turn: number; text: string; sentAt: number }[];
 }
 
 export function emptyTail(): ChatTail {
@@ -135,7 +141,9 @@ export function addPrompt(tail: ChatTail, prompt?: TailPrompt): ChatTail {
   const attachments = prompt?.attachments?.length ? prompt.attachments : undefined;
   if (!prompt || (!prompt.text && !attachments)) return tail;
   const item: TailText = { type: 'text', key: `i${tail.nextKey}`, turn: tail.turn, role: 'user', text: prompt.text, sentAt: prompt.sentAt, ...(attachments && { attachments }) };
-  return { ...tail, items: [...tail.items, item], nextKey: tail.nextKey + 1 };
+  const text = prompt.text.trim();
+  const sent = text ? [...(tail.sent ?? []), { turn: tail.turn, text, sentAt: prompt.sentAt }] : tail.sent;
+  return { ...tail, items: [...tail.items, item], nextKey: tail.nextKey + 1, ...(sent && { sent }) };
 }
 
 export function endTurn(tail: ChatTail): ChatTail {
@@ -283,11 +291,16 @@ export function addAnswer(tail: ChatTail, answer: Omit<TailAnswer, 'type' | 'key
   return { ...tail, items: [...tail.items, item], nextKey: tail.nextKey + 1 };
 }
 
-/** The tool's output: its content text, else its raw output when that is text. */
+/**
+ * The tool's output: its content text, else its raw output when that is
+ * text, or an object's output text (Antigravity's run_command).
+ */
 export function toolOutput(t: TailTool): string {
   if (t.text) return t.text;
   if (t.terminal?.output) return t.terminal.output;
-  return typeof t.rawOutput === 'string' ? t.rawOutput : '';
+  if (typeof t.rawOutput === 'string') return t.rawOutput;
+  const output = (t.rawOutput as { output?: unknown } | null | undefined)?.output;
+  return typeof output === 'string' ? output : '';
 }
 
 /**
@@ -332,7 +345,7 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
       if (p.tool?.id) tools.set(p.tool.id, p.tool.status);
     }
     if (m.role === 'user') {
-      const text = (m.parts ?? []).filter((p) => p.kind === 'text').map((p) => p.text ?? '').join('\n').trim();
+      const text = messageText(m);
       if (text) prompts.push({ text, time: Date.parse(m.time) });
     }
   }
@@ -377,6 +390,7 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
   for (const [turn, i] of lastMessage) {
     if (ended(turn) && covered(tail.items[i], i)) savedTurns.add(turn);
   }
+  for (const turn of idlessSavedTurns(tail, saved, ended, tools)) savedTurns.add(turn);
 
   // The latest turn the saved messages reach by an agent's own ID.
   let reached = 0;
@@ -401,6 +415,66 @@ export function reconcile(tail: ChatTail, saved: readonly Message[]): ChatTail {
 
   const items = tail.items.filter((it, i) => it.turn >= reached && !savedTurns.has(it.turn) && !covered(it, i) && !unsaved(it, i));
   return items.length === tail.items.length ? tail : { ...tail, items };
+}
+
+/**
+ * The ended turns, among those whose agent items carry no IDs the saved
+ * messages have (Antigravity), that the saved messages show. Each prompt sent
+ * stands for the first saved prompt with its text after the one the prompt
+ * before it stands for. A turn is saved once, after its last prompt, the
+ * saved messages have its last reply, the next prompt, or (with no reply)
+ * its tool calls by name and input, in order. Notices (isMeta) are skipped.
+ */
+function idlessSavedTurns(tail: ChatTail, saved: readonly Message[], ended: (turn: number) => boolean, tools: ReadonlyMap<string, string>): number[] {
+  const isPrompt = (m: Message) => m.role === 'user' && !m.isMeta;
+  // shortcut: a prompt never saved (a failed turn) takes the next saved one with its text; a later identical prompt then waits for the one after.
+  const last = new Map<number, number>();
+  let c = 0;
+  for (const p of tail.sent ?? []) {
+    for (let j = c; j < saved.length; j++) {
+      const m = saved[j];
+      const time = Date.parse(m.time);
+      if (isPrompt(m) && samePrompt(messageText(m), p.text) && (Number.isNaN(time) || time >= p.sentAt - PROMPT_CLOCK_SLACK_MS)) {
+        last.set(p.turn, j);
+        c = j + 1;
+        break;
+      }
+    }
+  }
+  const out: number[] = [];
+  for (const [turn, j] of last) {
+    const items = tail.items.filter((it) => it.turn === turn);
+    const agent = items.filter((it) => it.type === 'thought' || it.type === 'tool' || (it.type === 'text' && it.role === 'assistant'));
+    if (!ended(turn) || agent.length === 0) continue;
+    if (agent.some((it) => (it.type === 'tool' ? tools.has(it.toolCallId) : (it as TailText | TailThought).messageId))) continue;
+    const next = saved.findIndex((m, k) => k > j && isPrompt(m));
+    const segment = saved.slice(j + 1, next < 0 ? undefined : next).filter((m) => !m.isMeta);
+    const reply = findLastIndex(agent, (it) => it.type === 'text');
+    let done = next >= 0;
+    if (!done && reply >= 0) {
+      const text = (agent[reply] as TailText).text.trim();
+      done = segment.some((m) => m.role === 'assistant' && (m.parts ?? []).some((p) => p.kind === 'text' && p.text?.trim() === text));
+    } else if (!done) {
+      const streamed = agent.filter((it): it is TailTool => it.type === 'tool');
+      const savedTools = segment.flatMap((m) => (m.parts ?? []).flatMap((p) => (p.tool ? [p.tool] : [])));
+      let k = 0;
+      for (const t of savedTools) if (k < streamed.length && t.name === streamed[k].name && canonical(t.input) === canonical(streamed[k].input)) k++;
+      done = streamed.length > 0 && k === streamed.length;
+    }
+    if (done) out.push(turn);
+  }
+  return out;
+}
+
+function messageText(m: Message): string {
+  return (m.parts ?? []).filter((p) => p.kind === 'text').map((p) => p.text ?? '').join('\n').trim();
+}
+
+// JSON with object keys sorted: the saved input may list them in another order.
+function canonical(v: unknown): string {
+  return JSON.stringify(v ?? null, (_, x) =>
+    x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x,
+  );
 }
 
 const COMMAND = /^([/$]\S+)([\s\S]*)$/;
