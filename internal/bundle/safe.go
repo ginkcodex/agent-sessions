@@ -34,7 +34,7 @@ func safeIDPart(id string) bool {
 
 func safeAgent(agent string) bool {
 	switch agent {
-	case "claude-code", "codex", "opencode":
+	case "claude-code", "codex", "opencode", "antigravity":
 		return true
 	default:
 		return false

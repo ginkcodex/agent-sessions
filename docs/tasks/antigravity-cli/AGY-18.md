@@ -1,6 +1,6 @@
 # AGY-18 — Share-safe export and import of Antigravity sessions
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 1 h
 - **Depends on:** [AGY-10](AGY-10.md)
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
@@ -63,3 +63,36 @@ names Antigravity as a source (AGY-10).
     sessions;
   - an unknown agent is still refused.
 - Manual: export and import in the desktop app.
+
+## Evidence
+
+Done:
+
+- `safeAgent` in `internal/bundle/safe.go` allows `antigravity`. Bundle
+  write and read both use it, so this one change fixes export and import.
+- The export dialog is unchanged. Complete still fails with the AGY-19
+  error until [AGY-19](AGY-19.md) adds native capture, so disabling it in
+  the dialog now would be undone there.
+
+Tests:
+
+- New `TestShareSafeAntigravity` (`internal/bundle/bundle_test.go`): a
+  share-safe bundle with an Antigravity source and sessions writes and reads
+  back. `TestWriterRejectsUnsafeInput` still refuses an unknown agent
+  (`evil`).
+- `go test ./internal/bundle/`: ok.
+- Live, on Linux with agy 1.5.12:
+  - `agent-sessions-cli export antigravity 2b9a4c81-… --profile share-safe`
+    wrote the bundle;
+  - `inspect` read it: share-safe, source antigravity, 2 sessions,
+    0 native files, 811 redactions.
+- A throwaway test (deleted afterwards) opened that bundle with
+  `Service.OpenBundle`. It reported restore not available and handoff
+  available. `BuildBundleHandoff` into Claude Code gave a `claude` command,
+  and the prompt names Antigravity.
+- `golangci-lint run ./internal/bundle/`: 3 errcheck findings, all from
+  before this change (`read.go:30`, `read.go:119`, `bundle_test.go:201`).
+
+Not checked:
+
+- Export and import in the desktop app.
