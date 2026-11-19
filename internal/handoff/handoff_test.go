@@ -149,6 +149,7 @@ func TestHandoffBuildTargetAdapters(t *testing.T) {
 		{model.AgentCodex, "Codex CLI"},
 		{model.AgentOpenCode, "OpenCode"},
 		{model.AgentClaude, "Claude Code"},
+		{model.AgentAntigravity, "Antigravity CLI"},
 	}
 
 	for _, tc := range targets {
@@ -167,6 +168,17 @@ func TestHandoffBuildTargetAdapters(t *testing.T) {
 		}
 		if !strings.Contains(doc.PromptMarkdown, "auth.go") {
 			t.Errorf("target %s: expected working state to list auth.go", tc.target)
+		}
+	}
+}
+
+func TestHandoffFromAntigravity(t *testing.T) {
+	ts := sampleTranscripts()
+	ts[0].Meta.Ref = model.SessionRef{Agent: model.AgentAntigravity, ID: "6b1f0c2e"}
+	doc, _ := handoff.Build(ts, handoff.Options{TargetAgent: model.AgentClaude, BudgetTokens: handoff.BudgetDetailed})
+	for _, want := range []string{"- **Source Agent:** Antigravity CLI", "- **Original Resume:** `agy --conversation 6b1f0c2e`"} {
+		if !strings.Contains(doc.PromptMarkdown+doc.FullMarkdown, want) {
+			t.Errorf("handoff doc lacks %q", want)
 		}
 	}
 }
@@ -254,6 +266,15 @@ func TestHandoffDelivery(t *testing.T) {
 	if got, want := posix(model.AgentClaude, "Short prompt", promptFile, "/tmp/dir"),
 		"cd /tmp/dir && claude 'Read /data/handoffs/sess-123-handoff.md completely to restore the context of an earlier session, then follow its instructions and wait for my next request.' --add-dir "+launch.ShellEscape(filepath.Dir(promptFile)); got != want {
 		t.Errorf("claude pointer command = %s", got)
+	}
+
+	// Antigravity runs the prompt interactively and gets the same read access.
+	if got, want := posix(model.AgentAntigravity, "Do task", "", "/my/path"), "cd /my/path && agy -i 'Do task'"; got != want {
+		t.Errorf("antigravity launch command = %s", got)
+	}
+	if got, want := posix(model.AgentAntigravity, "Short prompt", promptFile, "/tmp/dir"),
+		"cd /tmp/dir && agy -i 'Read /data/handoffs/sess-123-handoff.md completely to restore the context of an earlier session, then follow its instructions and wait for my next request.' --add-dir "+launch.ShellEscape(filepath.Dir(promptFile)); got != want {
+		t.Errorf("antigravity pointer command = %s", got)
 	}
 
 	// BuildLaunchCommand formats the same command for this platform's shell.

@@ -45,6 +45,13 @@ func getAdapter(target model.AgentID, source model.AgentID) TargetAdapter {
 			"Bash / local_shell_call":    "bash",
 			"Read":                       "read",
 		}
+	case model.AgentAntigravity:
+		adapter.Name = "Antigravity CLI"
+		adapter.ToolMapping = map[string]string{
+			"Edit / Write / apply_patch": "edit_file / write_file",
+			"Bash / local_shell_call":    "run_command",
+			"Read":                       "read_file",
+		}
 	default:
 		adapter.Name = "coding assistant"
 	}
@@ -59,6 +66,8 @@ func sourceName(agent model.AgentID) string {
 		return "Codex CLI"
 	case model.AgentOpenCode:
 		return "OpenCode"
+	case model.AgentAntigravity:
+		return "Antigravity CLI"
 	default:
 		return string(agent)
 	}
@@ -223,6 +232,8 @@ func formatOriginalResume(agent model.AgentID, id string) string {
 		return fmt.Sprintf("codex resume %s", id)
 	case model.AgentOpenCode:
 		return fmt.Sprintf("opencode --session %s", id)
+	case model.AgentAntigravity:
+		return fmt.Sprintf("agy --conversation %s", id)
 	default:
 		return ""
 	}

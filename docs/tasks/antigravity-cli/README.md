@@ -1,7 +1,7 @@
 # Antigravity CLI — tasks
 
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
-- **Progress:** 8/10 done
+- **Progress:** 9/10 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -14,4 +14,4 @@
 | [AGY-07](AGY-07.md) | ✅ Done | Frontend integration: `AgentID`, `ALL_AGENTS`, theme color, `AgentIcon`, sidebar/list/header badges, `Badge`, empty state, `HostEnvDialog`, mock API | 2.5 h | AGY-05 |
 | [AGY-08](AGY-08.md) | 🟡 Partial (desktop, terminal and chat QA not run; Windows ⛔) | End-to-end QA: CLI, desktop transcript, PTY new/resume/link, ACP chat new/resume/permission/cancel, remote bundle | 2 h | AGY-06, AGY-07, AGY-09 |
 | [AGY-09](AGY-09.md) | ✅ Done | Background task results, subagent reports, system notices and `CHECKPOINT` compactions | 3 h | AGY-04 |
-| [AGY-10](AGY-10.md) | ⬜ Not started | Handoff into Antigravity launches a missing `antigravity` command: support `agy -i` or hide the target | 1 h | AGY-05 |
+| [AGY-10](AGY-10.md) | ✅ Done | Handoff into Antigravity: `agy -i <prompt>` with `--add-dir`, adapter and source names, resume command | 1 h | AGY-05 |

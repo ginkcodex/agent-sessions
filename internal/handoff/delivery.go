@@ -206,13 +206,13 @@ func BuildLaunchCommand(target model.AgentID, prompt string, promptFilePath stri
 // LaunchCommand returns the argv and directory that start the target agent
 // with the prompt (or the pointer to the prompt file).
 //
-// Claude Code does not read outside its working directories without asking,
-// and the handoff files live in the app's data directory, not the project.
-// --add-dir grants that directory for the session. It takes several
-// directories, so it goes after the prompt.
+// Claude Code and Antigravity CLI do not read outside their working
+// directories without asking, and the handoff files live in the app's data
+// directory, not the project. --add-dir grants that directory for the
+// session. Claude's takes several directories, so it goes after the prompt.
 func LaunchCommand(target model.AgentID, prompt string, promptFilePath string, cwd string) provider.Command {
 	argv := LaunchArgv(target, LaunchPrompt(prompt, promptFilePath))
-	if target == model.AgentClaude && promptFilePath != "" {
+	if (target == model.AgentClaude || target == model.AgentAntigravity) && promptFilePath != "" {
 		argv = append(argv, "--add-dir", filepath.Dir(promptFilePath))
 	}
 	return provider.Command{Argv: argv, Dir: cwd}
@@ -227,6 +227,9 @@ func LaunchArgv(target model.AgentID, prompt string) []string {
 		return []string{"codex", prompt}
 	case model.AgentOpenCode:
 		return []string{"opencode", "--prompt", prompt}
+	case model.AgentAntigravity:
+		// -i runs the prompt and keeps the session open; -p would exit after it.
+		return []string{"agy", "-i", prompt}
 	default:
 		return []string{string(target), prompt}
 	}

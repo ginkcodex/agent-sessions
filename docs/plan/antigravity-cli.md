@@ -296,8 +296,8 @@ New package `internal/provider/antigravity` implementing `provider.Provider`,
    safely with unsupported errors for unregistered agents; keeping them out of
    v1 avoids mutating `agy`'s SQLite/protobuf store until its deletion/import
    semantics are separately spiked. Handoff *into* Antigravity is the
-   exception: once the agent is registered, `internal/handoff` launches a
-   missing `antigravity` command; see [AGY-10](../tasks/antigravity-cli/AGY-10.md).
+   exception: it writes nothing to the agy store, so it is supported and
+   starts `agy -i <prompt>`; see [AGY-10](../tasks/antigravity-cli/AGY-10.md).
 
 ## Non-goals (v1)
 

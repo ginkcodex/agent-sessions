@@ -2416,6 +2416,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 /** Mirrors handoff.BuildLaunchCommand: the prompt is a pointer to the file. */
 function mockLaunchCommand(target: string, cwd: string, promptFile: string): string {
   const prompt = `'Read ${promptFile} completely to restore the context of an earlier session, then follow its instructions and wait for my next request.'`;
-  const argv = target === 'opencode' ? `opencode --prompt ${prompt}` : `${target === 'codex' ? 'codex' : 'claude'} ${prompt}`;
+  const argv0 = ({ codex: 'codex', opencode: 'opencode --prompt', antigravity: 'agy -i' } as Record<string, string>)[target] ?? 'claude';
+  const argv = `${argv0} ${prompt}`;
   return `cd '${cwd}' && ${argv}`;
 }
