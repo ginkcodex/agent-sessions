@@ -351,6 +351,16 @@ test('Split shortcut: Cmd+\\ on macOS, Ctrl+Shift+5 elsewhere', () => {
   assert.match(view, /label: 'Close Terminal', onSelect: \(\) => terminals\.close\(tab\.id\)/);
 });
 
+test('terminal opens both plain URLs and OSC 8 hyperlinks through the app', () => {
+  // xterm's own OSC 8 handler calls confirm() and window.open(), which the
+  // desktop WebView ignores (agy writes its links as OSC 8).
+  const view = readFileSync(new URL('../src/lib/components/terminal/TerminalView.svelte', import.meta.url), 'utf8');
+  assert.match(view, /const openLink = \(event: MouseEvent, uri: string\) => \{\s*event\.preventDefault\(\);\s*void api\.openURL\(uri\);\s*\};/);
+  assert.match(view, /new Terminal\(\{[\s\S]*?linkHandler: \{ activate: openLink \},[\s\S]*?\}\);/);
+  assert.match(view, /new WebLinksAddon\(openLink\)/);
+  assert.doesNotMatch(view, /allowNonHttpProtocols/, 'OSC 8 links stay http(s) only');
+});
+
 test('terminal tab shortcuts: Cmd+1–9 on macOS, Alt+1–9 elsewhere', () => {
   const key = (code, mods = {}) => ({ code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
   assert.equal(terminalTabShortcut(key('Digit1', { metaKey: true }), true), 1);
