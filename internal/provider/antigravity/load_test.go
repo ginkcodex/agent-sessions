@@ -52,14 +52,7 @@ func tool(t *testing.T, tx *model.Transcript, msgID string, k int) *model.ToolCa
 
 func TestLoadGolden(t *testing.T) {
 	root := t.TempDir()
-	data, err := os.ReadFile("testdata/session.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := writeTranscript(t, root, parentID)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	copyFixture(t, root, parentID, "session")
 	writeDB(t, root, fixtureRow{id: parentID, title: "Read the guide", status: "CASCADE_RUN_STATUS_IDLE", uris: `["file:///work"]`, agent: "self", modified: loadNow})
 	p := newTestProvider(t, root, loadNow)
 
@@ -76,6 +69,83 @@ func TestLoadGolden(t *testing.T) {
 	}
 	tx.Meta.SourcePath, tx.Meta.CWD, tx.Meta.CWDMissing, tx.Meta.RepoRoot = "<fixture>", "<cwd>", false, ""
 	golden.JSON(t, "load_session", tx)
+}
+
+func copyFixture(t *testing.T, root, id, name string) {
+	t.Helper()
+	data, err := os.ReadFile("testdata/" + name + ".jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := writeTranscript(t, root, id)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Background tasks, subagent tasks and reports, notices, a cancelled turn
+// and a compaction, in a parent and its subagent.
+func TestLoadGoldenSystemSteps(t *testing.T) {
+	root := t.TempDir()
+	copyFixture(t, root, parentID, "parent")
+	copyFixture(t, root, childID, "subagent")
+	writeDB(t, root,
+		fixtureRow{id: parentID, status: "CASCADE_RUN_STATUS_IDLE", uris: `["file:///work"]`, agent: "self", modified: loadNow},
+		fixtureRow{id: childID, status: "CASCADE_RUN_STATUS_IDLE", uris: `["file:///work"]`, agent: "research", parent: parentID, modified: loadNow},
+	)
+	p := newTestProvider(t, root, loadNow)
+	scanned := byID(scan(t, p, provider.ScanState{}))
+	for name, id := range map[string]string{"parent": parentID, "subagent": childID} {
+		tx, err := p.Load(context.Background(), ref(id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(scanned[id], tx.Meta) {
+			t.Fatalf("%s: load meta differs from scan:\n%+v\n%+v", name, tx.Meta, scanned[id])
+		}
+		tx.Meta.SourcePath, tx.Meta.CWD, tx.Meta.CWDMissing, tx.Meta.RepoRoot = "<fixture>", "<cwd>", false, ""
+		golden.JSON(t, "load_"+name, tx)
+	}
+}
+
+// A task result appended later completes the earlier call.
+func TestLoadIncrementalTaskResult(t *testing.T) {
+	root := t.TempDir()
+	path := writeTranscript(t, root, parentID, userStep(0, "go"), plannerStep(1, "", "run_command"),
+		mustJSON(map[string]any{"step_index": 2, "type": stepGeneric, "status": "RUNNING", "created_at": at(2), "content": "Created At: x\nTool is running as a background task"}),
+		plannerStep(3, "waiting"))
+	p := newTestProvider(t, root, loadNow)
+	res := load(t, p, nil)
+	if c := tool(t, res.Transcript, "step-1", 0); c.Status != model.ToolPending {
+		t.Fatalf("running call = %s", c.Status)
+	}
+	appendSteps(t, path, systemStep(4, parentID+"/task-2", `Task id "`+parentID+`/task-2" finished with result:`+"\nCreated At: x\nall passed"))
+	res = load(t, p, res.State)
+	if !res.Resumed || res.FirstChanged != 1 || len(res.Transcript.Messages) != 3 {
+		t.Fatalf("resumed=%v first=%d messages=%d", res.Resumed, res.FirstChanged, len(res.Transcript.Messages))
+	}
+	if c := tool(t, res.Transcript, "step-1", 0); c.Status != model.ToolCompleted || c.Output != "all passed" {
+		t.Fatalf("call = %+v", c)
+	}
+}
+
+// A long report is clipped, and Blob joins the result and the report.
+func TestLoadReportBlob(t *testing.T) {
+	root := t.TempDir()
+	writeTranscript(t, root, childID, systemStep(0, parentID, "task"))
+	report := strings.Repeat("r", maxOutputBytes)
+	writeTranscript(t, root, parentID, userStep(0, "go"), plannerStep(1, "", "invoke_subagent"),
+		mustJSON(map[string]any{"step_index": 2, "type": stepGeneric, "status": "DONE", "created_at": at(2), "content": `{"conversationId": "` + childID + `"}`}),
+		systemStep(3, childID, report))
+	p := newTestProvider(t, root, loadNow)
+	c := tool(t, load(t, p, nil).Transcript, "step-1", 0)
+	if c.Child == nil || !c.OutputTruncated || len(c.Output) != maxOutputBytes || !strings.Contains(c.OutputRef, ",") {
+		t.Fatalf("call = child %v truncated %v len %d ref %q", c.Child, c.OutputTruncated, len(c.Output), c.OutputRef)
+	}
+	full, err := p.Blob(context.Background(), ref(parentID), c.OutputRef)
+	if want := `{"conversationId": "` + childID + `"}` + "\n\n" + report; err != nil || string(full) != want {
+		t.Fatalf("Blob = %d bytes, %v", len(full), err)
+	}
 }
 
 func TestLoadClipsOutputAndServesBlob(t *testing.T) {
@@ -213,27 +283,33 @@ func TestResultText(t *testing.T) {
 // Every line boundary of the fixture, unterminated and complete, loads
 // incrementally the same as cold, with an accurate FirstChanged.
 func TestLoadIncrementalEveryBoundary(t *testing.T) {
-	root := t.TempDir()
-	data, err := os.ReadFile("testdata/session.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeTranscript(t, root, childID, systemStep(0, parentID, "Check the docs"))
-	path := writeTranscript(t, root, parentID)
-	p, cold := commandless{newTestProvider(t, root, loadNow)}, commandless{newTestProvider(t, root, loadNow)}
-	var h providertest.IncrementalHarness
-	for i := range data {
-		if data[i] != '\n' {
-			continue
-		}
-		for _, end := range []int{i, i + 1} {
-			if err := os.WriteFile(path, data[:end], 0o644); err != nil {
+	for _, name := range []string{"session", "parent", "subagent"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			data, err := os.ReadFile("testdata/" + name + ".jsonl")
+			if err != nil {
 				t.Fatal(err)
 			}
-			if err := h.Check(t.Context(), p, cold, ref(parentID)); err != nil {
-				t.Fatalf("byte %d: %v", end, err)
+			if name != "subagent" {
+				writeTranscript(t, root, childID, systemStep(0, parentID, "Check the docs"))
 			}
-		}
+			path := writeTranscript(t, root, parentID)
+			p, cold := commandless{newTestProvider(t, root, loadNow)}, commandless{newTestProvider(t, root, loadNow)}
+			var h providertest.IncrementalHarness
+			for i := range data {
+				if data[i] != '\n' {
+					continue
+				}
+				for _, end := range []int{i, i + 1} {
+					if err := os.WriteFile(path, data[:end], 0o644); err != nil {
+						t.Fatal(err)
+					}
+					if err := h.Check(t.Context(), p, cold, ref(parentID)); err != nil {
+						t.Fatalf("byte %d: %v", end, err)
+					}
+				}
+			}
+		})
 	}
 }
 

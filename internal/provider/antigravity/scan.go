@@ -103,9 +103,10 @@ func (c *checkpoint) consume(line []byte, d *provider.Diagnostics) {
 	case stepSystemMessage:
 		// A subagent's transcript opens with its task from the parent, and
 		// has no USER_INPUT: that task is its prompt.
-		if !c.UserSeen && c.FirstPrompt == "" {
+		if !c.UserSeen {
 			if msg, ok := parseSystemMessage(gjson.GetBytes(line, "content").String()); ok && msg.fromSession() {
 				c.Counts.User++
+				c.UserSeen = true
 				c.FirstPrompt = prompt(msg.Text)
 			}
 		}

@@ -1,0 +1,243 @@
+{
+  "meta": {
+    "ref": {
+      "agent": "antigravity",
+      "id": "2b9a4c81-215f-47af-9395-99d2b08be416"
+    },
+    "sourcePath": "<fixture>",
+    "cwd": "<cwd>",
+    "title": "Run the tests and ask a subagent to review",
+    "firstPrompt": "Run the tests and ask a subagent to review",
+    "model": "gemini-4-neon-high",
+    "agentName": "self",
+    "createdAt": "2026-11-19T04:00:00Z",
+    "updatedAt": "2026-11-19T04:00:13Z",
+    "counts": {
+      "user": 1,
+      "assistant": 3,
+      "toolCalls": 3
+    },
+    "tokens": {
+      "input": 300,
+      "output": 15,
+      "reasoning": 0,
+      "cacheRead": 30,
+      "cacheWrite": 0
+    },
+    "turn": "done"
+  },
+  "messages": [
+    {
+      "id": "step-0",
+      "role": "user",
+      "time": "2026-11-19T04:00:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Run the tests and ask a subagent to review"
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-1",
+      "role": "system",
+      "time": "2026-11-19T04:00:01Z",
+      "parts": [
+        {
+          "kind": "notice",
+          "text": "[Notice] All your subagents and background tasks have been stopped due to server restart. If you want a subagent to continue working, it needs to be revived by sending it a new message."
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-2",
+      "role": "assistant",
+      "time": "2026-11-19T04:00:02Z",
+      "model": "gemini-4-neon-high",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Starting."
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-2-0",
+            "name": "run_command",
+            "input": {
+              "CommandLine": "make test",
+              "WaitMsBeforeAsync": 5000
+            },
+            "output": "Command exited with code 0.\n\nok  \tpkg\t0.1s\n\nLog: file:///x/task-3.log",
+            "status": "completed"
+          }
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-2-1",
+            "name": "run_command",
+            "input": {
+              "CommandLine": "make lint",
+              "WaitMsBeforeAsync": 5000
+            },
+            "output": "Tool is running as a background task with task id: 2b9a4c81-215f-47af-9395-99d2b08be416/task-4\nTask Description: make test",
+            "status": "pending"
+          }
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-2-2",
+            "name": "invoke_subagent",
+            "input": {
+              "Task": "Review the diff"
+            },
+            "output": "Created the following subagent:\n{\n  \"conversationId\":  \"0ce5ddc2-779f-452d-9c81-281712caf621\",\n  \"logAbsoluteUri\":  \"file:///x\"\n}\n\n# Review\n\nLooks good.",
+            "status": "completed",
+            "child": {
+              "agent": "antigravity",
+              "id": "0ce5ddc2-779f-452d-9c81-281712caf621"
+            }
+          }
+        }
+      ],
+      "tokens": {
+        "input": 100,
+        "output": 5,
+        "reasoning": 0,
+        "cacheRead": 10,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-6",
+      "role": "assistant",
+      "time": "2026-11-19T04:00:06Z",
+      "model": "gemini-4-neon-high",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Waiting for the tests."
+        }
+      ],
+      "tokens": {
+        "input": 100,
+        "output": 5,
+        "reasoning": 0,
+        "cacheRead": 10,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-8",
+      "role": "system",
+      "time": "2026-11-19T04:00:08Z",
+      "parts": [
+        {
+          "kind": "notice",
+          "text": "Task id \"2b9a4c81-215f-47af-9395-99d2b08be416/task-4\" was cancelled"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-9",
+      "role": "system",
+      "time": "2026-11-19T04:00:09Z",
+      "parts": [
+        {
+          "kind": "notice",
+          "text": "Task id \"2b9a4c81-215f-47af-9395-99d2b08be416/task-99\" finished with result:\nnot ours"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-11",
+      "role": "system",
+      "time": "2026-11-19T04:00:11Z",
+      "parts": [
+        {
+          "kind": "notice",
+          "text": "a report from a session this one never started"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-12",
+      "role": "assistant",
+      "time": "2026-11-19T04:00:12Z",
+      "model": "gemini-4-neon-high",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "The tests pass, the rev"
+        }
+      ],
+      "tokens": {
+        "input": 100,
+        "output": 5,
+        "reasoning": 0,
+        "cacheRead": 10,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-13",
+      "role": "system",
+      "time": "2026-11-19T04:00:13Z",
+      "parts": [
+        {
+          "kind": "notice",
+          "text": "Error: The stream was interrupted. Please continue the task you were working on."
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # AGY-09 — Background tasks, system messages and compactions
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 3 h
 - **Depends on:** [AGY-04](AGY-04.md)
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
@@ -77,3 +77,51 @@ criteria below.
   subagent transcript opening with its parent's task message; restart
   notice after a resume; cancelled turn with `ERROR_MESSAGE`; checkpoint.
 - Incremental load test: task result appended after the `RUNNING` result.
+
+## Evidence
+
+Done in `parse.go`, `load.go` and `scan.go`:
+
+- A `RUNNING` result leaves its call `pending` and records the step. A
+  `SYSTEM_MESSAGE` from `<own id>/task-<step>` whose text starts with
+  `Task id "<sender>" finished with result:` completes that call with the
+  output, header lines stripped; no message is added. A task sender is
+  matched only when it starts with the session's own ID.
+- A task message naming a step that is not running, or with other wording
+  (such as `was cancelled`), is a meta notice; the call stays `pending`.
+- A report from a child named by an `invoke_subagent` result is appended to
+  that call's output (`\n\n` between), keeping the `Child` link; an unknown
+  sender is a meta notice.
+- The first session `SYSTEM_MESSAGE` before any `USER_INPUT` is a user
+  message with the task text. The scan now counts it through `UserSeen`, so
+  Load's meta still equals Scan's.
+- Messages from `system` and unparsed ones are meta notices; `CHECKPOINT` is
+  a meta `PartCompaction` (4096 runes); `ERROR_MESSAGE` is a meta notice.
+- Blob keys may join segments: `rec:<off>:<step>[,<off>:<step>…]` (at most
+  64), one per step that built the output, joined as Load joins them.
+  `steps/<n>/output.txt` is not used.
+
+Tests (`go test -race ./internal/provider/...`, all pass; lint and
+`go vet` for linux, windows and darwin clean):
+
+- `TestLoadGoldenSystemSteps`: `parent.jsonl` and `subagent.jsonl` goldens,
+  covering a task completed later, a task never completed, a cancelled-task
+  message, a task message for an unknown step, a child report, an unknown
+  sender, a restart notice, a cancelled turn with `ERROR_MESSAGE`, a
+  subagent opening with its task, and a checkpoint. Load's meta equals the
+  scan's for both.
+- `TestLoadIncrementalTaskResult`: the task result appended later completes
+  the call, `FirstChanged` = 1.
+- `TestLoadReportBlob`: a 64 KiB report is clipped, and Blob returns the
+  result and the report.
+- `TestLoadIncrementalEveryBoundary`: every line boundary of the three
+  fixtures loads incrementally the same as cold.
+
+Live, read-only check of the 6 sessions in `~/.gemini/antigravity-cli`
+(linux, agy 1.5.12) with a throwaway test, since deleted: Load's meta
+equals Scan's for all 6; the parent's 3 background tasks are completed; the
+subagent shows its task as the prompt and 1 compaction; restart notices are
+meta.
+
+Not checked: Windows and macOS stores; `ERROR_MESSAGE` only from fixtures
+(none in the local store).

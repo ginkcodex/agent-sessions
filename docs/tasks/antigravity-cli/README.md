@@ -1,7 +1,7 @@
 # Antigravity CLI — tasks
 
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
-- **Progress:** 4/9 done
+- **Progress:** 5/9 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -13,4 +13,4 @@
 | [AGY-06](AGY-06.md) | ⬜ Not started | Built-in `agy acp` launcher, ID-less live-tail reconciliation & `rawOutput.output` extraction in `chatTail.ts` | 3 h | AGY-05 |
 | [AGY-07](AGY-07.md) | ⬜ Not started | Frontend integration: `AgentID`, `ALL_AGENTS`, theme color, `AgentIcon`, sidebar/list/header badges, `Badge`, empty state, `HostEnvDialog`, mock API | 2.5 h | AGY-05 |
 | [AGY-08](AGY-08.md) | ⬜ Not started | End-to-end QA: CLI, desktop transcript, PTY new/resume/link, ACP chat new/resume/permission/cancel, remote bundle | 2 h | AGY-06, AGY-07, AGY-09 |
-| [AGY-09](AGY-09.md) | ⬜ Not started | Background task results, subagent reports, system notices and `CHECKPOINT` compactions | 3 h | AGY-04 |
+| [AGY-09](AGY-09.md) | ✅ Done | Background task results, subagent reports, system notices and `CHECKPOINT` compactions | 3 h | AGY-04 |

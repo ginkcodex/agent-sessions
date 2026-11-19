@@ -98,7 +98,7 @@ func (p *Provider) LoadIncremental(ctx context.Context, ref model.SessionRef, pr
 		st = &loadState{
 			path: src.Path,
 			cp:   checkpoint{Version: checkpointVersion, ID: src.ID, path: src.Path},
-			l:    &loader{exists: p.exists},
+			l:    &loader{id: src.ID, exists: p.exists},
 		}
 	}
 	info, err := f.Stat()
@@ -197,7 +197,11 @@ func (p *Provider) LoadIncremental(ctx context.Context, ref model.SessionRef, pr
 // stopped sharing.
 func (s *loadState) retainedBytes(committed, published []model.Message) int64 {
 	n := s.l.store.Overhead() + int64(unsafe.Sizeof(*s)) + int64(unsafe.Sizeof(*s.l))
-	n += int64(len(s.l.waiting)) * 32
+	n += int64(len(s.l.waiting)+len(s.l.running)) * 32
+	n += int64(len(s.l.children)) * 80
+	for _, ref := range s.l.refs {
+		n += int64(len(ref)) + 48
+	}
 	n += int64(len(s.cp.FirstPrompt) + len(s.cp.Model))
 	if r := s.cp.Row; r != nil {
 		n += int64(unsafe.Sizeof(*r)) + int64(len(r.Title)+len(r.Preview)+len(r.Status)+len(r.CWD)+len(r.AgentName)+len(r.ParentID))
@@ -205,25 +209,47 @@ func (s *loadState) retainedBytes(committed, published []model.Message) int64 {
 	return n + transcriptbuild.Unshared(committed, published)
 }
 
+// maxSegments bounds the steps one Blob key may name.
+const maxSegments = 64
+
 // Blob returns a tool's full output. Keys are rec:<lineStart>:<stepIndex>,
-// naming the GENERIC result step; nothing else is ever read.
+// naming a result step, with ",<lineStart>:<stepIndex>" for each child
+// report appended to it; nothing else is ever read.
 func (p *Provider) Blob(ctx context.Context, ref model.SessionRef, key string) ([]byte, error) {
-	offText, indexText, ok := strings.Cut(strings.TrimPrefix(key, "rec:"), ":")
-	offset, err1 := strconv.ParseInt(offText, 10, 64)
-	index, err2 := strconv.ParseInt(indexText, 10, 64)
-	if !strings.HasPrefix(key, "rec:") || !ok || err1 != nil || err2 != nil || offset < 0 {
+	rest, ok := strings.CutPrefix(key, "rec:")
+	segments := strings.Split(rest, ",")
+	if !ok || len(segments) > maxSegments {
 		return nil, fmt.Errorf("antigravity: Blob: malformed key %q", key)
 	}
 	src, err := p.resolve(ref)
 	if err != nil {
 		return nil, err
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
+	parts := make([]string, 0, len(segments))
+	for _, seg := range segments {
+		offText, indexText, ok := strings.Cut(seg, ":")
+		offset, err1 := strconv.ParseInt(offText, 10, 64)
+		index, err2 := strconv.ParseInt(indexText, 10, 64)
+		if !ok || err1 != nil || err2 != nil || offset < 0 {
+			return nil, fmt.Errorf("antigravity: Blob: malformed key %q", key)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		out, err := readOutput(src.Path, offset, index)
+		if err != nil {
+			return nil, fmt.Errorf("antigravity: Blob %q: %w", key, err)
+		}
+		parts = append(parts, out)
 	}
-	r, err := jsonl.Open(src.Path, offset)
+	return []byte(strings.Join(parts, "\n\n")), nil
+}
+
+// readOutput reads the output of the step at index from the line at offset.
+func readOutput(path string, offset, index int64) (string, error) {
+	r, err := jsonl.Open(path, offset)
 	if err != nil {
-		return nil, fmt.Errorf("antigravity: Blob %q: %w", key, err)
+		return "", err
 	}
 	defer func() { _ = r.Close() }()
 	line, _, err := r.Next()
@@ -231,11 +257,15 @@ func (p *Provider) Blob(ctx context.Context, ref model.SessionRef, key string) (
 		line, err = r.Trailing(), nil // the valid partial last line Load shows
 	}
 	if err != nil {
-		return nil, fmt.Errorf("antigravity: Blob %q: read step: %w", key, err)
+		return "", fmt.Errorf("read step: %w", err)
 	}
 	var s step
-	if json.Unmarshal(line, &s) != nil || s.Type != stepGeneric || s.Index != index {
-		return nil, fmt.Errorf("antigravity: Blob %q: not a tool result step", key)
+	if json.Unmarshal(line, &s) != nil || s.Index != index {
+		return "", fmt.Errorf("step %d is not at offset %d", index, offset)
 	}
-	return []byte(resultText(s)), nil
+	out, ok := stepOutput(s)
+	if !ok {
+		return "", fmt.Errorf("step %d has no tool output", index)
+	}
+	return out, nil
 }
