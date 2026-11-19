@@ -15,6 +15,12 @@ test('message file destinations preserve paths and parse source locations', () =
     ['D:/project/main.ts#L10-L20', { path: 'D:/project/main.ts', line: 10, endLine: 20 }],
     ['src\\main.ts', { path: 'src\\main.ts' }],
     ['%252Fetc/passwd', { path: '%2Fetc/passwd' }],
+    // agy links files as local file URLs.
+    ['file:///home/me/docs/AGY-01.md', { path: '/home/me/docs/AGY-01.md' }],
+    ['file:///home/me/chat.go#L549', { path: '/home/me/chat.go', line: 549 }],
+    ['FILE://localhost/home/me/types.go#L98-L103', { path: '/home/me/types.go', line: 98, endLine: 103 }],
+    ['file:///home/me/my%20notes.md', { path: '/home/me/my notes.md' }],
+    ['file:///C:/Users/Gink/main.go', { path: 'C:/Users/Gink/main.go' }],
   ];
   for (const [value, expected] of cases) assert.deepEqual(parseMessageFileLink(value), expected, value);
 });
@@ -23,7 +29,8 @@ test('message file parser rejects schemes, authorities, controls, and malformed 
   for (const value of [
     '', '.', '..', '/', 'C:/', '#heading', 'notes.md#heading', 'notes.md?raw=1',
     'javascript:alert', 'data:text/html,hi', 'https://example.com/a.ts', 'mailto:a@b.com',
-    'file:///tmp/a.ts', 'vscode://file/tmp/a.ts', 'C:relative.ts',
+    'file://server/share/a.ts', 'file:////server/share/a.ts', 'file:relative.ts', 'file:///tmp/a.ts?raw=1',
+    'file:///tmp/dir/', 'vscode://file/tmp/a.ts', 'C:relative.ts',
     '//server/share/a.ts', String.raw`\\server\share\a.ts`, String.raw`\rooted\a.ts`, '/\\server/a.ts',
     '%2f%2fserver/a.ts', '%5c%5cserver/a.ts', 'javascript%3Aalert',
     'src/%GG.ts', 'src/%.ts', '%C0%AFetc/passwd', 'src/a\u0000.ts', 'src/a\n.ts',

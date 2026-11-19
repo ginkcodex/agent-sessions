@@ -10,14 +10,19 @@ const controls = /[\u0000-\u001f\u007f-\u009f�]/;
 
 /**
  * Parse explicit file destinations, decoding URI escapes exactly once. This is
- * deliberately not a URL parser: schemes (including file:) and network shares
- * must never become workspace file actions. Paths remain platform-native.
+ * deliberately not a URL parser: schemes and network shares must never become
+ * workspace file actions; only a local file:/// URL maps to its absolute path.
+ * Paths remain platform-native.
  */
 export function parseMessageFileLink(value: string): MessageFileLink | null {
   if (controls.test(value)) return null;
+  // A local file URL (agy links files so) names the same absolute path;
+  // file://host/ shares stay schemes.
+  const local = value.trim().match(/^file:\/\/(?:localhost)?(\/.*)$/i);
+  const raw = local ? local[1].replace(/^\/([a-z]:\/)/i, '$1') : value;
   let path: string;
   try {
-    path = decodeURIComponent(value.trim()).trim();
+    path = decodeURIComponent(raw.trim()).trim();
   } catch {
     return null;
   }

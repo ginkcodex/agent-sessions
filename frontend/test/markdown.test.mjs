@@ -346,8 +346,14 @@ test('transcript directory paths are not file links', () => {
   assert.match(html, /<code class="inline-code">docs\/tasks\/terminal-auto-activation\/<\/code>/);
 });
 
+test('transcript links open local file URLs as files', () => {
+  const html = renderMarkdown('[AGY-01.md](file:///home/me/AGY-01.md) [chat.go](file:///home/me/chat.go#L549)', 'transcript');
+  assert.match(html, /<a href="#" data-file-link="file:\/\/\/home\/me\/AGY-01.md">AGY-01.md<\/a>/);
+  assert.match(html, /data-file-link="file:\/\/\/home\/me\/chat.go#L549"/);
+});
+
 test('transcript links reject encoded unsafe destinations and retain ordinary web links', () => {
-  for (const value of ['file:///tmp/a.ts', '//server/a.ts', String.raw`\\server\a.ts`, 'javascript&#58;alert', 'src/%GG.ts', 'src/%00.ts', 'src/a.ts#heading', 'src/a.ts:0']) {
+  for (const value of ['file://server/a.ts', '//server/a.ts', String.raw`\\server\a.ts`, 'javascript&#58;alert', 'src/%GG.ts', 'src/%00.ts', 'src/a.ts#heading', 'src/a.ts:0']) {
     assert.doesNotMatch(renderMarkdown(`[x](${value})`, 'transcript'), /data-file-link/, value);
   }
   assert.match(renderMarkdown('[web](https://example.com) [mail](mailto:a@b.com)', 'transcript'), /href="https:\/\/example.com"/);
