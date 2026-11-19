@@ -314,10 +314,10 @@ New package `internal/provider/antigravity` implementing `provider.Provider`,
   (without restore) in [AGY-19](../tasks/antigravity-cli/AGY-19.md).
 - Antigravity IDE (`~/.gemini/antigravity/`) separate from Antigravity CLI
   (`~/.gemini/antigravity-cli/`).
-- MCP/plugin/skill slash-command inventory (`provider.InventoryLister` /
-  `PluginLister`). Exception: `/mcp`, which desktop QA found sent to the
-  agent as a prompt, is follow-up work in
-  [AGY-13](../tasks/antigravity-cli/AGY-13.md).
+- Plugin and skill slash-command inventory (`PluginLister`, skills in
+  `InventoryLister`). Exception: `/mcp`, which desktop QA found sent to the
+  agent as a prompt. [AGY-13](../tasks/antigravity-cli/AGY-13.md) answers it
+  in the app from `agy mcp list`.
 
 ## Risks
 

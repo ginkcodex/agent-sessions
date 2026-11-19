@@ -1,7 +1,7 @@
 # Antigravity CLI — tasks
 
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
-- **Progress:** 14/19 done
+- **Progress:** 15/19 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -17,7 +17,7 @@
 | [AGY-10](AGY-10.md) | ✅ Done | Handoff into Antigravity: `agy -i <prompt>` with `--add-dir`, adapter and source names, resume command | 1 h | AGY-05 |
 | [AGY-11](AGY-11.md) | ✅ Done | Live-tail review fixes: failed prompt vs. identical retry, file-only prompts, bounded `sent`, mock label map | 2 h | AGY-06 |
 | [AGY-12](AGY-12.md) | ✅ Done | Provider review fixes: capped report Blob keys, late child links, scan prefix digest, renamed transcripts | 2 h | AGY-03, AGY-09 |
-| [AGY-13](AGY-13.md) | ⬜ Not started | `/mcp` in an Antigravity chat: answer it in the app from `agy mcp list` instead of sending it as a prompt | 3 h | AGY-06 |
+| [AGY-13](AGY-13.md) | ✅ Done | `/mcp` in an Antigravity chat: answer it in the app from `agy mcp list` instead of sending it as a prompt | 3 h | AGY-06 |
 | [AGY-14](AGY-14.md) | ⬜ Not started | Spike: every file and SQLite row a delete must remove, and what agy does afterwards | 2 h | AGY-03 |
 | [AGY-15](AGY-15.md) | ⬜ Not started | Delete Antigravity sessions in `internal/manage`, as the spike decides | 4 h | AGY-14 |
 | [AGY-16](AGY-16.md) | ✅ Done | Tool cards: agy's `Path` / `StartLine` / `CommandLine` arguments for the file link and summary; real argument names in fixtures | 2 h | AGY-04 |

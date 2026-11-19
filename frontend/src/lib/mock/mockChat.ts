@@ -349,10 +349,16 @@ export class MockChats {
     return structuredClone(chat.state.configOptions);
   }
 
-  /** OpenCode's CLI lists its MCP servers and skills; the others answer /mcp themselves. */
+  /**
+   * OpenCode's CLI lists its MCP servers and skills, and agy its MCP servers;
+   * the others answer /mcp themselves.
+   */
   async inventory(chatId: string, kind: ChatInventoryKind): Promise<ChatInventory> {
     this.requireAvailable();
     const chat = this.get(chatId);
+    if (chat.state.agent === 'antigravity' && kind === 'mcp') {
+      return { kind, supported: true, mcpServers: [{ name: 'fs', status: 'enabled' }, { name: 'api', status: 'disabled' }] };
+    }
     if (chat.state.agent !== 'opencode') return { kind, supported: false, mcpServers: [], skills: [] };
     return kind === 'mcp'
       ? { kind, supported: true, mcpServers: [{ name: 'super-fetch', status: 'connected' }, { name: 'docs', status: 'failed', error: 'connect ECONNREFUSED' }] }

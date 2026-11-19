@@ -1027,6 +1027,19 @@ test('OpenCode\'s picker offers its own /plugins, /mcps and /skills, answered by
   assert.deepEqual(st.groups[0].servers, [{ name: 'docs', scope: 'Docs site', detail: 'ECONNREFUSED' }]);
 });
 
+test('Antigravity\'s /mcp is answered by the app from agy mcp list', () => {
+  const advertised = [{ name: 'goal' }, { name: 'mcp', input: { hint: 'x' } }, { name: 'compact' }];
+  const names = pickerCommands(advertised, 'antigravity').map((c) => c.name);
+  assert.deepEqual(names, ['goal', 'compact', 'plugin', 'mcp'], 'one /mcp, even if agy advertised it');
+  assert.equal(pickerCommands([], 'antigravity').find((c) => c.name === 'mcp').input, null);
+  assert.equal(inventoryListing(' /mcp\n', 'antigravity'), 'mcp');
+  for (const text of ['/mcp list', '/mcps', '/skills', 'hi /mcp']) assert.equal(inventoryListing(text, 'antigravity'), null, text);
+  for (const agent of ['claude-code', 'codex', 'opencode']) assert.equal(inventoryListing('/mcp', agent), null, agent);
+
+  const st = mcpStatusFromServers([{ name: 'api', status: 'disabled' }, { name: 'fs', status: 'enabled' }]);
+  assert.equal(st.summary, '2 (1 enabled, 1 disabled)');
+  assert.deepEqual(st.groups.map((g) => g.title), ['Enabled', 'Disabled']);
+});
 
 test('Codex intercepts only bare /skills and keeps skill invocation in the picker', () => {
   assert.equal(inventoryListing(' /skills\n', 'codex'), 'skills');

@@ -1,6 +1,6 @@
 # AGY-13 — `/mcp` in an Antigravity chat
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 3 h
 - **Depends on:** [AGY-06](AGY-06.md)
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
@@ -81,3 +81,75 @@ read `~/.gemini/antigravity/mcp_config.json`. In the `agy` TUI, `/mcp`
 - Frontend: `inventoryListing('/mcp', 'antigravity')` is `'mcp'`.
   `pickerCommands` has no duplicate. The other agents are unchanged.
 - Manual: `/mcp` in a live Antigravity chat on macOS.
+
+## Evidence
+
+Spike, agy 1.5.12 on Linux:
+
+- `agy acp` advertises 13 commands in `available_commands_update`, and `mcp`
+  is not one of them:
+  - goal, compact, schedule, browser, plan, grill-me, teamwork;
+  - learn, boost, agy-customizations, antigravity-guide, run-workflow,
+    swarm.
+- A bare `/mcp` prompt over ACP goes to the model. It answers that the
+  command "was sent directly as a prompt" (throwaway session `dacefd7c-…`,
+  `/tmp/agy-probe-ws`).
+- `agy mcp list`, run with `HOME` set to a throwaway folder (the real
+  config was not touched), after `agy mcp add` and `agy mcp disable`:
+
+  ```
+  NAME       TYPE   STATUS    COMMAND/URL
+  api        http   disabled  https://example.com/mcp
+  fs         stdio  enabled   npx -y @modelcontextprotocol/server-filesystem /work
+  gone       stdio  enabled   /nonexistent/bin
+  my server  stdio  enabled   echo hi
+  ```
+
+  - With none configured it prints `No MCP servers configured.`
+  - The status is only `enabled` or `disabled`. `list` does not connect, so
+    a server whose command does not exist (`gone`) is still `enabled`; there
+    is no failing state to show.
+  - Names may hold spaces. Headers and env values are not printed. A URL or
+    command line may still carry a token.
+  - The config it reads is `~/.gemini/config/mcp_config.json`.
+
+Done:
+
+- `internal/provider/antigravity/inventory.go`:
+  - `InventoryList` runs `agy mcp list` for MCP, and lists no skills.
+  - `parseMCPList` cuts each row at the header's column starts, so names
+    with spaces work. It keeps the name and status, and drops the
+    command/URL. Any other text, or a status other than enabled or
+    disabled, is an error. The chat then says "this Antigravity version does
+    not list its MCP servers in a form the app reads; update it", the same
+    message the other agents get.
+- `frontend/src/lib/chat.ts`:
+  - `inventoryCommands('antigravity')` is `/mcp`, so a bare `/mcp` opens the
+    MCP modal and is not sent.
+  - `pickerCommands` now adds the app's listings for every agent, not only
+    Codex and OpenCode. An advertised command of the same name is replaced,
+    so `/mcp` is offered once.
+  - The modal titles the `enabled` group "Enabled".
+- `mockChat.ts` lists two agy servers. The plan's non-goal now excludes only
+  plugins and skills.
+
+Tests:
+
+- `go test ./internal/provider/antigravity/ ./internal/engine/`: ok.
+  `TestParseMCPList` covers the captured output (none, and several with
+  enabled, disabled and a name with a space), and refuses other text.
+  `golangci-lint`: 0 issues.
+- A throwaway engine test (deleted afterwards) ran the real `agy mcp list`
+  through `runListing` and `parseMCPList`. It gave the 4 servers above with
+  the throwaway `HOME`, and `[]` with an empty one.
+- `frontend/test/chat-ui.test.mjs`: 40 pass, 0 fail. New test:
+  - `inventoryListing('/mcp', 'antigravity')` is `mcp`;
+  - `/mcp list` and the other agents' `/mcp` are not;
+  - the picker has one `/mcp`;
+  - an enabled and a disabled server give "2 (1 enabled, 1 disabled)".
+- `npm run check`: 0 errors, 0 warnings.
+
+Not checked:
+
+- `/mcp` in the desktop app on macOS.
+- Workspace-level MCP config: whether `agy mcp list` lists it is not known.
