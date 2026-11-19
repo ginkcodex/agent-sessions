@@ -101,3 +101,16 @@ Blocked:
 
 Found: handoff into Antigravity launches a missing command. This is
 [AGY-10](AGY-10.md), found in AGY-07.
+
+Found by the user in desktop QA on macOS (2026-11-19). These are bugs
+reported from the app; no checklist row above passed from them:
+
+- `/mcp` in a chat is sent to the agent as a prompt:
+  [AGY-13](AGY-13.md).
+- Delete is blocked ("unsupported action for this agent"):
+  [AGY-14](AGY-14.md) and [AGY-15](AGY-15.md).
+- Tool cards show no file path or command: [AGY-16](AGY-16.md).
+- The effort picker says "Extra" where agy says `xhigh`:
+  [AGY-17](AGY-17.md).
+- Export fails for both profiles: [AGY-18](AGY-18.md) (share-safe) and
+  [AGY-19](AGY-19.md) (complete).

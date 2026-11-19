@@ -298,17 +298,26 @@ New package `internal/provider/antigravity` implementing `provider.Provider`,
    semantics are separately spiked. Handoff *into* Antigravity is the
    exception: it writes nothing to the agy store, so it is supported and
    starts `agy -i <prompt>`; see [AGY-10](../tasks/antigravity-cli/AGY-10.md).
+   Delete is being reconsidered after desktop QA: the
+   [AGY-14](../tasks/antigravity-cli/AGY-14.md) spike decides what it
+   removes, and whether the app may write agy's store for it.
 
 ## Non-goals (v1)
 
 - Destructive session management (trash, delete, rename) for Antigravity
-  sessions (`internal/manage`).
+  sessions (`internal/manage`). Desktop QA asked for delete, so it is now
+  follow-up work: [AGY-14](../tasks/antigravity-cli/AGY-14.md) (spike) and
+  [AGY-15](../tasks/antigravity-cli/AGY-15.md). Trash and rename stay out.
 - Cross-agent handoff into/out of Antigravity (`internal/handoff`) and portable
-  bundle restore (`internal/bundle`).
+  bundle restore (`internal/bundle`). Export is follow-up work from desktop
+  QA: share-safe in [AGY-18](../tasks/antigravity-cli/AGY-18.md), complete
+  (without restore) in [AGY-19](../tasks/antigravity-cli/AGY-19.md).
 - Antigravity IDE (`~/.gemini/antigravity/`) separate from Antigravity CLI
   (`~/.gemini/antigravity-cli/`).
 - MCP/plugin/skill slash-command inventory (`provider.InventoryLister` /
-  `PluginLister`).
+  `PluginLister`). Exception: `/mcp`, which desktop QA found sent to the
+  agent as a prompt, is follow-up work in
+  [AGY-13](../tasks/antigravity-cli/AGY-13.md).
 
 ## Risks
 
