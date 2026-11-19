@@ -99,9 +99,11 @@ func (b offlineBackend) ReplaceInFiles(context.Context, string, files.ReplaceReq
 func (b offlineBackend) ResolveFile(context.Context, string, string) (string, error) {
 	return "", b.err()
 }
+
 func (b offlineBackend) ResolveTerminalFile(context.Context, string, string) (files.TerminalFile, error) {
 	return files.TerminalFile{}, b.err()
 }
+
 func (b offlineBackend) PrepareFileDownload(context.Context, string, string, string) (files.Download, error) {
 	return files.Download{}, b.err()
 }

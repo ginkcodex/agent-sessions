@@ -1,8 +1,9 @@
 package files
 
 import (
-	"golang.org/x/sys/unix"
 	"os"
+
+	"golang.org/x/sys/unix"
 )
 
 func renameNoReplace(parent *os.File, source, name string) error {

@@ -74,7 +74,7 @@ func TestLocateServer(t *testing.T) {
 	dir := t.TempDir()
 	name := "agent-sessions-cli-linux-amd64.gz"
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("gz"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("gz"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("AGENT_SESSIONS_REMOTE_SERVERS_DIR", dir)
@@ -94,7 +94,7 @@ func TestDeployServer(t *testing.T) {
 	dir := t.TempDir()
 	gzPath := filepath.Join(dir, "server.gz")
 	payload := []byte("not-really-gzip")
-	if err := os.WriteFile(gzPath, payload, 0600); err != nil {
+	if err := os.WriteFile(gzPath, payload, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	bin := fakeSSHPath(t, "deploy", map[string]string{
@@ -117,7 +117,7 @@ func TestDeployServer(t *testing.T) {
 func TestDeployServer_VersionMismatch(t *testing.T) {
 	dir := t.TempDir()
 	gzPath := filepath.Join(dir, "server.gz")
-	if err := os.WriteFile(gzPath, []byte("x"), 0600); err != nil {
+	if err := os.WriteFile(gzPath, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	bin := fakeSSHPath(t, "deploy-mismatch", map[string]string{

@@ -83,7 +83,7 @@ func TestSession_PutAndGetArtifact(t *testing.T) {
 			// The file goes in on stdin: given a name with a backslash (any
 			// Windows path), sha256sum prefixes its output line with "\".
 			target := filepath.Join(stagingDir, "staging", token)
-			_ = os.MkdirAll(filepath.Dir(target), 0700)
+			_ = os.MkdirAll(filepath.Dir(target), 0o700)
 			script := `
 				target="$1"
 				cat > "$target"

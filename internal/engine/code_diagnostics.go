@@ -360,9 +360,11 @@ func (o *diagnosticsOwner) discoverAll(root cd.AuthorizedRoot, off cd.DisabledLa
 func discoveryFailed(err error) []cd.Registration {
 	var registrations []cd.Registration
 	for _, id := range cd.LiveProviderIDs() {
-		state := cd.ProviderState{ProviderID: id, Availability: "unsupported", Phase: "idle", Freshness: "uncertain",
+		state := cd.ProviderState{
+			ProviderID: id, Availability: "unsupported", Phase: "idle", Freshness: "uncertain",
 			Coverage: cd.Coverage{Kind: "openedDocuments", Roots: []string{}, Partial: true, ExternalChanges: cd.CoverageExternalChanges},
-			Notice:   "Code checks could not be prepared for this folder: " + err.Error()}
+			Notice:   "Code checks could not be prepared for this folder: " + err.Error(),
+		}
 		registrations = append(registrations, cd.Registration{ProviderID: id, Availability: "unsupported", Live: &cd.LiveRegistration{State: state}})
 	}
 	return registrations

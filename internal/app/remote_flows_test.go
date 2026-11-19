@@ -18,23 +18,23 @@ import (
 type stubRemoteBackend struct {
 	engine.Backend
 
-	resumeCmd            string
-	handoffCmd           string
-	bundleCmd            string
-	preview              engine.HandoffPreview
-	bundlePreview        engine.HandoffPreview
-	renderHandoff        string
-	renderHandoffCalled  bool
-	saveHandoffCalled    bool
-	renderBundleHandoff  string
-	renderBundleCalled   bool
-	exportCalled         bool
-	exportDestPath       string
-	openBundleCalled     bool
-	openBundlePath       string
-	openBundleSummary    engine.BundleSummary
-	exportArtifactData   []byte
-	transport            *fakeArtifactTransport
+	resumeCmd           string
+	handoffCmd          string
+	bundleCmd           string
+	preview             engine.HandoffPreview
+	bundlePreview       engine.HandoffPreview
+	renderHandoff       string
+	renderHandoffCalled bool
+	saveHandoffCalled   bool
+	renderBundleHandoff string
+	renderBundleCalled  bool
+	exportCalled        bool
+	exportDestPath      string
+	openBundleCalled    bool
+	openBundlePath      string
+	openBundleSummary   engine.BundleSummary
+	exportArtifactData  []byte
+	transport           *fakeArtifactTransport
 }
 
 func (s *stubRemoteBackend) GetSessionMeta(_ context.Context, ref model.SessionRef) (model.SessionMeta, error) {
@@ -347,7 +347,7 @@ func TestRemote_OpenBundle(t *testing.T) {
 	tmpDir := t.TempDir()
 	localBundle := filepath.Join(tmpDir, "local.agent-session.zip")
 	payload := []byte("fake-bundle-payload-for-open")
-	if err := os.WriteFile(localBundle, payload, 0644); err != nil {
+	if err := os.WriteFile(localBundle, payload, 0o644); err != nil {
 		t.Fatalf("write local bundle: %v", err)
 	}
 

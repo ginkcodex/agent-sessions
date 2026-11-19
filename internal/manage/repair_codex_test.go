@@ -23,12 +23,12 @@ func repairFixture(t *testing.T) (*Manager, model.SessionMeta, []byte, string) {
 func repairFixtureIn(t *testing.T, roots paths.Roots) (*Manager, model.SessionMeta, []byte, string) {
 	t.Helper()
 	dir := filepath.Join(roots.Codex, "sessions", "2026", "11", "06")
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "rollout-restored-"+uuidA+".jsonl")
 	raw := []byte(`{"ordinal":0,"type":"session_meta","timestamp":"2026-08-21T13:52:35Z","payload":{"id":"` + uuidA + `","timestamp":"2026-08-21T13:52:35Z"}}` + "\n" + `{"ordinal":1,"type":"world_state","payload":{"unchanged":true}}` + "\n")
-	if err := os.WriteFile(path, raw, 0600); err != nil {
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"state_4.sqlite", "state_5.sqlite"} {
@@ -44,13 +44,14 @@ func repairFixtureIn(t *testing.T, roots paths.Roots) (*Manager, model.SessionMe
 		}
 	}
 	entry, _ := json.Marshal(map[string]any{"id": uuidA, "rollout_path": path, "thread_name": path, "large": json.Number("9007199254740993")})
-	if err := os.WriteFile(filepath.Join(roots.Codex, "session_index.jsonl"), append(entry, '\n'), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(roots.Codex, "session_index.jsonl"), append(entry, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	m, _ := newTestManager(t, roots)
 	meta := model.SessionMeta{Ref: model.SessionRef{Agent: model.AgentCodex, ID: uuidA}, SourcePath: path}
 	return m, meta, raw, filepath.Join(dir, "rollout-2026-08-21T13-52-35-"+uuidA+".jsonl")
 }
+
 func repairDBPath(t *testing.T, path string) string {
 	t.Helper()
 	db, err := sql.Open("sqlite", path)
@@ -64,6 +65,7 @@ func repairDBPath(t *testing.T, path string) string {
 	}
 	return result
 }
+
 func TestRepairCodexSessionBackupsAndNativeIndexes(t *testing.T) {
 	m, meta, raw, target := repairFixture(t)
 	result, err := m.RepairCodexSession(t.Context(), meta.Ref, []model.SessionMeta{meta})
@@ -106,6 +108,7 @@ func TestRepairCodexSessionBackupsAndNativeIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestRepairCodexSessionGuards(t *testing.T) {
 	for _, kind := range []string{"owned", "writer lock", "conflict", "metadata ID", "symlink index", "wrong index path", "running terminal"} {
 		t.Run(kind, func(t *testing.T) {
@@ -115,7 +118,7 @@ func TestRepairCodexSessionGuards(t *testing.T) {
 				m.owned = func(model.SessionRef) bool { return true }
 			case "writer lock":
 				lock := filepath.Join(m.codex.root, "thread-writer-locks", uuidA+".lock")
-				if err := os.MkdirAll(filepath.Dir(lock), 0700); err != nil {
+				if err := os.MkdirAll(filepath.Dir(lock), 0o700); err != nil {
 					t.Fatal(err)
 				}
 				held, err := filelock.TryLock(lock)
@@ -124,12 +127,12 @@ func TestRepairCodexSessionGuards(t *testing.T) {
 				}
 				defer held.Unlock()
 			case "conflict":
-				if err := os.WriteFile(target, []byte("different"), 0600); err != nil {
+				if err := os.WriteFile(target, []byte("different"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			case "metadata ID":
 				raw, _ := os.ReadFile(meta.SourcePath)
-				if err := os.WriteFile(meta.SourcePath, bytes.ReplaceAll(raw, []byte(uuidA), []byte(uuidB)), 0600); err != nil {
+				if err := os.WriteFile(meta.SourcePath, bytes.ReplaceAll(raw, []byte(uuidA), []byte(uuidB)), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			case "symlink index":
@@ -166,6 +169,7 @@ func TestRepairCodexSessionGuards(t *testing.T) {
 		})
 	}
 }
+
 func TestRepairCodexSessionPartialIndexFailureCanRetry(t *testing.T) {
 	m, meta, raw, target := repairFixture(t)
 	db, err := sql.Open("sqlite", filepath.Join(m.codex.root, "state_5.sqlite"))
@@ -244,7 +248,7 @@ func TestRepairCodexSessionBackupIncludesWAL(t *testing.T) {
 func TestRepairCodexSessionBridgesRootSpellings(t *testing.T) {
 	base := t.TempDir()
 	real := filepath.Join(base, "real")
-	if err := os.Mkdir(real, 0700); err != nil {
+	if err := os.Mkdir(real, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	platform.Symlink(t, real, filepath.Join(base, "alias"))

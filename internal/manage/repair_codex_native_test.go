@@ -25,7 +25,7 @@ func TestRepairCodexSessionNativeResume(t *testing.T) {
 	}
 	roots := testRoots(t)
 	dir := filepath.Join(roots.Codex, "sessions", "2026", "11", "06")
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	old := filepath.Join(dir, "rollout-restored-"+uuidA+".jsonl")
@@ -33,7 +33,7 @@ func TestRepairCodexSessionNativeResume(t *testing.T) {
 		"id": uuidA, "timestamp": "2026-08-21T13:52:35Z", "cwd": roots.Codex, "originator": "restore_regression", "cli_version": "0.167.1", "source": "cli", "model_provider": "openai", "history_mode": "paginated", "base_instructions": map[string]string{"text": "Synthetic offline resume check."},
 	}})
 	raw = append(raw, '\n')
-	if err := os.WriteFile(old, raw, 0600); err != nil {
+	if err := os.WriteFile(old, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	before := repairNativeResume(t, bin, roots.Codex, uuidA, old)
@@ -55,6 +55,7 @@ func TestRepairCodexSessionNativeResume(t *testing.T) {
 		t.Fatalf("native resume failed after repair: %s", after["error"])
 	}
 }
+
 func repairNativeResume(t *testing.T, bin, root, id, path string) map[string]json.RawMessage {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)

@@ -14,7 +14,7 @@ func TestAgentConfigValidationAndPreservation(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
 	original := "# header\n[manage]\nenabled = true\nfuture = 'keep'\n\n[agents] # selection\n# keep comment\nenabled = [\n 'codex',\n 'opencode',\n]\nfuture = 42\n\n[remote]\nhost = 'box'\n"
-	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, ids := range [][]string{nil, {}, {"unknown"}, {"codex", "unknown"}} {
@@ -54,7 +54,7 @@ func TestAgentConfigDefaultsAndMalformed(t *testing.T) {
 		t.Fatalf("defaults=%v %v", got, err)
 	}
 	for _, text := range []string{"[agents]\nenabled = []\n", "[agents]\nenabled = ['future']\n", "[agents]\nenabled = true\n", "[agents]\nenabled = ["} {
-		if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(text), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(text), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := LoadEnabled(dir); err == nil {

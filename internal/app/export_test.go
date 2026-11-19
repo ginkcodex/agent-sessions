@@ -58,7 +58,8 @@ func exportFixture(t *testing.T) (*App, *manage.Manager, model.SessionRef) {
 						Name: "Bash", Output: "complete ", OutputTruncated: true, OutputRef: "rec:1:tool",
 					}},
 				},
-			}},
+			},
+		},
 	}
 	fake := providertest.NewFake(model.AgentClaude, "Claude Code")
 	fake.Transcripts[exportSessionID] = tr

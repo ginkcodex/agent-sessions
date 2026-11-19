@@ -262,8 +262,10 @@ func (a *agent) request(ctx context.Context, method string, params json.RawMessa
 			return nil, &acp.Error{Code: acp.CodeInvalidParams, Message: err.Error()}
 		}
 		if p.SessionID == "in-use" {
-			return nil, &acp.Error{Code: acp.CodeInvalidRequest, Message: "Invalid request: This Codex session is in use by another Codex client",
-				Data: json.RawMessage(`{"reason":"thread_active_writer","threadId":"in-use","details":"thread in-use already has an active writer"}`)}
+			return nil, &acp.Error{
+				Code: acp.CodeInvalidRequest, Message: "Invalid request: This Codex session is in use by another Codex client",
+				Data: json.RawMessage(`{"reason":"thread_active_writer","threadId":"in-use","details":"thread in-use already has an active writer"}`),
+			}
 		}
 		a.mu.Lock()
 		a.opened[p.SessionID] = method

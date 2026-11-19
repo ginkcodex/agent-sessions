@@ -179,7 +179,7 @@ func TestLiveDiscoveryBoundedAndNoParentPromotion(t *testing.T) {
 
 func TestDiscoveryResolverAllowsOnlyExplicitPythonPair(t *testing.T) {
 	root, tools, _ := fixture(t)
-	if err := os.WriteFile(filepath.Join(root.Project().Root, "source.py"), nil, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root.Project().Root, "source.py"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var regs []Registration

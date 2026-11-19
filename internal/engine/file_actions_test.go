@@ -13,7 +13,7 @@ import (
 
 func TestFileActionAuthorizationAndStaging(t *testing.T) {
 	root, cache := t.TempDir(), t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	catalog := scan.NewCatalog()

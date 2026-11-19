@@ -36,7 +36,7 @@ func TestWorkspaceRegistrationAuthorizationAndPersistence(t *testing.T) {
 		t.Fatal("relative path accepted")
 	}
 	file := filepath.Join(dir, "file.txt")
-	if err := os.WriteFile(file, []byte("hello"), 0600); err != nil {
+	if err := os.WriteFile(file, []byte("hello"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, invalid := range []string{file, filepath.Join(dir, "missing")} {
@@ -113,11 +113,11 @@ func TestWorkspaceBrowseAndSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"visible", ".hidden", ".git"} {
-		if err := os.Mkdir(filepath.Join(root, name), 0700); err != nil {
+		if err := os.Mkdir(filepath.Join(root, name), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(root, "file"), nil, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "file"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	link := filepath.Join(root, "link")
@@ -159,7 +159,7 @@ func TestWorkspaceBrowseAndSymlinks(t *testing.T) {
 func TestWorkspaceBrowseBounded(t *testing.T) {
 	root := t.TempDir()
 	for i := 0; i < 1010; i++ {
-		if err := os.Mkdir(filepath.Join(root, fmt.Sprintf("dir%04d", i)), 0700); err != nil {
+		if err := os.Mkdir(filepath.Join(root, fmt.Sprintf("dir%04d", i)), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}

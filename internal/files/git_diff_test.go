@@ -108,6 +108,7 @@ func TestGitDiffModifiedBases(t *testing.T) {
 		}
 	}
 }
+
 func TestGitDiffAddedDeletedAndUnborn(t *testing.T) {
 	for _, unborn := range []bool{false, true} {
 		t.Run(map[bool]string{true: "unborn", false: "committed"}[unborn], func(t *testing.T) {
@@ -167,6 +168,7 @@ func TestGitDiffAddedDeletedAndUnborn(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
 func TestGitDiffSubdirLiteralAndProtection(t *testing.T) {
 	root, git := blameRepo(t)
 	for _, p := range append([]string{"sub/literal[1]", "outside", "auth.json", "store/data"}, colonNames("sub/:colon")...) {
@@ -202,6 +204,7 @@ func TestGitDiffSubdirLiteralAndProtection(t *testing.T) {
 		}
 	}
 }
+
 func TestGitDiffBinaryLargeAndMissing(t *testing.T) {
 	root, git := blameRepo(t)
 	statusWrite(t, root, "binary", "a\x00b")
@@ -253,6 +256,7 @@ func TestGitDiffStagedDeletionRecreatedWorkingAndEmptyDeleted(t *testing.T) {
 		t.Fatalf("empty deletion: %+v", empty)
 	}
 }
+
 func TestGitDiffCancellationAndUnmerged(t *testing.T) {
 	root, git := blameRepo(t)
 	statusWrite(t, root, "file", "base\n")

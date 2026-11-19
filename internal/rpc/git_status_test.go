@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/ginkcode/agent-sessions/internal/engine"
-	"github.com/ginkcode/agent-sessions/internal/files"
 	"io"
 	"reflect"
 	"testing"
+
+	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 type gitStatusBackend struct {
@@ -20,6 +21,7 @@ func (b *gitStatusBackend) GitStatus(ctx context.Context, dir, repo string) (fil
 	b.dir, b.repo = dir, repo
 	return files.RepoStatus{OK: true, Branch: "main", Entries: []files.GitChange{{Path: "new", OriginalPath: "old", Index: "R", Worktree: "M"}}}, b.errToReturn
 }
+
 func TestGitStatusRPC(t *testing.T) {
 	backend := &gitStatusBackend{mockBackend: &mockBackend{}}
 	_, client, cleanup := setupPipePair(backend)
@@ -38,6 +40,7 @@ func TestGitStatusRPC(t *testing.T) {
 		t.Fatal("lost error")
 	}
 }
+
 func TestGitStatusUnsupported(t *testing.T) {
 	r, w := io.Pipe()
 	defer w.Close()
@@ -63,6 +66,7 @@ func TestGitStatusUnsupported(t *testing.T) {
 		t.Fatal("backend without optional extension accepted")
 	}
 }
+
 func TestGitChangesRepositoryRPC(t *testing.T) {
 	status := &gitStatusBackend{mockBackend: &mockBackend{}}
 	_, client, cleanup := setupPipePair(status)

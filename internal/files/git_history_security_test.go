@@ -238,7 +238,7 @@ func TestHistoryShallowMissingParent(t *testing.T) {
 	git("add", ".")
 	git("commit", "-m", "tip")
 	tip := git("rev-parse", "HEAD")
-	if err := os.WriteFile(filepath.Join(root, ".git", "shallow"), []byte(tip+"\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".git", "shallow"), []byte(tip+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(filepath.Join(root, ".git", "objects", parent[:2], parent[2:])); err != nil {
@@ -257,7 +257,7 @@ func TestHistoryShallowMissingParent(t *testing.T) {
 func TestHistoryMetadataOutputLimit(t *testing.T) {
 	root, git := historyRepo(t)
 	message := filepath.Join(t.TempDir(), "message")
-	if err := os.WriteFile(message, []byte(strings.Repeat("x", 17<<20)), 0600); err != nil {
+	if err := os.WriteFile(message, []byte(strings.Repeat("x", 17<<20)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	git("commit", "--allow-empty", "-F", message)

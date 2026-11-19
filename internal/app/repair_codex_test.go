@@ -20,6 +20,7 @@ func (b *repairAppBackend) RepairCodexSession(_ context.Context, ref model.Sessi
 	b.calls++
 	return engine.CodexRepairResult{BackupPath: "remote backup"}, nil
 }
+
 func TestRepairCodexBindingUsesActiveHostOnly(t *testing.T) {
 	remote := &repairAppBackend{}
 	app := &App{backend: remote}

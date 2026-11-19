@@ -15,8 +15,10 @@ import (
 // gitHistoryResolveWorkers bounds concurrent Git processes during discovery.
 const gitHistoryResolveWorkers = 8
 
-var errGitHistoryNotRepository = errors.New("not a Git worktree")
-var errGitHistoryInvalidRepository = errors.New("invalid Git worktree")
+var (
+	errGitHistoryNotRepository     = errors.New("not a Git worktree")
+	errGitHistoryInvalidRepository = errors.New("invalid Git worktree")
+)
 
 // gitHistoryResolvedTarget keeps authorization separate from repository identity.
 // Workspace is the canonical authorized directory; Root may be its ancestor

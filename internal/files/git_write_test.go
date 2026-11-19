@@ -17,6 +17,7 @@ func gitOK(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
 func TestGitWriteFirstCommitAndPaths(t *testing.T) {
 	root, git := blameRepo(t)
 	ctx := context.Background()
@@ -63,6 +64,7 @@ func TestGitWriteFirstCommitAndPaths(t *testing.T) {
 		t.Fatal("commit included unstaged file")
 	}
 }
+
 func TestGitWritesSubdirectoryAndValidation(t *testing.T) {
 	root, git := blameRepo(t)
 	ctx := context.Background()
@@ -110,6 +112,7 @@ func TestGitWritesSubdirectoryAndValidation(t *testing.T) {
 		}
 	}
 }
+
 func TestGitDiscardProtectionAndDrafts(t *testing.T) {
 	root, git := blameRepo(t)
 	ctx := context.Background()
@@ -164,6 +167,7 @@ func TestGitDiscardProtectionAndDrafts(t *testing.T) {
 		t.Fatal("partial discard before policy failure")
 	}
 }
+
 func TestGitAmendSafety(t *testing.T) {
 	root, git := blameRepo(t)
 	ctx := context.Background()
@@ -199,6 +203,7 @@ func TestGitAmendSafety(t *testing.T) {
 		t.Fatal("amend failed")
 	}
 }
+
 func TestGitHookFailureAndTimeout(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell hooks")
@@ -207,16 +212,16 @@ func TestGitHookFailureAndTimeout(t *testing.T) {
 	ctx := context.Background()
 	statusWrite(t, root, "file", "base")
 	hooks := filepath.Join(t.TempDir(), "hooks")
-	gitOK(t, os.Mkdir(hooks, 0700))
+	gitOK(t, os.Mkdir(hooks, 0o700))
 	git("config", "core.hooksPath", hooks)
 	hook := filepath.Join(hooks, "pre-commit")
-	gitOK(t, os.WriteFile(hook, []byte("#!/bin/sh\nprintf 'hook refuses commit\\n' >&2\nexit 1\n"), 0700))
+	gitOK(t, os.WriteFile(hook, []byte("#!/bin/sh\nprintf 'hook refuses commit\\n' >&2\nexit 1\n"), 0o700))
 	err := GitCommit(ctx, root, GitCommitRequest{Message: "base", StageAll: true})
 	if err == nil || !strings.Contains(err.Error(), "hook refuses commit") {
 		t.Fatalf("hook failure: %v", err)
 	}
 	marker := filepath.Join(root, "late-hook-write")
-	gitOK(t, os.WriteFile(hook, []byte("#!/bin/sh\nsleep 1\nprintf late > '"+marker+"'\n"), 0700))
+	gitOK(t, os.WriteFile(hook, []byte("#!/bin/sh\nsleep 1\nprintf late > '"+marker+"'\n"), 0o700))
 	deadline, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()
 	start := time.Now()
@@ -228,12 +233,13 @@ func TestGitHookFailureAndTimeout(t *testing.T) {
 	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("hook survived command cancellation")
 	}
-	gitOK(t, os.WriteFile(hook, []byte("#!/bin/sh\ni=0; while [ $i -lt 1000 ]; do printf '0123456789' >&2; i=$((i+1)); done; exit 1\n"), 0700))
+	gitOK(t, os.WriteFile(hook, []byte("#!/bin/sh\ni=0; while [ $i -lt 1000 ]; do printf '0123456789' >&2; i=$((i+1)); done; exit 1\n"), 0o700))
 	err = GitCommit(ctx, root, GitCommitRequest{Message: "bounded"})
 	if err == nil || len(err.Error()) > gitErrorLimit+32 {
 		t.Fatalf("unbounded error length %d", len(err.Error()))
 	}
 }
+
 func TestGitWriteSerialization(t *testing.T) {
 	root, git := blameRepo(t)
 	ctx := context.Background()
@@ -264,10 +270,10 @@ func TestGitCommitHonorsSigningAndNoninteractiveEnvironment(t *testing.T) {
 	root, git := blameRepo(t)
 	statusWrite(t, root, "file", "base")
 	hooks := filepath.Join(t.TempDir(), "hooks")
-	gitOK(t, os.Mkdir(hooks, 0700))
+	gitOK(t, os.Mkdir(hooks, 0o700))
 	git("config", "core.hooksPath", hooks)
 	script := "#!/bin/sh\n[ \"$GIT_TERMINAL_PROMPT\" = 0 ] && [ -n \"$GIT_EDITOR\" ] && [ \"$GIT_SEQUENCE_EDITOR\" = true ] || { printf 'interactive env missing' >&2; exit 1; }\nprintf 'verified hook' > '" + filepath.Join(root, "hook-ran") + "'\n"
-	gitOK(t, os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte(script), 0700))
+	gitOK(t, os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte(script), 0o700))
 	gitOK(t, GitCommit(context.Background(), root, GitCommitRequest{Message: "base", StageAll: true}))
 	if _, err := os.Stat(filepath.Join(root, "hook-ran")); err != nil {
 		t.Fatal("configured hook did not run")

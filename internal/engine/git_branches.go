@@ -19,6 +19,7 @@ func (e *Engine) GitBranches(ctx context.Context, dir, repo string) (files.GitBr
 	}
 	return files.GitBranches(ctx, r.Root)
 }
+
 func (e *Engine) GitSwitch(ctx context.Context, dir, repo string, req files.GitSwitchRequest) error {
 	r, err := e.svc.gitChangesRepository(ctx, dir, repo)
 	if err != nil {

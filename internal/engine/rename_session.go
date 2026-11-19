@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+
 	"github.com/ginkcode/agent-sessions/internal/model"
 )
 

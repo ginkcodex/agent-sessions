@@ -17,7 +17,7 @@ func TestAddFileAndCommitUpload(t *testing.T) {
 	e := &Engine{svc: NewService(catalog, nil), cacheDirOverride: cache}
 	ctx := context.Background()
 	source := filepath.Join(t.TempDir(), "source")
-	os.WriteFile(source, []byte("local"), 0600)
+	os.WriteFile(source, []byte("local"), 0o600)
 	if err := e.AddFile(ctx, cache, "new", source); err == nil {
 		t.Fatal("unknown root accepted")
 	}
@@ -25,7 +25,7 @@ func TestAddFileAndCommitUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 	staging := filepath.Join(cache, "staging")
-	os.MkdirAll(staging, 0700)
+	os.MkdirAll(staging, 0o700)
 	for i, tc := range []struct {
 		dir, target string
 		success     bool
@@ -34,7 +34,7 @@ func TestAddFileAndCommitUpload(t *testing.T) {
 	} {
 		token := "upload-" + string(rune('a'+i))
 		staged := filepath.Join(staging, token)
-		os.WriteFile(staged, []byte("remote"), 0600)
+		os.WriteFile(staged, []byte("remote"), 0o600)
 		err := e.CommitFileUpload(ctx, tc.dir, tc.target, token)
 		if (err == nil) != tc.success {
 			t.Fatalf("%+v: %v", tc, err)

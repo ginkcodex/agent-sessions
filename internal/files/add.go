@@ -72,7 +72,7 @@ func Add(ctx context.Context, policy EditPolicy, root, rel string, src *os.File)
 		return err
 	}
 	name := parts[len(parts)-1]
-	out, err := parent.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	out, err := parent.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}

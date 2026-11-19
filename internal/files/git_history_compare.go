@@ -201,7 +201,7 @@ func historyComparison(w gitWriter, target gitHistoryResolvedTarget, req GitHist
 				change.NewMode = "160000"
 			case info.Mode().IsRegular():
 				change.NewMode = "100644"
-				if info.Mode()&0111 != 0 {
+				if info.Mode()&0o111 != 0 {
 					change.NewMode = "100755"
 				}
 			default:
@@ -420,10 +420,10 @@ func historyCompareText(w gitWriter, old, current string) ([]LineChange, error) 
 	}
 	defer os.RemoveAll(dir)
 	a, b := filepath.Join(dir, "old"), filepath.Join(dir, "new")
-	if err := os.WriteFile(a, []byte(old), 0600); err != nil {
+	if err := os.WriteFile(a, []byte(old), 0o600); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(b, []byte(current), 0600); err != nil {
+	if err := os.WriteFile(b, []byte(current), 0o600); err != nil {
 		return nil, err
 	}
 	// --no-index exits 1 when differences exist; use a dedicated bounded runner.

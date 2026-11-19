@@ -15,10 +15,10 @@ import (
 func renameFixture(t *testing.T, root, rel string) {
 	t.Helper()
 	p := filepath.Join(root, rel)
-	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte("original"), 0600); err != nil {
+	if err := os.WriteFile(p, []byte("original"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -51,11 +51,25 @@ func TestRenameRejectsUnsafePaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ path, name string }{
-		{"", "new"}, {".", "new"}, {"..", "new"}, {"sub/../sub/file", "new"},
-		{filepath.Join(root, "sub/file"), "new"}, {"sub/file", "../new"}, {"sub/file", "a/b"},
-		{"sub/file", "a\\b"}, {"sub/file", ""}, {"sub/file", "."}, {"sub/file", ".."},
-		{"sub/file", "auth.json"}, {".git", "repo"}, {"link/file", "new"}, {"link", "new"},
-		{"sub/file", "existing"}, {"sub/file", "file"}, {filepath.Join("sub", "file"), "file"}, {"sub/missing", "new"},
+		{"", "new"},
+		{".", "new"},
+		{"..", "new"},
+		{"sub/../sub/file", "new"},
+		{filepath.Join(root, "sub/file"), "new"},
+		{"sub/file", "../new"},
+		{"sub/file", "a/b"},
+		{"sub/file", "a\\b"},
+		{"sub/file", ""},
+		{"sub/file", "."},
+		{"sub/file", ".."},
+		{"sub/file", "auth.json"},
+		{".git", "repo"},
+		{"link/file", "new"},
+		{"link", "new"},
+		{"sub/file", "existing"},
+		{"sub/file", "file"},
+		{filepath.Join("sub", "file"), "file"},
+		{"sub/missing", "new"},
 	} {
 		t.Run(tc.path+"->"+tc.name, func(t *testing.T) {
 			if err := Rename(context.Background(), EditPolicy{}, root, tc.path, tc.name); err == nil {

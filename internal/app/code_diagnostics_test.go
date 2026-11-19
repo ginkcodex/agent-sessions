@@ -156,14 +156,17 @@ func (b *liveDiagnosticsBackend) OpenCodeDiagnosticDocument(context.Context, cd.
 	b.live++
 	return engine.CodeDiagnosticsDocument{DocumentID: "d", Version: 1}, nil
 }
+
 func (b *liveDiagnosticsBackend) ChangeCodeDiagnosticDocument(context.Context, cd.Context, string, int64, string) (engine.CodeDiagnosticsDocument, error) {
 	b.live++
 	return engine.CodeDiagnosticsDocument{}, nil
 }
+
 func (b *liveDiagnosticsBackend) SaveCodeDiagnosticDocument(context.Context, cd.Context, string, int64, string) (engine.CodeDiagnosticsDocument, error) {
 	b.live++
 	return engine.CodeDiagnosticsDocument{}, nil
 }
+
 func (b *liveDiagnosticsBackend) CloseCodeDiagnosticDocument(context.Context, cd.Context, string) (engine.CodeDiagnosticsDocument, error) {
 	b.live++
 	return engine.CodeDiagnosticsDocument{}, nil

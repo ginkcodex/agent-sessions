@@ -20,6 +20,7 @@ func (b *gitDiffMock) ReadGitDiff(_ context.Context, dir, repo, path string, bas
 	b.dir, b.repo, b.path, b.basis = dir, repo, path, basis
 	return files.GitDiffContent{Content: files.Content{Path: path, Text: "index\n", Changes: []files.LineChange{{Kind: "modified", Start: 1, Count: 1, Removed: []string{"head"}}}, Edit: &files.EditInfo{Reason: files.EditReadOnly}}, Basis: basis, ReadOnly: true}, b.errToReturn
 }
+
 func TestReadGitDiffRPC(t *testing.T) {
 	b := &gitDiffMock{mockBackend: &mockBackend{}}
 	_, c, cleanup := setupPipePair(b)
@@ -38,6 +39,7 @@ func TestReadGitDiffRPC(t *testing.T) {
 		t.Fatal("lost error")
 	}
 }
+
 func TestReadGitDiffUnsupported(t *testing.T) {
 	r, w := io.Pipe()
 	defer w.Close()

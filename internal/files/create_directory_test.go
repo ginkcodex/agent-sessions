@@ -44,16 +44,29 @@ func TestCreateDirectory(t *testing.T) {
 
 func TestCreateDirectoryRejectsUnsafeTargets(t *testing.T) {
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "parent"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "parent"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ path, name string }{
-		{"", ""}, {"", "."}, {"", ".."}, {"", "a/b"}, {"", "a\\b"}, {"", "a\x00b"},
-		{"..", "bad"}, {"parent/../parent", "bad"}, {root, "bad"}, {"missing", "bad"}, {"file", "bad"},
-		{"", "file"}, {"", "parent"}, {"", ".git"}, {"", "auth.json"}, {"", ".credentials-new"},
+		{"", ""},
+		{"", "."},
+		{"", ".."},
+		{"", "a/b"},
+		{"", "a\\b"},
+		{"", "a\x00b"},
+		{"..", "bad"},
+		{"parent/../parent", "bad"},
+		{root, "bad"},
+		{"missing", "bad"},
+		{"file", "bad"},
+		{"", "file"},
+		{"", "parent"},
+		{"", ".git"},
+		{"", "auth.json"},
+		{"", ".credentials-new"},
 	} {
 		if err := CreateDirectory(context.Background(), EditPolicy{}, root, tc.path, tc.name); err == nil {
 			t.Fatalf("accepted %+v", tc)
@@ -101,7 +114,7 @@ func TestCreateDirectorySerializesWithSaves(t *testing.T) {
 func TestCreateFile(t *testing.T) {
 	root := t.TempDir()
 	ctx := context.Background()
-	if err := os.Mkdir(filepath.Join(root, "folder"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "folder"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ path, name string }{{"", "main.go"}, {"folder", "nested.ts"}} {
@@ -112,12 +125,20 @@ func TestCreateFile(t *testing.T) {
 			t.Fatalf("file: %v %v", info, err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(root, "kept"), []byte("original"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "kept"), []byte("original"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ path, name string }{
-		{"", ""}, {"", ".."}, {"", "a/b"}, {"..", "bad"}, {"missing", "bad"}, {"kept", "bad"},
-		{"", "kept"}, {"", "folder"}, {"", ".git"}, {"", "auth.json"},
+		{"", ""},
+		{"", ".."},
+		{"", "a/b"},
+		{"..", "bad"},
+		{"missing", "bad"},
+		{"kept", "bad"},
+		{"", "kept"},
+		{"", "folder"},
+		{"", ".git"},
+		{"", "auth.json"},
 	} {
 		if err := CreateFile(ctx, EditPolicy{}, root, tc.path, tc.name); err == nil {
 			t.Fatalf("accepted %+v", tc)

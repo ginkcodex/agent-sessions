@@ -65,16 +65,16 @@ func TestMutationRouteInvalidation(t *testing.T) {
 			t.Run(route.name+"/"+outcome, func(t *testing.T) {
 				parent := t.TempDir()
 				root, sibling := filepath.Join(parent, "root"), filepath.Join(parent, "sibling")
-				if err := os.MkdirAll(root, 0700); err != nil {
+				if err := os.MkdirAll(root, 0o700); err != nil {
 					t.Fatal(err)
 				}
 				cache := t.TempDir()
 				staging := filepath.Join(cache, "staging")
-				if err := os.MkdirAll(staging, 0700); err != nil {
+				if err := os.MkdirAll(staging, 0o700); err != nil {
 					t.Fatal(err)
 				}
 				for _, path := range []string{filepath.Join(root, "old"), filepath.Join(staging, "upload-fixture")} {
-					if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
+					if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
 						t.Fatal(err)
 					}
 				}

@@ -20,6 +20,7 @@ func workspaceTestRoot(t *testing.T, files map[string]string) AuthorizedRoot {
 	}
 	return root
 }
+
 func workspaceTestEnv(t *testing.T) LocalLiveEnvironment {
 	t.Helper()
 	unixTools(t)
@@ -28,6 +29,7 @@ func workspaceTestEnv(t *testing.T) LocalLiveEnvironment {
 	ruffPath, ruff, _ := ruffHost(t, "0.14.0")
 	return LocalLiveEnvironment{Path: append(append(tsPath, pyPath...), ruffPath...), TS: ts, Pyright: py, Ruff: ruff}
 }
+
 func workspaceRegistration(t *testing.T, registrations []Registration, id string) *LiveRegistration {
 	t.Helper()
 	for _, r := range registrations {
@@ -143,7 +145,7 @@ func TestWorkspaceAdaptersMissingChildDoesNotFallThrough(t *testing.T) {
 	env.Path = nil
 	// Only a has a native local Ruff; root fallback and b remain missing.
 	writeTree(t, root.Project().Root, map[string]string{"a/.venv/bin/ruff": "native synthetic"})
-	if err := os.Chmod(filepath.Join(root.Project().Root, "a/.venv/bin/ruff"), 0755); err != nil {
+	if err := os.Chmod(filepath.Join(root.Project().Root, "a/.venv/bin/ruff"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	regs, _, err := discoverWorkspaceLive(root, env)

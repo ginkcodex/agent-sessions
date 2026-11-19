@@ -19,11 +19,11 @@ func TestRenameClaudeNativeAppend(t *testing.T) {
 	root := t.TempDir()
 	id := "12345678-1234-1234-1234-123456789abc"
 	path := filepath.Join(root, "projects", "fixture", id+".jsonl")
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	original := "{\"type\":\"user\",\"message\":{\"content\":\"synthetic\"}}\n"
-	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	m, err := New(paths.Roots{Claude: root}, filepath.Join(root, "settings.json"))
@@ -88,11 +88,11 @@ func TestRenameClaudeRefusesSymlinkAndEmpty(t *testing.T) {
 	root := t.TempDir()
 	id := "12345678-1234-1234-1234-123456789abc"
 	path := filepath.Join(root, "projects", "fixture", id+".jsonl")
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	outside := filepath.Join(t.TempDir(), "outside.jsonl")
-	if err := os.WriteFile(outside, []byte("synthetic\n"), 0600); err != nil {
+	if err := os.WriteFile(outside, []byte("synthetic\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	m, err := New(paths.Roots{Claude: root}, filepath.Join(root, "settings.json"))
@@ -113,7 +113,7 @@ func TestRenameClaudeRefusesSymlinkAndEmpty(t *testing.T) {
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, nil, 0600); err != nil {
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.RenameSession(t.Context(), meta.Ref, "title", []model.SessionMeta{meta}); err == nil {
@@ -128,11 +128,11 @@ func TestRenameClaudeRefusesIncompleteTrailingRecord(t *testing.T) {
 	root := t.TempDir()
 	id := "12345678-1234-1234-1234-123456789abc"
 	path := filepath.Join(root, "projects", "fixture", id+".jsonl")
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	partial := "{\"type\":\"user\"}\n{\"type\":\"assist"
-	if err := os.WriteFile(path, []byte(partial), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(partial), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	m, err := New(paths.Roots{Claude: root}, filepath.Join(root, "settings.json"))

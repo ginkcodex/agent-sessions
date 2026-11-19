@@ -139,8 +139,10 @@ var handshakeTimeout = 60 * time.Second
 // Several must fit in that window so a slow link does not trip it.
 const heartbeatInterval = 15 * time.Second
 
-var livenessProbeAfter = 5 * time.Second
-var livenessDeadline = 20 * time.Second
+var (
+	livenessProbeAfter = 5 * time.Second
+	livenessDeadline   = 20 * time.Second
+)
 
 // handshakeErr names the timeout when it, rather than the caller, ended the
 // handshake.

@@ -186,6 +186,7 @@ func slicesContainCargoGenerated(path string) bool {
 	}
 	return false
 }
+
 func cargoRevision(text []byte) string {
 	sum := sha256.Sum256(text)
 	return "sha256:" + hex.EncodeToString(sum[:])

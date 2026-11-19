@@ -28,6 +28,7 @@ type fakeFS struct {
 func newFakeFS() *fakeFS {
 	return &fakeFS{events: make(chan fsnotify.Event, 64), errors: make(chan error, 4), added: map[string]bool{}, ready: make(chan struct{})}
 }
+
 func (f *fakeFS) Add(p string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -37,6 +38,7 @@ func (f *fakeFS) Add(p string) error {
 	f.added[p] = true
 	return nil
 }
+
 func (f *fakeFS) Remove(p string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

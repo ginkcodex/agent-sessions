@@ -20,6 +20,7 @@ func (f *multiDocs) Apply(ctx context.Context, step DocumentStep) error {
 	}
 	return f.fakeDocs.Apply(ctx, step)
 }
+
 func (f *multiDocs) PublicationIsolatedFor(_ AuthorizedRoot, _ string, id, _ string) bool {
 	return f.isolated[id]
 }

@@ -223,6 +223,7 @@ func (r *routed) WithContext(ctx context.Context, n int) int {
 	r.ctx = ctx
 	return n
 }
+
 func (*routed) Sum(base int, more ...int) int {
 	for _, n := range more {
 		base += n

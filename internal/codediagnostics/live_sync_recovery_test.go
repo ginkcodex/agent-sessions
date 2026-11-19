@@ -33,8 +33,10 @@ func TestLiveSyncBrowseSequence(t *testing.T) {
 		}
 	}
 	cfg := ServerConfig{ProviderID: goplsProviderID, Executable: tools[0].Executable, Args: []string{"--fake"}, AdapterPolicy: "fake-only"}
-	state := ProviderState{ProviderID: goplsProviderID, Availability: "available", Phase: "idle", Freshness: "uncertain",
-		Coverage: Coverage{Kind: "openedDocuments", Roots: []string{""}, Partial: true, ExternalChanges: "unwatched"}, DocumentExtensions: []string{".go"}}
+	state := ProviderState{
+		ProviderID: goplsProviderID, Availability: "available", Phase: "idle", Freshness: "uncertain",
+		Coverage: Coverage{Kind: "openedDocuments", Roots: []string{""}, Partial: true, ExternalChanges: "unwatched"}, DocumentExtensions: []string{".go"},
+	}
 	regs := []Registration{liveRegistration(state, cfg, func(file string) (string, bool) { return "go", strings.HasSuffix(file, ".go") })}
 	m, err := NewManager("owner", e.trust, NewSupervisor(e.trust, SupervisorOptions{}), ManagerLimits{})
 	if err != nil {

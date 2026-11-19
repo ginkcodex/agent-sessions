@@ -12,10 +12,10 @@ func TestLiveWorkspaceCompositeOwnershipAndApproval(t *testing.T) {
 	e := newEnv(t, SessionOptions{})
 	root, tools, _ := fixture(t)
 	for _, dir := range []string{"api", "api/deep", "web"} {
-		if err := os.MkdirAll(filepath.Join(root.Project().Root, dir), 0700); err != nil {
+		if err := os.MkdirAll(filepath.Join(root.Project().Root, dir), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(root.Project().Root, dir, "a.py"), []byte("x=1"), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(root.Project().Root, dir, "a.py"), []byte("x=1"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -65,7 +65,7 @@ func TestLiveWorkspaceCompositeOwnershipAndApproval(t *testing.T) {
 	if len(folders) != 1 || folders[0]["uri"] != want {
 		t.Fatal(folders)
 	}
-	if err := os.MkdirAll(filepath.Join(root.Project().Root, "api/unapproved"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(root.Project().Root, "api/unapproved"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	changed := server.Config

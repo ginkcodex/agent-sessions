@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/files"
 )

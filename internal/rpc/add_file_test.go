@@ -16,9 +16,9 @@ func TestCommitFileUploadRPC(t *testing.T) {
 		t.Fatal("capability not advertised")
 	}
 	staging := filepath.Join(cache, "staging")
-	os.MkdirAll(staging, 0700)
+	os.MkdirAll(staging, 0o700)
 	staged := filepath.Join(staging, "upload-rpc")
-	os.WriteFile(staged, []byte("uploaded"), 0600)
+	os.WriteFile(staged, []byte("uploaded"), 0o600)
 	ctx := context.Background()
 	if err := client.CommitFileUpload(ctx, root, "new", "upload-rpc"); err != nil {
 		t.Fatal(err)

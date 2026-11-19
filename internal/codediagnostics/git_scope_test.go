@@ -79,7 +79,8 @@ func TestGitScopeSkipsIgnoredFoldersAndEntersNestedRepositories(t *testing.T) {
 		rel  string
 		want bool
 	}{
-		{"build", true}, {"dist", true}, // ignored, no marker
+		{"build", true},
+		{"dist", true}, // ignored, no marker
 		{"tools", false},
 		{"web", false},      // ignored, but a repository of its own
 		{"web/build", true}, // ignored by web's own rules

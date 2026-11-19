@@ -20,11 +20,13 @@ func (b *gitBranchesRecorder) GitBranches(context.Context, string, string) (file
 	b.lists++
 	return files.GitBranchList{Branches: []files.GitBranch{{Name: "main"}}}, nil
 }
+
 func (b *gitBranchesRecorder) GitSwitch(_ context.Context, _, _ string, req files.GitSwitchRequest) error {
 	b.switches++
 	b.req = req
 	return nil
 }
+
 func TestGitBranchesHostRouting(t *testing.T) {
 	local, remote := &gitBranchesRecorder{}, &gitBranchesRecorder{}
 	a := NewApp()

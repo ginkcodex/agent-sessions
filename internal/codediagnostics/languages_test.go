@@ -87,8 +87,10 @@ func TestDisabledLanguagesLeaveDiscovery(t *testing.T) {
 	skipUnlessProduction(t)
 	bin, goEnv := goplsHost(t, "v0.24.0", goplsModulePath)
 	tsPath, tsEnv := tsHost(t)
-	env := LocalLiveEnvironment{GoPath: []string{bin}, Path: tsPath, Go: goEnv, TS: tsEnv, Ruff: RuffEnvironment{Home: tsEnv.Home}, Pyright: PyrightEnvironment{Home: tsEnv.Home, NodeDir: tsEnv.NodeDir},
-		Disabled: NewDisabledLanguages([]string{"python", "rust", "nonsense"})}
+	env := LocalLiveEnvironment{
+		GoPath: []string{bin}, Path: tsPath, Go: goEnv, TS: tsEnv, Ruff: RuffEnvironment{Home: tsEnv.Home}, Pyright: PyrightEnvironment{Home: tsEnv.Home, NodeDir: tsEnv.NodeDir},
+		Disabled: NewDisabledLanguages([]string{"python", "rust", "nonsense"}),
+	}
 	if len(env.Disabled) != 2 || !env.Disabled.Disables(ruffProviderID) || !env.Disabled.Disables("cargo-check") || env.Disabled.Disables(goplsProviderID) || env.Disabled.Disables("lsp") {
 		t.Fatal(env.Disabled)
 	}

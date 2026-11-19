@@ -13,8 +13,10 @@ import (
 	"time"
 )
 
-const gitWriteTimeout = 60 * time.Second
-const gitErrorLimit = 4096
+const (
+	gitWriteTimeout = 60 * time.Second
+	gitErrorLimit   = 4096
+)
 
 // GitDiscardRequest carries caller-known unsaved drafts. UI confirmation and
 // collecting live editor drafts remain the frontend's responsibility.
@@ -221,6 +223,7 @@ func GitStage(ctx context.Context, root string, paths []string) error {
 		return err
 	})
 }
+
 func GitUnstage(ctx context.Context, root string, paths []string) error {
 	return withGitWrite(ctx, root, func(w gitWriter) error {
 		p, err := gitPaths(w.root, paths)

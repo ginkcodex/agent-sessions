@@ -133,7 +133,7 @@ func TestSettingTurnedOffStopsTheSharedDownload(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	t.Cleanup(srv.Close)
-	var auto = true
+	auto := true
 	var mu sync.Mutex
 	r := newUpdater(t, true, func() bool { mu.Lock(); defer mu.Unlock(); return auto })
 	a := &App{roots: paths.Roots{Config: t.TempDir()}, updater: r.M}

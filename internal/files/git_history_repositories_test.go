@@ -100,7 +100,7 @@ func TestGitHistoryRepositoriesInsideGitWorkspace(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(root, "uninitialized")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(root, "uninitialized"), 0755); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "uninitialized"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	got, err := GitHistoryRepositories(context.Background(), root)
@@ -152,7 +152,7 @@ func TestGitHistoryRepositoriesEmptyAndFailures(t *testing.T) {
 		t.Fatalf("cancel: %v", err)
 	}
 	// A marker causes Git launch errors to be preserved, not treated as no repos.
-	if err := os.Mkdir(filepath.Join(root, ".git"), 0755); err != nil {
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", t.TempDir())
@@ -168,11 +168,11 @@ func TestGitHistoryInvalidMarkersDoNotFallThrough(t *testing.T) {
 			parent := t.TempDir()
 			nestedRepo(t, parent, "outer")
 			dir := filepath.Join(parent, "outer", "broken")
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatal(err)
 			}
 			if marker == "directory" {
-				if err := os.Mkdir(filepath.Join(dir, ".git"), 0755); err != nil {
+				if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
 					t.Fatal(err)
 				}
 			} else {
@@ -254,7 +254,7 @@ func TestGitHistoryRepositoriesWalkTruncated(t *testing.T) {
 	limit := lowFileCap(t)
 	root := t.TempDir()
 	for i := 0; i <= limit; i++ {
-		if err := os.Mkdir(filepath.Join(root, fmt.Sprintf("dir-%05d", i)), 0755); err != nil {
+		if err := os.Mkdir(filepath.Join(root, fmt.Sprintf("dir-%05d", i)), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -203,8 +203,10 @@ func foldSearchMessage(msg *model.Message) searchMessageText {
 				// Plain values are never longer than the JSON holding them.
 				// Keep raw output searchable, but also index decoded JSON values:
 				// the viewer unwraps text envelopes containing escaped paths/newlines.
-				text = strings.Join([]string{tool.Name, model.JSONPlainValues(tool.Input, len(tool.Input)), tool.Output,
-					model.JSONPlainValues(json.RawMessage(tool.Output), len(tool.Output))}, " ")
+				text = strings.Join([]string{
+					tool.Name, model.JSONPlainValues(tool.Input, len(tool.Input)), tool.Output,
+					model.JSONPlainValues(json.RawMessage(tool.Output), len(tool.Output)),
+				}, " ")
 			}
 		case model.PartFile:
 			if part.File != nil {

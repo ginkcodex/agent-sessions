@@ -244,4 +244,3 @@ func ExtractMessageText(msg *Message, capBytes int) (string, string) {
 	body := joinCapped([]string{text.String(), reasoning.String(), tools.String()}, capBytes)
 	return body, kind
 }
-

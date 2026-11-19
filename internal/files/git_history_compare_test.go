@@ -207,7 +207,7 @@ func TestGitHistoryCompareRenameBoundaryAndSubmodule(t *testing.T) {
 	git("update-index", "--add", "--cacheinfo", "160000,"+oid+",inside/sub")
 	git("commit", "-m", "gitlink")
 	req = compareRequest(t, root, git)
-	if err := os.MkdirAll(filepath.Join(root, "inside/sub"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "inside/sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	git("update-index", "--force-remove", "inside/sub")

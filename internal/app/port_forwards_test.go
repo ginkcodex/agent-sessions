@@ -22,6 +22,7 @@ func forwardApp(t *testing.T) *App {
 	t.Cleanup(func() { c.Shutdown() })
 	return a
 }
+
 func TestPortForwardPersistenceAndIsolation(t *testing.T) {
 	a := forwardApp(t)
 	s, err := a.SavePortForward(PortForwardRequest{RemoteHost: "localhost", RemotePort: 80, LocalPort: 18080, AutoStart: true})
@@ -59,6 +60,7 @@ func TestPortForwardPersistenceAndIsolation(t *testing.T) {
 		t.Fatal("remove not persisted")
 	}
 }
+
 func TestPortForwardValidationAndEdit(t *testing.T) {
 	a := forwardApp(t)
 	if _, err := a.SavePortForward(PortForwardRequest{RemoteHost: "bad;host", RemotePort: 80, LocalPort: 8080}); err == nil {
@@ -85,6 +87,7 @@ func TestPortForwardValidationAndEdit(t *testing.T) {
 		t.Fatal(s, err)
 	}
 }
+
 func TestForwardLogReadyAndFailure(t *testing.T) {
 	ready := false
 	l := &forwardLog{ready: func() { ready = true }}
@@ -97,6 +100,7 @@ func TestForwardLogReadyAndFailure(t *testing.T) {
 		t.Fatal(ready, l.failure())
 	}
 }
+
 func TestPortForwardAsyncFailureAndDisconnect(t *testing.T) {
 	a := forwardApp(t)
 	a.conn.opts.Binary = filepath.Join(t.TempDir(), "missing-ssh")
@@ -138,10 +142,11 @@ func TestPortForwardAsyncFailureAndDisconnect(t *testing.T) {
 		t.Fatal(s)
 	}
 }
+
 func TestPortForwardCorruptPersistenceNotOverwritten(t *testing.T) {
 	a := forwardApp(t)
 	path := a.conn.forwards.path
-	if err := os.WriteFile(path, []byte("broken"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("broken"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	a.conn.forwards = newPortForwards(path)

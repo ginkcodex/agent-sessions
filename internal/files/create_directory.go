@@ -103,9 +103,9 @@ func createEntry(ctx context.Context, policy EditPolicy, root, rel, name string,
 	// Mkdir, not MkdirAll, and exclusive creation atomically refuse any
 	// existing leaf, including links.
 	if directory {
-		return parent.Mkdir(name, 0700)
+		return parent.Mkdir(name, 0o700)
 	}
-	f, err := parent.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	f, err := parent.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}

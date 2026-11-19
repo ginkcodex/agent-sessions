@@ -1,8 +1,9 @@
 package app
 
 import (
-	"github.com/ginkcode/agent-sessions/internal/rpc"
 	"testing"
+
+	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
 
 func TestGitHistoryConnectionCapability(t *testing.T) {

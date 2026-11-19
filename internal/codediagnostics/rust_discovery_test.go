@@ -17,13 +17,14 @@ type rustFixture struct {
 
 func rustTestWrite(t *testing.T, path, text string, mode os.FileMode) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(text), mode); err != nil {
 		t.Fatal(err)
 	}
 }
+
 func newRustFixture(t *testing.T) rustFixture {
 	t.Helper()
 	base, err := filepath.EvalSymlinks(t.TempDir())
@@ -31,7 +32,7 @@ func newRustFixture(t *testing.T) rustFixture {
 		t.Fatal(err)
 	}
 	project := filepath.Join(base, "project")
-	if err := os.Mkdir(project, 0755); err != nil {
+	if err := os.Mkdir(project, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	root, err := AuthorizeRoot("local:rust-tests", project, func(p string) bool { return p == project })
@@ -39,21 +40,23 @@ func newRustFixture(t *testing.T) rustFixture {
 		t.Fatal(err)
 	}
 	f := rustFixture{root: root, env: RustEnvironment{Home: filepath.Join(base, "home")}, bin: filepath.Join(base, "tools")}
-	if err := os.MkdirAll(f.env.Home, 0755); err != nil {
+	if err := os.MkdirAll(f.env.Home, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"cargo", "rustc", "rust-analyzer"} {
 		if runtime.GOOS == "windows" {
 			name += ".exe"
 		}
-		rustTestWrite(t, filepath.Join(f.bin, name), "fake executable metadata only: "+name, 0755)
+		rustTestWrite(t, filepath.Join(f.bin, name), "fake executable metadata only: "+name, 0o755)
 	}
 	return f
 }
+
 func (f rustFixture) put(t *testing.T, path, text string) {
 	t.Helper()
-	rustTestWrite(t, filepath.Join(f.root.Project().Root, filepath.FromSlash(path)), text, 0644)
+	rustTestWrite(t, filepath.Join(f.root.Project().Root, filepath.FromSlash(path)), text, 0o644)
 }
+
 func (f rustFixture) discover(t *testing.T) *RustPlan {
 	t.Helper()
 	p, err := DiscoverRust(f.root, []string{f.bin}, f.env)
@@ -62,6 +65,7 @@ func (f rustFixture) discover(t *testing.T) *RustPlan {
 	}
 	return p
 }
+
 func TestRustDiscoveryConcreteIndependentTools(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Native Windows Rust execution is not supported")
@@ -96,6 +100,7 @@ func TestRustDiscoveryConcreteIndependentTools(t *testing.T) {
 		t.Fatal("missing server did not invalidate identity")
 	}
 }
+
 func TestRustDiscoveryWorkspaceGlobsExclusionsAndNested(t *testing.T) {
 	f := newRustFixture(t)
 	f.put(t, "Cargo.toml", "[workspace]\nmembers=['crates/*']\nexclude=['crates/excluded','independent']\n")
@@ -111,6 +116,7 @@ func TestRustDiscoveryWorkspaceGlobsExclusionsAndNested(t *testing.T) {
 		t.Fatalf("roots %q", p.Roots())
 	}
 }
+
 func TestRustDiscoveryRejectsExternalAndUnreviewedConfigurations(t *testing.T) {
 	cases := map[string]map[string]string{
 		"external dependency": {"Cargo.toml": "[package]\nname='p'\nversion='0.1.0'\n[dependencies]\nx={path='../outside'}\n"},
@@ -138,6 +144,7 @@ func TestRustDiscoveryRejectsExternalAndUnreviewedConfigurations(t *testing.T) {
 		})
 	}
 }
+
 func TestRustDiscoveryContainedPathDependencyAndWorkspacePointer(t *testing.T) {
 	f := newRustFixture(t)
 	f.put(t, "Cargo.toml", "[workspace]\nmembers=['app']\n")
@@ -151,6 +158,7 @@ func TestRustDiscoveryContainedPathDependencyAndWorkspacePointer(t *testing.T) {
 		t.Fatal(p.Roots())
 	}
 }
+
 func TestRustDiscoveryInputsCreatedRemovedAndChanged(t *testing.T) {
 	for _, path := range []string{"Cargo.lock", ".cargo/config.toml", "rust-toolchain.toml", "new/Cargo.toml"} {
 		t.Run(path, func(t *testing.T) {
@@ -184,18 +192,19 @@ func TestRustDiscoveryInputsCreatedRemovedAndChanged(t *testing.T) {
 	f := newRustFixture(t)
 	f.put(t, "Cargo.toml", "[package]\nname='app'\n")
 	p := f.discover(t)
-	rustTestWrite(t, filepath.Join(f.env.Home, ".cargo", "config.toml"), "[net]\noffline=true\n", 0644)
+	rustTestWrite(t, filepath.Join(f.env.Home, ".cargo", "config.toml"), "[net]\noffline=true\n", 0o644)
 	if p.Unchanged() == nil {
 		t.Fatal("host config creation not detected")
 	}
 }
+
 func TestRustDiscoveryRustupProxyAndConcreteSelection(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses Unix executable semantics")
 	}
 	f := newRustFixture(t)
 	f.put(t, "Cargo.toml", "[package]\nname='app'\n")
-	rustTestWrite(t, filepath.Join(f.bin, "rustup"), "fake rustup must never execute", 0755)
+	rustTestWrite(t, filepath.Join(f.bin, "rustup"), "fake rustup must never execute", 0o755)
 	for _, name := range []string{"cargo", "rustc", "rust-analyzer"} {
 		if err := os.Remove(filepath.Join(f.bin, name)); err != nil {
 			t.Fatal(err)
@@ -212,7 +221,7 @@ func TestRustDiscoveryRustupProxyAndConcreteSelection(t *testing.T) {
 	selected := "stable-" + rustHostTriple()
 	dir := filepath.Join(f.env.Home, ".rustup", "toolchains", selected, "bin")
 	for _, name := range []string{"cargo", "rustc"} {
-		rustTestWrite(t, filepath.Join(dir, name), "concrete "+name, 0755)
+		rustTestWrite(t, filepath.Join(dir, name), "concrete "+name, 0o755)
 	}
 	q := f.discover(t)
 	if q.Availability("cargo-check") != "available" || q.Availability("rust-analyzer") != "missingTool" {
@@ -222,7 +231,7 @@ func TestRustDiscoveryRustupProxyAndConcreteSelection(t *testing.T) {
 	if cargo != filepath.Join(dir, "cargo") {
 		t.Fatal(cargo)
 	}
-	rustTestWrite(t, filepath.Join(dir, "rust-analyzer"), "concrete server", 0755)
+	rustTestWrite(t, filepath.Join(dir, "rust-analyzer"), "concrete server", 0o755)
 	if q.Unchanged() == nil {
 		t.Fatal("new component did not invalidate discovery")
 	}
@@ -230,15 +239,16 @@ func TestRustDiscoveryRustupProxyAndConcreteSelection(t *testing.T) {
 	if q.Availability("rust-analyzer") != "available" {
 		t.Fatal(q.Notice())
 	}
-	rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "default_toolchain='stable'\n", 0644)
+	rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "default_toolchain='stable'\n", 0o644)
 	if q.Unchanged() == nil {
 		t.Fatal("settings creation did not invalidate")
 	}
 }
+
 func TestRustDiscoveryAncestorWorkspaceDoesNotExpandAuthority(t *testing.T) {
 	f := newRustFixture(t)
 	f.put(t, "Cargo.toml", "[package]\nname='app'\n")
-	rustTestWrite(t, filepath.Join(filepath.Dir(f.root.Project().Root), "Cargo.toml"), "[workspace]\nmembers=['project']\n", 0644)
+	rustTestWrite(t, filepath.Join(filepath.Dir(f.root.Project().Root), "Cargo.toml"), "[workspace]\nmembers=['project']\n", 0o644)
 	p := f.discover(t)
 	if p.Availability("cargo-check") != "unsupported" {
 		t.Fatal("ancestor workspace accepted")
@@ -249,6 +259,7 @@ func TestRustDiscoveryAncestorWorkspaceDoesNotExpandAuthority(t *testing.T) {
 		t.Fatal(p.Notice())
 	}
 }
+
 func TestRustDiscoveryLimitsAndSymlinks(t *testing.T) {
 	t.Run("manifests", func(t *testing.T) {
 		f := newRustFixture(t)
@@ -282,7 +293,7 @@ func TestRustDiscoveryToolchainHelperIdentity(t *testing.T) {
 	f.put(t, "Cargo.toml", "[package]\nname='app'\n")
 	p := f.discover(t)
 	helper := filepath.Join(filepath.Dir(f.bin), "libexec", "rust-analyzer-proc-macro-srv")
-	rustTestWrite(t, helper, "concrete proc macro helper", 0755)
+	rustTestWrite(t, helper, "concrete proc macro helper", 0o755)
 	if p.Unchanged() == nil {
 		t.Fatal("new helper did not invalidate approval")
 	}
@@ -290,11 +301,11 @@ func TestRustDiscoveryToolchainHelperIdentity(t *testing.T) {
 	if p.ProcMacroServer() != helper {
 		t.Fatalf("helper %q", p.ProcMacroServer())
 	}
-	rustTestWrite(t, helper, "changed proc macro helper", 0755)
+	rustTestWrite(t, helper, "changed proc macro helper", 0o755)
 	if p.Unchanged() == nil {
 		t.Fatal("changed helper did not invalidate approval")
 	}
-	rustTestWrite(t, filepath.Join(f.bin, "rustdoc"), "concrete rustdoc", 0755)
+	rustTestWrite(t, filepath.Join(f.bin, "rustdoc"), "concrete rustdoc", 0o755)
 	p = f.discover(t)
 	if p.Rustdoc() == "" {
 		t.Fatal("missing rustdoc")
@@ -303,6 +314,7 @@ func TestRustDiscoveryToolchainHelperIdentity(t *testing.T) {
 		t.Fatal("rustdoc is not pinned")
 	}
 }
+
 func TestRustDiscoverySkippedDependencyCannotEscapeReview(t *testing.T) {
 	f := newRustFixture(t)
 	f.put(t, "Cargo.toml", "[package]\nname='app'\n[dependencies]\nx={path='vendor/x'}\n")
@@ -312,6 +324,7 @@ func TestRustDiscoverySkippedDependencyCannotEscapeReview(t *testing.T) {
 		t.Fatal("skipped path dependency accepted")
 	}
 }
+
 func TestRustDiscoveryIndependentRootToolchainSelections(t *testing.T) {
 	for _, tc := range []struct {
 		name, a, b string
@@ -335,13 +348,13 @@ func TestRustDiscoveryIndependentRootToolchainSelections(t *testing.T) {
 			}
 			// The absent root's host default differs from an explicit stable
 			// selector. Never let the explicit root silently override it.
-			rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "default_toolchain='nightly'\n", 0644)
+			rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "default_toolchain='nightly'\n", 0o644)
 			for _, channel := range []string{"stable", "nightly"} {
 				for _, name := range []string{"cargo", "rustc"} {
 					if runtime.GOOS == "windows" {
 						name += ".exe"
 					}
-					rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "toolchains", channel+"-"+rustHostTriple(), "bin", name), "concrete tool metadata only", 0755)
+					rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "toolchains", channel+"-"+rustHostTriple(), "bin", name), "concrete tool metadata only", 0o755)
 				}
 			}
 			p := f.discover(t)
@@ -366,8 +379,8 @@ func TestRustDiscoveryBuildScriptInSkippedDirectory(t *testing.T) {
 				f.put(t, "vendor/build.rs", "fn main() {}\n")
 			case "external-symlink":
 				outside := filepath.Join(t.TempDir(), "build.rs")
-				rustTestWrite(t, outside, "fn main() {}\n", 0644)
-				if err := os.MkdirAll(filepath.Join(f.root.Project().Root, "vendor"), 0755); err != nil {
+				rustTestWrite(t, outside, "fn main() {}\n", 0o644)
+				if err := os.MkdirAll(filepath.Join(f.root.Project().Root, "vendor"), 0o755); err != nil {
 					t.Fatal(err)
 				}
 				if err := os.Symlink(outside, filepath.Join(f.root.Project().Root, "vendor", "build.rs")); err != nil {
@@ -393,10 +406,10 @@ func TestRustDiscoveryHostPolicies(t *testing.T) {
 			f.put(t, "Cargo.toml", "[package]\nname='p'\n")
 			switch which {
 			case "config":
-				rustTestWrite(t, filepath.Join(f.env.Home, ".cargo", "config.toml"), "[env]\nUNREVIEWED='1'\n", 0644)
+				rustTestWrite(t, filepath.Join(f.env.Home, ".cargo", "config.toml"), "[env]\nUNREVIEWED='1'\n", 0o644)
 			case "override":
 				root := strings.ReplaceAll(f.root.Project().Root, `\`, `\\`)
-				rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "[overrides]\n'"+root+"'='stable'\n", 0644)
+				rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "[overrides]\n'"+root+"'='stable'\n", 0o644)
 			case "unbounded-component":
 				f.put(t, "rust-toolchain.toml", "[toolchain]\nchannel='stable'\ncomponents=['../evil']\n")
 			case "rust-analyzer-config":
@@ -427,7 +440,7 @@ func TestRustDiscoveryHostAnalyzerConfiguration(t *testing.T) {
 		t.Run("reject", func(t *testing.T) {
 			f := newRustFixture(t)
 			f.put(t, "Cargo.toml", "[package]\nname='app'\n")
-			rustTestWrite(t, rustTestAnalyzerConfig(t, f.env.Home), content, 0644)
+			rustTestWrite(t, rustTestAnalyzerConfig(t, f.env.Home), content, 0o644)
 			p := f.discover(t)
 			if p.Availability("rust-analyzer") != "unsupported" || p.Notice() == "" {
 				t.Fatal("unreviewed user analyzer configuration accepted")
@@ -440,7 +453,7 @@ func TestRustDiscoveryHostAnalyzerConfiguration(t *testing.T) {
 			f.put(t, "Cargo.toml", "[package]\nname='app'\n")
 			path := rustTestAnalyzerConfig(t, f.env.Home)
 			if change != "created" {
-				rustTestWrite(t, path, "# reviewed empty configuration\n", 0644)
+				rustTestWrite(t, path, "# reviewed empty configuration\n", 0o644)
 			}
 			p := f.discover(t)
 			if p.Availability("rust-analyzer") != "available" || p.Unchanged() != nil {
@@ -454,7 +467,7 @@ func TestRustDiscoveryHostAnalyzerConfiguration(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				rustTestWrite(t, path, "# new empty configuration\n", 0644)
+				rustTestWrite(t, path, "# new empty configuration\n", 0o644)
 			}
 			if p.Unchanged() == nil {
 				t.Fatal("user analyzer configuration enumeration or bytes changed without invalidation")
@@ -466,8 +479,8 @@ func TestRustDiscoveryHostAnalyzerConfiguration(t *testing.T) {
 		f.put(t, "Cargo.toml", "[package]\nname='app'\n")
 		path := rustTestAnalyzerConfig(t, f.env.Home)
 		outside := filepath.Join(filepath.Dir(f.env.Home), "outside-analyzer.toml")
-		rustTestWrite(t, outside, "# empty\n", 0644)
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		rustTestWrite(t, outside, "# empty\n", 0o644)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Symlink(outside, path); err != nil {

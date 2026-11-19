@@ -3,11 +3,12 @@ package app
 import (
 	"context"
 	"errors"
+	"reflect"
+	"testing"
+
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
-	"reflect"
-	"testing"
 )
 
 type historyRecorder struct {
@@ -26,6 +27,7 @@ func (b *historyRecorder) GitHistoryRepositories(_ context.Context, dir string) 
 	}
 	return files.GitHistoryRepositoryList{}, b.err
 }
+
 func (b *historyRecorder) GitHistoryBranches(_ context.Context, req files.GitHistoryTarget) (files.GitHistoryRefList, error) {
 	b.calls = append(b.calls, "GitHistoryBranches")
 	b.args = append(b.args, req)
@@ -34,6 +36,7 @@ func (b *historyRecorder) GitHistoryBranches(_ context.Context, req files.GitHis
 	}
 	return files.GitHistoryRefList{}, b.err
 }
+
 func (b *historyRecorder) GitHistoryList(_ context.Context, req files.GitHistoryListRequest) (files.GitHistoryPage, error) {
 	b.calls = append(b.calls, "GitHistoryList")
 	b.args = append(b.args, req)
@@ -42,6 +45,7 @@ func (b *historyRecorder) GitHistoryList(_ context.Context, req files.GitHistory
 	}
 	return files.GitHistoryPage{}, b.err
 }
+
 func (b *historyRecorder) GitHistoryCommit(_ context.Context, req files.GitHistoryCommitRequest) (files.GitHistoryCommitDetail, error) {
 	b.calls = append(b.calls, "GitHistoryCommit")
 	b.args = append(b.args, req)
@@ -50,6 +54,7 @@ func (b *historyRecorder) GitHistoryCommit(_ context.Context, req files.GitHisto
 	}
 	return files.GitHistoryCommitDetail{}, b.err
 }
+
 func (b *historyRecorder) ReadGitHistoryDiff(_ context.Context, req files.GitHistoryDiffRequest) (files.GitHistoryDiff, error) {
 	b.calls = append(b.calls, "ReadGitHistoryDiff")
 	b.args = append(b.args, req)
@@ -58,6 +63,7 @@ func (b *historyRecorder) ReadGitHistoryDiff(_ context.Context, req files.GitHis
 	}
 	return files.GitHistoryDiff{}, b.err
 }
+
 func TestGitHistoryRouting(t *testing.T) {
 	local, remote := &historyRecorder{}, &historyRecorder{}
 	a := NewApp()

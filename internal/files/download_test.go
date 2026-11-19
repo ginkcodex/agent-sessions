@@ -13,11 +13,11 @@ import (
 
 func TestWriteDownload(t *testing.T) {
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "folder", "empty"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "folder", "empty"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	data := []byte{0, 1, 2, 255}
-	if err := os.WriteFile(filepath.Join(root, "folder", "binary"), data, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "folder", "binary"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var b bytes.Buffer
@@ -58,7 +58,7 @@ func TestWriteDownload(t *testing.T) {
 
 func TestWriteDownloadRejectsEscapesAndRecursiveSymlinks(t *testing.T) {
 	root, outside := t.TempDir(), t.TempDir()
-	if err := os.WriteFile(filepath.Join(outside, "secret"), []byte("secret"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(outside, "secret"), []byte("secret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {

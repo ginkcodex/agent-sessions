@@ -331,10 +331,12 @@ var gitSyncAuthMarkers = []string{
 	"host key verification failed", "returned error: 401", "returned error: 403",
 	"invalid username or password", "authentication required",
 }
+
 var gitSyncNonFastForwardMarkers = []string{
 	"not possible to fast-forward", "diverging branches", "non-fast-forward",
 	"(fetch first)", "updates were rejected because",
 }
+
 var gitSyncLocalChangeMarkers = []string{
 	"would be overwritten by merge", "please commit your changes or stash them",
 }

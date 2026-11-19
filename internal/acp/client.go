@@ -283,8 +283,10 @@ func (c *Client) CanSteer() bool { return c.info.CanSteer() }
 // agent that leaves the outcome out is taken to have injected it.
 func (c *Client) Steer(ctx context.Context, sessionID string, prompt []ContentBlock) (string, error) {
 	var r SteerResponse
-	req := SteerRequest{SessionID: sessionID, Prompt: prompt,
-		Meta: SteerMeta{Steering: SteerOptions{IdleBehavior: SteerIdlePromptRequired}}}
+	req := SteerRequest{
+		SessionID: sessionID, Prompt: prompt,
+		Meta: SteerMeta{Steering: SteerOptions{IdleBehavior: SteerIdlePromptRequired}},
+	}
 	if err := c.call(ctx, MethodSessionSteering, req, &r); err != nil {
 		return "", err
 	}

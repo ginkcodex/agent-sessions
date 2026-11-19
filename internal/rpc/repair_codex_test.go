@@ -18,6 +18,7 @@ func (b *repairRPCBackend) RepairCodexSession(_ context.Context, ref model.Sessi
 	b.ref = ref
 	return engine.CodexRepairResult{Path: "host/canonical.jsonl", BackupPath: "host/backup"}, nil
 }
+
 func TestRepairCodexRPCRoundTrip(t *testing.T) {
 	backend := &repairRPCBackend{}
 	_, client, cleanup := setupPipePair(backend)
@@ -35,6 +36,7 @@ func TestRepairCodexRPCRoundTrip(t *testing.T) {
 		t.Fatalf("result=%+v ref=%+v", result, backend.ref)
 	}
 }
+
 func TestRepairCodexOldServerUnsupported(t *testing.T) {
 	_, client, cleanup := setupPipePair(nil)
 	defer cleanup()

@@ -20,6 +20,7 @@ func (b *renameRPCBackend) RenameSession(_ context.Context, ref model.SessionRef
 	b.title = title
 	return nil
 }
+
 func TestRenameSessionRPCRoundTrip(t *testing.T) {
 	b := &renameRPCBackend{}
 	_, c, cleanup := setupPipePair(b)
@@ -36,6 +37,7 @@ func TestRenameSessionRPCRoundTrip(t *testing.T) {
 		t.Fatalf("ref=%v title=%s", b.ref, b.title)
 	}
 }
+
 func TestRenameSessionOldServerUnsupported(t *testing.T) {
 	_, c, cleanup := setupPipePair(nil)
 	defer cleanup()

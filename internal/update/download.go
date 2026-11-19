@@ -15,8 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ginkcode/agent-sessions/internal/filelock"
 	"golang.org/x/mod/semver"
+
+	"github.com/ginkcode/agent-sessions/internal/filelock"
 )
 
 // ErrGaveUp means downloading this version failed MaxFailures times. The app

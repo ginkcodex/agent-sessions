@@ -137,7 +137,7 @@ func TestScanIndex_EdgeChangeOnUnchangedRollouts(t *testing.T) {
 	root := platform.TempDir(t)
 	parent := indexRollout(t, root, indexID, false)
 	child := indexRollout(t, root, childID, false)
-	if err := os.WriteFile(child, []byte(line("2026-09-28T12:00:00Z", "session_meta", `{"id":"`+childID+`","source":{"subagent":{"parent_thread_id":"`+indexID+`"}}}`)), 0600); err != nil {
+	if err := os.WriteFile(child, []byte(line("2026-09-28T12:00:00Z", "session_meta", `{"id":"`+childID+`","source":{"subagent":{"parent_thread_id":"`+indexID+`"}}}`)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

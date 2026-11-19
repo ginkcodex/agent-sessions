@@ -220,8 +220,10 @@ func TestCanSteer(t *testing.T) {
 }
 
 func TestSteerRequestOptsOutOfNewTurns(t *testing.T) {
-	b, err := json.Marshal(SteerRequest{SessionID: "s", Prompt: []ContentBlock{TextBlock("hi")},
-		Meta: SteerMeta{Steering: SteerOptions{IdleBehavior: SteerIdlePromptRequired}}})
+	b, err := json.Marshal(SteerRequest{
+		SessionID: "s", Prompt: []ContentBlock{TextBlock("hi")},
+		Meta: SteerMeta{Steering: SteerOptions{IdleBehavior: SteerIdlePromptRequired}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

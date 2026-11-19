@@ -19,12 +19,12 @@ func TestRepairCodexRefreshesCatalogPath(t *testing.T) {
 	roots := paths.Roots{Codex: t.TempDir(), Config: t.TempDir()}
 	const id = "11111111-1111-4111-8111-111111111111"
 	dir := filepath.Join(roots.Codex, "sessions", "2026", "11", "06")
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	old := filepath.Join(dir, "rollout-restored-"+id+".jsonl")
 	data, _ := json.Marshal(map[string]any{"ordinal": 0, "type": "session_meta", "timestamp": "2026-08-21T13:52:35Z", "payload": map[string]string{"id": id, "cwd": roots.Codex}})
-	if err := os.WriteFile(old, append(data, '\n'), 0600); err != nil {
+	if err := os.WriteFile(old, append(data, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", filepath.Join(roots.Codex, "state_5.sqlite"))
