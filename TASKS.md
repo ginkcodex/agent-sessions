@@ -143,4 +143,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Review fixes (2026-11-14 review) | [review-fixes](docs/plan/review-fixes.md) | [review-fixes/](docs/tasks/review-fixes/README.md) | 27/35 ✅ · 8 ⬜ |
 | Code completion | [code-completion](docs/plan/code-completion.md) | [code-completion/](docs/tasks/code-completion/README.md) | 24/27 ✅ · 2 🟡 · 1 ⬜ |
 | File link line highlight | [file-link-line-highlight](docs/plan/file-link-line-highlight.md) | [file-link-line-highlight/](docs/tasks/file-link-line-highlight/README.md) | 1/1 ✅ |
-| Antigravity CLI | [antigravity-cli](docs/plan/antigravity-cli.md) | [antigravity-cli/](docs/tasks/antigravity-cli/README.md) | 8/10 ✅ · 2 ⬜ |
+| Antigravity CLI | [antigravity-cli](docs/plan/antigravity-cli.md) | [antigravity-cli/](docs/tasks/antigravity-cli/README.md) | 8/10 ✅ · 1 🟡 · 1 ⬜ |
