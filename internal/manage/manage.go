@@ -61,6 +61,7 @@ type Manager struct {
 	claude         *claudeManager
 	codex          *codexManager
 	opencode       *opencodeManager
+	antigravity    *antigravityManager
 	trash          Trash
 	proc           ProcFS
 	live           LiveFunc
@@ -117,7 +118,7 @@ func New(roots paths.Roots, configPath string, opts ...Option) (*Manager, error)
 	}
 	if m.trash == nil {
 		m.trash, _ = platformTrash()
-	} // Missing gio only disables Claude items.
+	} // Missing gio only disables Claude and Antigravity items.
 	var err error
 	if roots.Claude != "" {
 		m.claude, err = newClaudeManager(roots.Claude, m.trash, m.now)
@@ -137,7 +138,13 @@ func New(roots paths.Roots, configPath string, opts ...Option) (*Manager, error)
 			return nil, err
 		}
 	}
-	if m.claude == nil && m.codex == nil && m.opencode == nil {
+	if roots.Antigravity != "" {
+		m.antigravity, err = newAntigravityManager(roots.Antigravity, m.trash, m.now)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if m.claude == nil && m.codex == nil && m.opencode == nil && m.antigravity == nil {
 		return nil, ErrUnsupportedAction
 	}
 	m.tokenKey = make([]byte, 32)
@@ -290,7 +297,7 @@ func decodeToken(token string) (time.Time, []byte, error) {
 
 func actionFor(a model.AgentID) Action {
 	switch a {
-	case model.AgentClaude:
+	case model.AgentClaude, model.AgentAntigravity:
 		return ActionTrash
 	case model.AgentCodex, model.AgentOpenCode:
 		return ActionDelete

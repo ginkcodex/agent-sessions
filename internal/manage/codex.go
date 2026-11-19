@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -72,7 +71,7 @@ func (cm *codexManager) plan(ctx context.Context, m model.SessionMeta) ([]itemFi
 		return nil, safePathError(err)
 	}
 
-	if err := cm.checkRecent(m, files); err != nil {
+	if err := checkRecent(cm.now(), m, files); err != nil {
 		return nil, err
 	}
 	return files, nil
@@ -135,26 +134,6 @@ func (cm *codexManager) walkRollouts(ctx context.Context, dir, id string, matche
 			continue
 		}
 		*matches = append(*matches, path)
-	}
-	return nil
-}
-
-func (cm *codexManager) checkRecent(m model.SessionMeta, files []itemFile) error {
-	now := cm.now()
-	for _, f := range files {
-		fi, err := os.Lstat(f.Path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return errors.New("cannot inspect session timestamp")
-		}
-		if now.Sub(fi.ModTime()) < recentWindow {
-			return fmt.Errorf("%w: session was active within 10 minutes", ErrLive)
-		}
-	}
-	if !m.UpdatedAt.IsZero() && now.Sub(m.UpdatedAt) < recentWindow {
-		return fmt.Errorf("%w: session was active within 10 minutes", ErrLive)
 	}
 	return nil
 }

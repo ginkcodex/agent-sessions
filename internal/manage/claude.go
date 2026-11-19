@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 )
@@ -69,7 +70,7 @@ func (cm *claudeManager) plan(ctx context.Context, m model.SessionMeta, live Liv
 		}
 	}
 
-	if err := cm.checkRecent(m, files); err != nil {
+	if err := checkRecent(cm.now(), m, files); err != nil {
 		return nil, err
 	}
 
@@ -170,8 +171,9 @@ func (cm *claudeManager) derivePaths(ctx context.Context, m model.SessionMeta) (
 	return candidates, nil
 }
 
-func (cm *claudeManager) checkRecent(m model.SessionMeta, files []itemFile) error {
-	now := cm.now()
+// checkRecent refuses a session written in the last recentWindow, by its
+// files' mtimes or its catalog time.
+func checkRecent(now time.Time, m model.SessionMeta, files []itemFile) error {
 	for _, f := range files {
 		fi, err := os.Lstat(f.Path)
 		if err != nil {
@@ -205,9 +207,10 @@ func (cm *claudeManager) checkLive(ctx context.Context, m model.SessionMeta, liv
 	return nil
 }
 
-// trash executes trash operation file-by-file with cancellation check.
-func (cm *claudeManager) trashFiles(ctx context.Context, files []itemFile, beforeTrash func() error) (moved []string, remaining []string, err error) {
-	if cm.trash == nil {
+// trashFiles moves files to the Trash one by one, in order, checking for
+// cancellation and calling beforeTrash before each.
+func trashFiles(ctx context.Context, trash Trash, files []itemFile, beforeTrash func() error) (moved []string, remaining []string, err error) {
+	if trash == nil {
 		for _, f := range files {
 			remaining = append(remaining, f.Path)
 		}
@@ -229,7 +232,7 @@ func (cm *claudeManager) trashFiles(ctx context.Context, files []itemFile, befor
 				return moved, remainingPaths(files, i), err
 			}
 		}
-		if trErr := cm.trash.Trash(f.Path); trErr != nil {
+		if trErr := trash.Trash(f.Path); trErr != nil {
 			if errors.Is(trErr, ErrTrashOutcomeUnknown) {
 				// The shell may have moved all or part of the current target.
 				// Do not list it as remaining or automatically retry it.

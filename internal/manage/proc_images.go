@@ -27,6 +27,9 @@ func agentServer(agent string, argv []string) bool {
 		return hasArg(argv, "app-server")
 	case "opencode":
 		return hasArg(argv, "serve") || hasArg(argv, "acp")
+	case "agy":
+		// The app's own chats, and editors', run `agy acp`.
+		return len(argv) > 1 && argv[1] == "acp"
 	}
 	return false
 }
@@ -70,7 +73,7 @@ func classifyImages(images map[int]string, args func(pid int, image string) ([]s
 			runtime = true
 			continue
 		}
-		for _, agent := range []string{"codex", "opencode"} {
+		for _, agent := range []string{"codex", "opencode", "agy"} {
 			// Include platform/version-suffixed binaries (for example the
 			// vendored codex-x86_64-pc-windows-msvc executable).
 			if name == agent || strings.HasPrefix(name, agent+"-") {

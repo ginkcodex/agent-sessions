@@ -65,7 +65,7 @@ type procEntry struct {
 	pid   int
 }
 
-// scanProcs finds running codex and opencode processes by reading
+// scanProcs finds running codex, opencode and agy processes by reading
 // /proc/*/cmdline. Server subcommands are excluded; see agentServer.
 func (g *liveGuard) scanProcs() (map[string]procEntry, error) {
 	if g.proc == nil {
@@ -87,7 +87,7 @@ func (g *liveGuard) scanProcs() (map[string]procEntry, error) {
 			bin = baseName(argv[0])
 		}
 		agent := bin
-		if (agent != "codex" && agent != "opencode") || agentServer(agent, argv) {
+		if (agent != "codex" && agent != "opencode" && agent != "agy") || agentServer(agent, argv) {
 			continue
 		}
 		out[fmt.Sprintf("%s:%d", agent, pid)] = procEntry{agent: agent, pid: pid}
