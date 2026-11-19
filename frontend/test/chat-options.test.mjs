@@ -34,6 +34,13 @@ test('pickers show every select and boolean option with the value the agent repo
   const AGY_MODE = { id: 'mode', name: 'Mode', category: 'mode', type: 'select', currentValue: 'default', options: ['default', 'accept-edits', 'auto', 'plan'].map((value) => ({ value, name: value })) };
   assert.ok(pickers('antigravity', [AGY_MODE])[0].choices.every((c) => !c.skipsPermissions));
 
+  // agy's ACP names xhigh "Extra"; the picker says XHigh, as agy's CLI does.
+  const AGY_EFFORT = { id: 'thought_level', name: 'Thinking Level', type: 'select', currentValue: 'xhigh', options: [['low', 'Low'], ['high', 'High'], ['xhigh', 'Extra']].map(([value, name]) => ({ value, name })) };
+  const [effort] = pickers('antigravity', [AGY_EFFORT]);
+  assert.deepEqual(effort.choices.map((c) => [c.value, c.name]), [['low', 'Low'], ['high', 'High'], ['xhigh', 'XHigh']]);
+  assert.equal(effort.value, 'xhigh');
+  assert.deepEqual(pickers('opencode', [AGY_EFFORT])[0].choices.map((c) => c.name), ['Low', 'High', 'Extra'], 'other agents keep their names');
+
   const [model] = pickers('opencode', [OPENCODE_MODEL]);
   assert.deepEqual(model.choices.map((c) => [c.value, c.group]), [['anthropic/claude-fable-5-2', 'Anthropic'], ['openai/gpt-x', 'OpenAI']]);
   assert.equal(model.choices[1].description, 'logged in');

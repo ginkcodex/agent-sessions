@@ -12,6 +12,15 @@ const SKIPS_PERMISSIONS: Partial<Record<AgentID, string[]>> = {
   codex: ['agent-full-access'],
 };
 
+/**
+ * Choice names an agent's ACP server spells differently from its own CLI.
+ * agy names thought_level xhigh "Extra"; its --effort flag, TUI and model
+ * names ("Gemini 4 Neon (XHigh)") say XHigh.
+ */
+const CHOICE_NAMES: Partial<Record<AgentID, Record<string, Record<string, string>>>> = {
+  antigravity: { thought_level: { xhigh: 'XHigh' } },
+};
+
 export interface PickerChoice {
   value: string;
   name: string;
@@ -86,7 +95,8 @@ export function pickers(agent: AgentID, options: ChatConfigOption[]): Picker[] {
       continue;
     }
     if (opt.type !== 'select') continue;
-    const choices = selectValues(opt.options).map((c) => ({ ...c, skipsPermissions: skipsPermissions(agent, opt, c.value) }));
+    const names = CHOICE_NAMES[agent]?.[opt.id];
+    const choices = selectValues(opt.options).map((c) => ({ ...c, name: names?.[c.value] ?? c.name, skipsPermissions: skipsPermissions(agent, opt, c.value) }));
     if (choices.length === 0) continue;
     const value = typeof opt.currentValue === 'string' ? opt.currentValue : undefined;
     // The agent reports a value it does not list: show it rather than another one.

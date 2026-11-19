@@ -124,7 +124,7 @@ succeeded and returned the updated `configOptions` list:
 | `id` / `category` | `name` | Values observed |
 |---|---|---|
 | `model` | Model | `gemini-4-neon`, `gemini-4-argon`, `gemini-4-hydrogen`, `gemini-pro-orchestrator-neon`, `gemini-pro-orchestrator-g1-pro`, `gemini-3.8-flash`, `claude-opus-5-5`, `claude-sonnet-5-5`, `gpt-oss-120b-medium` |
-| `thought_level` | Thinking Level | `low`, `medium`, `high`, `xhigh` |
+| `thought_level` | Thinking Level | `low`, `medium`, `high`, `xhigh` (named Low, Medium, High, Extra; see [AGY-17](../tasks/antigravity-cli/AGY-17.md)) |
 | `mode` | Mode | `default`, `accept-edits`, `plan` |
 
 None of the advertised modes skips all permission prompts (`accept-edits` only

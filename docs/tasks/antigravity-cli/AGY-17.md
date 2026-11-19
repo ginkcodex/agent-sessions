@@ -1,6 +1,6 @@
 # AGY-17 — Effort picker says "Extra", agy says `xhigh`
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 1 h
 - **Depends on:** [AGY-06](AGY-06.md)
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
@@ -52,3 +52,35 @@ Also to check: `max` is an `agy --effort` value, but ACP does not offer it.
 - Frontend: the Antigravity `thought_level` choices map to the CLI's
   spelling. The other agents keep the names they send.
 - Manual: the picker in a live Antigravity chat on macOS.
+
+## Evidence
+
+Confirmed with a throwaway `agy acp` session (agy 1.5.12, Linux, workspace
+`/tmp/agy-probe-ws`, session `c2b87113-…`):
+
+- `session/new`'s `thought_level` choices are `low`/Low, `medium`/Medium,
+  `high`/High and `xhigh`/**Extra**. No `max`: `agy --effort max` exists,
+  but ACP does not offer it.
+- agy's own model list in the same reply spells the level XHigh:
+  `gemini-4-neon-xhigh` is "Gemini 4 Neon (XHigh)".
+
+Done:
+
+- `chatOptions.ts`: a `CHOICE_NAMES` map renames choices an agent's ACP
+  spells differently from its CLI. The only entry is Antigravity's
+  `thought_level` `xhigh` → "XHigh". The value sent is still `xhigh`, and
+  remembered choices are stored by value, so they are unchanged.
+- The spike's config option table lists the names.
+
+Tests:
+
+- `frontend/test/chat-options.test.mjs`:
+  - Antigravity's `thought_level` choices read Low, High, XHigh, and the
+    current value stays `xhigh`;
+  - the same option for another agent keeps "Extra".
+- `chat-options` tests: 6 pass, 0 fail. `npm run check`: 0 errors,
+  0 warnings.
+
+Not checked:
+
+- The picker in the desktop app on macOS.
