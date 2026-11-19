@@ -322,10 +322,10 @@ New package `internal/provider/antigravity` implementing `provider.Provider`,
   not restored.
 - Antigravity IDE (`~/.gemini/antigravity/`) separate from Antigravity CLI
   (`~/.gemini/antigravity-cli/`).
-- Plugin and skill slash-command inventory (`PluginLister`, skills in
-  `InventoryLister`). Exception: `/mcp`, which desktop QA found sent to the
-  agent as a prompt. [AGY-13](../tasks/antigravity-cli/AGY-13.md) answers it
-  in the app from `agy mcp list`.
+- The plugin slash-command inventory (`PluginLister`). Desktop QA asked for
+  `/mcp` and `/skills`, which the app answers itself:
+  [AGY-13](../tasks/antigravity-cli/AGY-13.md) from `agy mcp list`, and
+  [AGY-21](../tasks/antigravity-cli/AGY-21.md) from `agy -p /skills`.
 
 ## Risks
 

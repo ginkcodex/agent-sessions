@@ -296,9 +296,9 @@ export function isPluginListing(text: string, commands: readonly ChatCommand[], 
 /**
  * The listings the app answers from the agent's CLI besides plugins, in its
  * native spelling: OpenCode's /mcps and /skills, and Antigravity's /mcp
- * (`agy mcp list`). Neither ACP server advertises these; Claude and Codex
- * answer /mcp themselves. Codex's /skills uses its live ACP skill command
- * catalog.
+ * (`agy mcp list`) and /skills (`agy -p /skills`). Neither ACP server
+ * advertises these; Claude and Codex answer /mcp themselves. Codex's /skills
+ * uses its live ACP skill command catalog.
  */
 export function inventoryCommands(agent: string): (ChatCommand & { kind: ChatInventoryKind })[] {
   if (agent === 'codex') return [
@@ -306,6 +306,7 @@ export function inventoryCommands(agent: string): (ChatCommand & { kind: ChatInv
   ];
   if (agent === 'antigravity') return [
     { name: 'mcp', kind: 'mcp', description: 'List the configured MCP servers (shown here, not sent to the agent)', input: null },
+    { name: 'skills', kind: 'skills', description: 'List the available skills (shown here, not sent to the agent)', input: null },
   ];
   if (agent !== 'opencode') return [];
   return [

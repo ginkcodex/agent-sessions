@@ -1,6 +1,7 @@
 package antigravity
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -10,21 +11,60 @@ import (
 
 var _ provider.InventoryLister = (*Provider)(nil)
 
-// inventoryTimeout bounds one `agy mcp list`. It only reads agy's config and
-// connects to no server.
+// inventoryTimeout bounds one `agy mcp list` or `agy -p /skills`. Both only
+// read agy's config: neither connects to a server or runs a model turn.
 const inventoryTimeout = 30 * time.Second
 
 // noMCPServers is what `agy mcp list` prints when none are configured.
 const noMCPServers = "No MCP servers configured."
 
-// InventoryList runs `agy mcp list`, the TUI's /mcp. agy lists no skills.
-// `agy mcp` also adds, removes, enables and disables servers; the app runs
-// only list.
+// InventoryList runs `agy mcp list`, the TUI's /mcp, or the TUI's /skills
+// in print mode: agy has no skills subcommand, and answers /skills itself
+// (docs/tasks/antigravity-cli/AGY-21.md). `agy mcp` also adds, removes,
+// enables and disables servers; the app runs only list.
 func (p *Provider) InventoryList(kind, _ string) (provider.InventoryList, bool) {
-	if kind != provider.InventoryMCP {
-		return provider.InventoryList{}, false
+	switch kind {
+	case provider.InventoryMCP:
+		return provider.InventoryList{Args: []string{"mcp", "list"}, Timeout: inventoryTimeout, Parse: parseMCPList}, true
+	case provider.InventorySkills:
+		// Plan mode: an agy that sent /skills to the model could not edit.
+		return provider.InventoryList{Args: []string{"-p", "/skills", "--output-format", "json", "--mode", "plan"}, Timeout: inventoryTimeout, Parse: parseSkills}, true
 	}
-	return provider.InventoryList{Args: []string{"mcp", "list"}, Timeout: inventoryTimeout, Parse: parseMCPList}, true
+	return provider.InventoryList{}, false
+}
+
+// parseSkills reads the command block of `agy -p /skills --output-format
+// json` (agy 1.5.12), keeping each skill's name and description; the path is
+// dropped. A reply with a conversation, or without the block, was not agy's
+// own /skills: an error, never an empty list.
+func parseSkills(stdout []byte) (provider.Inventory, error) {
+	var reply struct {
+		ConversationID string `json:"conversation_id"`
+		Status         string `json:"status"`
+		Command        *struct {
+			Name string `json:"name"`
+			Data struct {
+				Skills []struct {
+					Name        string `json:"name"`
+					Description string `json:"description"`
+				} `json:"skills"`
+			} `json:"data"`
+		} `json:"command"`
+	}
+	if err := json.Unmarshal(stdout, &reply); err != nil {
+		return provider.Inventory{}, err
+	}
+	if reply.ConversationID != "" || reply.Status != "SUCCESS" || reply.Command == nil || reply.Command.Name != "skills" {
+		return provider.Inventory{}, errors.New("not agy's own /skills listing")
+	}
+	out := make([]provider.Skill, 0, len(reply.Command.Data.Skills))
+	for _, s := range reply.Command.Data.Skills {
+		if s.Name == "" {
+			return provider.Inventory{}, errors.New("a skill has no name")
+		}
+		out = append(out, provider.Skill{ID: s.Name, Name: s.Name, Description: s.Description})
+	}
+	return provider.Inventory{Skills: out}, nil
 }
 
 // parseMCPList reads `agy mcp list`'s table (agy 1.5.12):

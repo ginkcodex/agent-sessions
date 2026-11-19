@@ -14,8 +14,48 @@ func TestInventoryList(t *testing.T) {
 	if !ok || !slices.Equal(mcp.Args, []string{"mcp", "list"}) || mcp.Timeout <= 0 {
 		t.Fatalf("mcp = %+v, %v", mcp, ok)
 	}
-	if _, ok := p.InventoryList(provider.InventorySkills, "/work/a"); ok {
-		t.Fatal("skills are listed")
+	skills, ok := p.InventoryList(provider.InventorySkills, "/work/a")
+	if !ok || !slices.Equal(skills.Args, []string{"-p", "/skills", "--output-format", "json", "--mode", "plan"}) || skills.Timeout <= 0 {
+		t.Fatalf("skills = %+v, %v", skills, ok)
+	}
+}
+
+func TestParseSkills(t *testing.T) {
+	// What `agy -p /skills --output-format json` printed on agy 1.5.12
+	// (Linux), trimmed: agy answers it itself, with no turn.
+	reply := `{"conversation_id":"","status":"SUCCESS","response":"agy-customizations\tGuide.\ndemo-skill\tLine one.\nLine two.",` +
+		`"duration_seconds":0,"num_turns":0,"usage":{"input_tokens":0,"output_tokens":0},` +
+		`"command":{"name":"skills","data":{"skills":[` +
+		`{"name":"agy-customizations","description":"Guide.","path":"/home/u/.gemini/antigravity-cli/builtin/skills/agy-customizations/SKILL.md","builtin":true,"model_invocable":true},` +
+		`{"name":"demo-skill","description":"Line one.\nLine two.","path":"/work/.agents/skills/demo-skill/SKILL.md","builtin":false,"model_invocable":true}]}}}` + "\n"
+	got, err := parseSkills([]byte(reply))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []provider.Skill{
+		{ID: "agy-customizations", Name: "agy-customizations", Description: "Guide."},
+		{ID: "demo-skill", Name: "demo-skill", Description: "Line one.\nLine two."},
+	}
+	if !reflect.DeepEqual(got.Skills, want) {
+		t.Fatalf("skills = %+v", got.Skills)
+	}
+	none, err := parseSkills([]byte(`{"conversation_id":"","status":"SUCCESS","command":{"name":"skills","data":{"skills":null}}}`))
+	if err != nil || none.Skills == nil || len(none.Skills) != 0 {
+		t.Fatalf("none = %+v, %v", none, err)
+	}
+	for _, bad := range []string{
+		"",
+		"agy-customizations\tGuide.",
+		// An agy that sent /skills to the model.
+		`{"conversation_id":"c2b87113","status":"SUCCESS","response":"Here are my skills"}`,
+		`{"conversation_id":"c2b87113","status":"SUCCESS","command":{"name":"skills","data":{"skills":[]}}}`,
+		`{"conversation_id":"","status":"ERROR","command":{"name":"skills","data":{"skills":[]}}}`,
+		`{"conversation_id":"","status":"SUCCESS","command":{"name":"mcp","data":{"skills":[]}}}`,
+		`{"conversation_id":"","status":"SUCCESS","command":{"name":"skills","data":{"skills":[{"description":"x"}]}}}`,
+	} {
+		if inv, err := parseSkills([]byte(bad)); err == nil {
+			t.Errorf("parsed %q as %+v", bad, inv)
+		}
 	}
 }
 

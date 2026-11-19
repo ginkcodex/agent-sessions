@@ -1,7 +1,7 @@
 # Antigravity CLI — tasks
 
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
-- **Progress:** 19/20 done
+- **Progress:** 20/21 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -25,3 +25,4 @@
 | [AGY-18](AGY-18.md) | ✅ Done | Share-safe export and import: `antigravity` missing from the bundle's `safeAgent` list | 1 h | AGY-10 |
 | [AGY-19](AGY-19.md) | ✅ Done | Complete export: capture agy's native records (list from AGY-14); restore stays unsupported and is said so | 3 h | AGY-14, AGY-18 |
 | [AGY-20](AGY-20.md) | ✅ Done | Transcript `file:///` links (agy's link form) open as files | 1 h | AGY-16 |
+| [AGY-21](AGY-21.md) | ✅ Done | `/skills` answered in the app from `agy -p /skills --output-format json` | 2 h | AGY-13 |

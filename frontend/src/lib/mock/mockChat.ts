@@ -350,14 +350,17 @@ export class MockChats {
   }
 
   /**
-   * OpenCode's CLI lists its MCP servers and skills, and agy its MCP servers;
-   * the others answer /mcp themselves.
+   * OpenCode's and agy's CLIs list their MCP servers and skills; the others
+   * answer /mcp themselves.
    */
   async inventory(chatId: string, kind: ChatInventoryKind): Promise<ChatInventory> {
     this.requireAvailable();
     const chat = this.get(chatId);
     if (chat.state.agent === 'antigravity' && kind === 'mcp') {
       return { kind, supported: true, mcpServers: [{ name: 'fs', status: 'enabled' }, { name: 'api', status: 'disabled' }] };
+    }
+    if (chat.state.agent === 'antigravity') {
+      return { kind, supported: true, skills: [{ id: 'swarm', name: 'swarm', description: 'Run a swarm of agents in parallel' }] };
     }
     if (chat.state.agent !== 'opencode') return { kind, supported: false, mcpServers: [], skills: [] };
     return kind === 'mcp'

@@ -1030,15 +1030,24 @@ test('OpenCode\'s picker offers its own /plugins, /mcps and /skills, answered by
 test('Antigravity\'s /mcp is answered by the app from agy mcp list', () => {
   const advertised = [{ name: 'goal' }, { name: 'mcp', input: { hint: 'x' } }, { name: 'compact' }];
   const names = pickerCommands(advertised, 'antigravity').map((c) => c.name);
-  assert.deepEqual(names, ['goal', 'compact', 'plugin', 'mcp'], 'one /mcp, even if agy advertised it');
+  assert.deepEqual(names, ['goal', 'compact', 'plugin', 'mcp', 'skills'], 'one /mcp, even if agy advertised it');
   assert.equal(pickerCommands([], 'antigravity').find((c) => c.name === 'mcp').input, null);
   assert.equal(inventoryListing(' /mcp\n', 'antigravity'), 'mcp');
-  for (const text of ['/mcp list', '/mcps', '/skills', 'hi /mcp']) assert.equal(inventoryListing(text, 'antigravity'), null, text);
+  for (const text of ['/mcp list', '/mcps', 'hi /mcp']) assert.equal(inventoryListing(text, 'antigravity'), null, text);
   for (const agent of ['claude-code', 'codex', 'opencode']) assert.equal(inventoryListing('/mcp', agent), null, agent);
 
   const st = mcpStatusFromServers([{ name: 'api', status: 'disabled' }, { name: 'fs', status: 'enabled' }]);
   assert.equal(st.summary, '2 (1 enabled, 1 disabled)');
   assert.deepEqual(st.groups.map((g) => g.title), ['Enabled', 'Disabled']);
+});
+
+test('Antigravity\'s /skills is answered by the app from agy -p /skills', () => {
+  const advertised = [{ name: 'goal' }, { name: 'skills', input: { hint: 'x' } }, { name: 'swarm' }];
+  const names = pickerCommands(advertised, 'antigravity').map((c) => c.name);
+  assert.deepEqual(names, ['goal', 'swarm', 'plugin', 'mcp', 'skills'], 'one /skills, even if agy advertised it');
+  assert.equal(pickerCommands([], 'antigravity').find((c) => c.name === 'skills').input, null);
+  assert.equal(inventoryListing(' /skills\n', 'antigravity'), 'skills');
+  for (const text of ['/skills swarm', '/skill', 'hi /skills']) assert.equal(inventoryListing(text, 'antigravity'), null, text);
 });
 
 test('Codex intercepts only bare /skills and keeps skill invocation in the picker', () => {
