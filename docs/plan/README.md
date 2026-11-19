@@ -55,6 +55,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [idle-rendering.md](idle-rendering.md) | [idle-rendering](../tasks/idle-rendering/README.md) | Reduce idle animations and unnecessary compositing; native GPU validation gates |
 | [file-translate.md](file-translate.md) | [file-translate](../tasks/file-translate/README.md) | Translate complete Markdown files from the preview context menu without selecting text |
 | [print-page-setup.md](print-page-setup.md) | [print-page-setup](../tasks/print-page-setup/README.md) | Shared paper, orientation and margin controls with native print defaults |
+| [port-forward-compact.md](port-forward-compact.md) | [port-forward-compact](../tasks/port-forward-compact/README.md) | One-line port forwarding rules with icon actions |
 | [windows-ci-test-stability.md](windows-ci-test-stability.md) | [windows-ci-test-stability](../tasks/windows-ci-test-stability/README.md) | Deterministic Git budgets and watcher startup synchronization in Windows CI tests |
 | [workspace-terminal-selection.md](workspace-terminal-selection.md) | [workspace-terminal-selection](../tasks/workspace-terminal-selection/README.md) | Directory clicks in the workspace tree select the opened session's terminal tab |
 | [conversation-pdf.md](conversation-pdf.md) | [conversation-pdf](../tasks/conversation-pdf/README.md) | Print a session's entire Chat-level conversation from the transcript header menu |

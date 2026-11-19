@@ -1,5 +1,6 @@
 <script lang="ts">
   import DialogCloseButton from './DialogCloseButton.svelte';
+  import Icon from './Icon.svelte';
   import { portForward } from '../../stores/portForward.svelte';
   import { connectionStore } from '../../stores/connection.svelte';
   import { FORWARD_STATUS_LABELS, validatePortForward, type PortForwardRule } from '../../portForward';
@@ -88,22 +89,24 @@
         {:else if rules.length === 0 && !formOpen}<div class="empty">No forwarding rules yet. Add a remote service to get started.</div>{/if}
         <div class="rules">
           {#each rules as rule (rule.id)}
+            {@const local = `127.0.0.1:${rule.localPort}`}
+            {@const remote = `${rule.remoteHost}:${rule.remotePort}`}
+            {@const running = rule.status === 'active' || rule.status === 'starting'}
+            {@const toggle = rule.status === 'starting' ? 'Cancel' : rule.status === 'active' ? 'Stop' : rule.status === 'failed' ? 'Retry' : 'Start'}
             <article class="rule">
-              <div class="rule-heading"><span class="status {rule.status}">● {FORWARD_STATUS_LABELS[rule.status]}</span>{#if rule.autoStart}<span class="auto">Auto-start</span>{/if}</div>
-              <div class="route"><div><code>127.0.0.1:{rule.localPort}</code><small>This computer</small></div><span aria-hidden="true">→</span><div><code>{rule.remoteHost}:{rule.remotePort}</code><small>Remote host</small></div></div>
-              {#if rule.error}<p class="error">{rule.error}</p>{/if}
-              <div class="actions">
-                <button type="button" disabled={rule.status !== 'active'} onclick={() => void api.openURL(`http://127.0.0.1:${rule.localPort}`)}>Open in browser</button>
-                <button type="button" onclick={() => void copyAddress(rule.localPort)}>Copy address</button>
-                <span class="spacer"></span>
-                {#if rule.status === 'active' || rule.status === 'starting'}
-                  <button type="button" disabled={portForward.busy} onclick={() => void portForward.action('stop', rule.id)}>{rule.status === 'starting' ? 'Cancel' : 'Stop'}</button>
-                {:else}
-                  <button type="button" disabled={portForward.busy || !connected} onclick={() => void portForward.action('start', rule.id)}>{rule.status === 'failed' ? 'Retry' : 'Start'}</button>
-                {/if}
-                <button type="button" disabled={portForward.busy || rule.status === 'active' || rule.status === 'starting'} onclick={() => edit(rule)}>Edit</button>
-                <button type="button" disabled={portForward.busy} onclick={() => void portForward.action('remove', rule.id)}>Remove</button>
+              <div class="row">
+                <span class="status {rule.status}" title={FORWARD_STATUS_LABELS[rule.status]}>● {FORWARD_STATUS_LABELS[rule.status]}</span>
+                <span class="route"><code title="This computer">{local}</code><span aria-hidden="true">→</span><code title="Remote host">{remote}</code></span>
+                {#if rule.autoStart}<span class="auto">Auto</span>{/if}
+                <span class="tools">
+                  <button type="button" class="icon-btn" aria-label="Open {local} in browser" title="Open in browser" disabled={rule.status !== 'active'} onclick={() => void api.openURL(`http://${local}`)}><Icon name="external-link" /></button>
+                  <button type="button" class="icon-btn" aria-label="Copy address {local}" title="Copy address" onclick={() => void copyAddress(rule.localPort)}><Icon name="copy" /></button>
+                  <button type="button" class="icon-btn" aria-label="{toggle} {local} → {remote}" title={toggle} disabled={portForward.busy || (!running && !connected)} onclick={() => void portForward.action(running ? 'stop' : 'start', rule.id)}><Icon name={rule.status === 'starting' ? 'x' : running ? 'square' : 'play'} /></button>
+                  <button type="button" class="icon-btn" aria-label="Edit {local} → {remote}" title="Edit" disabled={portForward.busy || running} onclick={() => edit(rule)}><Icon name="pencil" /></button>
+                  <button type="button" class="icon-btn danger" aria-label="Remove {local} → {remote}" title="Remove" disabled={portForward.busy} onclick={() => void portForward.action('remove', rule.id)}><Icon name="trash-2" /></button>
+                </span>
               </div>
+              {#if rule.error}<p class="error">{rule.error}</p>{/if}
             </article>
           {/each}
         </div>
@@ -132,15 +135,17 @@
   header { display: flex; align-items: center; justify-content: space-between; padding: 16px 14px 4px 20px; }
   header > div { display: flex; align-items: center; gap: 12px; }
   h2 { font-size: 15px; font-weight: 600; margin: 0; } h3 { font-size: 0.9rem; margin: 0 0 14px; }
-  .host, .intro, .hint, small, .auto { color: var(--text-muted); }
+  .host, .intro, .hint, .auto { color: var(--text-muted); }
   .host { font-size: 0.8rem; } .content { padding: 12px 20px 20px; overflow-y: auto; }
   .intro { margin: 0 0 18px; font-size: 0.85rem; line-height: 1.5; }
   .empty { padding: 24px 12px; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
-  .rules { display: grid; gap: 12px; }
-  .rule, form { padding: 16px; border-radius: var(--radius-md); background: var(--bg-secondary); }
-  .rule-heading { display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 12px; }
-  .status { color: var(--text-muted); } .status.active { color: var(--success-color, #16a34a); } .status.failed, .error { color: var(--danger, #ef4444); } .status.starting { color: var(--accent-color); }
-  .route { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; } .route > div { min-width: 0; } code { font-family: var(--font-mono); overflow-wrap: anywhere; } .route code { font-size: 0.9rem; } small { display: block; margin-top: 5px; font-size: 0.72rem; }
+  .rules { display: grid; gap: 4px; }
+  .rule { padding: 6px 8px 6px 12px; border-radius: var(--radius-md); background: var(--bg-secondary); } form { padding: 16px; border-radius: var(--radius-md); background: var(--bg-secondary); }
+  .row { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; } .tools { display: flex; gap: 2px; margin-left: auto; } .auto { font-size: 0.7rem; }
+  .status { flex: 0 0 6.5rem; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); } .status.active { color: var(--success-color, #16a34a); } .status.failed, .error { color: var(--danger, #ef4444); } .status.starting { color: var(--accent-color); }
+  .route { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 0.85rem; } code { font-family: var(--font-mono); overflow-wrap: anywhere; }
+  .rule > .error { margin: 4px 0 2px; }
+  .icon-btn { display: inline-grid; place-items: center; padding: 6px; background: transparent; } .icon-btn.danger:hover:not(:disabled) { color: var(--danger, #ef4444); }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; } .spacer { flex: 1; }
   button { cursor: pointer; border-radius: var(--radius-sm); padding: 6px 11px; font-size: 0.75rem; font-weight: 500; color: var(--text-primary); background: var(--btn-bg); transition: background-color var(--dur-fast) var(--ease-out); } button:hover:not(:disabled) { background: var(--btn-bg-hover); } button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; } button:disabled { opacity: 0.45; cursor: default; }
   .primary { background: var(--accent-color); color: white; } .primary:hover:not(:disabled) { background: var(--accent-hover); } .add, form { margin-top: 18px; }
