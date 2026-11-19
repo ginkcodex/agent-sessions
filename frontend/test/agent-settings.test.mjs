@@ -79,12 +79,13 @@ test('older host settings errors are visible and cannot be saved', async () => {
 
 test('mock settings validate nonempty supported IDs and retain the active subset until restart', async () => {
   const api = new MockBackendAPI();
-  assert.deepEqual((await api.getAgentSettings()).enabled, supported.map(a => a.id));
+  const mockIds = ['claude-code', 'codex', 'opencode', 'antigravity'];
+  assert.deepEqual((await api.getAgentSettings()).enabled, mockIds);
   await assert.rejects(api.setAgentSettings([]), /at least one/);
   await assert.rejects(api.setAgentSettings(['kiro']), /supported/);
   const saved = await api.setAgentSettings(['opencode', 'codex', 'codex']);
   assert.deepEqual(saved.enabled, ['codex', 'opencode']);
-  assert.deepEqual(saved.active, supported.map(a => a.id));
+  assert.deepEqual(saved.active, mockIds);
   assert.equal(saved.restartRequired, true);
 });
 

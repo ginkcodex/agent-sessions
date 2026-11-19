@@ -42,6 +42,7 @@ const AGENTS: { agent: AgentID; name: string; adapter: string; managed?: { versi
     managed: { version: '2.6.0', older: '2.5.1', main: 'node_modules/@agentclientprotocol/codex-acp/dist/index.js' },
   },
   { agent: 'opencode', name: 'OpenCode', adapter: 'opencode' },
+  { agent: 'antigravity', name: 'Antigravity', adapter: 'agy' },
 ];
 
 /** Where the mock "installs" the app's own adapters. */

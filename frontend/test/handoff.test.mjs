@@ -53,10 +53,10 @@ test('portable helpers define budget presets and target agent options', () => {
   assert.deepEqual(ids, ['compact', 'detailed', 'full', 'unlimited']);
 
   const targets = targetAgentsFor('claude-code');
-  assert.deepEqual(targets.map((t) => t.id), ['codex', 'opencode']);
+  assert.deepEqual(targets.map((t) => t.id), ['codex', 'opencode', 'antigravity']);
 
   const allTargets = targetAgentsFor();
-  assert.equal(allTargets.length, 3);
+  assert.equal(allTargets.length, 4);
 });
 
 test('MockBackendAPI previewExport and exportBundle support complete and share-safe profiles', async () => {

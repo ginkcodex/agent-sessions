@@ -177,9 +177,10 @@
           <li><code>~/.claude/projects/</code></li>
           <li><code>~/.codex/sessions/</code></li>
           <li><code>~/.local/share/opencode/</code></li>
+          <li><code>~/.gemini/antigravity-cli/</code></li>
         </ul>
         <p class="tree-empty-hint">
-          Start a session with Claude Code, Codex CLI, or OpenCode to begin.
+          Start a session with Claude Code, Codex CLI, OpenCode, or Antigravity CLI to begin.
         </p>
       </div>
     {/if}

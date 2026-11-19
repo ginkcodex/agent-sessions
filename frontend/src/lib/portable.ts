@@ -44,6 +44,7 @@ export const ALL_AGENTS: AgentOption[] = [
   { id: 'claude-code', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
   { id: 'opencode', label: 'OpenCode' },
+  { id: 'antigravity', label: 'Antigravity' },
 ];
 
 export function targetAgentsFor(sourceAgent?: string): AgentOption[] {

@@ -1,6 +1,6 @@
 # AGY-07 — Frontend agent integration (types, icon, badges, settings, mocks)
 
-- **Status:** ⬜ Not started
+- **Status:** ✅ Done
 - **Estimate:** 2.5 h
 - **Depends on:** [AGY-05](AGY-05.md)
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
@@ -50,3 +50,45 @@ development mocks render cleanly alongside Claude Code, Codex, and OpenCode.
 - Run `npm run check` (`svelte-check`) and `npm test` in `frontend/`.
 - Verify browser dev mode (`mockApi.ts`) renders Antigravity sessions, chips,
   and badges cleanly.
+
+## Evidence
+
+Done:
+
+- `AgentID` gains `'antigravity'`, and `ALL_AGENTS` gains an Antigravity
+  entry, which gives the label in chat, terminal, alert and discovery text.
+- Accent colors `--agent-antigravity`: `#6d28d9` in the light theme and
+  `#a78bfa` in the dark theme.
+- `AgentIcon`: an arch glyph with the title `Antigravity`.
+- Color rules for the sidebar chip, the session row (and its name), the
+  header badge, and `Badge`'s `antigravity` variant.
+- `GroupTree`'s empty state lists `~/.gemini/antigravity-cli/`.
+- `HostEnvDialog` lists `ANTIGRAVITY_CLI_DIR`.
+- Mocks:
+  - a sample Antigravity session in `fixtures.ts`;
+  - the agent in the mock agent settings, the new-session agents, `agy` for
+    the new-session and resume commands (`agy --conversation <id>`), the
+    panel label and the group filter;
+  - an `agy` chat adapter in `mockChat.ts`.
+- Six frontend tests asserted three agents; they now expect the fourth.
+- Settings › Coding agents, chat adapters, and both New Session menus list
+  agents from the backend (`GetAgentSettings`, `ChatAgents`,
+  `NewSessionAgents`). They needed no change.
+
+Results:
+
+- `npm test` in `frontend/`: 1624 tests, 1619 pass, 0 fail, 5 skipped.
+- `npm run check`: 0 errors, 0 warnings.
+- Browser dev mode (`vite` with the mock API) in headless Chrome, light and
+  dark themes. The session list shows the Antigravity row with its arch icon
+  and violet badge, and the sidebar footer shows its chip with a count of 1.
+  Both themes are legible.
+
+Not checked:
+
+- The header badge of an open Antigravity session. The headless screenshot
+  cannot click a row, but the rule matches the other agents'.
+- The desktop app itself. That is AGY-08.
+
+Found: handoff into Antigravity launches a missing `antigravity` command.
+This is [AGY-10](AGY-10.md).

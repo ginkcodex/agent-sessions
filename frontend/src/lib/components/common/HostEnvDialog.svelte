@@ -24,6 +24,7 @@
   const commonKeys = [
     { key: 'CLAUDE_CONFIG_DIR', desc: 'Claude Code configuration and session directory' },
     { key: 'CODEX_HOME', desc: 'Codex sessions directory' },
+    { key: 'ANTIGRAVITY_CLI_DIR', desc: 'Antigravity CLI data directory (~/.gemini/antigravity-cli)' },
     { key: 'XDG_CONFIG_HOME', desc: 'Config base directory (~/.config)' },
     { key: 'XDG_DATA_HOME', desc: 'Data base directory (~/.local/share)' },
   ];

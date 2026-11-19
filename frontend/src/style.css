@@ -28,6 +28,7 @@
   --agent-claude: #b8532f;
   --agent-codex: #0b7a5e;
   --agent-opencode: #1d4ed8;
+  --agent-antigravity: #6d28d9;
   --badge-bg: #d9dfe7;
   --hover-bg: rgba(15, 23, 42, 0.07);
   --active-bg: rgba(2, 132, 199, 0.14);
@@ -106,6 +107,7 @@
     --agent-claude: #d97757;
     --agent-codex: #10a37f;
     --agent-opencode: #3b82f6;
+    --agent-antigravity: #a78bfa;
     --badge-bg: #454545;
     --hover-bg: rgba(255, 255, 255, 0.06);
     --active-bg: rgba(14, 165, 233, 0.2);

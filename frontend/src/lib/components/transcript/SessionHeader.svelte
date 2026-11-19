@@ -711,6 +711,11 @@
     color: var(--agent-opencode);
   }
 
+  .agent-badge.agent-antigravity {
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--agent-antigravity);
+  }
+
   /* Live: a soft green pill whose dot breathes. */
   .live-badge {
     display: inline-flex;

@@ -347,6 +347,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       { id: 'claude-code', name: 'Claude Code' },
       { id: 'codex', name: 'Codex' },
       { id: 'opencode', name: 'OpenCode' },
+      { id: 'antigravity', name: 'Antigravity' },
     ];
     const active = supported.map(a => a.id);
     const enabled = [...(this.enabledAgents.get(this.connState.host ?? '') ?? active)];
@@ -541,7 +542,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
         const refKeys = new Set(targetRefs.map((r) => `${r.agent}:${r.id}`));
         result = result.filter((s) => refKeys.has(`${s.ref.agent}:${s.ref.id}`));
       } else {
-        const agents = ['claude-code', 'codex', 'opencode'];
+        const agents = ['claude-code', 'codex', 'opencode', 'antigravity'];
         for (const dir of this.registeredWorkspaces()) {
           if (groupKey === `dir-agent:${dir}`) result = result.filter(s => s.cwd === dir);
           for (const agent of agents) {
@@ -773,13 +774,16 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     if (ref.agent === 'opencode') {
       return `cd '${meta.cwd}' && opencode --session '${ref.id}'`;
     }
+    if (ref.agent === 'antigravity') {
+      return `cd '${meta.cwd}' && agy --conversation '${ref.id}'`;
+    }
     return `cd '${meta.cwd}' && claude --resume '${ref.id}'`;
   }
 
   // Mirrors the backend: a new session starts only in a directory the
   // catalog knows, with an agent it has a provider for.
   private newSessionCommand(agent: AgentID, dir: string): string {
-    const argv0 = ({ 'claude-code': 'claude', codex: 'codex', opencode: 'opencode' } as Record<string, string>)[agent];
+    const argv0 = ({ 'claude-code': 'claude', codex: 'codex', opencode: 'opencode', antigravity: 'agy' } as Record<string, string>)[agent];
     if (!argv0) throw new Error(`unknown provider: ${agent}`);
     if (!dir || (!this.sessions.some((s) => s.cwd === dir) && !this.registeredWorkspaces().has(dir))) throw new Error(`unknown directory: ${dir}`);
     if (this.missingAgents.has(agent)) throw new Error(`agent CLI not found: ${argv0} was not found on PATH or in its usual install locations. Install it, then try again`);
@@ -913,6 +917,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       { agent: 'claude-code', name: 'Claude Code' },
       { agent: 'codex', name: 'Codex' },
       { agent: 'opencode', name: 'OpenCode' },
+      { agent: 'antigravity', name: 'Antigravity' },
     ].map((a) => this.missingAgents.has(a.agent)
       ? { ...a, installed: false, hint: `${a.name} was not found on PATH or in its usual install locations. Install it, then try again` }
       : { ...a, installed: true });
@@ -1105,7 +1110,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   }
 
   async panelNewSession(agent: AgentID, dir: string, size: TerminalSize): Promise<TerminalTab> {
-    const label = agent === 'claude-code' ? 'Claude Code' : agent === 'codex' ? 'Codex' : agent === 'opencode' ? 'OpenCode' : 'Agent';
+    const label = agent === 'claude-code' ? 'Claude Code' : agent === 'codex' ? 'Codex' : agent === 'opencode' ? 'OpenCode' : agent === 'antigravity' ? 'Antigravity' : 'Agent';
     const banner = `[mock] ${this.newSessionCommand(agent, dir)}`;
     const tab = this.startPanel('agent', size, banner, true, dir, { label, agent });
     this.panelTerminals.get(tab.id)!.fresh = true;

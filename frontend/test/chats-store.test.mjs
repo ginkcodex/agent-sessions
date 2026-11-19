@@ -416,7 +416,7 @@ test('a failed start removes the chat and throws', async () => {
     assert.deepEqual(store.chats, []);
     const agents = await store.loadAgents();
     assert.equal(agents.find((a) => a.agent === 'codex').available, false);
-    assert.equal(store.agents.length, 3);
+    assert.equal(store.agents.length, 4);
   });
 });
 

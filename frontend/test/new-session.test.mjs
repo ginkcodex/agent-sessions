@@ -26,6 +26,7 @@ test('choices offer every agent until the host reports, then mark the missing on
     ['claude-code', undefined],
     ['codex', undefined],
     ['opencode', undefined],
+    ['antigravity', undefined],
   ]);
   const choices = newSessionChoices(REPORT);
   assert.equal(choices[0].missing, undefined);
@@ -83,7 +84,7 @@ test('the mock reports missing agents and refuses to start them', async () => {
   assert.ok((await mock.newSessionAgents()).every((a) => a.installed));
   mock.missingAgents.add('codex');
   const report = await mock.newSessionAgents();
-  assert.deepEqual(report.map((a) => a.installed), [true, false, true]);
+  assert.deepEqual(report.map((a) => a.installed), [true, false, true, true]);
   assert.match(report[1].hint, /not found on PATH/);
   mock.launch.terminal = true;
   await assert.rejects(mock.openNewSessionInTerminal('codex', meta.cwd), /agent CLI not found/);
