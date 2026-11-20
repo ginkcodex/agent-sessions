@@ -385,5 +385,6 @@ New package `internal/provider/antigravity` implementing `provider.Provider`,
 - ACP chat starts new Antigravity sessions and resumes existing CLI/ACP
   sessions via `agy acp`, supports `model`/`thought_level`/`mode` pickers,
   permission allow/deny cards, cancellation, and reconciles finished turns
-  without duplicate messages.
+  without duplicate messages. The thinking-level picker displays `Xhigh`
+  for agy's `xhigh` value without changing the value sent to ACP (AGY-25).
 - `make test`, `golangci-lint`, and `svelte-check` pass.

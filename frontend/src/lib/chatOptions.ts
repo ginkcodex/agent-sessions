@@ -12,13 +12,9 @@ const SKIPS_PERMISSIONS: Partial<Record<AgentID, string[]>> = {
   codex: ['agent-full-access'],
 };
 
-/**
- * Choice names an agent's ACP server spells differently from its own CLI.
- * agy names thought_level xhigh "Extra"; its --effort flag, TUI and model
- * names ("Gemini 4 Neon (XHigh)") say XHigh.
- */
+/** Display overrides for ACP choice names: agy calls the `xhigh` effort "Extra". */
 const CHOICE_NAMES: Partial<Record<AgentID, Record<string, Record<string, string>>>> = {
-  antigravity: { thought_level: { xhigh: 'XHigh' } },
+  antigravity: { thought_level: { xhigh: 'Xhigh' } },
 };
 
 export interface PickerChoice {
