@@ -171,6 +171,11 @@ Columns (probe at runtime; presence varies by version): `id`, `rollout_path`, `c
 **Root:** `~/.gemini/antigravity-cli` (Windows unverified). `agy` reads no
 variable for it; `ANTIGRAVITY_CLI_DIR` is this app's own override. Details and
 probes: [plan/antigravity-cli-spike.md](plan/antigravity-cli-spike.md).
+Antigravity IDE runs the same agy with `--app_data_dir=antigravity` and keeps
+its sessions in `~/.gemini/antigravity`, in this layout (seen on Windows with
+agy 1.5.13, where its index `status` reads `CASCADE_RUN_STATUS_IDLE` and its
+`workspace_uris` encode the drive colon: `file:///d%3A/...`). That store is
+not read.
 
 ```
 conversation_summaries.db                     SQLite (WAL) session index

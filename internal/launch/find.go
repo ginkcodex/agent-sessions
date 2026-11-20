@@ -350,7 +350,7 @@ func windowsLocations(name, goarch string) []location {
 			loc("LOCALAPPDATA", "Programs", "@opencodedesktop", "resources", "opencode-cli.exe"),
 		)
 	case "agy":
-		// shortcut: a guess, no Windows agy was seen; confirm it in AGY-08.
+		// Where agy 1.5.13 was installed on Windows (seen in AGY-23).
 		locs = append(locs, loc("LOCALAPPDATA", "agy", "bin", "agy.exe"))
 	case "claude-agent-acp", "codex-acp":
 		locs = append(locs, loc("APPDATA", "npm", name+".cmd"))

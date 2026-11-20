@@ -159,3 +159,12 @@ test('settings renders supported agent options, last-agent guard and restart gui
   assert.match(html, /type="checkbox" checked="" disabled=""/);
   assert.match(html, /Session files are never deleted/);
 });
+
+test('settings shows an agent note beside its name', async () => {
+  const html = await renderWithFixture(component, {
+    agentSettings: { settings: { ...defaults(), supported: [...supported, { id: 'antigravity', name: 'Antigravity CLI', note: 'Antigravity IDE sessions are not listed' }] }, selected: ['codex'], dirty: false },
+    link: { dataHost: null, stale: false, locked: false },
+  });
+  assert.match(html, /<span>Antigravity CLI<\/span>\s*(<!--[^>]*-->)*<span class="note[^"]*">Antigravity IDE sessions are not listed<\/span>/);
+  assert.equal(html.match(/class="note[^"]*"/g)?.length, 1, 'agents without a note render none');
+});

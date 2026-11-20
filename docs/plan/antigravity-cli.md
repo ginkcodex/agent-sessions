@@ -32,7 +32,10 @@ From [antigravity-cli-spike.md](antigravity-cli-spike.md):
 
 - **Root directory:** `~/.gemini/antigravity-cli` (verified on Linux and
   macOS). `agy` reads no environment variable for it. The Windows root
-  (`%USERPROFILE%\.gemini\antigravity-cli`) is **unverified**.
+  (`%USERPROFILE%\.gemini\antigravity-cli`) is **unverified**: on the one
+  Windows machine seen (agy 1.5.13, AGY-23) no CLI session had been made
+  yet. Antigravity IDE runs the same agy with `--app_data_dir=antigravity`,
+  so its sessions are in `~/.gemini/antigravity`, in the same layout.
   `antigravity-oauth-token` at the root holds credentials on Linux and is
   **never read**; on macOS it is absent (the credential is in the keyring).
 - **Metadata index:** `conversation_summaries.db` (SQLite WAL) provides
@@ -73,8 +76,8 @@ From [antigravity-cli-spike.md](antigravity-cli-spike.md):
     `transcript_full.jsonl` and is ignored.
 - **Terminal CLI:** `agy` (new), `agy --conversation <id>` (resume; it
   also resumes ACP-made sessions), `agy --version` (`1.5.12`). Installed at
-  `~/.local/bin/agy` on Linux and macOS; the Windows location
-  (`%LOCALAPPDATA%\agy\bin\agy.exe`) is unverified.
+  `~/.local/bin/agy` on Linux and macOS, and
+  `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows (1.5.13, seen in AGY-23).
 - **Built-in ACP (`agy acp`):**
   - `protocolVersion: 1`, `loadSession: true`, `sessionCapabilities: {resume,
     load, list, close, additionalDirectories}`, `promptCapabilities: {image,
@@ -113,8 +116,8 @@ From [antigravity-cli-spike.md](antigravity-cli-spike.md):
     store root so Go to File cannot edit session data);
   - `internal/engine/cache.go` (`indexKey()` root hash);
   - `internal/rpc/server.go` (`allowlistedEnvKeys` for remote hosts).
-- Add `agy` install locations (`~/.local/bin`; `%LOCALAPPDATA%\agy\bin` as
-  an unverified Windows guess until AGY-08), display label and install hint
+- Add `agy` install locations (`~/.local/bin`; `%LOCALAPPDATA%\agy\bin` on
+  Windows, a guess here and seen in AGY-23), display label and install hint
   to `internal/launch/find.go`.
 
 ### 2. Provider: discovery, scan and incremental transcript loading (AGY-03, AGY-04, AGY-09)
@@ -272,10 +275,14 @@ New package `internal/provider/antigravity` implementing `provider.Provider`,
 
 ## Decisions
 
-1. **Agent ID is `"antigravity"`, display name is `"Antigravity"`.** Short,
-   matches `"codex"` and `"opencode"`, and works cleanly in CSS custom
-   properties, `config.toml` (`[chat.adapters] antigravity = ...`) and CLI
-   flags (`--agent antigravity`).
+1. **Agent ID is `"antigravity"`, display name is `"Antigravity CLI"`.** The
+   ID is short, matches `"codex"` and `"opencode"`, and works cleanly in CSS
+   custom properties, `config.toml` (`[chat.adapters] antigravity = ...`) and
+   CLI flags (`--agent antigravity`). Settings, chat adapters and the
+   new-session menu say "Antigravity CLI", and settings notes that IDE
+   sessions are not listed ([AGY-23](../tasks/antigravity-cli/AGY-23.md)):
+   with only "Antigravity" there, a user with the IDE expected its sessions.
+   Badges, session rows and sidebar groups keep the short "Antigravity".
 2. **Read `conversation_summaries.db` + `transcript_full.jsonl`, not
    `conversations/<id>.db`.** Per-conversation DBs store undocumented binary
    protobuf payloads; the summaries SQLite DB and JSONL transcripts are plain
@@ -321,7 +328,9 @@ New package `internal/provider/antigravity` implementing `provider.Provider`,
   Antigravity session can be inspected and continued through a handoff,
   not restored.
 - Antigravity IDE (`~/.gemini/antigravity/`) separate from Antigravity CLI
-  (`~/.gemini/antigravity-cli/`).
+  (`~/.gemini/antigravity-cli/`). Its store has the CLI's layout (seen on
+  Windows in AGY-23), so reading it would be a second root for this
+  provider, not a new format.
 - The plugin slash-command inventory (`PluginLister`). Desktop QA asked for
   `/mcp` and `/skills`, which the app answers itself:
   [AGY-13](../tasks/antigravity-cli/AGY-13.md) from `agy mcp list`, and

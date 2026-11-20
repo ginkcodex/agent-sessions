@@ -44,7 +44,7 @@ func (p *Provider) ID() model.AgentID {
 
 // DisplayName returns the human-readable provider name.
 func (p *Provider) DisplayName() string {
-	return "Antigravity"
+	return "Antigravity CLI"
 }
 
 func (p *Provider) dbPath() string   { return filepath.Join(p.root, summariesDB) }

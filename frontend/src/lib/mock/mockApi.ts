@@ -347,7 +347,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       { id: 'claude-code', name: 'Claude Code' },
       { id: 'codex', name: 'Codex' },
       { id: 'opencode', name: 'OpenCode' },
-      { id: 'antigravity', name: 'Antigravity' },
+      { id: 'antigravity', name: 'Antigravity CLI', note: 'Antigravity IDE sessions are not listed' },
     ];
     const active = supported.map(a => a.id);
     const enabled = [...(this.enabledAgents.get(this.connState.host ?? '') ?? active)];
@@ -917,7 +917,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       { agent: 'claude-code', name: 'Claude Code' },
       { agent: 'codex', name: 'Codex' },
       { agent: 'opencode', name: 'OpenCode' },
-      { agent: 'antigravity', name: 'Antigravity' },
+      { agent: 'antigravity', name: 'Antigravity CLI' },
     ].map((a) => this.missingAgents.has(a.agent)
       ? { ...a, installed: false, hint: `${a.name} was not found on PATH or in its usual install locations. Install it, then try again` }
       : { ...a, installed: true });

@@ -26,6 +26,15 @@ func TestProviders(t *testing.T) {
 	if got, err := all.Canonical([]string{"antigravity", "claude-code", "antigravity"}); err != nil || strings.Join(got, ",") != "claude-code,antigravity" {
 		t.Fatalf("Canonical = %v, %v", got, err)
 	}
+	for _, a := range all.Supported() {
+		if a.ID == "antigravity" {
+			if a.Name != "Antigravity CLI" || !strings.Contains(a.Note, "IDE sessions are not listed") {
+				t.Fatalf("antigravity agent = %+v, want the CLI named and IDE sessions noted", a)
+			}
+		} else if a.Note != "" {
+			t.Fatalf("%s has note %q, want none", a.ID, a.Note)
+		}
+	}
 	for _, id := range []model.AgentID{model.AgentClaude, model.AgentCodex, model.AgentOpenCode, model.AgentAntigravity} {
 		p, ok := set.Get(id)
 		if !ok || p == nil {

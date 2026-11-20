@@ -2,7 +2,8 @@
 
 - **Status:** 🟡 Partial: the automated gates, CLI and remote bundle checks ran.
   The desktop, internal terminal and ACP chat checks have not run. The
-  Windows checks are ⛔ Blocked: there is no Windows `agy` install.
+  Windows store root is ⛔ Blocked: no CLI session exists on the Windows
+  install yet. The Windows `agy.exe` location is confirmed.
 - **Estimate:** 2 h
 - **Depends on:** [AGY-06](AGY-06.md), [AGY-07](AGY-07.md), [AGY-09](AGY-09.md)
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
@@ -96,8 +97,12 @@ Not run (needs the desktop app; left for manual QA):
 
 Blocked:
 
-- ⛔ Windows paths (`%USERPROFILE%\.gemini\antigravity-cli`,
-  `%LOCALAPPDATA%\agy\bin\agy.exe`): there is no Windows `agy` install.
+- ⛔ Windows store root (`%USERPROFILE%\.gemini\antigravity-cli`): on the
+  Windows machine seen in [AGY-23](AGY-23.md) (2026-11-20) agy is installed
+  but no CLI session had been made, so the folder did not exist yet. Making
+  one with `agy` and checking `agent-sessions-cli.exe detect` closes this.
+- ✅ Windows install location: `%LOCALAPPDATA%\agy\bin\agy.exe` exists there
+  and `--version` reports 1.5.13 (seen in AGY-23; no code change).
 
 Found: handoff into Antigravity launches a missing command. This is
 [AGY-10](AGY-10.md), found in AGY-07.

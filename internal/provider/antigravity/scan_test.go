@@ -241,6 +241,7 @@ func TestWorkspacePath(t *testing.T) {
 		"file:///tmp/":                   "/tmp",
 		"file:///C:/Users/A%20B/my%20ws": `C:\Users\A B\my ws`,
 		"file:///c:/x":                   `C:\x`,
+		"file:///d%3A/Workspaces/ws":     `D:\Workspaces\ws`,
 		"file://server/share/dir":        `\\server\share\dir`,
 		"file://localhost/srv/x":         "/srv/x",
 		"https://example.com/x":          "",
