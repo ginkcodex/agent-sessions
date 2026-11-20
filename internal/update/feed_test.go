@@ -163,7 +163,8 @@ func TestFeedRefusesWhatNothingVouchesFor(t *testing.T) {
 		"signature of an older release": {
 			map[string][]byte{"1.6.0": body},
 			map[string][]byte{"1.6.0": minisign.Sign(priv, []byte(sumsFor("1.5.0")))},
-			[]minisign.PublicKey{pub}, ErrBadSignature,
+			[]minisign.PublicKey{pub},
+			ErrBadSignature,
 		},
 		"no signature published": {map[string][]byte{"1.6.0": body}, map[string][]byte{}, []minisign.PublicKey{pub}, ErrUnsigned},
 		"no trusted key":         {map[string][]byte{"1.6.0": body}, map[string][]byte{"1.6.0": good}, nil, ErrUnsigned},
@@ -171,7 +172,9 @@ func TestFeedRefusesWhatNothingVouchesFor(t *testing.T) {
 		"malformed SHA256SUMS":   {map[string][]byte{"1.6.0": []byte("zzzz  file\n")}, map[string][]byte{"1.6.0": good}, []minisign.PublicKey{pub}, ErrBadSignature},
 		"two versions in sums": {
 			map[string][]byte{"1.6.0": []byte(sumsFor("1.6.0") + hexSum("x") + "  agent-sessions_1.7.0_macos_universal.dmg\n")},
-			map[string][]byte{"1.6.0": good}, []minisign.PublicKey{pub}, ErrUnsigned,
+			map[string][]byte{"1.6.0": good},
+			[]minisign.PublicKey{pub},
+			ErrUnsigned,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

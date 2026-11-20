@@ -137,6 +137,27 @@ func TestShareSafeRejectsNative(t *testing.T) {
 	}
 }
 
+// An Antigravity session goes into a share-safe bundle and back (AGY-18).
+func TestShareSafeAntigravity(t *testing.T) {
+	req := sampleRequest()
+	req.Profile = bundle.ProfileShareSafe
+	req.Source.Agent = "antigravity"
+	for i := range req.Sessions {
+		req.Sessions[i].Agent, req.Sessions[i].Native = "antigravity", nil
+	}
+	var buf bytes.Buffer
+	if err := bundle.Write(&buf, req); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := bundle.ReadBytes(buf.Bytes())
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got.Manifest.Source.Agent != "antigravity" || got.Manifest.Sessions[1].Ref.Agent != "antigravity" {
+		t.Fatalf("manifest: %+v", got.Manifest)
+	}
+}
+
 func TestWriterRejectsUnsafeInput(t *testing.T) {
 	cases := []func(r *bundle.WriteRequest){
 		func(r *bundle.WriteRequest) { r.Source.ID = "../etc/passwd" },

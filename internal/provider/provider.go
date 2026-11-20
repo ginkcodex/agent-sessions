@@ -125,7 +125,8 @@ const (
 )
 
 // MCPServer is one MCP server the agent reports, with its status:
-// connected, pending, disabled, failed or needs_auth. Error says why a
+// connected, pending, disabled, failed or needs_auth (Antigravity: enabled
+// or disabled, as it does not connect to list them). Error says why a
 // failed or needs_auth server is not connected. No config, URL or headers.
 type MCPServer struct {
 	Name   string `json:"name"`

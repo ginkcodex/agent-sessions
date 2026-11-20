@@ -25,12 +25,14 @@ func (c *Client) GitBranches(ctx context.Context, dir, repo string) (files.GitBr
 	err := c.call(ctx, "gitBranches", GitStatusParams{Dir: dir, Repo: repo}, &out)
 	return out, err
 }
+
 func (c *Client) GitSwitch(ctx context.Context, dir, repo string, req files.GitSwitchRequest) error {
 	if err := c.gitWrite(repo); err != nil {
 		return err
 	}
 	return c.call(ctx, "gitSwitch", GitSwitchParams{Dir: dir, Repo: repo, Request: req}, nil)
 }
+
 func (s *Server) dispatchGitBranches(ctx context.Context, req Request, backend engine.Backend) (any, error) {
 	b, ok := backend.(engine.GitBranchesBackend)
 	if !ok {

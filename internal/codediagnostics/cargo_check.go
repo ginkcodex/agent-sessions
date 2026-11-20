@@ -8,8 +8,10 @@ import (
 	"slices"
 )
 
-const cargoCheckPolicy = "cargo-check-v1:workspace:offline:locked:json:saved-default-features-build-selected-targets"
-const cargoCheckNotice = "Cargo check covers saved workspace files with default features and build-selected targets, not unsaved drafts or every feature/target. It runs approved build scripts and procedural macros and writes build/cache output. Offline prevents Cargo-managed downloads, not network access by project code; this is not a sandbox. Prepare missing dependencies and lockfiles separately. External changes are unwatched."
+const (
+	cargoCheckPolicy = "cargo-check-v1:workspace:offline:locked:json:saved-default-features-build-selected-targets"
+	cargoCheckNotice = "Cargo check covers saved workspace files with default features and build-selected targets, not unsaved drafts or every feature/target. It runs approved build scripts and procedural macros and writes build/cache output. Offline prevents Cargo-managed downloads, not network access by project code; this is not a sandbox. Prepare missing dependencies and lockfiles separately. External changes are unwatched."
+)
 
 type CargoCheckPlan struct {
 	root      AuthorizedRoot
@@ -52,6 +54,7 @@ func NewCargoCheckPlan(root AuthorizedRoot, discovery *RustPlan) (*CargoCheckPla
 	}
 	return p, nil
 }
+
 func (p *CargoCheckPlan) Tools() []ToolInput {
 	out := slices.Clone(p.tools)
 	for i := range out {
@@ -59,9 +62,11 @@ func (p *CargoCheckPlan) Tools() []ToolInput {
 	}
 	return out
 }
+
 func (p *CargoCheckPlan) Run(ctx context.Context, s *Supervisor, runID string) CheckerResult {
 	return p.RunApproved(ctx, s, runID, p.Tools())
 }
+
 func (p *CargoCheckPlan) RunApproved(ctx context.Context, s *Supervisor, runID string, approved []ToolInput) CheckerResult {
 	out := CheckerResult{Diagnostics: []Diagnostic{}, Roots: slices.Clone(p.roots), Availability: "available", Phase: "idle", Freshness: "uncertain", Notice: cargoCheckNotice}
 	fail := func(code string) CheckerResult {

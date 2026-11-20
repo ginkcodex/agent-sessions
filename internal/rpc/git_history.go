@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/files"
 )
@@ -18,6 +19,7 @@ func (c *Client) GitHistoryRepositories(ctx context.Context, dir string) (files.
 	err := c.call(ctx, "gitHistoryRepositories", GitHistoryRepositoriesParams{Dir: dir}, &out)
 	return out, err
 }
+
 func (c *Client) GitHistoryBranches(ctx context.Context, target files.GitHistoryTarget) (files.GitHistoryRefList, error) {
 	if !c.caps.GitHistory {
 		return files.GitHistoryRefList{}, engine.ErrUnsupportedAction
@@ -26,6 +28,7 @@ func (c *Client) GitHistoryBranches(ctx context.Context, target files.GitHistory
 	err := c.call(ctx, "gitHistoryBranches", target, &out)
 	return out, err
 }
+
 func (c *Client) GitHistoryList(ctx context.Context, request files.GitHistoryListRequest) (files.GitHistoryPage, error) {
 	if !c.caps.GitHistory {
 		return files.GitHistoryPage{}, engine.ErrUnsupportedAction
@@ -34,6 +37,7 @@ func (c *Client) GitHistoryList(ctx context.Context, request files.GitHistoryLis
 	err := c.call(ctx, "gitHistoryList", request, &out)
 	return out, err
 }
+
 func (c *Client) GitHistoryCommit(ctx context.Context, request files.GitHistoryCommitRequest) (files.GitHistoryCommitDetail, error) {
 	if !c.caps.GitHistory {
 		return files.GitHistoryCommitDetail{}, engine.ErrUnsupportedAction
@@ -42,6 +46,7 @@ func (c *Client) GitHistoryCommit(ctx context.Context, request files.GitHistoryC
 	err := c.call(ctx, "gitHistoryCommit", request, &out)
 	return out, err
 }
+
 func (c *Client) ReadGitHistoryDiff(ctx context.Context, request files.GitHistoryDiffRequest) (files.GitHistoryDiff, error) {
 	if !c.caps.GitHistory {
 		return files.GitHistoryDiff{}, engine.ErrUnsupportedAction
@@ -64,6 +69,7 @@ func decodeHistoryParams(raw json.RawMessage, out any) error {
 	}
 	return nil
 }
+
 func (s *Server) dispatchGitHistory(ctx context.Context, req Request, backend engine.Backend) (any, error) {
 	s.mu.Lock()
 	enabled := s.gitHistory

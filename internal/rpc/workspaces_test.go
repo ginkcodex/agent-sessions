@@ -26,7 +26,7 @@ func TestWorkspaceRPC(t *testing.T) {
 		t.Fatalf("initialize = %+v %v", res, err)
 	}
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, ".hidden"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, ".hidden"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	dir, err := client.OpenWorkspace(t.Context(), root)

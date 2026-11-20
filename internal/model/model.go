@@ -13,6 +13,8 @@ const (
 	AgentClaude   AgentID = "claude-code"
 	AgentCodex    AgentID = "codex"
 	AgentOpenCode AgentID = "opencode"
+	// AgentAntigravity is the Antigravity CLI (agy).
+	AgentAntigravity AgentID = "antigravity"
 )
 
 // SessionRef uniquely identifies a session across providers.

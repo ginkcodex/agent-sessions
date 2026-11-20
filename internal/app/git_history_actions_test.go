@@ -3,11 +3,12 @@ package app
 import (
 	"context"
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
-	"testing"
-	"time"
 )
 
 type historyActionRecorder struct {
@@ -25,10 +26,12 @@ func (b *historyActionRecorder) GitHistoryRefAction(ctx context.Context, req fil
 	}
 	return files.GitHistoryRefActionResult{Action: req.Action}, nil
 }
+
 func (b *historyActionRecorder) GitHistoryCompare(context.Context, files.GitHistoryCompareRequest) (files.GitHistoryComparison, error) {
 	b.calls++
 	return files.GitHistoryComparison{}, nil
 }
+
 func (b *historyActionRecorder) ReadGitHistoryCompareDiff(context.Context, files.GitHistoryCompareDiffRequest) (files.GitHistoryCompareDiff, error) {
 	b.calls++
 	return files.GitHistoryCompareDiff{}, nil
@@ -71,6 +74,7 @@ func TestHistoryActionsCapturedHost(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestHistoryActionConnectionCapabilities(t *testing.T) {
 	a := NewApp()
 	a.backend = &historyActionRecorder{}

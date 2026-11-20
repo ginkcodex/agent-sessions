@@ -84,6 +84,10 @@
   }
 
   function create(font: string, size: number): () => void {
+    const openLink = (event: MouseEvent, uri: string) => {
+      event.preventDefault();
+      void api.openURL(uri);
+    };
     const t = new Terminal({
       fontFamily: font,
       fontSize: size,
@@ -95,6 +99,9 @@
       // In a program that reads the mouse, Option-drag (Shift-drag elsewhere)
       // still selects text for Copy.
       macOptionClickForcesSelection: true,
+      // OSC 8 links (agy writes them): xterm's default confirm() and
+      // window.open() do nothing in the desktop WebView. xterm keeps them http(s).
+      linkHandler: { activate: openLink },
       theme: terminalTheme(theme.resolved, cssVar),
     });
     const f = new FitAddon();
@@ -102,12 +109,7 @@
     t.loadAddon(f);
     t.loadAddon(s);
     const results = s.onDidChangeResults((result) => find.setResults(result));
-    t.loadAddon(
-      new WebLinksAddon((event, uri) => {
-        event.preventDefault();
-        void api.openURL(uri);
-      }),
-    );
+    t.loadAddon(new WebLinksAddon(openLink));
     let compositionText: ReturnType<typeof installTerminalCompositionText> | undefined;
     t.attachCustomKeyEventHandler((event) => {
       if (compositionText && !compositionText.key(event)) return false;

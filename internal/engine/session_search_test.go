@@ -82,7 +82,8 @@ func TestSessionSearchMatches(t *testing.T) {
 
 func TestSessionSearchDecodedToolOutput(t *testing.T) {
 	output := `[{"type":"input_text","text":"C:\\Users\\Gink\nsaid \"hello\""}]`
-	tr := &model.Transcript{Messages: []model.Message{{Role: model.RoleAssistant,
+	tr := &model.Transcript{Messages: []model.Message{{
+		Role:  model.RoleAssistant,
 		Parts: []model.Part{{Kind: model.PartTool, Tool: &model.ToolCall{Name: "exec", Output: output}}},
 	}}}
 	svc, ref := sessionSearchService(t, tr)

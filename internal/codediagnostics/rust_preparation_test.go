@@ -12,13 +12,13 @@ func rustPreparationFixture(t *testing.T) rustFixture {
 	t.Helper()
 	f := newRustFixture(t)
 	f.env.PrepareDir = filepath.Join(filepath.Dir(f.env.Home), "app-data", "rust-preparation")
-	if err := os.MkdirAll(f.env.PrepareDir, 0700); err != nil {
+	if err := os.MkdirAll(f.env.PrepareDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	f.put(t, "Cargo.toml", "[package]\nname='app'\nversion='0.1.0'\n[workspace]\n")
 	f.put(t, "Cargo.lock", "version=3\n")
 	f.put(t, "src/lib.rs", "pub fn app() {}\n")
-	rustTestWrite(t, filepath.Join(f.bin, rustExeName("rustup")), "fake rustup metadata only; never execute", 0755)
+	rustTestWrite(t, filepath.Join(f.bin, rustExeName("rustup")), "fake rustup metadata only; never execute", 0o755)
 	return f
 }
 
@@ -65,14 +65,14 @@ func TestRustPreparationMissingSelectedToolchain(t *testing.T) {
 	// Simulate only expected rustup outputs: no Rust tool is ever executed.
 	toolDir := filepath.Join(f.env.Home, ".rustup", "toolchains", "stable-"+rustHostTriple())
 	for _, name := range []string{"cargo", "rustc", "rustdoc"} {
-		rustTestWrite(t, filepath.Join(toolDir, "bin", rustExeName(name)), "new concrete "+name, 0755)
+		rustTestWrite(t, filepath.Join(toolDir, "bin", rustExeName(name)), "new concrete "+name, 0o755)
 	}
-	rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "default_toolchain='stable'\nversion='12'\n", 0644)
+	rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "default_toolchain='stable'\nversion='12'\n", 0o644)
 	if err := prep.Prepared(nil); err != nil {
 		t.Fatal(err)
 	}
 	// A newly installed unrelated executable cannot borrow approval.
-	rustTestWrite(t, filepath.Join(toolDir, "bin", rustExeName("rust-analyzer")), "unplanned analyzer", 0755)
+	rustTestWrite(t, filepath.Join(toolDir, "bin", rustExeName("rust-analyzer")), "unplanned analyzer", 0o755)
 	if err := os.Remove(filepath.Join(f.bin, rustExeName("rust-analyzer"))); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestRustPreparationRejectsChangedInputs(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			f := rustPreparationFixture(t)
 			if change == "settings" {
-				rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "version='12'\n", 0644)
+				rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "version='12'\n", 0o644)
 			}
 			p := f.discover(t)
 			prep := p.Preparation()
@@ -101,11 +101,11 @@ func TestRustPreparationRejectsChangedInputs(t *testing.T) {
 			case "config":
 				f.put(t, "Cargo.lock", "version=4\n")
 			case "new host config":
-				rustTestWrite(t, filepath.Join(f.env.Home, ".cargo", "config.toml"), "[net]\noffline=true\n", 0644)
+				rustTestWrite(t, filepath.Join(f.env.Home, ".cargo", "config.toml"), "[net]\noffline=true\n", 0o644)
 			case "tool":
-				rustTestWrite(t, filepath.Join(f.bin, rustExeName("cargo")), "changed cargo", 0755)
+				rustTestWrite(t, filepath.Join(f.bin, rustExeName("cargo")), "changed cargo", 0o755)
 			case "settings":
-				rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "version='13'\n", 0644)
+				rustTestWrite(t, filepath.Join(f.env.Home, ".rustup", "settings.toml"), "version='13'\n", 0o644)
 			}
 			if err := prep.Validate(); err == nil {
 				t.Fatal("changed input accepted")
@@ -129,7 +129,7 @@ func TestRustPreparationWorkingDirectoryCargoConfiguration(t *testing.T) {
 				if prep == nil {
 					t.Fatal(p.Notice())
 				}
-				rustTestWrite(t, path, "[net]\noffline=true\n", 0644)
+				rustTestWrite(t, path, "[net]\noffline=true\n", 0o644)
 				if p.Unchanged() == nil || prep.Validate() == nil {
 					t.Fatal("new preparation cwd Cargo configuration not detected")
 				}
@@ -144,7 +144,7 @@ func TestRustPreparationWorkingDirectoryCargoConfiguration(t *testing.T) {
 				if err := p.Unchanged(); err != nil {
 					t.Fatal(err)
 				}
-				rustTestWrite(t, path, "[net]\noffline=true\n# changed bytes\n", 0644)
+				rustTestWrite(t, path, "[net]\noffline=true\n# changed bytes\n", 0o644)
 				if p.Unchanged() == nil || prep.Validate() == nil {
 					t.Fatal("changed preparation cwd config bytes not detected")
 				}
@@ -156,7 +156,7 @@ func TestRustPreparationWorkingDirectoryCargoConfiguration(t *testing.T) {
 				if p.Unchanged() == nil || prep.Validate() == nil {
 					t.Fatal("removed preparation cwd config not detected")
 				}
-				rustTestWrite(t, path, "[build]\nrustc-wrapper='evil'\n", 0644)
+				rustTestWrite(t, path, "[build]\nrustc-wrapper='evil'\n", 0o644)
 				p = f.discover(t)
 				if p.Availability("cargo-check") != "unsupported" || p.Preparation() != nil || p.Notice() == "" {
 					t.Fatal("unsafe preparation cwd Cargo configuration accepted")
@@ -167,7 +167,7 @@ func TestRustPreparationWorkingDirectoryCargoConfiguration(t *testing.T) {
 	t.Run("shared ancestors deduplicated", func(t *testing.T) {
 		f := rustPreparationFixture(t)
 		path := filepath.Join(filepath.Dir(f.env.Home), ".cargo", "config.toml")
-		rustTestWrite(t, path, "[net]\noffline=true\n", 0644)
+		rustTestWrite(t, path, "[net]\noffline=true\n", 0o644)
 		p := f.discover(t)
 		prep := p.Preparation()
 		if prep == nil {
@@ -185,7 +185,7 @@ func TestRustPreparationHostAnalyzerConfiguration(t *testing.T) {
 			f := rustPreparationFixture(t)
 			path := rustTestAnalyzerConfig(t, f.env.Home)
 			if change != "created" {
-				rustTestWrite(t, path, "# reviewed empty\n", 0644)
+				rustTestWrite(t, path, "# reviewed empty\n", 0o644)
 			}
 			p := f.discover(t)
 			prep := p.Preparation()
@@ -200,7 +200,7 @@ func TestRustPreparationHostAnalyzerConfiguration(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				rustTestWrite(t, path, "# new empty\n", 0644)
+				rustTestWrite(t, path, "# new empty\n", 0o644)
 			}
 			if prep.Validate() == nil {
 				t.Fatal("changed host analyzer config accepted during preparation")
@@ -267,7 +267,7 @@ func TestRustPreparationMissingWorkingDirectory(t *testing.T) {
 	if err := os.RemoveAll(f.env.PrepareDir); err != nil {
 		t.Fatal(err)
 	}
-	rustTestWrite(t, f.env.PrepareDir, "not a directory", 0644)
+	rustTestWrite(t, f.env.PrepareDir, "not a directory", 0o644)
 	p = f.discover(t)
 	if p.Preparation() != nil {
 		t.Fatal("non-directory cwd accepted")

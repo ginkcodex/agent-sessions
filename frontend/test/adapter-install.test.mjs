@@ -259,6 +259,7 @@ test('the mock installs Claude Code, and fails Codex once before it installs', a
     ['claude-code', false, 'claude-agent-acp', '0.106.0'],
     ['codex', false, 'codex-acp', '2.6.0'],
     ['opencode', true, undefined, undefined],
+    ['antigravity', true, undefined, undefined],
   ]);
   const store = new AdapterInstaller(mock, () => 0, async () => {
     agents = await mock.chatAgents();

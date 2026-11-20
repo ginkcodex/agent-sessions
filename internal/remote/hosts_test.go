@@ -86,7 +86,7 @@ Host -bad-flag
 Host wsl:box
     HostName box.example
 `
-	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -120,7 +120,7 @@ Host wsl:box
 func TestParseConfigFile_IncludeAndRecursion(t *testing.T) {
 	dir := t.TempDir()
 	confDir := filepath.Join(dir, "conf.d")
-	if err := os.MkdirAll(confDir, 0700); err != nil {
+	if err := os.MkdirAll(confDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -129,15 +129,15 @@ func TestParseConfigFile_IncludeAndRecursion(t *testing.T) {
 	inc2 := filepath.Join(confDir, "db.conf")
 
 	// inc1 includes mainConfig back to test recursion prevention
-	if err := os.WriteFile(inc1, []byte("Host web1\n  User web\nInclude "+mainConfig+"\n"), 0600); err != nil {
+	if err := os.WriteFile(inc1, []byte("Host web1\n  User web\nInclude "+mainConfig+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(inc2, []byte("Host db1\n  User db\n"), 0600); err != nil {
+	if err := os.WriteFile(inc2, []byte("Host db1\n  User db\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	mainContent := "Include " + filepath.Join(confDir, "*.conf") + "\nHost bastion\n  User root\n"
-	if err := os.WriteFile(mainConfig, []byte(mainContent), 0600); err != nil {
+	if err := os.WriteFile(mainConfig, []byte(mainContent), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -166,7 +166,7 @@ Host mytest
     User testuser
     Port 22222
 `
-	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

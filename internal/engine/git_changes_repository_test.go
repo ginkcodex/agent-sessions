@@ -18,7 +18,7 @@ func TestGitChangesRepositoryInsideProject(t *testing.T) {
 	root := t.TempDir()
 	for _, name := range []string{"child", "other"} {
 		dir := filepath.Join(root, name)
-		if err := os.Mkdir(dir, 0700); err != nil {
+		if err := os.Mkdir(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
 		git := func(args ...string) {
@@ -33,7 +33,7 @@ func TestGitChangesRepositoryInsideProject(t *testing.T) {
 		git("config", "commit.gpgsign", "false")
 		git("config", "user.name", "Test")
 		git("config", "user.email", "test@example.com")
-		if err := os.WriteFile(filepath.Join(dir, "file"), []byte("base\n"), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "file"), []byte("base\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		git("add", "file")
@@ -41,7 +41,7 @@ func TestGitChangesRepositoryInsideProject(t *testing.T) {
 	}
 	write := func(path, text string) {
 		t.Helper()
-		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(path)), []byte(text), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(path)), []byte(text), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

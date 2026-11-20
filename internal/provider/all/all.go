@@ -9,6 +9,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/provider/antigravity"
 	"github.com/ginkcode/agent-sessions/internal/provider/claude"
 	"github.com/ginkcode/agent-sessions/internal/provider/codex"
 	"github.com/ginkcode/agent-sessions/internal/provider/opencode"
@@ -17,6 +18,8 @@ import (
 type Agent struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Note qualifies the name in settings, such as which product's sessions are read.
+	Note string `json:"note,omitempty"`
 }
 
 type registration struct {
@@ -25,9 +28,14 @@ type registration struct {
 }
 
 var registry = []registration{
-	{Agent{string(model.AgentClaude), "Claude Code"}, func(r paths.Roots, g *pathutil.GitResolver) provider.Provider { return claude.New(r.Claude, g) }},
-	{Agent{"codex", "Codex"}, func(r paths.Roots, g *pathutil.GitResolver) provider.Provider { return codex.New(r.Codex, g) }},
-	{Agent{"opencode", "OpenCode"}, func(r paths.Roots, g *pathutil.GitResolver) provider.Provider { return opencode.New(r.OpenCodeData, g) }},
+	{Agent{ID: string(model.AgentClaude), Name: "Claude Code"}, func(r paths.Roots, g *pathutil.GitResolver) provider.Provider { return claude.New(r.Claude, g) }},
+	{Agent{ID: "codex", Name: "Codex"}, func(r paths.Roots, g *pathutil.GitResolver) provider.Provider { return codex.New(r.Codex, g) }},
+	{Agent{ID: "opencode", Name: "OpenCode"}, func(r paths.Roots, g *pathutil.GitResolver) provider.Provider { return opencode.New(r.OpenCodeData, g) }},
+	// The IDE runs agy with --app_data_dir=antigravity: its sessions are in
+	// ~/.gemini/antigravity, a store this provider does not read.
+	{Agent{ID: "antigravity", Name: "Antigravity CLI", Note: "Antigravity IDE sessions are not listed"}, func(r paths.Roots, g *pathutil.GitResolver) provider.Provider {
+		return antigravity.New(r.Antigravity, g)
+	}},
 }
 
 // Supported is independent of installed or enabled providers.

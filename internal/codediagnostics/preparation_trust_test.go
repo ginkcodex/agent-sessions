@@ -23,7 +23,7 @@ func TestPreparationRebindRequiresCurrentExactLease(t *testing.T) {
 				t.Fatal(err)
 			}
 			path := filepath.Join(root.Project().Root, "prepared-tool")
-			if err := os.WriteFile(path, []byte("new approved output"), 0600); err != nil {
+			if err := os.WriteFile(path, []byte("new approved output"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			next := append(cloneTools(old), ToolInput{ProviderID: "prepared", Executable: path, Policy: "fixed-prepared-v1"})
@@ -41,11 +41,11 @@ func TestPreparationRebindRequiresCurrentExactLease(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "old-bytes":
-				if err := os.WriteFile(old[0].Executable, []byte("changed"), 0600); err != nil {
+				if err := os.WriteFile(old[0].Executable, []byte("changed"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			case "new-bytes":
-				if err := os.WriteFile(path, []byte("replaced output"), 0600); err != nil {
+				if err := os.WriteFile(path, []byte("replaced output"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}

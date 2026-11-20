@@ -25,6 +25,7 @@ func (e *Engine) GitStage(ctx context.Context, dir, repo string, paths []string)
 	defer e.svc.projects.invalidate("")
 	return files.GitStage(ctx, r.Root, paths)
 }
+
 func (e *Engine) GitUnstage(ctx context.Context, dir, repo string, paths []string) error {
 	r, paths, err := e.gitChangesPaths(ctx, dir, repo, paths)
 	if err != nil {
@@ -34,6 +35,7 @@ func (e *Engine) GitUnstage(ctx context.Context, dir, repo string, paths []strin
 	defer e.svc.projects.invalidate("")
 	return files.GitUnstage(ctx, r.Root, paths)
 }
+
 func (e *Engine) GitDiscard(ctx context.Context, dir, repo string, req files.GitDiscardRequest) error {
 	r, paths, err := e.gitChangesPaths(ctx, dir, repo, req.Paths)
 	if err != nil {
@@ -44,6 +46,7 @@ func (e *Engine) GitDiscard(ctx context.Context, dir, repo string, req files.Git
 	defer e.svc.projects.invalidate("")
 	return files.GitDiscard(ctx, e.editPolicy(), r.Root, req)
 }
+
 func (e *Engine) GitCommit(ctx context.Context, dir, repo string, req files.GitCommitRequest) error {
 	r, err := e.svc.gitChangesRepository(ctx, dir, repo)
 	if err != nil {

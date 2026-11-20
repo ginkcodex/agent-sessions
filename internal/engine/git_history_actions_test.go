@@ -3,9 +3,10 @@ package engine
 import (
 	"context"
 	"errors"
-	"github.com/ginkcode/agent-sessions/internal/files"
 	"path/filepath"
 	"testing"
+
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 func TestHistoryActionsExactOriginalDirectoryAuthorization(t *testing.T) {

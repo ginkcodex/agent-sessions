@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+
 	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
@@ -16,6 +17,7 @@ func (c *Client) ResolveFile(ctx context.Context, dir, path string) (string, err
 	err := c.call(ctx, "resolveFile", ReadFileParams{Dir: dir, Path: path}, &out)
 	return out, err
 }
+
 func (c *Client) ResolveTerminalFile(ctx context.Context, dir, path string) (files.TerminalFile, error) {
 	var out files.TerminalFile
 	err := c.call(ctx, "resolveTerminalFile", ReadFileParams{Dir: dir, Path: path}, &out)

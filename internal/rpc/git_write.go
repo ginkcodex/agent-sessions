@@ -30,30 +30,35 @@ func (c *Client) GitStage(ctx context.Context, dir, repo string, paths []string)
 	}
 	return c.call(ctx, "gitStage", GitPathsParams{Dir: dir, Repo: repo, Paths: paths}, nil)
 }
+
 func (c *Client) GitUnstage(ctx context.Context, dir, repo string, paths []string) error {
 	if err := c.gitWrite(repo); err != nil {
 		return err
 	}
 	return c.call(ctx, "gitUnstage", GitPathsParams{Dir: dir, Repo: repo, Paths: paths}, nil)
 }
+
 func (c *Client) GitDiscard(ctx context.Context, dir, repo string, req files.GitDiscardRequest) error {
 	if err := c.gitWrite(repo); err != nil {
 		return err
 	}
 	return c.call(ctx, "gitDiscard", GitDiscardParams{Dir: dir, Repo: repo, Request: req}, nil)
 }
+
 func (c *Client) GitCommit(ctx context.Context, dir, repo string, req files.GitCommitRequest) error {
 	if err := c.gitWrite(repo); err != nil {
 		return err
 	}
 	return c.call(ctx, "gitCommit", GitCommitParams{Dir: dir, Repo: repo, Request: req}, nil)
 }
+
 func (c *Client) gitWrite(repo string) error {
 	if !c.caps.GitWrite {
 		return engine.ErrUnsupportedAction
 	}
 	return c.gitChangesRepository(repo)
 }
+
 func (s *Server) dispatchGitWrite(ctx context.Context, req Request, backend engine.Backend) (any, error) {
 	s.mu.Lock()
 	enabled := s.gitWrite

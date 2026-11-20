@@ -849,6 +849,15 @@ func relevantEvent(agent model.AgentID, path string, op fsnotify.Op) (matched, f
 		if strings.HasSuffix(name, ".json") && isLegacyOpenCodePath(path) {
 			return true, true
 		}
+	case model.AgentAntigravity:
+		// The index names every session; transcripts are
+		// brain/<id>/.system_generated/logs/transcript*.jsonl, never logs/chunks/.
+		if name == "conversation_summaries.db" || name == "conversation_summaries.db-wal" {
+			return true, true
+		}
+		if strings.HasPrefix(name, "transcript") && strings.HasSuffix(name, ".jsonl") && filepath.Base(filepath.Dir(path)) == "logs" {
+			return true, false
+		}
 	}
 	return false, false
 }
@@ -877,6 +886,12 @@ func rootsFor(p provider.Provider) []watchRoot {
 				root.path = filepath.Dir(path)
 			} else {
 				root.recursive = true
+			}
+		case model.AgentAntigravity:
+			if filepath.Base(path) == "brain" {
+				root.recursive = true
+			} else {
+				root.path = filepath.Dir(path) // the index; its folder holds noise too
 			}
 		}
 		if _, exists := seen[root.path]; exists {

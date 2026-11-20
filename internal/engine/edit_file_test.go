@@ -103,6 +103,7 @@ func TestSaveFileProtectsConfiguredAndDefaultRoots(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("ANTIGRAVITY_CLI_DIR", "")
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-custom"))
 	defaults, err := paths.Default()
 	if err != nil {
@@ -111,6 +112,10 @@ func TestSaveFileProtectsConfiguredAndDefaultRoots(t *testing.T) {
 	openCodeRel, err := filepath.Rel(root, defaults.OpenCodeData)
 	if err != nil || !filepath.IsLocal(openCodeRel) {
 		t.Fatalf("default OpenCode root %q is not under %q", defaults.OpenCodeData, root)
+	}
+	agyRel, err := filepath.Rel(root, defaults.Antigravity)
+	if err != nil || !filepath.IsLocal(agyRel) {
+		t.Fatalf("default Antigravity root %q is not under %q", defaults.Antigravity, root)
 	}
 
 	e := editEngine(root)
@@ -125,6 +130,7 @@ func TestSaveFileProtectsConfiguredAndDefaultRoots(t *testing.T) {
 		{"cache override", "cache-override/notes.txt"},
 		{"default root from env", "claude-custom/notes.txt"},
 		{"default root from home", filepath.ToSlash(filepath.Join(openCodeRel, "notes.txt"))},
+		{"default Antigravity root", filepath.ToSlash(filepath.Join(agyRel, "notes.txt"))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := writeEditFile(t, root, tc.rel, body)

@@ -97,7 +97,7 @@ func ControlDir() (string, error) {
 		base = fmt.Sprintf("/tmp/as-ssh-%d", os.Getuid())
 	}
 
-	if err := os.MkdirAll(base, 0700); err != nil {
+	if err := os.MkdirAll(base, 0o700); err != nil {
 		return "", fmt.Errorf("create ssh control dir: %w", err)
 	}
 	if err := checkPrivateDir(base); err != nil {

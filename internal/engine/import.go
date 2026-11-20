@@ -93,7 +93,8 @@ func summarizeBundle(bundleID, path string, b *bundle.Bundle) BundleSummary {
 		handoffTokens = len(b.Transcript) / 8
 	}
 
-	restoreAvailable := b.Manifest.Profile == bundle.ProfileComplete && totalNativeFiles > 0
+	// No restore writes Antigravity's store yet (docs/plan/antigravity-cli-delete.md).
+	restoreAvailable := b.Manifest.Profile == bundle.ProfileComplete && totalNativeFiles > 0 && b.Manifest.Source.Agent != model.AgentAntigravity
 
 	return BundleSummary{
 		BundleID:         bundleID,

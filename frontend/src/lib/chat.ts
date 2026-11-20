@@ -295,12 +295,17 @@ export function isPluginListing(text: string, commands: readonly ChatCommand[], 
 
 /**
  * The listings the app answers from the agent's CLI besides plugins, in its
- * native spelling: OpenCode's /mcps and /skills. Its ACP server advertises
- * neither, and has no /mcp; Claude and Codex answer /mcp themselves.
- * Codex's /skills uses its live ACP skill command catalog.
+ * native spelling: OpenCode's /mcps and /skills, and Antigravity's /mcp
+ * (`agy mcp list`) and /skills (`agy -p /skills`). Neither ACP server
+ * advertises these; Claude and Codex answer /mcp themselves. Codex's /skills
+ * uses its live ACP skill command catalog.
  */
 export function inventoryCommands(agent: string): (ChatCommand & { kind: ChatInventoryKind })[] {
   if (agent === 'codex') return [
+    { name: 'skills', kind: 'skills', description: 'List the available skills (shown here, not sent to the agent)', input: null },
+  ];
+  if (agent === 'antigravity') return [
+    { name: 'mcp', kind: 'mcp', description: 'List the configured MCP servers (shown here, not sent to the agent)', input: null },
     { name: 'skills', kind: 'skills', description: 'List the available skills (shown here, not sent to the agent)', input: null },
   ];
   if (agent !== 'opencode') return [];
@@ -323,13 +328,15 @@ export function inventoryListing(text: string, agent: string): ChatInventoryKind
  */
 export function pickerCommands(commands: readonly ChatCommand[], agent: string): ChatCommand[] {
   const plugin = pluginCommand(agent);
-  const own = [...inventoryCommands(agent).map(({ kind: _, ...c }) => c)];
+  const own = inventoryCommands(agent).map(({ kind: _, ...c }) => c);
+  const names = new Set(own.map((c) => c.name));
   if (PLURAL_PLUGINS.has(agent)) {
     own.unshift(plugin);
-    const names = new Set(['plugin', ...own.map((c) => c.name)]);
-    return [...commands.filter((c) => !names.has(c.name)), ...own];
+    names.add('plugin').add(plugin.name);
+  } else if (!commands.some((c) => c.name === plugin.name)) {
+    own.unshift(plugin);
   }
-  return commands.some((c) => c.name === plugin.name) ? [...commands] : [...commands, plugin];
+  return [...commands.filter((c) => !names.has(c.name)), ...own];
 }
 
 const MCP_STATUS_TITLES: Record<string, string> = {
@@ -337,6 +344,8 @@ const MCP_STATUS_TITLES: Record<string, string> = {
   needs_auth: 'Needs authentication',
   pending: 'Connecting',
   connected: 'Connected',
+  // Antigravity's `agy mcp list` says only enabled or disabled.
+  enabled: 'Enabled',
   disabled: 'Disabled',
 };
 

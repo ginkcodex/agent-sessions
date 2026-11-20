@@ -67,6 +67,7 @@ func TestGitBranchesCreateSwitchTrack(t *testing.T) {
 		}
 	}
 }
+
 func TestGitBranchesOrderAndCap(t *testing.T) {
 	root, git := blameRepo(t)
 	statusWrite(t, root, "file", "base")
@@ -95,6 +96,7 @@ func TestGitBranchesOrderAndCap(t *testing.T) {
 		t.Fatalf("cap %+v", list)
 	}
 }
+
 func TestGitSwitchRefusesDraftsOptionsAndLocalChanges(t *testing.T) {
 	root, git := blameRepo(t)
 	ctx := context.Background()
@@ -133,6 +135,7 @@ func TestGitSwitchRefusesDraftsOptionsAndLocalChanges(t *testing.T) {
 		t.Fatal("contradictory request accepted")
 	}
 }
+
 func TestGitBranchesAndSwitchUseRepoLock(t *testing.T) {
 	root, git := blameRepo(t)
 	statusWrite(t, root, "file", "base")

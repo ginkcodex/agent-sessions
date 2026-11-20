@@ -87,7 +87,7 @@ func NewAskpassBroker(handler AskpassPromptHandler) (*AskpassBroker, error) {
 	}
 
 	// Set socket file permissions to 0600
-	_ = os.Chmod(sockPath, 0600)
+	_ = os.Chmod(sockPath, 0o600)
 
 	b := &AskpassBroker{
 		sockPath:  sockPath,

@@ -258,6 +258,7 @@ var posixInstallDirs = map[string][]string{
 	"claude":           {".local/bin", ".claude/local", ".npm-global/bin", ".bun/bin", ".volta/bin"},
 	"opencode":         {".opencode/bin", ".bun/bin", ".local/bin", ".npm-global/bin"},
 	"codex":            {".local/bin", ".npm-global/bin", ".bun/bin", ".volta/bin"},
+	"agy":              {".local/bin"},
 	"claude-agent-acp": npmInstallDirs,
 	"codex-acp":        npmInstallDirs,
 }
@@ -348,13 +349,16 @@ func windowsLocations(name, goarch string) []location {
 			loc("APPDATA", "npm", "opencode.cmd"),
 			loc("LOCALAPPDATA", "Programs", "@opencodedesktop", "resources", "opencode-cli.exe"),
 		)
+	case "agy":
+		// Where agy 1.5.13 was installed on Windows (seen in AGY-23).
+		locs = append(locs, loc("LOCALAPPDATA", "agy", "bin", "agy.exe"))
 	case "claude-agent-acp", "codex-acp":
 		locs = append(locs, loc("APPDATA", "npm", name+".cmd"))
 	}
 	return locs
 }
 
-var agentLabels = map[string]string{"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode"}
+var agentLabels = map[string]string{"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "agy": "Antigravity"}
 
 // editorDirs are the per-user directories of VS Code and its forks that
 // install the same extensions.
@@ -414,6 +418,8 @@ func (f finder) installHint(name string) string {
 		return "Codex was not found. Install the Codex CLI, the Codex desktop app or the Codex extension for VS Code, then try again"
 	case "opencode":
 		return "OpenCode was not found. Install OpenCode or OpenCode Desktop, then try again"
+	case "agy":
+		return "Antigravity was not found. Install the Antigravity CLI, then try again"
 	}
 	return fmt.Sprintf("%s was not found on PATH", name)
 }

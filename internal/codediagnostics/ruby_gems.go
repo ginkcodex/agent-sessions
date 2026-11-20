@@ -220,8 +220,10 @@ func installedGems(dir, name string) []rubyGem {
 		if !gemVersionShape.MatchString(version) {
 			continue
 		}
-		g := rubyGem{Name: name, Version: version, Home: home, Path: filepath.Join(home, "gems", e.Name()),
-			Spec: filepath.Join(home, "specifications", e.Name()+".gemspec")}
+		g := rubyGem{
+			Name: name, Version: version, Home: home, Path: filepath.Join(home, "gems", e.Name()),
+			Spec: filepath.Join(home, "specifications", e.Name()+".gemspec"),
+		}
 		g.Entry = filepath.Join(g.Path, gemEntry(name))
 		if regularWithin(home, g.Entry) && regularWithin(home, g.Spec) {
 			out = append(out, g)

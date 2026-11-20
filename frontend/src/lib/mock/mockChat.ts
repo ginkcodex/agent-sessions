@@ -42,6 +42,7 @@ const AGENTS: { agent: AgentID; name: string; adapter: string; managed?: { versi
     managed: { version: '2.6.0', older: '2.5.1', main: 'node_modules/@agentclientprotocol/codex-acp/dist/index.js' },
   },
   { agent: 'opencode', name: 'OpenCode', adapter: 'opencode' },
+  { agent: 'antigravity', name: 'Antigravity CLI', adapter: 'agy' },
 ];
 
 /** Where the mock "installs" the app's own adapters. */
@@ -348,10 +349,19 @@ export class MockChats {
     return structuredClone(chat.state.configOptions);
   }
 
-  /** OpenCode's CLI lists its MCP servers and skills; the others answer /mcp themselves. */
+  /**
+   * OpenCode's and agy's CLIs list their MCP servers and skills; the others
+   * answer /mcp themselves.
+   */
   async inventory(chatId: string, kind: ChatInventoryKind): Promise<ChatInventory> {
     this.requireAvailable();
     const chat = this.get(chatId);
+    if (chat.state.agent === 'antigravity' && kind === 'mcp') {
+      return { kind, supported: true, mcpServers: [{ name: 'fs', status: 'enabled' }, { name: 'api', status: 'disabled' }] };
+    }
+    if (chat.state.agent === 'antigravity') {
+      return { kind, supported: true, skills: [{ id: 'swarm', name: 'swarm', description: 'Run a swarm of agents in parallel' }] };
+    }
     if (chat.state.agent !== 'opencode') return { kind, supported: false, mcpServers: [], skills: [] };
     return kind === 'mcp'
       ? { kind, supported: true, mcpServers: [{ name: 'super-fetch', status: 'connected' }, { name: 'docs', status: 'failed', error: 'connect ECONNREFUSED' }] }

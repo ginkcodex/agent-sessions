@@ -1,0 +1,151 @@
+{
+  "meta": {
+    "ref": {
+      "agent": "antigravity",
+      "id": "0ce5ddc2-779f-452d-9c81-281712caf621"
+    },
+    "parentId": "2b9a4c81-215f-47af-9395-99d2b08be416",
+    "sourcePath": "<fixture>",
+    "cwd": "<cwd>",
+    "title": "Review the diff and report back.",
+    "firstPrompt": "Review the diff and report back.",
+    "model": "gemini-4-neon-high",
+    "agentName": "research",
+    "createdAt": "2026-11-19T04:00:00Z",
+    "updatedAt": "2026-11-19T04:00:06Z",
+    "counts": {
+      "user": 1,
+      "assistant": 3,
+      "toolCalls": 2
+    },
+    "tokens": {
+      "input": 300,
+      "output": 15,
+      "reasoning": 0,
+      "cacheRead": 30,
+      "cacheWrite": 0
+    },
+    "turn": "done"
+  },
+  "messages": [
+    {
+      "id": "step-0",
+      "role": "user",
+      "time": "2026-11-19T04:00:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Review the diff\nand report back."
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-1",
+      "role": "assistant",
+      "time": "2026-11-19T04:00:01Z",
+      "model": "gemini-4-neon-high",
+      "parts": [
+        {
+          "kind": "reasoning",
+          "text": "Reading."
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-1-0",
+            "name": "read_file",
+            "input": {
+              "Path": "/work/x.go"
+            },
+            "output": "package x",
+            "status": "completed"
+          }
+        }
+      ],
+      "tokens": {
+        "input": 100,
+        "output": 5,
+        "reasoning": 0,
+        "cacheRead": 10,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-3",
+      "role": "system",
+      "time": "2026-11-19T04:00:03Z",
+      "parts": [
+        {
+          "kind": "compaction",
+          "text": "# Resuming from a compaction\n\nYou are continuing work on the task described above."
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-4",
+      "role": "assistant",
+      "time": "2026-11-19T04:00:04Z",
+      "model": "gemini-4-neon-high",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Sending my review."
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "step-4-0",
+            "name": "send_message",
+            "input": {
+              "Recipient": "2b9a4c81-215f-47af-9395-99d2b08be416",
+              "Message": "# Review"
+            },
+            "output": "Message sent.",
+            "status": "completed"
+          }
+        }
+      ],
+      "tokens": {
+        "input": 100,
+        "output": 5,
+        "reasoning": 0,
+        "cacheRead": 10,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "step-6",
+      "role": "assistant",
+      "time": "2026-11-19T04:00:06Z",
+      "model": "gemini-4-neon-high",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Done."
+        }
+      ],
+      "tokens": {
+        "input": 100,
+        "output": 5,
+        "reasoning": 0,
+        "cacheRead": 10,
+        "cacheWrite": 0
+      }
+    }
+  ]
+}

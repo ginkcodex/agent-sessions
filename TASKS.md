@@ -88,6 +88,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Idle rendering | [idle-rendering](docs/plan/idle-rendering.md) | [idle-rendering/](docs/tasks/idle-rendering/README.md) | 3/7 ✅ · 4 🟡 |
 | Whole-file translation | [file-translate](docs/plan/file-translate.md) | [file-translate/](docs/tasks/file-translate/README.md) | 2/2 ✅ |
 | Print page setup | [print-page-setup](docs/plan/print-page-setup.md) | [print-page-setup/](docs/tasks/print-page-setup/README.md) | 1/2 ✅ · 1 🟡 |
+| Compact port forwarding rows | [port-forward-compact](docs/plan/port-forward-compact.md) | [port-forward-compact/](docs/tasks/port-forward-compact/README.md) | 0/1 ✅ · 1 🟡 |
 | Windows CI test stability | [windows-ci-test-stability](docs/plan/windows-ci-test-stability.md) | [windows-ci-test-stability/](docs/tasks/windows-ci-test-stability/README.md) | 1/1 ✅ |
 | Workspace terminal selection | [workspace-terminal-selection](docs/plan/workspace-terminal-selection.md) | [workspace-terminal-selection/](docs/tasks/workspace-terminal-selection/README.md) | 1/1 ✅ |
 | Conversation PDF | [conversation-pdf](docs/plan/conversation-pdf.md) | [conversation-pdf/](docs/tasks/conversation-pdf/README.md) | 1/1 ✅ |
@@ -142,3 +143,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Review fixes (2026-11-14 review) | [review-fixes](docs/plan/review-fixes.md) | [review-fixes/](docs/tasks/review-fixes/README.md) | 27/35 ✅ · 8 ⬜ |
 | Code completion | [code-completion](docs/plan/code-completion.md) | [code-completion/](docs/tasks/code-completion/README.md) | 24/27 ✅ · 2 🟡 · 1 ⬜ |
 | File link line highlight | [file-link-line-highlight](docs/plan/file-link-line-highlight.md) | [file-link-line-highlight/](docs/tasks/file-link-line-highlight/README.md) | 1/1 ✅ |
+| Antigravity CLI | [antigravity-cli](docs/plan/antigravity-cli.md) | [antigravity-cli/](docs/tasks/antigravity-cli/README.md) | 22/23 ✅ · 1 🟡 |

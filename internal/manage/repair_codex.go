@@ -94,7 +94,7 @@ func (m *Manager) RepairCodexSession(ctx context.Context, ref model.SessionRef, 
 	if err := cm.ps.ensureWithinRoot(writer); err != nil {
 		return result, err
 	}
-	if err := os.MkdirAll(filepath.Dir(writer), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(writer), 0o700); err != nil {
 		return result, err
 	}
 	writerGuard, err := filelock.TryLock(writer)
@@ -171,7 +171,7 @@ func (m *Manager) RepairCodexSession(ctx context.Context, ref model.SessionRef, 
 		return result, err
 	}
 	if hasIndex {
-		if err = os.WriteFile(filepath.Join(backup, "session_index.jsonl"), raw, 0600); err != nil {
+		if err = os.WriteFile(filepath.Join(backup, "session_index.jsonl"), raw, 0o600); err != nil {
 			return result, err
 		}
 	}
@@ -188,12 +188,12 @@ func (m *Manager) RepairCodexSession(ctx context.Context, ref model.SessionRef, 
 		if err != nil {
 			return result, err
 		}
-		if err = os.Chmod(filepath.Join(backup, filepath.Base(dbPath)), 0600); err != nil {
+		if err = os.Chmod(filepath.Join(backup, filepath.Base(dbPath)), 0o600); err != nil {
 			return result, err
 		}
 	}
 	manifest, _ := json.Marshal(map[string]string{"id": ref.ID, "old": old, "new": target})
-	if err = os.WriteFile(filepath.Join(backup, "manifest.json"), manifest, 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(backup, "manifest.json"), manifest, 0o600); err != nil {
 		return result, err
 	}
 	if err = ctx.Err(); err != nil {
@@ -365,6 +365,7 @@ func codexRepairSafePath(root, path string) error {
 	}
 	return nil
 }
+
 func codexRepairSafeDB(root, path string) error {
 	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
 		if err := codexRepairSafePath(root, path+suffix); err != nil {
@@ -373,6 +374,7 @@ func codexRepairSafeDB(root, path string) error {
 	}
 	return nil
 }
+
 func openCodexRepairDB(ctx context.Context, path string, readonly bool) (*sql.DB, error) {
 	mode := "rw"
 	if readonly {
@@ -416,6 +418,7 @@ func validateCodexRepairRows(ctx context.Context, db codexRepairQuerier, id, old
 	}
 	return rows.Err()
 }
+
 func (cm *codexManager) repairDatabases(ctx context.Context, id, old, target string) ([]string, error) {
 	entries, err := os.ReadDir(cm.root)
 	if err != nil {
@@ -470,6 +473,7 @@ func (cm *codexManager) repairDatabases(ctx context.Context, id, old, target str
 	}
 	return paths, nil
 }
+
 func codexRepairIndex(raw []byte, old, target, id string) ([]byte, error) {
 	var result bytes.Buffer
 	reader := bufio.NewReader(bytes.NewReader(raw))
@@ -537,13 +541,14 @@ func codexRepairIndex(raw []byte, old, target, id string) ([]byte, error) {
 	}
 	return result.Bytes(), nil
 }
+
 func copyCodexRepairFile(source, dest string) error {
 	in, err := os.Open(source)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = in.Close() }()
-	out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
@@ -557,6 +562,7 @@ func copyCodexRepairFile(source, dest string) error {
 	}
 	return closeErr
 }
+
 func replaceCodexRepairIndex(path string, raw []byte) error {
 	f, err := os.CreateTemp(filepath.Dir(path), ".repair-index-*")
 	if err != nil {

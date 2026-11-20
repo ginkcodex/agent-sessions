@@ -43,7 +43,7 @@ func fakeSSHPath(t *testing.T, mode string, extra map[string]string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(bin, data, 0700); err != nil {
+	if err := os.WriteFile(bin, data, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("AGENT_SESSIONS_SSH_FAKE", "1")

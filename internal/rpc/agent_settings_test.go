@@ -21,11 +21,11 @@ func TestAgentSettingsRPCRoundTrip(t *testing.T) {
 		t.Fatalf("initialize=%+v %v", init, err)
 	}
 	got, err := c.GetAgentSettings(t.Context())
-	if err != nil || len(got.Supported) != 3 || len(got.Active) != 3 || got.RestartRequired {
+	if err != nil || len(got.Supported) != 4 || len(got.Active) != 4 || got.RestartRequired {
 		t.Fatalf("get=%+v %v", got, err)
 	}
 	got, err = c.SetAgentSettings(t.Context(), []string{"codex", "codex"})
-	if err != nil || !got.RestartRequired || !reflect.DeepEqual(got.Enabled, []string{"codex"}) || len(got.Active) != 3 {
+	if err != nil || !got.RestartRequired || !reflect.DeepEqual(got.Enabled, []string{"codex"}) || len(got.Active) != 4 {
 		t.Fatalf("set=%+v %v", got, err)
 	}
 	loaded, err := c.GetAgentSettings(t.Context())

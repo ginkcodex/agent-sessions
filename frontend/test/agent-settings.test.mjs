@@ -79,12 +79,13 @@ test('older host settings errors are visible and cannot be saved', async () => {
 
 test('mock settings validate nonempty supported IDs and retain the active subset until restart', async () => {
   const api = new MockBackendAPI();
-  assert.deepEqual((await api.getAgentSettings()).enabled, supported.map(a => a.id));
+  const mockIds = ['claude-code', 'codex', 'opencode', 'antigravity'];
+  assert.deepEqual((await api.getAgentSettings()).enabled, mockIds);
   await assert.rejects(api.setAgentSettings([]), /at least one/);
   await assert.rejects(api.setAgentSettings(['kiro']), /supported/);
   const saved = await api.setAgentSettings(['opencode', 'codex', 'codex']);
   assert.deepEqual(saved.enabled, ['codex', 'opencode']);
-  assert.deepEqual(saved.active, supported.map(a => a.id));
+  assert.deepEqual(saved.active, mockIds);
   assert.equal(saved.restartRequired, true);
 });
 
@@ -157,4 +158,13 @@ test('settings renders supported agent options, last-agent guard and restart gui
   assert.match(html, />Restart<\/button>/);
   assert.match(html, /type="checkbox" checked="" disabled=""/);
   assert.match(html, /Session files are never deleted/);
+});
+
+test('settings shows an agent note beside its name', async () => {
+  const html = await renderWithFixture(component, {
+    agentSettings: { settings: { ...defaults(), supported: [...supported, { id: 'antigravity', name: 'Antigravity CLI', note: 'Antigravity IDE sessions are not listed' }] }, selected: ['codex'], dirty: false },
+    link: { dataHost: null, stale: false, locked: false },
+  });
+  assert.match(html, /<span>Antigravity CLI<\/span>\s*(<!--[^>]*-->)*<span class="note[^"]*">Antigravity IDE sessions are not listed<\/span>/);
+  assert.equal(html.match(/class="note[^"]*"/g)?.length, 1, 'agents without a note render none');
 });

@@ -26,24 +26,28 @@ func (b *gitWriteMock) GitStage(_ context.Context, dir, repo string, p []string)
 	b.paths = p
 	return b.errToReturn
 }
+
 func (b *gitWriteMock) GitUnstage(_ context.Context, dir, repo string, p []string) error {
 	b.method = "unstage"
 	b.dir = dir
 	b.paths = p
 	return b.errToReturn
 }
+
 func (b *gitWriteMock) GitDiscard(_ context.Context, dir, repo string, p files.GitDiscardRequest) error {
 	b.method = "discard"
 	b.dir = dir
 	b.discard = p
 	return b.errToReturn
 }
+
 func (b *gitWriteMock) GitCommit(_ context.Context, dir, repo string, p files.GitCommitRequest) error {
 	b.method = "commit"
 	b.dir = dir
 	b.commit = p
 	return b.errToReturn
 }
+
 func TestGitWriteRPC(t *testing.T) {
 	b := &gitWriteMock{mockBackend: &mockBackend{}}
 	s, c, cleanup := setupPipePair(b)
@@ -76,6 +80,7 @@ func TestGitWriteRPC(t *testing.T) {
 		t.Fatal("lost backend error")
 	}
 }
+
 func TestGitWriteRequiresWritableCapability(t *testing.T) {
 	for _, save := range []bool{false, true} {
 		b := &gitWriteMock{mockBackend: &mockBackend{}}

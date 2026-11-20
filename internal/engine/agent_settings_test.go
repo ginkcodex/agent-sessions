@@ -21,7 +21,7 @@ func TestAgentSettingsStartupAndRestart(t *testing.T) {
 	}
 	e := NewEngine(WithRoots(roots), WithCacheEnabled(false))
 	settings, err := e.GetAgentSettings(t.Context())
-	if err != nil || len(settings.Supported) != 3 || !reflect.DeepEqual(settings.Active, []string{"codex"}) || settings.RestartRequired {
+	if err != nil || len(settings.Supported) != 4 || !reflect.DeepEqual(settings.Active, []string{"codex"}) || settings.RestartRequired {
 		t.Fatalf("settings=%+v %v", settings, err)
 	}
 	if len(e.runner.Providers) != 1 || len(e.Service().NewSessionAgents()) != 1 {

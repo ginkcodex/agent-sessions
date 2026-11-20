@@ -175,9 +175,11 @@ func (m *mockBackend) CommitFileUpload(context.Context, string, string, string) 
 func (m *mockBackend) ResolveFile(ctx context.Context, dir, path string) (string, error) {
 	return dir + "/" + path, nil
 }
+
 func (m *mockBackend) ResolveTerminalFile(ctx context.Context, dir, path string) (files.TerminalFile, error) {
 	return files.TerminalFile{Dir: dir, Path: path}, m.errToReturn
 }
+
 func (m *mockBackend) PrepareFileDownload(ctx context.Context, dir, path, token string) (files.Download, error) {
 	return files.Download{Name: path, Token: token}, nil
 }

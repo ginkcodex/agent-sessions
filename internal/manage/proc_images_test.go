@@ -75,6 +75,8 @@ func TestClassifyImages(t *testing.T) {
 			want: map[string]string{},
 		},
 		{name: "opencode acp", images: map[int]string{1: "opencode.exe"}, args: map[int][]string{1: {"opencode", "acp"}}, want: map[string]string{}},
+		{name: "agy acp", images: map[int]string{1: "agy.exe"}, args: map[int][]string{1: {`C:\bin\agy.exe`, "acp"}}, want: map[string]string{}},
+		{name: "agy TUI beside acp", images: map[int]string{1: "agy.exe", 2: "agy.exe"}, args: map[int][]string{1: {"agy", "acp"}, 2: {"agy", "-p", "acp"}}, want: map[string]string{"agy": "agy.exe"}},
 		{
 			name:   "interactive beside server",
 			images: map[int]string{1: "opencode-cli.exe", 2: "opencode.exe"},

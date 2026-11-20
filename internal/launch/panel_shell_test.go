@@ -47,7 +47,7 @@ func TestPanelShellPromptCwd(t *testing.T) {
 					t.Fatal(err)
 				}
 				dir := filepath.Join(home, "spaces é日本 %#")
-				if err := os.Mkdir(dir, 0700); err != nil {
+				if err := os.Mkdir(dir, 0o700); err != nil {
 					t.Fatal(err)
 				}
 				hooks := "PROMPT_COMMAND='printf EXISTING_HOOK'\n"
@@ -65,7 +65,7 @@ func TestPanelShellPromptCwd(t *testing.T) {
 					if array {
 						hooks += "function existing_hook --on-event fish_prompt; printf FIRST_HOOK; end\n"
 					}
-					if err := os.MkdirAll(filepath.Dir(filepath.Join(home, profile)), 0700); err != nil {
+					if err := os.MkdirAll(filepath.Dir(filepath.Join(home, profile)), 0o700); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -73,11 +73,11 @@ func TestPanelShellPromptCwd(t *testing.T) {
 				if shell != "fish" {
 					original = []byte("PS1='test> '\n" + hooks)
 				}
-				if err := os.WriteFile(filepath.Join(home, profile), original, 0600); err != nil {
+				if err := os.WriteFile(filepath.Join(home, profile), original, 0o600); err != nil {
 					t.Fatal(err)
 				}
 				tmp := filepath.Join(home, "tmp")
-				if err := os.Mkdir(tmp, 0700); err != nil {
+				if err := os.Mkdir(tmp, 0o700); err != nil {
 					t.Fatal(err)
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

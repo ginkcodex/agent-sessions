@@ -215,7 +215,6 @@ func (om *opencodeManager) sessionRows(ctx context.Context, id string) ([]sessio
 // capture both consume. An unfinished migration blocks any plan that would
 // start the CLI, since the CLI resumes that migration.
 func (om *opencodeManager) membersFrom(rootID string, found []sessionRow, migrated bool) ([]openCodeMember, error) {
-
 	present := make(map[string]openCodeMember, len(found))
 	children := make(map[string][]string)
 	for _, item := range found {

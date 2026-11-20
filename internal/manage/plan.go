@@ -95,7 +95,7 @@ func (m *Manager) plan(ctx context.Context, selected []model.SessionRef, idx *ca
 		if !ok {
 			return nil, nil, ErrPreviewStale
 		}
-		item := Item{Ref: ref, Agent: ref.Agent, Title: meta.Title, Action: actionFor(ref.Agent), Reversible: ref.Agent == model.AgentClaude}
+		item := Item{Ref: ref, Agent: ref.Agent, Title: meta.Title, Action: actionFor(ref.Agent), Reversible: actionFor(ref.Agent) == ActionTrash}
 		var op operation
 		var err error
 		if covered[ref.Key()] {
@@ -143,6 +143,8 @@ func (m *Manager) planOne(ctx context.Context, meta model.SessionMeta, idx *cata
 		op, err = m.planCodex(ctx, meta, idx)
 	case model.AgentOpenCode:
 		op, err = m.planOpenCode(ctx, meta)
+	case model.AgentAntigravity:
+		op, err = m.planAntigravity(ctx, meta, idx, procLive, procErr)
 	default:
 		return operation{}, ErrUnsupportedAction
 	}
@@ -312,8 +314,24 @@ func (m *Manager) execute(ctx context.Context, op operation, idx *catalogIndex, 
 	}
 	switch op.Item.Agent {
 	case model.AgentClaude:
-		moved, remaining, err := m.claude.trashFiles(ctx, op.Files, func() error {
+		moved, remaining, err := trashFiles(ctx, m.claude.trash, op.Files, func() error {
 			return m.claude.checkLive(ctx, meta, m.live)
+		})
+		res.Moved = moved
+		res.Remaining = remaining
+		if errors.Is(err, ErrTrashOutcomeUnknown) && len(moved) < len(op.Files) {
+			res.Unknown = []string{op.Files[len(moved)].Path}
+		}
+		if err != nil {
+			res.Error = err.Error()
+			return res, nil
+		}
+		res.OK = true
+		return res, append([]model.SessionRef{op.Item.Ref}, op.Descendants...)
+	case model.AgentAntigravity:
+		moved, remaining, err := trashFiles(ctx, m.antigravity.trash, op.Files, func() error {
+			live, lerr := m.procLiveMap(ctx)
+			return processSafetyError(live, lerr, "agy")
 		})
 		res.Moved = moved
 		res.Remaining = remaining

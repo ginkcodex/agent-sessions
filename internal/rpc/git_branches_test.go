@@ -23,12 +23,14 @@ func (b *gitBranchesMock) GitBranches(_ context.Context, dir, repo string) (file
 	b.dir = dir
 	return files.GitBranchList{Branches: []files.GitBranch{{Name: "main", Current: true, Upstream: "origin/main", CommitTime: 1700000000}, {Name: "origin/next", Remote: true}}, Truncated: true}, b.errToReturn
 }
+
 func (b *gitBranchesMock) GitSwitch(_ context.Context, dir, repo string, req files.GitSwitchRequest) error {
 	b.dir = dir
 	b.req = req
 	b.switches++
 	return b.errToReturn
 }
+
 func TestGitBranchesRPC(t *testing.T) {
 	b := &gitBranchesMock{mockBackend: &mockBackend{}}
 	s, c, cleanup := setupPipePair(b)
@@ -57,6 +59,7 @@ func TestGitBranchesRPC(t *testing.T) {
 		t.Fatal("lost switch error")
 	}
 }
+
 func TestGitBranchesCapabilities(t *testing.T) {
 	r, w := io.Pipe()
 	defer w.Close()

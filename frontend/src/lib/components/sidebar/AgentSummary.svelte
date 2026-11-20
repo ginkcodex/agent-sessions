@@ -72,6 +72,7 @@
   .chip.agent-claude-code { --chip-color: var(--agent-claude); }
   .chip.agent-codex { --chip-color: var(--agent-codex); }
   .chip.agent-opencode { --chip-color: var(--agent-opencode); }
+  .chip.agent-antigravity { --chip-color: var(--agent-antigravity); }
 
   .chip:hover {
     color: var(--text-primary);

@@ -13,6 +13,7 @@
     if (agent === 'claude-code') return 'Claude Code';
     if (agent === 'codex') return 'Codex';
     if (agent === 'opencode') return 'OpenCode';
+    if (agent === 'antigravity') return 'Antigravity';
     return agent || 'Session';
   }
 </script>
@@ -47,6 +48,11 @@
         d="M2 2 H14 V14 H2 Z M5.5 5.5 V10.5 H10.5 V5.5 Z"
       />
     </svg>
+  {:else if agent === 'antigravity'}
+    <!-- Antigravity: an arch rising off a baseline. -->
+    <svg width={size} height={size} viewBox="0 0 16 16" class="antigravity">
+      <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M2.5 14 C2.5 6.5 5 2.5 8 2.5 C11 2.5 13.5 6.5 13.5 14" />
+    </svg>
   {:else}
     <Icon name="bot" size={size} />
   {/if}
@@ -74,5 +80,9 @@
 
   .opencode {
     color: var(--agent-opencode);
+  }
+
+  .antigravity {
+    color: var(--agent-antigravity);
   }
 </style>

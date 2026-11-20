@@ -293,7 +293,7 @@ func (m *Manager) planRestore(
 		return []restoreOperation{op}, []RestorePreviewItem{oop.Item}, nil
 
 	default:
-		return nil, nil, fmt.Errorf("manage: restore not supported for %s", targetAgent)
+		return nil, nil, fmt.Errorf("manage: restoring %s sessions is not supported yet", targetAgent)
 	}
 }
 

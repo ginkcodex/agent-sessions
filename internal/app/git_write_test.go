@@ -19,18 +19,22 @@ func (b *gitWriteRecorder) GitStage(context.Context, string, string, []string) e
 	b.calls++
 	return nil
 }
+
 func (b *gitWriteRecorder) GitUnstage(context.Context, string, string, []string) error {
 	b.calls++
 	return nil
 }
+
 func (b *gitWriteRecorder) GitDiscard(context.Context, string, string, files.GitDiscardRequest) error {
 	b.calls++
 	return nil
 }
+
 func (b *gitWriteRecorder) GitCommit(context.Context, string, string, files.GitCommitRequest) error {
 	b.calls++
 	return nil
 }
+
 func TestGitWriteHostRouting(t *testing.T) {
 	local, remote := &gitWriteRecorder{}, &gitWriteRecorder{}
 	a := NewApp()

@@ -11,10 +11,10 @@ import (
 
 func editPathFile(t *testing.T, path string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("unchanged"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("unchanged"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

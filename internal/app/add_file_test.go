@@ -24,7 +24,7 @@ func TestAddFileRemoteCleanupCancelAndHost(t *testing.T) {
 	a := setupRemoteApp(&stubRemoteBackend{transport: transport})
 	a.setArtifactTransportOverride(transport)
 	source := filepath.Join(t.TempDir(), "source.bin")
-	os.WriteFile(source, []byte("payload"), 0600)
+	os.WriteFile(source, []byte("payload"), 0o600)
 	a.openFileDialogOverride = func(context.Context) (string, error) { return source, nil }
 	if ok, err := a.AddFile("/project", "sub", "remote-server"); ok || err == nil {
 		t.Fatalf("commit failure: %v %v", ok, err)

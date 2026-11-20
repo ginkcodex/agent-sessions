@@ -35,7 +35,7 @@ func syncIsolate(t *testing.T) {
 		t.Skip("git unavailable")
 	}
 	global := filepath.Join(t.TempDir(), "gitconfig")
-	gitOK(t, os.WriteFile(global, []byte("[user]\n\tname = Sync\n\temail = sync@example.test\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n"), 0600))
+	gitOK(t, os.WriteFile(global, []byte("[user]\n\tname = Sync\n\temail = sync@example.test\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n"), 0o600))
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	for _, name := range []string{"GIT_SSH_COMMAND", "GIT_SSH", "GIT_ASKPASS", "SSH_ASKPASS"} {
@@ -247,7 +247,7 @@ func fakeSSH(t *testing.T, sleep bool) (dir, log string) {
 		body += "sleep 30\n"
 	}
 	body += "echo 'git@example.invalid: Permission denied (publickey).' >&2\nexit 255\n"
-	gitOK(t, os.WriteFile(filepath.Join(dir, "ssh"), []byte(body), 0700))
+	gitOK(t, os.WriteFile(filepath.Join(dir, "ssh"), []byte(body), 0o700))
 	return dir, log
 }
 

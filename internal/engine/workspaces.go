@@ -32,12 +32,15 @@ type WorkspaceBrowse struct {
 var _ WorkspaceBackend = (*Engine)(nil)
 
 func (e *Engine) ListWorkspaces(_ context.Context) ([]string, error) { return e.svc.listWorkspaces() }
+
 func (e *Engine) OpenWorkspace(_ context.Context, dir string) (string, error) {
 	return e.svc.OpenWorkspace(dir)
 }
+
 func (e *Engine) RemoveWorkspace(_ context.Context, dir string) error {
 	return e.svc.RemoveWorkspace(dir)
 }
+
 func (e *Engine) BrowseWorkspace(ctx context.Context, dir string) (WorkspaceBrowse, error) {
 	return browseWorkspace(ctx, dir)
 }

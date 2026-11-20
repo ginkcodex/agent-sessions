@@ -28,6 +28,7 @@ func (f *fakeNotifier) RequestAuthorization() (bool, error) {
 	f.authorized = f.grant
 	return f.grant, nil
 }
+
 func (f *fakeNotifier) Send(id, title, body string) error {
 	f.sent = append(f.sent, id+"|"+title+"|"+body)
 	return nil

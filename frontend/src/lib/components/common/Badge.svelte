@@ -2,7 +2,7 @@
   import type { Snippet } from 'svelte';
 
   interface Props {
-    variant?: 'default' | 'claude' | 'codex' | 'opencode' | 'live' | 'archived' | 'subagent';
+    variant?: 'default' | 'claude' | 'codex' | 'opencode' | 'antigravity' | 'live' | 'archived' | 'subagent';
     children: Snippet;
   }
 
@@ -46,6 +46,11 @@
   .badge-opencode {
     background: rgba(59, 130, 246, 0.15);
     color: var(--agent-opencode);
+  }
+
+  .badge-antigravity {
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--agent-antigravity);
   }
 
   .badge-live {

@@ -55,6 +55,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [idle-rendering.md](idle-rendering.md) | [idle-rendering](../tasks/idle-rendering/README.md) | Reduce idle animations and unnecessary compositing; native GPU validation gates |
 | [file-translate.md](file-translate.md) | [file-translate](../tasks/file-translate/README.md) | Translate complete Markdown files from the preview context menu without selecting text |
 | [print-page-setup.md](print-page-setup.md) | [print-page-setup](../tasks/print-page-setup/README.md) | Shared paper, orientation and margin controls with native print defaults |
+| [port-forward-compact.md](port-forward-compact.md) | [port-forward-compact](../tasks/port-forward-compact/README.md) | One-line port forwarding rules with icon actions |
 | [windows-ci-test-stability.md](windows-ci-test-stability.md) | [windows-ci-test-stability](../tasks/windows-ci-test-stability/README.md) | Deterministic Git budgets and watcher startup synchronization in Windows CI tests |
 | [workspace-terminal-selection.md](workspace-terminal-selection.md) | [workspace-terminal-selection](../tasks/workspace-terminal-selection/README.md) | Directory clicks in the workspace tree select the opened session's terminal tab |
 | [conversation-pdf.md](conversation-pdf.md) | [conversation-pdf](../tasks/conversation-pdf/README.md) | Print a session's entire Chat-level conversation from the transcript header menu |
@@ -109,6 +110,7 @@ Read them in order: later milestones build on the contracts defined in M0.
 | [review-fixes.md](review-fixes.md) | [review-fixes](../tasks/review-fixes/README.md) | Fixes from the 2026-11-14 architecture and feature review: release signing and supply chain, untrusted content reaching programs, redaction, watcher, RPC, chat and remote reliability, CI lint |
 | [code-completion.md](code-completion.md) | [code-completion](../tasks/code-completion/README.md) | Suggestions while typing in the Go to File editor: words and language completions everywhere, then the project's language server (members, imports, snippets, details), locally and over SSH/WSL |
 | [file-link-line-highlight.md](file-link-line-highlight.md) | [file-link-line-highlight](../tasks/file-link-line-highlight/README.md) | A file link with a line (`file:23`, `file#L23-L30`) marks those lines in the file viewer, as a gutter click does, instead of only scrolling to them |
+| [antigravity-cli.md](antigravity-cli.md) | [antigravity-cli](../tasks/antigravity-cli/README.md) | Antigravity CLI (`agy`) support: SQLite + JSONL transcript provider, live watcher, internal terminal launch/resume, and built-in `agy acp` chat |
 
 ## Supporting documents
 
@@ -159,6 +161,10 @@ Read them in order: later milestones build on the contracts defined in M0.
 
 **[codex-daemon-chat.md](codex-daemon-chat.md):**
 - [codex-daemon-chat-spike.md](codex-daemon-chat-spike.md): Why the daemon refuses the chat, and a bridge to it (2026-11-12)
+
+**[antigravity-cli.md](antigravity-cli.md):**
+- [antigravity-cli-spike.md](antigravity-cli-spike.md): Live `agy acp` and `~/.gemini/antigravity-cli/` storage verification spike (2026-11-19)
+- [antigravity-cli-delete.md](antigravity-cli-delete.md): What deleting an Antigravity session must remove (AGY-14 spike, 2026-11-19)
 
 Reference: [../formats.md](../formats.md) holds the verified on-disk formats
 of each tool; [../perf.md](../perf.md) holds performance measurements.

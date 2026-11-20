@@ -1,7 +1,7 @@
-export type AgentID = 'claude-code' | 'codex' | 'opencode' | string;
+export type AgentID = 'claude-code' | 'codex' | 'opencode' | 'antigravity' | string;
 
 export interface AgentSettings {
-  supported: { id: string; name: string }[];
+  supported: { id: string; name: string; note?: string }[];
   enabled: string[];
   active: string[];
   restartRequired: boolean;

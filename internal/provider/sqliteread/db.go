@@ -14,8 +14,9 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
 )
 
-// schemaTables is the complete set of table names used by the OpenCode and
-// Codex providers. In particular, it excludes credential and auth tables.
+// schemaTables is the complete set of table names used by the OpenCode, Codex
+// and Antigravity providers. In particular, it excludes credential and auth
+// tables.
 var schemaTables = map[string]bool{
 	"session_v2":         true,
 	"session_message":    true,
@@ -28,6 +29,9 @@ var schemaTables = map[string]bool{
 	"worktree":           true,
 	"threads":            true,
 	"thread_spawn_edges": true,
+
+	"conversation_summaries": true,
+	"conversation_parents":   true,
 }
 
 // dsn returns the read-only DSN for path. mode=ro makes SQLite refuse writes

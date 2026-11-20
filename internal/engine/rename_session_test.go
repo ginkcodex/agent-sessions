@@ -13,10 +13,10 @@ func TestRenameSessionPersistsAndRefreshes(t *testing.T) {
 	root := t.TempDir()
 	id := "12345678-1234-1234-1234-123456789abc"
 	path := filepath.Join(root, "projects", "fixture", id+".jsonl")
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("{\"type\":\"user\",\"sessionId\":\""+id+"\",\"message\":{\"content\":\"synthetic prompt\"}}\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("{\"type\":\"user\",\"sessionId\":\""+id+"\",\"message\":{\"content\":\"synthetic prompt\"}}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	e := NewEngine(WithRoots(paths.Roots{Claude: root, Config: t.TempDir()}), WithCacheEnabled(false))

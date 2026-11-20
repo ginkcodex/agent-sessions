@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"aead.dev/minisign"
+
 	"github.com/ginkcode/agent-sessions/internal/winmsi"
 )
 

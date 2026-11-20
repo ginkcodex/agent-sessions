@@ -9,16 +9,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/scan"
-	"reflect"
-	"strings"
-	"testing"
-	"time"
 )
 
 type historyMock struct {
@@ -43,21 +43,27 @@ func (b *historyMock) record(ctx context.Context, p any) error {
 	}
 	return b.errToReturn
 }
+
 func (b *historyMock) GitHistoryRepositories(ctx context.Context, dir string) (files.GitHistoryRepositoryList, error) {
 	return files.GitHistoryRepositoryList{Repositories: []files.GitHistoryRepository{{Path: "child", Name: "child"}}}, b.record(ctx, dir)
 }
+
 func (b *historyMock) GitHistoryBranches(ctx context.Context, p files.GitHistoryTarget) (files.GitHistoryRefList, error) {
 	return files.GitHistoryRefList{Head: "tip", Refs: []files.GitHistoryRef{{Ref: "refs/heads/main", OID: "tip"}}}, b.record(ctx, p)
 }
+
 func (b *historyMock) GitHistoryList(ctx context.Context, p files.GitHistoryListRequest) (files.GitHistoryPage, error) {
 	return files.GitHistoryPage{Tip: "tip", Cursor: "next", Commits: []files.GitHistorySummary{{OID: "commit", Subject: "subject"}}}, b.record(ctx, p)
 }
+
 func (b *historyMock) GitHistoryCommit(ctx context.Context, p files.GitHistoryCommitRequest) (files.GitHistoryCommitDetail, error) {
 	return files.GitHistoryCommitDetail{Message: "message", Changes: []files.GitHistoryChange{{Path: "file", Status: "D"}}}, b.record(ctx, p)
 }
+
 func (b *historyMock) ReadGitHistoryDiff(ctx context.Context, p files.GitHistoryDiffRequest) (files.GitHistoryDiff, error) {
 	return files.GitHistoryDiff{Commit: "commit", Kind: "text", Content: files.Content{Text: "text", Edit: &files.EditInfo{Reason: files.EditReadOnly}}}, b.record(ctx, p)
 }
+
 func startHistory(t *testing.T, b engine.Backend, caps Capabilities) (*Server, *Client, func()) {
 	t.Helper()
 	s, c, cleanup := setupPipePair(b)
@@ -69,6 +75,7 @@ func startHistory(t *testing.T, b engine.Backend, caps Capabilities) (*Server, *
 	}
 	return s, c, cleanup
 }
+
 func historyRPCCalls(c *Client, ctx context.Context) []func() error {
 	target := files.GitHistoryTarget{Dir: "/repo", Repo: "child"}
 	commit := files.GitHistoryCommitRequest{GitHistoryTarget: target, Tip: "tip", Commit: "commit"}
@@ -86,6 +93,7 @@ func historyRPCCalls(c *Client, ctx context.Context) []func() error {
 		},
 	}
 }
+
 func TestGitHistoryRPCRoundTrip(t *testing.T) {
 	b := &historyMock{mockBackend: &mockBackend{}}
 	_, c, cleanup := startHistory(t, b, Capabilities{GitHistory: true})
@@ -154,6 +162,7 @@ func TestGitHistoryRPCRoundTrip(t *testing.T) {
 		}
 	}
 }
+
 func TestGitHistoryCapabilities(t *testing.T) {
 	// An old peer's omitted capability prevents any wire request.
 	r, w := io.Pipe()
@@ -198,6 +207,7 @@ func TestGitHistoryCapabilities(t *testing.T) {
 		t.Fatal("off capability present")
 	}
 }
+
 func TestGitHistoryMalformedParams(t *testing.T) {
 	b := &historyMock{mockBackend: &mockBackend{}}
 	s, _, cleanup := startHistory(t, b, Capabilities{GitHistory: true})
@@ -215,6 +225,7 @@ func TestGitHistoryMalformedParams(t *testing.T) {
 		t.Fatal("malformed reached backend")
 	}
 }
+
 func TestGitHistoryCancellation(t *testing.T) {
 	for index := 0; index < 5; index++ {
 		t.Run(fmt.Sprint(index), func(t *testing.T) {
@@ -253,7 +264,7 @@ func TestGitHistoryCancellation(t *testing.T) {
 func TestGitHistoryEngineRPC(t *testing.T) {
 	root := t.TempDir()
 	child := filepath.Join(root, "child")
-	if err := os.Mkdir(child, 0700); err != nil {
+	if err := os.Mkdir(child, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	git := func(args ...string) {
@@ -268,7 +279,7 @@ func TestGitHistoryEngineRPC(t *testing.T) {
 	git("config", "commit.gpgsign", "false")
 	git("config", "user.name", "Test")
 	git("config", "user.email", "test@example.com")
-	if err := os.WriteFile(filepath.Join(child, "file"), []byte("immutable\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(child, "file"), []byte("immutable\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	git("add", "file")

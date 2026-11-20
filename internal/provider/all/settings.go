@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
 	"github.com/ginkcode/agent-sessions/internal/configfile"
 )
 

@@ -16,7 +16,7 @@ import (
 func TestGuardianScanTreeAndCounts(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "sessions", "2026", "11", "11")
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	const parent = "11111111-1111-1111-1111-111111111111"
@@ -27,7 +27,7 @@ func TestGuardianScanTreeAndCounts(t *testing.T) {
 			extra = `,"parent_thread_id":"` + parent + `","source":{"subagent":{"other":"guardian"}},"thread_source":"guardian_review"`
 		}
 		data := fmt.Sprintf("{\"type\":\"session_meta\",\"payload\":{\"id\":%q,\"cwd\":%q%s}}\n", id, root, extra)
-		if err := os.WriteFile(filepath.Join(dir, "rollout-2026-11-11T12-00-00-"+id+".jsonl"), []byte(data), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "rollout-2026-11-11T12-00-00-"+id+".jsonl"), []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

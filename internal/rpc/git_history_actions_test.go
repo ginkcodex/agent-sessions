@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/ginkcode/agent-sessions/internal/engine"
-	"github.com/ginkcode/agent-sessions/internal/files"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 type historyActionsMock struct{ *historyMock }
@@ -16,15 +17,19 @@ type historyActionsMock struct{ *historyMock }
 func (b *historyActionsMock) GitHistoryRefAction(ctx context.Context, p files.GitHistoryRefActionRequest) (files.GitHistoryRefActionResult, error) {
 	return files.GitHistoryRefActionResult{Action: p.Action}, b.record(ctx, p)
 }
+
 func (b *historyActionsMock) GitHistoryCompare(ctx context.Context, p files.GitHistoryCompareRequest) (files.GitHistoryComparison, error) {
 	return files.GitHistoryComparison{}, b.record(ctx, p)
 }
+
 func (b *historyActionsMock) ReadGitHistoryCompareDiff(ctx context.Context, p files.GitHistoryCompareDiffRequest) (files.GitHistoryCompareDiff, error) {
 	return files.GitHistoryCompareDiff{}, b.record(ctx, p)
 }
+
 func historyActionRequest() files.GitHistoryRefActionRequest {
 	return files.GitHistoryRefActionRequest{GitHistoryTarget: files.GitHistoryTarget{Dir: "/original", Repo: "nested"}, Action: "push", Ref: "refs/heads/main", ExpectedOID: "oid", ExpectedHead: files.GitHistoryHeadIdentity{SymbolicRef: "refs/heads/main", OID: "head"}, DraftPaths: []string{"file"}, AcknowledgeWholeRepository: true}
 }
+
 func TestHistoryActionRoundTripAndPermissions(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -95,6 +100,7 @@ func TestHistoryActionRoundTripAndPermissions(t *testing.T) {
 		})
 	}
 }
+
 func TestHistoryActionStrictDecode(t *testing.T) {
 	b := &historyActionsMock{&historyMock{mockBackend: &mockBackend{}}}
 	s, _, cleanup := startHistory(t, b, Capabilities{GitHistoryActions: true, SaveFile: true, GitWrite: true, GitSync: true})
@@ -133,6 +139,7 @@ func TestHistoryActionStrictDecode(t *testing.T) {
 		t.Fatal("invalid requests reached backend")
 	}
 }
+
 func TestHistoryActionRPCCancellation(t *testing.T) {
 	b := &historyActionsMock{&historyMock{mockBackend: &mockBackend{}, block: true, entered: make(chan struct{}), canceled: make(chan struct{})}}
 	_, c, cleanup := startHistory(t, b, Capabilities{GitHistoryActions: true, SaveFile: true, GitWrite: true, GitSync: true})

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { validatePortForward } from '../src/lib/portForward.ts';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
@@ -26,4 +27,12 @@ test('mock forwarding rules are isolated per SSH host and support lifecycle acti
   await mock.connect('dev-box');
   assert.equal((await mock.listPortForwards()).rules[0].id, id);
   assert.equal((await mock.removePortForward(id)).rules.length, 0);
+});
+
+test('compact rule rows keep a named, titled control for every action', () => {
+  const source = readFileSync(new URL('../src/lib/components/common/PortForwardDialog.svelte', import.meta.url), 'utf8');
+  const buttons = source.match(/<button[^>]*class="icon-btn[^>]*>/g) ?? [];
+  assert.equal(buttons.length, 5);
+  for (const button of buttons) assert.match(button, /aria-label="[^"]+".*title=/);
+  for (const name of ['external-link', 'copy', 'pencil', 'trash-2']) assert.match(source, new RegExp(`<Icon name="${name}" />`));
 });

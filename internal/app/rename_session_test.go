@@ -20,6 +20,7 @@ func (b *renameAppBackend) RenameSession(_ context.Context, ref model.SessionRef
 	b.title = title
 	return nil
 }
+
 func TestRenameSessionBindingActiveHostOnly(t *testing.T) {
 	remote := &renameAppBackend{}
 	a := &App{backend: remote}

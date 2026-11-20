@@ -19,6 +19,7 @@ func (a *App) gitWriteRoute(host string) (engine.GitWriteBackend, error) {
 	}
 	return b, nil
 }
+
 func (a *App) GitStage(dir, repo string, paths []string, host string) error {
 	b, err := a.gitWriteRoute(host)
 	if err != nil {
@@ -26,6 +27,7 @@ func (a *App) GitStage(dir, repo string, paths []string, host string) error {
 	}
 	return b.GitStage(a.appCtx(), dir, repo, paths)
 }
+
 func (a *App) GitUnstage(dir, repo string, paths []string, host string) error {
 	b, err := a.gitWriteRoute(host)
 	if err != nil {
@@ -33,6 +35,7 @@ func (a *App) GitUnstage(dir, repo string, paths []string, host string) error {
 	}
 	return b.GitUnstage(a.appCtx(), dir, repo, paths)
 }
+
 func (a *App) GitDiscard(dir, repo string, req files.GitDiscardRequest, host string) error {
 	b, err := a.gitWriteRoute(host)
 	if err != nil {
@@ -40,6 +43,7 @@ func (a *App) GitDiscard(dir, repo string, req files.GitDiscardRequest, host str
 	}
 	return b.GitDiscard(a.appCtx(), dir, repo, req)
 }
+
 func (a *App) GitCommit(dir, repo string, req files.GitCommitRequest, host string) error {
 	b, err := a.gitWriteRoute(host)
 	if err != nil {

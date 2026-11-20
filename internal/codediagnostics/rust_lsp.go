@@ -7,10 +7,12 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/managedtools"
 )
 
-const rustAnalyzerProviderID = "rust-analyzer"
-const rustLivePolicy = "rust-live-v1:pinned-managed:offline:locked:revalidate-inputs:approved-build-scripts-proc-macros"
-const rustLiveNotice = "Rust live analysis covers opened Rust documents with the reviewed workspace's default Cargo features and targets. Approved build scripts and procedural macros may execute and write build/cache output. Cargo is offline and locked; project code is not sandboxed. External changes are unwatched."
-const rustLiveUnpinnedNotice = "Rust live analysis requires this app's pinned managed rust-analyzer; an unrelated installed server cannot enforce the reviewed loading policy. Saved Cargo checking remains independent."
+const (
+	rustAnalyzerProviderID = "rust-analyzer"
+	rustLivePolicy         = "rust-live-v1:pinned-managed:offline:locked:revalidate-inputs:approved-build-scripts-proc-macros"
+	rustLiveNotice         = "Rust live analysis covers opened Rust documents with the reviewed workspace's default Cargo features and targets. Approved build scripts and procedural macros may execute and write build/cache output. Cargo is offline and locked; project code is not sandboxed. External changes are unwatched."
+	rustLiveUnpinnedNotice = "Rust live analysis requires this app's pinned managed rust-analyzer; an unrelated installed server cannot enforce the reviewed loading policy. Saved Cargo checking remains independent."
+)
 
 // rustLiveOptions is passed before rust-analyzer starts loading the workspace.
 // Verified against the pinned source: config.rs check_extra_args first clones
@@ -26,9 +28,11 @@ func rustLiveRegistration(p *RustPlan) Registration {
 // The predicate seam lets protocol tests use synthetic tool bytes, never an
 // actual Rust toolchain or downloads. Production always uses the managed pin.
 func rustLiveRegistrationWithPin(p *RustPlan, pinned func(string) bool) Registration {
-	state := ProviderState{ProviderID: rustAnalyzerProviderID, Availability: p.Availability(rustAnalyzerProviderID), Phase: "idle", Freshness: "uncertain",
+	state := ProviderState{
+		ProviderID: rustAnalyzerProviderID, Availability: p.Availability(rustAnalyzerProviderID), Phase: "idle", Freshness: "uncertain",
 		Coverage:           Coverage{Kind: "openedDocuments", Roots: p.Roots(), ExternalChanges: CoverageExternalChanges},
-		DocumentExtensions: []string{".rs"}, Notice: shorten(p.Notice(), 2048)}
+		DocumentExtensions: []string{".rs"}, Notice: shorten(p.Notice(), 2048),
+	}
 	live := &LiveRegistration{State: state}
 	registration := Registration{ProviderID: rustAnalyzerProviderID, Availability: state.Availability, Live: live}
 	// The shared plan is attached to live status too; collectPreparations dedupes

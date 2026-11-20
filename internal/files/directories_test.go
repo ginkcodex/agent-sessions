@@ -21,12 +21,12 @@ func TestListingIncludesEmptyDirectories(t *testing.T) {
 				if out, err := exec.Command("git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
 					t.Fatalf("git init: %v: %s", err, out)
 				}
-				if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored/\n"), 0600); err != nil {
+				if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored/\n"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
 			for _, path := range []string{"empty", "nested/empty", "ignored/hidden", "node_modules/hidden"} {
-				if err := os.MkdirAll(filepath.Join(root, path), 0700); err != nil {
+				if err := os.MkdirAll(filepath.Join(root, path), 0o700); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -52,17 +52,17 @@ func TestListingIncludesEmptyDirectories(t *testing.T) {
 
 func TestListingIncludesEmptyIgnoredDirectories(t *testing.T) {
 	root := listingTree(t, 0)
-	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("examples\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("examples\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	const empty = "courses/02-database/examples"
 	const populated = "courses/01-backend/examples"
 	for _, path := range []string{empty, populated} {
-		if err := os.MkdirAll(filepath.Join(root, path), 0700); err != nil {
+		if err := os.MkdirAll(filepath.Join(root, path), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(root, populated, "example.txt"), []byte("example"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, populated, "example.txt"), []byte("example"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out, err := List(context.Background(), root)
@@ -87,7 +87,7 @@ func TestDirectoryListingCap(t *testing.T) {
 	root := t.TempDir()
 	// Test the walker directly so the cap is independent of installed git.
 	for i := 0; i <= limit; i++ {
-		if err := os.Mkdir(filepath.Join(root, fmt.Sprintf("d%05d", i)), 0700); err != nil {
+		if err := os.Mkdir(filepath.Join(root, fmt.Sprintf("d%05d", i)), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}

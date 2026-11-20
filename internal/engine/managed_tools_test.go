@@ -35,6 +35,7 @@ func (f *fakeManagedInstaller) Discover(tool string) (string, error) {
 	}
 	return "", os.ErrNotExist
 }
+
 func (f *fakeManagedInstaller) Runtime(string) (string, error) {
 	return "/backend/private/node", nil
 }

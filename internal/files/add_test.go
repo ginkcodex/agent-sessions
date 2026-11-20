@@ -11,7 +11,7 @@ func TestAddSafeTarget(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(t.TempDir(), "source")
 	data := []byte{0, 255, 1, 2}
-	if err := os.WriteFile(source, data, 0600); err != nil {
+	if err := os.WriteFile(source, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	f, err := OpenAddSource(source)
@@ -19,9 +19,9 @@ func TestAddSafeTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	os.Mkdir(filepath.Join(root, "sub"), 0700)
-	os.Mkdir(filepath.Join(root, ".git"), 0700)
-	os.Mkdir(filepath.Join(root, "store"), 0700)
+	os.Mkdir(filepath.Join(root, "sub"), 0o700)
+	os.Mkdir(filepath.Join(root, ".git"), 0o700)
+	os.Mkdir(filepath.Join(root, "store"), 0o700)
 	os.Symlink(filepath.Join(root, "sub"), filepath.Join(root, "link"))
 	policy := EditPolicy{ProtectedRoots: []string{filepath.Join(root, "store")}}
 	for _, path := range []string{"../escape", "sub/../escape", "/absolute", ".git/config", "auth.json", "store/new", "link/new", "missing/new"} {

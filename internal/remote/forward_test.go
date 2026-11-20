@@ -24,6 +24,7 @@ func TestForwardTargetValidation(t *testing.T) {
 		}
 	}
 }
+
 func TestForwardCommand(t *testing.T) {
 	cmd, err := BuildForwardCmd(context.Background(), "server", "::1", 5432, 15432, SSHOptions{Binary: "ssh", ConfigFile: "/test/config"})
 	if err != nil {

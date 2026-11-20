@@ -193,6 +193,24 @@
                     {/if}
                   </div>
                 </div>
+              {:else if importer.bundle.profile === 'complete'}
+                <div class="action-card info-card">
+                  <div class="card-info">
+                    <h4>Restore Not Supported Yet</h4>
+                    <p>
+                      This complete bundle keeps the session's original {importer.bundle.source.agent} records,
+                      but the app cannot import them into {importer.bundle.source.agent} yet. You can continue
+                      the session in any supported coding agent using the cross-agent handoff.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn primary-btn"
+                    onclick={() => importer.setTab('handoff')}
+                  >
+                    Continue in Agent…
+                  </button>
+                </div>
               {:else}
                 <div class="action-card info-card">
                   <div class="card-info">

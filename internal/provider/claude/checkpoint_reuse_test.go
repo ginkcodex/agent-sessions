@@ -69,7 +69,7 @@ func TestCheckpointReuseIdentityAndReset(t *testing.T) {
 	info, _ := os.Stat(path)
 	data, _ := os.ReadFile(path)
 	replacement := path + ".replacement"
-	if err := os.WriteFile(replacement, data, 0600); err != nil {
+	if err := os.WriteFile(replacement, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chtimes(replacement, info.ModTime(), info.ModTime()); err != nil {
@@ -94,15 +94,15 @@ func TestCheckpointReuseIdentityAndReset(t *testing.T) {
 func TestCheckpointReuseSidecarRemoval(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "projects", "project", "parent", "subagents")
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "agent-a1.jsonl")
 	metaPath := filepath.Join(dir, "agent-a1.meta.json")
-	if err := os.WriteFile(path, []byte("{\"type\":\"user\",\"message\":{\"content\":\"fallback\"}}\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("{\"type\":\"user\",\"message\":{\"content\":\"fallback\"}}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(metaPath, []byte(`{"description":"sidecar","agentType":"Explore"}`), 0600); err != nil {
+	if err := os.WriteFile(metaPath, []byte(`{"description":"sidecar","agentType":"Explore"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	p := New(root, nil)
@@ -134,7 +134,7 @@ func TestCheckpointReuseRewriteAndTruncate(t *testing.T) {
 	}
 	info, _ := os.Stat(path)
 	data = []byte(strings.ReplaceAll(string(data), "Fix the login bug", "Fix the other bug"))
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	stamp := info.ModTime().Add(time.Second)
@@ -145,7 +145,7 @@ func TestCheckpointReuseRewriteAndTruncate(t *testing.T) {
 	if err != nil || len(rewritten.Changed) != 1 || rewritten.Changed[0].FirstPrompt != "Fix the other bug" {
 		t.Fatalf("rewrite: %+v %v", rewritten.Changed, err)
 	}
-	if err := os.WriteFile(path, []byte("{\"type\":\"user\",\"message\":{\"content\":\"short\"}}\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("{\"type\":\"user\",\"message\":{\"content\":\"short\"}}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	truncated, err := p.Scan(context.Background(), rewritten.State)

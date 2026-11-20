@@ -152,8 +152,11 @@ func GitRepoStatus(ctx context.Context, root string) (RepoStatus, error) {
 	}
 	// Per-worktree state lives in the worktree's gitdir, not the common dir.
 	for _, op := range []struct{ marker, name string }{
-		{"rebase-merge", "rebase"}, {"rebase-apply", "rebase"},
-		{"MERGE_HEAD", "merge"}, {"CHERRY_PICK_HEAD", "cherry-pick"}, {"REVERT_HEAD", "revert"},
+		{"rebase-merge", "rebase"},
+		{"rebase-apply", "rebase"},
+		{"MERGE_HEAD", "merge"},
+		{"CHERRY_PICK_HEAD", "cherry-pick"},
+		{"REVERT_HEAD", "revert"},
 		{"sequencer", "sequencer"},
 	} {
 		_, err := os.Stat(filepath.Join(strings.TrimSuffix(string(gitdir), "\n"), op.marker))

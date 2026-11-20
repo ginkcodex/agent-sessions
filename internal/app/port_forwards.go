@@ -150,6 +150,7 @@ func (p *portForwards) sync(st ConnectionState, opts remote.SSHOptions) {
 		}
 	}
 }
+
 func (p *portForwards) snapshotLocked() PortForwardSnapshot {
 	out := PortForwardSnapshot{Host: p.host, Rules: []PortForwardRule{}}
 	for _, rule := range p.saved[p.host] {
@@ -164,6 +165,7 @@ func (p *portForwards) snapshotLocked() PortForwardSnapshot {
 	}
 	return out
 }
+
 func (p *portForwards) persistLocked(saved map[string][]PortForwardRequest) error {
 	if p.loadErr != nil {
 		return fmt.Errorf("read port forwards: %w", p.loadErr)
@@ -172,7 +174,7 @@ func (p *portForwards) persistLocked(saved map[string][]PortForwardRequest) erro
 	if err != nil {
 		return err
 	}
-	if err = os.MkdirAll(filepath.Dir(p.path), 0700); err != nil {
+	if err = os.MkdirAll(filepath.Dir(p.path), 0o700); err != nil {
 		return err
 	}
 	f, err := os.CreateTemp(filepath.Dir(p.path), ".port-forwards-*")
@@ -194,6 +196,7 @@ func (p *portForwards) persistLocked(saved map[string][]PortForwardRequest) erro
 	p.saved = saved
 	return nil
 }
+
 func (p *portForwards) startLocked(rule PortForwardRequest) {
 	if p.runs[rule.ID] != nil {
 		return
@@ -294,9 +297,11 @@ func (a *App) withForwards(fn func(*portForwards) error) (PortForwardSnapshot, e
 	err := fn(p)
 	return p.snapshotLocked(), err
 }
+
 func (a *App) ListPortForwards() (PortForwardSnapshot, error) {
 	return a.withForwards(func(p *portForwards) error { return nil })
 }
+
 func (a *App) SavePortForward(rule PortForwardRequest) (PortForwardSnapshot, error) {
 	return a.withForwards(func(p *portForwards) error {
 		if p.host == "" {
@@ -343,6 +348,7 @@ func (a *App) SavePortForward(rule PortForwardRequest) (PortForwardSnapshot, err
 		return nil
 	})
 }
+
 func (a *App) StartPortForward(id string) (PortForwardSnapshot, error) {
 	return a.withForwards(func(p *portForwards) error {
 		if a.conn.stopped || !p.connected {
@@ -357,6 +363,7 @@ func (a *App) StartPortForward(id string) (PortForwardSnapshot, error) {
 		return fmt.Errorf("port forward not found")
 	})
 }
+
 func (a *App) StopPortForward(id string) (PortForwardSnapshot, error) {
 	return a.withForwards(func(p *portForwards) error {
 		for _, rule := range p.saved[p.host] {
@@ -372,6 +379,7 @@ func (a *App) StopPortForward(id string) (PortForwardSnapshot, error) {
 		return fmt.Errorf("port forward not found")
 	})
 }
+
 func (a *App) RemovePortForward(id string) (PortForwardSnapshot, error) {
 	return a.withForwards(func(p *portForwards) error {
 		err := p.updateLocked(func(saved map[string][]PortForwardRequest) error {

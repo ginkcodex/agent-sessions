@@ -13,13 +13,14 @@ import (
 func statusWrite(t *testing.T, root, path, text string) {
 	t.Helper()
 	p := filepath.Join(root, path)
-	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte(text), 0600); err != nil {
+	if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
+
 func repoStatus(t *testing.T, root string) RepoStatus {
 	t.Helper()
 	out, err := GitRepoStatus(context.Background(), root)
@@ -28,6 +29,7 @@ func repoStatus(t *testing.T, root string) RepoStatus {
 	}
 	return out
 }
+
 func TestRepoStatusChanges(t *testing.T) {
 	root, git := blameRepo(t)
 	oldName, newName, untracked := awkwardName("old name"), awkwardName("new name"), awkwardName("untracked space")
@@ -74,6 +76,7 @@ func TestRepoStatusChanges(t *testing.T) {
 		t.Fatalf("detached: %+v", detached)
 	}
 }
+
 func TestRepoStatusUpstream(t *testing.T) {
 	root, git := blameRepo(t)
 	statusWrite(t, root, "base", "base")
@@ -95,6 +98,7 @@ func TestRepoStatusUpstream(t *testing.T) {
 		t.Fatalf("counts: %+v", got)
 	}
 }
+
 func TestRepoStatusConflictAndWorktree(t *testing.T) {
 	root, git := blameRepo(t)
 	statusWrite(t, root, "file", "base\n")
@@ -122,7 +126,7 @@ func TestRepoStatusConflictAndWorktree(t *testing.T) {
 	for marker, op := range map[string]string{"rebase-merge": "rebase", "rebase-apply": "rebase", "CHERRY_PICK_HEAD": "cherry-pick", "REVERT_HEAD": "revert"} {
 		path := filepath.Join(gitdir, marker)
 		if strings.HasPrefix(marker, "rebase") {
-			if err := os.Mkdir(path, 0700); err != nil {
+			if err := os.Mkdir(path, 0o700); err != nil {
 				t.Fatal(err)
 			}
 		} else {
@@ -138,6 +142,7 @@ func TestRepoStatusConflictAndWorktree(t *testing.T) {
 		os.Remove(path)
 	}
 }
+
 func mustGitOutput(t *testing.T, root string, args ...string) []byte {
 	t.Helper()
 	out, err := exec.Command("git", append([]string{"-C", root}, args...)...).Output()
@@ -146,6 +151,7 @@ func mustGitOutput(t *testing.T, root string, args ...string) []byte {
 	}
 	return out
 }
+
 func TestRepoStatusUnavailableAndCancel(t *testing.T) {
 	root := t.TempDir()
 	got := repoStatus(t, root)
@@ -169,6 +175,7 @@ func TestRepoStatusUnavailableAndCancel(t *testing.T) {
 		t.Fatalf("no git: %+v", got)
 	}
 }
+
 func TestRepositoryUnavailableReason(t *testing.T) {
 	for stderr, want := range map[string]string{
 		"fatal: not a git repository (or any of the parent directories): .git":                                                                                                "This project is not in a Git repository.",
@@ -180,6 +187,7 @@ func TestRepositoryUnavailableReason(t *testing.T) {
 		}
 	}
 }
+
 func TestRepoStatusCapAndCopyParser(t *testing.T) {
 	var out strings.Builder
 	out.WriteString("# branch.oid (initial)\x00# branch.head main\x00")
@@ -225,6 +233,7 @@ func TestRepoStatusSubdirectoryRenames(t *testing.T) {
 		t.Fatalf("missing internal rename: %+v", got)
 	}
 }
+
 func TestRepoStatusSubmoduleXY(t *testing.T) {
 	got, err := parseRepoStatus([]byte("1 .M S.MU 160000 160000 160000 abc def module\x00"), "/repo", "/repo")
 	if err != nil || len(got.Entries) != 1 || got.Entries[0].Index != "" || got.Entries[0].Worktree != "M" {

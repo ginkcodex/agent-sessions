@@ -328,7 +328,7 @@ func TestRestoredCodexRolloutName(t *testing.T) {
 
 func TestRestoreCodexLegacyBundleCanonicalPreviewStable(t *testing.T) {
 	roots := testRoots(t)
-	if err := os.MkdirAll(roots.Codex, 0700); err != nil {
+	if err := os.MkdirAll(roots.Codex, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 11, 12, 1, 2, 3, 0, time.UTC)

@@ -296,3 +296,36 @@ func TestSearchTerms(t *testing.T) {
 		}
 	}
 }
+
+// An agent: prefix with no filter selects from every agent, Antigravity too.
+func TestSearchAgentPrefixAntigravity(t *testing.T) {
+	ctx := context.Background()
+	db, err := index.Open(ctx, t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	fakes := provider.Set{}
+	for _, agent := range []model.AgentID{model.AgentAntigravity, model.AgentCodex} {
+		ref := model.SessionRef{Agent: agent, ID: "s-" + string(agent)}
+		fake := providertest.NewFake(agent, string(agent))
+		fake.Transcripts[ref.ID] = &model.Transcript{
+			Meta:     model.SessionMeta{Ref: ref, Title: "gravity", CWD: "/work", UpdatedAt: time.Now()},
+			Messages: []model.Message{{Role: model.RoleUser, Parts: []model.Part{{Kind: model.PartText, Text: "orbit check"}}}},
+		}
+		if err := db.CommitScan(ctx, agent, provider.ScanResult{Changed: []model.SessionMeta{fake.Transcripts[ref.ID].Meta}}); err != nil {
+			t.Fatalf("CommitScan: %v", err)
+		}
+		fakes = append(fakes, fake)
+	}
+	if err := db.IndexPending(ctx, index.ProviderLoader(fakes), nil); err != nil {
+		t.Fatalf("IndexPending: %v", err)
+	}
+	hits, err := db.Search(ctx, "orbit agent:antigravity", index.SearchFilter{})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(hits) != 1 || hits[0].Ref.Agent != model.AgentAntigravity {
+		t.Fatalf("hits = %+v, want one Antigravity session", hits)
+	}
+}

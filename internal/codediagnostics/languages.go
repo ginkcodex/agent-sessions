@@ -134,8 +134,10 @@ func DisabledRegistrations(root AuthorizedRoot, off DisabledLanguages) []Registr
 			continue
 		}
 		for _, id := range l.Live {
-			state := ProviderState{ProviderID: id, Availability: "disabled", Notice: disabledNotice, Phase: "idle", Freshness: "uncertain",
-				Coverage: Coverage{Kind: "openedDocuments", Roots: []string{}, ExternalChanges: CoverageExternalChanges}}
+			state := ProviderState{
+				ProviderID: id, Availability: "disabled", Notice: disabledNotice, Phase: "idle", Freshness: "uncertain",
+				Coverage: Coverage{Kind: "openedDocuments", Roots: []string{}, ExternalChanges: CoverageExternalChanges},
+			}
 			out = append(out, Registration{ProviderID: id, Availability: "disabled", Live: &LiveRegistration{State: state}})
 		}
 		for _, id := range l.Saved {

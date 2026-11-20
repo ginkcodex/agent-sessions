@@ -424,7 +424,7 @@ func renderSnippet(excerpt string) string {
 
 func intersectAgents(filter []model.AgentID, parsed []string) []model.AgentID {
 	if len(filter) == 0 {
-		filter = []model.AgentID{model.AgentClaude, model.AgentCodex, model.AgentOpenCode}
+		filter = []model.AgentID{model.AgentClaude, model.AgentCodex, model.AgentOpenCode, model.AgentAntigravity}
 	}
 	var out []model.AgentID
 	for _, a := range filter {

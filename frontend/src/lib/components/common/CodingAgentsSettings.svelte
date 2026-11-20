@@ -62,6 +62,7 @@
             disabled={agentSettings.selected.length === 1 && agentSettings.selected.includes(agent.id)}
             onchange={event => agentSettings.toggle(agent.id, event.currentTarget.checked)} />
           <span>{agent.name}</span>
+          {#if agent.note}<span class="note">{agent.note}</span>{/if}
         </label>
       {/each}
     </fieldset>
@@ -91,6 +92,7 @@
   legend { font-size: 12px; font-weight: 600; margin-bottom: 10px; }
   label { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-size: 13px; }
   input { accent-color: var(--accent-color); }
+  .note { color: var(--text-secondary); font-size: 12px; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
   button { padding: 5px 12px; border-radius: var(--radius-sm); background: var(--btn-bg); color: var(--text-primary); font-weight: 500; cursor: pointer; transition: background-color var(--dur-fast) var(--ease-out); }
   button:hover:not(:disabled) { background: var(--btn-bg-hover); }

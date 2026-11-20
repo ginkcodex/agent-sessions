@@ -17,8 +17,10 @@ func cargoMessage(path, level string, start, end int, source string) string {
 	return string(b) + "\n"
 }
 
-const cargoSuccess = "{\"reason\":\"build-finished\",\"success\":true}\n"
-const cargoFailure = "{\"reason\":\"build-finished\",\"success\":false}\n"
+const (
+	cargoSuccess = "{\"reason\":\"build-finished\",\"success\":true}\n"
+	cargoFailure = "{\"reason\":\"build-finished\",\"success\":false}\n"
+)
 
 func TestCargoCheckParserCompletion(t *testing.T) {
 	root := vetRoot(t, map[string]string{"src/lib.rs": "é😀 x\r\nnext\n"})
@@ -57,6 +59,7 @@ func TestCargoCheckParserCompletion(t *testing.T) {
 		})
 	}
 }
+
 func TestCargoCheckSourceContainmentAndCoordinates(t *testing.T) {
 	root := vetRoot(t, map[string]string{"src/lib.rs": "é😀 x\r\nnext\n", "target/generated.rs": "x"})
 	for _, tc := range []struct {
@@ -108,7 +111,7 @@ func TestCargoCheckSourceContainmentAndCoordinates(t *testing.T) {
 	if err != nil || !parsed.validateSources(root) {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root.Project().Root, "src/lib.rs"), []byte("changed"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root.Project().Root, "src/lib.rs"), []byte("changed"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if parsed.validateSources(root) {
@@ -124,7 +127,7 @@ func cargoTestPlan(t *testing.T) *CargoCheckPlan {
 		if runtime.GOOS == "windows" {
 			name += ".exe"
 		}
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("fake tool identity, never executed"), 0700); err != nil {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("fake tool identity, never executed"), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -135,6 +138,7 @@ func cargoTestPlan(t *testing.T) *CargoCheckPlan {
 	}
 	return p
 }
+
 func TestCargoCheckFixtureUsesHostExecutableNames(t *testing.T) {
 	p := cargoTestPlan(t)
 	suffix := ""
@@ -159,7 +163,7 @@ func TestCargoCheckSupervisor(t *testing.T) {
 			}
 			tools := p.Tools()
 			extra := filepath.Join(t.TempDir(), "other-tool")
-			if err := os.WriteFile(extra, []byte("reviewed"), 0700); err != nil {
+			if err := os.WriteFile(extra, []byte("reviewed"), 0o700); err != nil {
 				t.Fatal(err)
 			}
 			tools = append(tools, ToolInput{ProviderID: "other-provider", Executable: extra, Policy: "other-policy"})
@@ -190,7 +194,7 @@ func TestCargoCheckSupervisor(t *testing.T) {
 					text = cargoMessage("src/lib.rs", "error", 2, 6, "é😀 x")
 					proc.exit = 101
 				case "config-during":
-					if err := os.WriteFile(filepath.Join(p.root.Project().Root, "Cargo.lock"), []byte("changed"), 0600); err != nil {
+					if err := os.WriteFile(filepath.Join(p.root.Project().Root, "Cargo.lock"), []byte("changed"), 0o600); err != nil {
 						t.Error(err)
 					}
 				case "source-during":
@@ -205,15 +209,15 @@ func TestCargoCheckSupervisor(t *testing.T) {
 			}})
 			defer s.Close()
 			if mode == "config-created" {
-				if err := os.MkdirAll(filepath.Join(p.root.Project().Root, ".cargo"), 0700); err != nil {
+				if err := os.MkdirAll(filepath.Join(p.root.Project().Root, ".cargo"), 0o700); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(filepath.Join(p.root.Project().Root, ".cargo/config.toml"), []byte("[build]\njobs=1\n"), 0600); err != nil {
+				if err := os.WriteFile(filepath.Join(p.root.Project().Root, ".cargo/config.toml"), []byte("[build]\njobs=1\n"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if mode == "composite-change" {
-				if err := os.WriteFile(extra, []byte("changed"), 0700); err != nil {
+				if err := os.WriteFile(extra, []byte("changed"), 0o700); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -242,7 +246,7 @@ func TestCargoCheckRevalidatesInputsAtLaunch(t *testing.T) {
 		t.Fatal("Cargo command does not re-enumerate inputs at launch")
 	}
 	blockerExe := filepath.Join(t.TempDir(), "blocker")
-	if err := os.WriteFile(blockerExe, []byte("reviewed"), 0700); err != nil {
+	if err := os.WriteFile(blockerExe, []byte("reviewed"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	blocker := Command{ProviderID: "blocker", Executable: blockerExe, AdapterPolicy: "blocker-v1", AcceptedExits: []int{0}}
@@ -261,10 +265,10 @@ func TestCargoCheckRevalidatesInputsAtLaunch(t *testing.T) {
 	queued := submit(t, s, p.root, tools, c, "cargo")
 	// A newly created config is not in the approved ConfigPaths, so only
 	// re-enumeration can detect it.
-	if err := os.MkdirAll(filepath.Join(p.root.Project().Root, ".cargo"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(p.root.Project().Root, ".cargo"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(p.root.Project().Root, ".cargo/config.toml"), []byte("[net]\noffline=true\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(p.root.Project().Root, ".cargo/config.toml"), []byte("[net]\noffline=true\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_ = running.process.Terminate()

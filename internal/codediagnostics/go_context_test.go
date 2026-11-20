@@ -514,8 +514,12 @@ func TestGoContextWatcherFanOutExactSessions(t *testing.T) {
 	})
 	cfgOf := func(file string) ServerConfig { return docs.ResolveAll(root, file)[0].Config }
 	changes := []FileChange{
-		{Path: "tagged.go", Kind: 2}, {Path: "ordinary.go", Kind: 1}, {Path: "gone.go", Kind: 3},
-		{Path: "notes.txt", Kind: 2}, {Path: "../escape.go", Kind: 2}, {Path: "tagged.go", Kind: 9},
+		{Path: "tagged.go", Kind: 2},
+		{Path: "ordinary.go", Kind: 1},
+		{Path: "gone.go", Kind: 3},
+		{Path: "notes.txt", Kind: 2},
+		{Path: "../escape.go", Kind: 2},
+		{Path: "tagged.go", Kind: 9},
 	}
 	// No session runs: the watcher never launches one.
 	if err := docs.WatchedFiles(context.Background(), root, changes); err == nil || e.launches() != 0 {

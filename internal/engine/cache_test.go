@@ -19,7 +19,7 @@ import (
 // testRoots are the provider roots of sharedEngine; testKey names its index.
 var (
 	testRoots = paths.Roots{Claude: "/nonexistent/claude"}
-	testKey   = index.RootsKey(testRoots.Claude, testRoots.Codex, testRoots.OpenCodeData, `agents-v1:["claude-code"]`)
+	testKey   = index.RootsKey(testRoots.Claude, testRoots.Codex, testRoots.OpenCodeData, testRoots.Antigravity, `agents-v1:["claude-code"]`)
 )
 
 func sharedEngine(t *testing.T, dir string, fake *providertest.Fake) *Engine {
@@ -204,6 +204,17 @@ func TestSharedCache_DifferentRootsDoNotShare(t *testing.T) {
 	}
 	if _, ok := b.Service().Catalog().Get(claudeSession("mine").Ref); ok {
 		t.Error("catalog has the other roots' session")
+	}
+}
+
+// Each provider root is part of the index key, the Antigravity store too.
+func TestIndexKeyIncludesAntigravityRoot(t *testing.T) {
+	key := func(r paths.Roots) string {
+		return NewEngine(WithRoots(r), WithService(NewService(scan.NewCatalog(), nil))).indexKey()
+	}
+	a := key(paths.Roots{Claude: "/c", Antigravity: "/agy/one"})
+	if a == key(paths.Roots{Claude: "/c", Antigravity: "/agy/two"}) || a != key(paths.Roots{Claude: "/c", Antigravity: "/agy/one/"}) {
+		t.Fatal("index key ignores the Antigravity root")
 	}
 }
 

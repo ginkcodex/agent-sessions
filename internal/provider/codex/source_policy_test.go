@@ -58,7 +58,7 @@ func TestSourceProductionBypass(t *testing.T) {
 	}
 	for i := range 3 {
 		// Rapid mutation never causes proof/rebuild cycles in production.
-		f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -110,7 +110,7 @@ func TestSourceProductionBypass(t *testing.T) {
 
 func TestSourceProductionOversizeBypass(t *testing.T) {
 	p, ref, path := syntheticRollout(t, record("session_meta", `{"id":"fixture"}`))
-	f, err := os.OpenFile(path, os.O_WRONLY, 0600)
+	f, err := os.OpenFile(path, os.O_WRONLY, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func BenchmarkSourceBlobPolicy(b *testing.B) {
 			// Fixture's user message is at this byte offset; replaced below with
 			// an attachment so the benchmark extracts a real, identical Blob.
 			path := tr.Meta.SourcePath
-			f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+			f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
 			if err != nil {
 				b.Fatal(err)
 			}

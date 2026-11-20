@@ -15,7 +15,7 @@ var ErrPathOutsideRoot = errors.New("path is outside the provider root")
 
 func isProtectedName(name string) bool {
 	switch name {
-	case "auth.json", "history.jsonl", "file-history", "session-env", "storage":
+	case "auth.json", "history.jsonl", "file-history", "session-env", "storage", "antigravity-oauth-token":
 		return true
 	}
 	return strings.HasPrefix(name, ".credentials") || strings.HasPrefix(name, "opencode.db") || (strings.HasPrefix(name, "state_") && strings.HasSuffix(name, ".sqlite"))

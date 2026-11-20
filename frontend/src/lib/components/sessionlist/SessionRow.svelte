@@ -70,6 +70,7 @@
     if (agent === 'claude-code') return 'Claude Code';
     if (agent === 'codex') return 'Codex';
     if (agent === 'opencode') return 'OpenCode';
+    if (agent === 'antigravity') return 'Antigravity';
     return agent || 'Session';
   });
   let bulkSelected = $derived(manage.isRefSelected(session.ref));
@@ -240,6 +241,7 @@
   .session-row.agent-claude-code { --row-agent: var(--agent-claude); }
   .session-row.agent-codex { --row-agent: var(--agent-codex); }
   .session-row.agent-opencode { --row-agent: var(--agent-opencode); }
+  .session-row.agent-antigravity { --row-agent: var(--agent-antigravity); }
 
   .session-row:hover {
     background-color: var(--hover-bg);

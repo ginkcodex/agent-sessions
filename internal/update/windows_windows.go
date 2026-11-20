@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ginkcode/agent-sessions/internal/winmsi"
 	"golang.org/x/sys/windows"
+
+	"github.com/ginkcode/agent-sessions/internal/winmsi"
 )
 
 // SystemWindows describes the running app, with the real Windows Installer

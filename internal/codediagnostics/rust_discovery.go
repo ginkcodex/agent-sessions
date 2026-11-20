@@ -17,12 +17,15 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
 	"github.com/ginkcode/agent-sessions/internal/managedtools"
 )
 
-const rustDiscoveryPolicy = "rust-discovery-v1:contained:offline:locked:build-scripts-proc-macros-approved:no-inherited-flags:no-auto-install"
-const maxRustEntries = 8192
-const maxRustManifests = 64
+const (
+	rustDiscoveryPolicy = "rust-discovery-v1:contained:offline:locked:build-scripts-proc-macros-approved:no-inherited-flags:no-auto-install"
+	maxRustEntries      = 8192
+	maxRustManifests    = 64
+)
 
 // RustEnvironment contains reviewed host paths, never inherited Rust flags or
 // wrappers. Empty CargoHome/RustupHome use the conventional directories in Home.
@@ -53,6 +56,7 @@ func (p *RustPlan) Rustc() string         { return p.rustc }
 func (p *RustPlan) Cargo() (string, bool) {
 	return p.cargo, p.Availability("cargo-check") == "available"
 }
+
 func (p *RustPlan) RustAnalyzer() (string, bool) {
 	return p.analyzer, p.Availability("rust-analyzer") == "available"
 }
@@ -242,6 +246,7 @@ func rustStrings(v any) ([]string, bool) {
 	}
 	return out, true
 }
+
 func rustDecode(data []byte) (map[string]any, error) {
 	var m map[string]any
 	_, err := toml.Decode(string(data), &m)
@@ -505,6 +510,7 @@ func (p *RustPlan) discoverProject() error {
 func rustWithin(parent, child string) bool {
 	return parent == "" || parent == child || strings.HasPrefix(child, parent+"/")
 }
+
 func rustJoin(base, target string) string {
 	s := filepath.ToSlash(filepath.Clean(filepath.Join(filepath.FromSlash(base), filepath.FromSlash(target))))
 	if s == "." {
@@ -512,6 +518,7 @@ func rustJoin(base, target string) string {
 	}
 	return s
 }
+
 func rustMatchAny(patterns []string, path string) (bool, error) {
 	for _, pat := range patterns {
 		ok, err := filepath.Match(filepath.FromSlash(pat), filepath.FromSlash(path))
@@ -524,6 +531,7 @@ func rustMatchAny(patterns []string, path string) (bool, error) {
 	}
 	return false, nil
 }
+
 func rustManifestReferences(raw map[string]any, base, target string) bool {
 	found := false
 	var scan func(any)
@@ -540,6 +548,7 @@ func rustManifestReferences(raw map[string]any, base, target string) bool {
 	scan(raw)
 	return found
 }
+
 func (p *RustPlan) validateManifestPaths(base string, raw map[string]any) error {
 	var scan func(any) error
 	scan = func(v any) error {
@@ -692,6 +701,7 @@ func (p *RustPlan) readHost(path string) ([]byte, bool, error) {
 	p.hostInputs = append(p.hostInputs, path)
 	return data, true, nil
 }
+
 func (p *RustPlan) discoverHost() error {
 	// Cargo reads config in all ancestors, independently of workspace boundaries.
 	// Read ancestors deliberately, but never add their packages to execution roots.
@@ -886,6 +896,7 @@ func rustToolchainSelection(data []byte, tomlFile bool) (rustSelection, error) {
 	sel.name = name
 	return sel, nil
 }
+
 func (p *RustPlan) resolveTools() error {
 	// Apply the nearest toolchain file for every execution root, requiring one
 	// concrete selection for a plan. Never silently choose one nested selection.

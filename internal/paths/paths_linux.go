@@ -27,6 +27,15 @@ func FromEnv(getenv func(string) string, home string) Roots {
 		codex = filepath.Clean(codex)
 	}
 
+	// ANTIGRAVITY_CLI_DIR is this app's own override: agy reads no variable
+	// for its store, which only `agy acp --gemini-dir` moves.
+	antigravity := getenv("ANTIGRAVITY_CLI_DIR")
+	if !filepath.IsAbs(antigravity) {
+		antigravity = filepath.Join(home, ".gemini", "antigravity-cli")
+	} else {
+		antigravity = filepath.Clean(antigravity)
+	}
+
 	dataHome := getenv("XDG_DATA_HOME")
 	var openCodeData string
 	var appData string
@@ -58,6 +67,7 @@ func FromEnv(getenv func(string) string, home string) Roots {
 		Claude:       claude,
 		Codex:        codex,
 		OpenCodeData: openCodeData,
+		Antigravity:  antigravity,
 		Cache:        cache,
 		Config:       config,
 		Data:         appData,

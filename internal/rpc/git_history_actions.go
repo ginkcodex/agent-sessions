@@ -3,12 +3,15 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
-var _ engine.GitHistoryActionsBackend = (*Client)(nil)
-var _ engine.GitHistoryCompareBackend = (*Client)(nil)
+var (
+	_ engine.GitHistoryActionsBackend = (*Client)(nil)
+	_ engine.GitHistoryCompareBackend = (*Client)(nil)
+)
 
 func (c *Client) GitHistoryRefAction(ctx context.Context, req files.GitHistoryRefActionRequest) (files.GitHistoryRefActionResult, error) {
 	if !c.caps.GitHistoryActions || !c.caps.GitWrite || !c.caps.SaveFile || (req.Action == "push" && !c.caps.GitSync) {
@@ -18,6 +21,7 @@ func (c *Client) GitHistoryRefAction(ctx context.Context, req files.GitHistoryRe
 	err := c.call(ctx, "gitHistoryRefAction", req, &out)
 	return out, err
 }
+
 func (c *Client) GitHistoryCompare(ctx context.Context, req files.GitHistoryCompareRequest) (files.GitHistoryComparison, error) {
 	if !c.caps.GitHistoryCompare {
 		return files.GitHistoryComparison{}, engine.ErrUnsupportedAction
@@ -26,6 +30,7 @@ func (c *Client) GitHistoryCompare(ctx context.Context, req files.GitHistoryComp
 	err := c.call(ctx, "gitHistoryCompare", req, &out)
 	return out, err
 }
+
 func (c *Client) ReadGitHistoryCompareDiff(ctx context.Context, req files.GitHistoryCompareDiffRequest) (files.GitHistoryCompareDiff, error) {
 	if !c.caps.GitHistoryCompare {
 		return files.GitHistoryCompareDiff{}, engine.ErrUnsupportedAction

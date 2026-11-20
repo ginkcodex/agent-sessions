@@ -54,7 +54,7 @@ func TestOpenCodeRenameSubprocess(t *testing.T) {
 	data, _ := json.Marshal(record)
 	// Write the trace before announcing the address: the caller may kill the
 	// process group as soon as it reads (and rejects) the announcement.
-	_ = os.WriteFile(os.Getenv("AS_OPENCODE_TRACE"), data, 0600)
+	_ = os.WriteFile(os.Getenv("AS_OPENCODE_TRACE"), data, 0o600)
 	if mode == "unsafe" {
 		fmt.Println("server listening on http://0.0.0.0:1234")
 	} else {
@@ -96,7 +96,7 @@ func TestOpenCodeRenameSubprocess(t *testing.T) {
 			Payload map[string]any
 		}{r.URL.Path, payload}
 		data, _ := json.Marshal(result)
-		_ = os.WriteFile(os.Getenv("AS_OPENCODE_TRACE")+".patch", data, 0600)
+		_ = os.WriteFile(os.Getenv("AS_OPENCODE_TRACE")+".patch", data, 0o600)
 		w.WriteHeader(204)
 	})
 	_ = http.Serve(listener, handler)
@@ -106,7 +106,7 @@ func TestOpenCodeRenameSubprocess(t *testing.T) {
 func openCodeRenameFixture(t *testing.T) (*Manager, model.SessionMeta) {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "opencode")
-	if err := os.Mkdir(root, 0700); err != nil {
+	if err := os.Mkdir(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", filepath.Join(root, "opencode.db"))
@@ -137,7 +137,7 @@ func openCodeRenameFakeCLI(t *testing.T, mode string) string {
 	dir := t.TempDir()
 	shim := filepath.Join(dir, "opencode")
 	script := "#!/bin/sh\nexec '" + strings.ReplaceAll(bin, "'", "'\\''") + "' -test.run=^TestOpenCodeRenameSubprocess$ -- \"$@\"\n"
-	if err := os.WriteFile(shim, []byte(script), 0700); err != nil {
+	if err := os.WriteFile(shim, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	trace := filepath.Join(t.TempDir(), "trace.json")

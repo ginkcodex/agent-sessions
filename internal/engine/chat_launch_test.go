@@ -17,6 +17,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/provider/antigravity"
 	"github.com/ginkcode/agent-sessions/internal/provider/claude"
 	"github.com/ginkcode/agent-sessions/internal/provider/codex"
 	"github.com/ginkcode/agent-sessions/internal/provider/opencode"
@@ -91,6 +92,7 @@ func TestProvidersDeclareACPAdapters(t *testing.T) {
 		{claude.New("", nil), provider.ACPAdapter{Executable: "claude-agent-acp", CLIEnv: "CLAUDE_CODE_EXECUTABLE", Managed: "claude-agent-acp"}},
 		{codex.New("", nil), provider.ACPAdapter{Executable: "codex-acp", CLIEnv: "CODEX_PATH", Managed: "codex-acp", DaemonBridge: true}},
 		{opencode.New("", nil), provider.ACPAdapter{Executable: "opencode", Args: []string{"acp"}}},
+		{antigravity.New("", nil), provider.ACPAdapter{Executable: "agy", Args: []string{"acp"}}},
 	} {
 		l, ok := tc.prov.(provider.ACPLauncher)
 		if !ok {
@@ -418,8 +420,9 @@ enabled = ["claude-code"]
 [chat.adapters]
 claude-code = "/opt/claude-agent-acp"
 codex = "  "
+antigravity = "/opt/agy"
 `))
-	if err != nil || !reflect.DeepEqual(got, ChatAdapters{model.AgentClaude: "/opt/claude-agent-acp"}) {
+	if err != nil || !reflect.DeepEqual(got, ChatAdapters{model.AgentClaude: "/opt/claude-agent-acp", model.AgentAntigravity: "/opt/agy"}) {
 		t.Fatalf("got %v, %v", got, err)
 	}
 	if _, err := decodeChatAdapters([]byte("[chat.adapters]\ncursor = \"/x\"\n")); err == nil || !strings.Contains(err.Error(), `unknown agent "cursor"`) {
@@ -648,5 +651,27 @@ func TestEngineChatAgentsOffersManagedInstall(t *testing.T) {
 		if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 			t.Fatalf("%s written: %v", dir, entries)
 		}
+	}
+}
+
+// Antigravity chats run `agy acp`, found like the terminal's agy or set in
+// [chat.adapters].
+func TestChatLaunchAntigravity(t *testing.T) {
+	dir := t.TempDir()
+	svc := NewService(nil, provider.Set{antigravity.New(t.TempDir(), nil)})
+	svc.Catalog().Apply(provider.ScanResult{Changed: []model.SessionMeta{{Ref: model.SessionRef{Agent: model.AgentAntigravity, ID: "s"}, CWD: dir}}})
+	agy := filepath.FromSlash("/home/me/.local/bin/agy")
+	stubFind(t, map[string]launch.Executable{"agy": {Path: agy, OnPath: true}})
+	if got := svc.ChatAgents(nil, nil); len(got) != 1 || got[0].Agent != model.AgentAntigravity || !got[0].Available || got[0].Path != agy {
+		t.Fatalf("agents = %+v", got)
+	}
+	cmd, err := svc.ChatLaunch(model.AgentAntigravity, dir, nil, nil)
+	if err != nil || !reflect.DeepEqual(cmd.Argv, []string{agy, "acp"}) || cmd.Dir != dir {
+		t.Fatalf("cmd = %+v, %v", cmd, err)
+	}
+	custom := executable(t, filepath.Join(t.TempDir(), "agy"), 0o755)
+	cmd, err = svc.ChatLaunch(model.AgentAntigravity, dir, ChatAdapters{model.AgentAntigravity: custom}, nil)
+	if err != nil || !reflect.DeepEqual(cmd.Argv, []string{custom, "acp"}) {
+		t.Fatalf("override cmd = %+v, %v", cmd, err)
 	}
 }

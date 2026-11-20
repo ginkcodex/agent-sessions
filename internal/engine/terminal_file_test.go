@@ -16,11 +16,11 @@ import (
 func TestResolveTerminalFilePreservesOriginatingWorkspace(t *testing.T) {
 	root := t.TempDir()
 	nested := filepath.Join(root, "frontend", "src", "components")
-	if err := os.MkdirAll(nested, 0700); err != nil {
+	if err := os.MkdirAll(nested, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(nested, "HistoryBranches.svelte")
-	if err := os.WriteFile(path, []byte("source"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("source"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	catalog := scan.NewCatalog()
@@ -34,7 +34,7 @@ func TestResolveTerminalFilePreservesOriginatingWorkspace(t *testing.T) {
 	}
 	// A preferred display root must not bypass the narrowest-root symlink guard.
 	outside := filepath.Join(root, "other")
-	if err := os.WriteFile(outside, nil, 0600); err != nil {
+	if err := os.WriteFile(outside, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(nested, "escape")); err == nil {
@@ -50,12 +50,12 @@ func TestResolveTerminalFile(t *testing.T) {
 	cwd := filepath.Join(nested, "sub")
 	outside := t.TempDir()
 	for _, dir := range []string{nested, cwd} {
-		if err := os.MkdirAll(dir, 0700); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, name := range []string{filepath.Join(nested, "Makefile"), filepath.Join(cwd, "file with spaces"), filepath.Join(root, "other"), filepath.Join(outside, "secret")} {
-		if err := os.WriteFile(name, []byte("text"), 0600); err != nil {
+		if err := os.WriteFile(name, []byte("text"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -81,8 +81,12 @@ func TestResolveTerminalFile(t *testing.T) {
 		}
 	}
 	for _, tc := range []struct{ dir, path string }{
-		{outside, "secret"}, {cwd, filepath.Join(outside, "secret")},
-		{cwd, "missing"}, {cwd, "."}, {cwd, ""}, {"relative", "Makefile"},
+		{outside, "secret"},
+		{cwd, filepath.Join(outside, "secret")},
+		{cwd, "missing"},
+		{cwd, "."},
+		{cwd, ""},
+		{"relative", "Makefile"},
 		{cwd, filepath.Join(root+"-sibling", "secret")},
 	} {
 		if got, err := e.ResolveTerminalFile(ctx, tc.dir, tc.path); err == nil {
@@ -100,7 +104,7 @@ func TestResolveTerminalFile(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		// Backslashes are literal filename characters on Unix, not separators.
 		name := `literal\name`
-		if err := os.WriteFile(filepath.Join(nested, name), nil, 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(nested, name), nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if got, err := e.ResolveTerminalFile(ctx, nested, name); err != nil || got.Path != name {

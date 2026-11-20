@@ -2,7 +2,7 @@
   import Icon from './Icon.svelte';
   import DialogCloseButton from './DialogCloseButton.svelte';
   import { exporter } from '../../stores/export.svelte';
-  import { BUDGET_PRESETS } from '../../portable';
+  import { BUDGET_PRESETS, canRestoreNative } from '../../portable';
   import { formatBytes, formatTokens } from '../../format';
   import type { ExportProfile, RedactionCounts } from '../../types';
 
@@ -68,7 +68,11 @@
                 onclick={() => exporter.setProfile(card.id)}
               >
                 <span class="profile-title">{card.title}</span>
-                <span class="profile-detail">{card.detail}</span>
+                <span class="profile-detail"
+                  >{card.id === 'complete' && !canRestoreNative(exporter.session.ref.agent)
+                    ? 'Includes the original session records. Restore is not supported yet.'
+                    : card.detail}</span
+                >
               </button>
             {/each}
           </div>

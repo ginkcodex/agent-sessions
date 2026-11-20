@@ -20,6 +20,7 @@ func actionFixture(t *testing.T) (string, func(...string) string) {
 	git("commit", "-m", "base")
 	return root, git
 }
+
 func actionRequest(t *testing.T, root, action, ref string) GitHistoryRefActionRequest {
 	t.Helper()
 	req := GitHistoryRefActionRequest{GitHistoryTarget: GitHistoryTarget{Dir: root, Repo: "."}, Action: action, Ref: ref}
@@ -34,10 +35,12 @@ func actionRequest(t *testing.T, root, action, ref string) GitHistoryRefActionRe
 	}))
 	return req
 }
+
 func runAction(req GitHistoryRefActionRequest) error {
 	_, err := GitHistoryRefAction(context.Background(), EditPolicy{}, req)
 	return err
 }
+
 func TestHistoryActionCheckoutAndIdentities(t *testing.T) {
 	root, git := actionFixture(t)
 	git("branch", "other")
@@ -82,6 +85,7 @@ func TestHistoryActionCheckoutAndIdentities(t *testing.T) {
 		t.Fatalf("not detached tag: %+v", got)
 	}
 }
+
 func TestHistoryActionCheckoutDirtyAndOperations(t *testing.T) {
 	root, git := actionFixture(t)
 	git("checkout", "-b", "other")
@@ -99,13 +103,14 @@ func TestHistoryActionCheckoutDirtyAndOperations(t *testing.T) {
 	}
 	git("restore", "file")
 	for _, marker := range []string{"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG"} {
-		gitOK(t, os.WriteFile(filepath.Join(root, ".git", marker), []byte("state"), 0600))
+		gitOK(t, os.WriteFile(filepath.Join(root, ".git", marker), []byte("state"), 0o600))
 		if runAction(req) == nil {
 			t.Fatalf("operation %s allowed", marker)
 		}
 		gitOK(t, os.Remove(filepath.Join(root, ".git", marker)))
 	}
 }
+
 func TestHistoryActionRemoteCheckout(t *testing.T) {
 	root, git := actionFixture(t)
 	git("remote", "add", "origin", "https://invalid.invalid/repo")
@@ -124,6 +129,7 @@ func TestHistoryActionRemoteCheckout(t *testing.T) {
 		t.Fatal("conflicting upstream reused")
 	}
 }
+
 func TestHistoryActionScopePolicyAndTargets(t *testing.T) {
 	root, git := actionFixture(t)
 	statusWrite(t, root, "sub/file", "base")
@@ -149,6 +155,7 @@ func TestHistoryActionScopePolicyAndTargets(t *testing.T) {
 		}
 	}
 }
+
 func TestHistoryActionProtectedAffectedPath(t *testing.T) {
 	root, git := actionFixture(t)
 	git("checkout", "-b", "unsafe")
@@ -165,6 +172,7 @@ func TestHistoryActionProtectedAffectedPath(t *testing.T) {
 		t.Fatalf("protected merge: %v", err)
 	}
 }
+
 func TestHistoryActionMergeAndConflictPreservation(t *testing.T) {
 	root, git := actionFixture(t)
 	main := git("branch", "--show-current")
@@ -201,6 +209,7 @@ func TestHistoryActionMergeAndConflictPreservation(t *testing.T) {
 		t.Fatal("conflict not retained")
 	}
 }
+
 func TestHistoryActionDeleteSafeAndLocalOnly(t *testing.T) {
 	root, git := actionFixture(t)
 	git("branch", "merged")
@@ -231,6 +240,7 @@ func TestHistoryActionDeleteSafeAndLocalOnly(t *testing.T) {
 		t.Fatal("symbolic alias accepted")
 	}
 }
+
 func TestHistoryActionLinkedWorktreeDelete(t *testing.T) {
 	root, git := actionFixture(t)
 	git("branch", "linked")
@@ -240,6 +250,7 @@ func TestHistoryActionLinkedWorktreeDelete(t *testing.T) {
 		t.Fatal("deleted linked-worktree branch")
 	}
 }
+
 func TestHistoryActionPushSelectedOnly(t *testing.T) {
 	root, git := actionFixture(t)
 	bare := filepath.Join(t.TempDir(), "origin.git")
@@ -269,6 +280,7 @@ func TestHistoryActionPushSelectedOnly(t *testing.T) {
 		t.Fatal("push changed upstream")
 	}
 }
+
 func TestHistoryActionCancellationAndSharedLock(t *testing.T) {
 	root, git := actionFixture(t)
 	git("tag", "v1")
@@ -314,14 +326,14 @@ func TestHistoryActionPushRejectionCancellationAndAuth(t *testing.T) {
 		t.Skip("shell hooks require Unix")
 	}
 	hook := filepath.Join(bare, "hooks", "pre-receive")
-	gitOK(t, os.WriteFile(hook, []byte("#!/bin/sh\ncat >/dev/null\nprintf 'authentication failed\\n' >&2\nexit 1\n"), 0700))
+	gitOK(t, os.WriteFile(hook, []byte("#!/bin/sh\ncat >/dev/null\nprintf 'authentication failed\\n' >&2\nexit 1\n"), 0o700))
 	git("branch", "auth", "HEAD")
 	err = runAction(actionRequest(t, root, "push", "refs/heads/auth"))
 	if !errors.As(err, &syncErr) || syncErr.Code != GitSyncAuthRequired {
 		t.Fatalf("auth mapping: %v", err)
 	}
 	marker := filepath.Join(t.TempDir(), "started")
-	gitOK(t, os.WriteFile(hook, []byte("#!/bin/sh\ncat >/dev/null\ntouch '"+marker+"'\nsleep 30\n"), 0700))
+	gitOK(t, os.WriteFile(hook, []byte("#!/bin/sh\ncat >/dev/null\ntouch '"+marker+"'\nsleep 30\n"), 0o700))
 	req := actionRequest(t, root, "push", "refs/heads/auth")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -360,6 +372,7 @@ func TestHistoryActionNonCommitTagAndDetachedMerge(t *testing.T) {
 		t.Fatal("detached merge allowed")
 	}
 }
+
 func TestHistoryActionChildRepository(t *testing.T) {
 	root, git := actionFixture(t)
 	parent := filepath.Dir(root)

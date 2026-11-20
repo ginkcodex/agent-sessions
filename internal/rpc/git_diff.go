@@ -26,6 +26,7 @@ func (c *Client) ReadGitDiff(ctx context.Context, dir, repo, path string, basis 
 	err := c.call(ctx, "readGitDiff", ReadGitDiffParams{Dir: dir, Repo: repo, Path: path, Basis: basis}, &out)
 	return out, err
 }
+
 func (s *Server) dispatchGitDiff(ctx context.Context, req Request, backend engine.Backend) (any, error) {
 	b, ok := backend.(engine.GitDiffBackend)
 	if !ok {

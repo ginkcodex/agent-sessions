@@ -47,7 +47,7 @@ func TestGitHistoryExactAuthorization(t *testing.T) {
 func TestGitHistoryAuthorizedChild(t *testing.T) {
 	root := t.TempDir()
 	child := filepath.Join(root, "child")
-	if err := os.Mkdir(child, 0700); err != nil {
+	if err := os.Mkdir(child, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	git := func(args ...string) {
@@ -62,7 +62,7 @@ func TestGitHistoryAuthorizedChild(t *testing.T) {
 	git("config", "commit.gpgsign", "false")
 	git("config", "user.name", "Test")
 	git("config", "user.email", "test@example.com")
-	if err := os.WriteFile(filepath.Join(child, "file"), []byte("content\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(child, "file"), []byte("content\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	git("add", "file")

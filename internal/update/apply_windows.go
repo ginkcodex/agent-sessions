@@ -15,8 +15,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/ginkcode/agent-sessions/internal/winmsi"
 	"golang.org/x/sys/windows"
+
+	"github.com/ginkcode/agent-sessions/internal/winmsi"
 )
 
 const (

@@ -43,6 +43,7 @@ func (n *fakeRecycleNative) checkLocation(string) error {
 	}
 	return nil
 }
+
 func (n *fakeRecycleNative) checkBin(string) error {
 	n.events = append(n.events, "check-bin")
 	n.binN++

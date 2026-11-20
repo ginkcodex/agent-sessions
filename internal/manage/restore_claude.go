@@ -47,14 +47,14 @@ type claudeRestoreFile struct {
 }
 
 type claudeRestoreOp struct {
-	Item         RestorePreviewItem
-	Files        []claudeRestoreFile
-	OrigID       string
-	NewID        string
-	OrigCWD      string
-	TargetCWD    string
-	IsCopy       bool
-	ChildRemaps  map[string]string // old child ref ID -> new child ref ID
+	Item        RestorePreviewItem
+	Files       []claudeRestoreFile
+	OrigID      string
+	NewID       string
+	OrigCWD     string
+	TargetCWD   string
+	IsCopy      bool
+	ChildRemaps map[string]string // old child ref ID -> new child ref ID
 }
 
 func (cm *claudeManager) planRestore(

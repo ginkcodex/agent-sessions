@@ -410,3 +410,123 @@ test('a steered message joins the open turn after what it streamed, and its save
   ];
   assert.deepEqual(reconcile(t, saved).items.map((i) => i.text), ['Looking.']);
 });
+
+// Antigravity (agy acp) streams no message IDs, and its saved tool calls have
+// other IDs than the streamed ones: its turns match the saved ones by prompt.
+const agyTool = (id, status, extra = {}) => ({ sessionUpdate: id ? 'tool_call_update' : 'tool_call', toolCallId: 'call_1', name: 'run_command', args: { CommandLine: 'echo hi' }, rawInput: { CommandLine: 'echo hi' }, kind: 'execute', title: 'echo hi', status, ...extra });
+const agyTurn = (tail, prompt, sentAt, ...updates) => apply(beginTurn(tail, { text: prompt, sentAt: Date.parse(sentAt) }), ...updates);
+const saidUser = (id, text, time) => msg(id, 'user', [{ kind: 'text', text }], time);
+const saidAgent = (id, text, time, tools = []) => msg(id, 'assistant', [...tools.map((t) => ({ kind: 'tool', tool: { status: 'completed', ...t } })), ...(text ? [{ kind: 'text', text }] : [])], time);
+
+test('Antigravity: an ended turn goes whole once its prompt and reply are saved, turn by turn', () => {
+  let t = agyTurn(emptyTail(), 'run it', '2026-11-11T10:00:00Z',
+    chunk('agent_thought_chunk', 'Running the command.'),
+    agyTool(false, 'in_progress'),
+    agyTool(true, 'completed', { rawOutput: { output: 'hi\n', exit_code: 0 } }),
+    chunk('agent_message_chunk', 'done'));
+  const turn1 = [saidUser('s0', 'run it', '2026-11-11T10:00:01Z'), saidAgent('s1', '', '2026-11-11T10:00:02Z', [{ id: 'step-1-0', name: 'run_command', input: { CommandLine: 'echo hi' } }])];
+  // While the turn runs, its saved prompt replaces the live one; the rest stays.
+  t = reconcile(t, turn1);
+  assert.deepEqual(t.items.map((i) => i.type), ['thought', 'tool', 'text']);
+  // Ended, with the reply not yet saved: everything stays.
+  t = endTurn(t);
+  assert.equal(reconcile(t, turn1), t);
+  const saved1 = [...turn1, saidAgent('s2', 'done', '2026-11-11T10:00:03Z')];
+  t = reconcile(t, saved1);
+  assert.deepEqual(t.items, []);
+  assert.equal(reconcile(t, saved1), t);
+
+  // A second turn streams under the first one's saved messages.
+  t = agyTurn(t, 'again', '2026-11-11T10:01:00Z', chunk('agent_message_chunk', 'ok'));
+  t = endTurn(t);
+  assert.deepEqual(reconcile(t, saved1).items.map((i) => i.text), ['again', 'ok']);
+  assert.deepEqual(reconcile(t, [...saved1, saidUser('s3', 'again', '2026-11-11T10:01:01Z'), saidAgent('s4', 'ok', '2026-11-11T10:01:02Z')]).items, []);
+});
+
+test('Antigravity: a repeated prompt waits for its own saved copy, not the earlier turn\'s', () => {
+  const first = [saidUser('s0', 'continue', '2026-11-11T10:00:01Z'), saidAgent('s1', 'done', '2026-11-11T10:00:02Z')];
+  let t = endTurn(agyTurn(emptyTail(), 'continue', '2026-11-11T10:00:00Z', chunk('agent_message_chunk', 'done')));
+  t = reconcile(t, first);
+  assert.deepEqual(t.items, []);
+  // Ten seconds on, the same prompt and the same reply: the first turn's saved copy is not this one.
+  t = endTurn(agyTurn(t, 'continue', '2026-11-11T10:00:10Z', chunk('agent_message_chunk', 'done')));
+  // The live prompt goes by its text, as for every agent; the reply stays.
+  assert.deepEqual(reconcile(t, first).items.map((i) => i.text), ['done']);
+  const both = [...first, saidUser('s2', 'continue', '2026-11-11T10:00:11Z'), saidAgent('s3', 'done', '2026-11-11T10:00:12Z')];
+  assert.deepEqual(reconcile(t, both).items, []);
+});
+
+test('Antigravity: a failed prompt never saved does not take its identical retry\'s saved copy', () => {
+  // The first send failed: its turn ended with nothing but the prompt, which agy never saved.
+  let t = endTurn(agyTurn(emptyTail(), 'continue', '2026-11-11T10:00:00Z'));
+  t = endTurn(agyTurn(t, 'continue', '2026-11-11T10:00:05Z', chunk('agent_message_chunk', 'done')));
+  const saved = [saidUser('s0', 'continue', '2026-11-11T10:00:06Z'), saidAgent('s1', 'done', '2026-11-11T10:00:07Z')];
+  t = reconcile(t, saved);
+  assert.deepEqual(t.items, []);
+  assert.deepEqual(t.sent, [], 'reconciled turns drop their sent prompts');
+  assert.equal(t.sentAfter, 's0');
+});
+
+test('Antigravity: a prompt of only files matches a saved prompt with no text', () => {
+  const files = [{ kind: 'image', name: 'a.png', mimeType: 'image/png', data: 'AA==' }];
+  let t = apply(beginTurn(emptyTail(), { text: '', attachments: files, sentAt: Date.parse('2026-11-11T10:00:00Z') }), chunk('agent_message_chunk', 'A red dot.'));
+  assert.deepEqual(t.sent, [{ turn: 1, text: '', sentAt: Date.parse('2026-11-11T10:00:00Z') }]);
+  t = endTurn(t);
+  const saved = [saidUser('s0', '', '2026-11-11T10:00:01Z'), saidAgent('s1', 'A red dot.', '2026-11-11T10:00:02Z')];
+  assert.deepEqual(reconcile(t, saved).items, []);
+});
+
+test('sent prompts go with their turns, for ID-based agents too', () => {
+  let t = emptyTail();
+  for (let i = 0; i < 3; i++) {
+    t = endTurn(apply(beginTurn(t, { text: `q${i}`, sentAt: Date.parse('2026-11-11T10:00:00Z') }), chunk('agent_message_chunk', 'a', `msg_${i}`)));
+    t = reconcile(t, [saidUser(`u${i}`, `q${i}`, '2026-11-11T10:00:01Z'), saidAgent(`msg_${i}`, 'a', '2026-11-11T10:00:02Z')]);
+  }
+  assert.deepEqual(t.items, []);
+  assert.deepEqual(t.sent, []);
+  // An open turn keeps its prompt after the prompt's own item goes by its text.
+  t = beginTurn(t, { text: 'next', sentAt: Date.parse('2026-11-11T10:01:00Z') });
+  t = reconcile(t, [saidUser('u9', 'next', '2026-11-11T10:01:01Z')]);
+  assert.deepEqual(t.items, []);
+  assert.equal(t.sent.length, 1);
+});
+
+test('Antigravity: a tool-only turn goes once its tool calls are saved; a cancelled one once the next prompt is', () => {
+  let t = endTurn(agyTurn(emptyTail(), 'run it', '2026-11-11T10:00:00Z', agyTool(false, 'in_progress'), agyTool(true, 'completed')));
+  const prompt = saidUser('s0', 'run it', '2026-11-11T10:00:01Z');
+  assert.equal(reconcile(t, [prompt]).items.length, 1, 'the tool call waits');
+  const other = saidAgent('s1', '', '2026-11-11T10:00:02Z', [{ id: 'step-1-0', name: 'run_command', input: { CommandLine: 'echo bye' } }]);
+  assert.equal(reconcile(t, [prompt, other]).items.length, 1, 'another input is another call');
+  // The saved input may list its keys in another order.
+  t = endTurn(agyTurn(emptyTail(), 'run it', '2026-11-11T10:00:00Z', agyTool(false, 'in_progress', { rawInput: { CommandLine: 'echo hi', Wait: 5 } })));
+  const same = saidAgent('s1', '', '2026-11-11T10:00:02Z', [{ id: 'step-1-0', name: 'run_command', input: { Wait: 5, CommandLine: 'echo hi' } }]);
+  assert.deepEqual(reconcile(t, [prompt, same]).items, []);
+
+  // Cancelled while thinking: nothing to match, until the next prompt is saved.
+  t = endTurn(agyTurn(emptyTail(), 'think', '2026-11-11T10:00:00Z', chunk('agent_thought_chunk', 'Hmm')));
+  const cancelled = [saidUser('s0', 'think', '2026-11-11T10:00:01Z'), { ...msg('s1', 'system', [{ kind: 'text', text: 'ERROR_MESSAGE' }], '2026-11-11T10:00:02Z'), isMeta: true }];
+  assert.deepEqual(reconcile(t, cancelled).items.map((i) => i.type), ['thought']);
+  t = agyTurn(t, 'go on', '2026-11-11T10:00:30Z');
+  const later = [...cancelled, saidUser('s2', 'go on', '2026-11-11T10:00:31Z')];
+  assert.deepEqual(reconcile(t, later).items, [], 'the cancelled turn goes; the open one\'s prompt is saved');
+});
+
+test('Antigravity: a notice saved between the prompt and the reply does not stop the match', () => {
+  const t = endTurn(agyTurn(emptyTail(), 'hello', '2026-11-11T10:00:00Z', chunk('agent_message_chunk', 'Hi!')));
+  const notice = { ...msg('s1', 'system', [{ kind: 'text', text: 'The agent restarted' }], '2026-11-11T10:00:01Z'), isMeta: true };
+  const saved = [saidUser('s0', 'hello', '2026-11-11T10:00:01Z'), notice, saidAgent('s2', 'Hi!', '2026-11-11T10:00:02Z')];
+  assert.deepEqual(reconcile(t, saved).items, []);
+  // An ID-based agent's turn is not matched by prompt and reply text.
+  const claude = endTurn(apply(beginTurn(emptyTail(), { text: 'hello', sentAt: Date.parse('2026-11-11T10:00:00Z') }), chunk('agent_message_chunk', 'Hi!', 'msg_9')));
+  assert.deepEqual(reconcile(claude, saved).items.map((i) => i.messageId), ['msg_9']);
+});
+
+test('Antigravity: a command\'s output is its raw output object\'s text, shown once', () => {
+  const done = apply(turn('run it'), agyTool(false, 'in_progress'), agyTool(true, 'completed', { rawOutput: { output: 'hi\n', exit_code: 0 } })).items[1];
+  assert.equal(toolOutput(done), 'hi\n');
+  const both = apply(turn('run it'), agyTool(true, 'completed', { rawOutput: { output: 'hi\n' }, content: [{ type: 'content', content: { type: 'text', text: 'hi\n' } }] })).items[1];
+  assert.equal(toolOutput(both), 'hi\n');
+  const read = apply(turn('read'), { sessionUpdate: 'tool_call', toolCallId: 'call_2', name: 'read_file', args: { Path: '/a' }, rawInput: { Path: '/a' }, kind: 'read', title: 'File a', status: 'completed' }).items[1];
+  assert.equal(toolOutput(read), '');
+  assert.equal(read.title, 'File a');
+});

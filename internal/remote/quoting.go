@@ -5,8 +5,14 @@ import (
 )
 
 // QuotePOSIX quotes a string for safe evaluation in a POSIX shell (/bin/sh, bash, zsh).
-// It wraps the string in single quotes and replaces embedded single quotes with '\''.
-// Empty string returns "''".
+// It wraps the string in single quotes and replaces each embedded single quote
+// with the four-character sequence:
+//
+//	'\''
+//
+// An empty string returns two single quotes:
+//
+//	''
 func QuotePOSIX(s string) string {
 	if s == "" {
 		return "''"

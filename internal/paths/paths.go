@@ -11,9 +11,11 @@ type Roots struct {
 	Claude       string
 	Codex        string
 	OpenCodeData string
-	Cache        string
-	Config       string
-	Data         string
+	// Antigravity is the Antigravity CLI (agy) store.
+	Antigravity string
+	Cache       string
+	Config      string
+	Data        string
 }
 
 // Default resolves roots from the process environment and the current user's home.

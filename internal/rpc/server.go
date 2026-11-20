@@ -256,13 +256,14 @@ func (s *Server) sendError(id any, rpcErr *ResponseError) error {
 
 // allowlistedEnvKeys defines environment variables that the client may override.
 var allowlistedEnvKeys = map[string]bool{
-	"CLAUDE_CONFIG_DIR": true,
-	"CODEX_HOME":        true,
-	"XDG_CONFIG_HOME":   true,
-	"XDG_DATA_HOME":     true,
-	"XDG_CACHE_HOME":    true,
-	"XDG_STATE_HOME":    true,
-	"XDG_RUNTIME_DIR":   true,
+	"CLAUDE_CONFIG_DIR":   true,
+	"CODEX_HOME":          true,
+	"ANTIGRAVITY_CLI_DIR": true,
+	"XDG_CONFIG_HOME":     true,
+	"XDG_DATA_HOME":       true,
+	"XDG_CACHE_HOME":      true,
+	"XDG_STATE_HOME":      true,
+	"XDG_RUNTIME_DIR":     true,
 }
 
 func (s *Server) handleInitialize(serveCtx context.Context, req Request) (any, error) {

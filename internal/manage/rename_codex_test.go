@@ -30,7 +30,7 @@ func TestCodexRenameSubprocess(t *testing.T) {
 		Env  []string
 		Dir  string
 	}{args[1:], os.Environ(), cwd})
-	_ = os.WriteFile(os.Getenv("AS_CODEX_TRACE"), data, 0600)
+	_ = os.WriteFile(os.Getenv("AS_CODEX_TRACE"), data, 0o600)
 	if os.Getenv("AS_CODEX_MODE") == "hang" {
 		for {
 			time.Sleep(time.Hour)
@@ -43,7 +43,7 @@ func TestCodexRenameSubprocess(t *testing.T) {
 		if id, ok := req["id"]; ok {
 			if req["method"] == "thread/name/set" {
 				data, _ := json.Marshal(req)
-				_ = os.WriteFile(os.Getenv("AS_CODEX_TRACE")+".request", data, 0600)
+				_ = os.WriteFile(os.Getenv("AS_CODEX_TRACE")+".request", data, 0o600)
 			}
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"id": id, "result": map[string]any{}})
 		}
@@ -59,10 +59,10 @@ func codexRenameFixture(t *testing.T, mode string) (*Manager, model.SessionMeta,
 	root := filepath.Join(t.TempDir(), "codex")
 	id := "12345678-1234-1234-1234-123456789abc"
 	path := filepath.Join(root, "sessions", "2026", "11", "03", "rollout-2026-11-03T00-00-00-"+id+".jsonl")
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("{}\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	old := time.Now().Add(-time.Hour)
@@ -77,7 +77,7 @@ func codexRenameFixture(t *testing.T, mode string) (*Manager, model.SessionMeta,
 	}
 	dir := t.TempDir()
 	script := "#!/bin/sh\nexec '" + strings.ReplaceAll(bin, "'", "'\\''") + "' -test.run=^TestCodexRenameSubprocess$ -- \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(dir, "codex"), []byte(script), 0700); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "codex"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	trace := filepath.Join(t.TempDir(), "trace.json")
@@ -160,7 +160,7 @@ func TestRenameCodexRejectsArchivedAndSymlinkedState(t *testing.T) {
 		t.Fatalf("archived err=%v", err)
 	}
 	outside := filepath.Join(t.TempDir(), "state.sqlite")
-	if err := os.WriteFile(outside, nil, 0600); err != nil {
+	if err := os.WriteFile(outside, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(root, "state_5.sqlite")); err != nil {

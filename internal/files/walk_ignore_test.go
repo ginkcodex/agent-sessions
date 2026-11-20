@@ -42,9 +42,11 @@ func TestWalkFollowsEachRepositoryIgnoreRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"notes.md", "logs/run.log", "app/main.go", "app/.gitignore", "app/devops/README.md",
+	for _, f := range []string{
+		"notes.md", "logs/run.log", "app/main.go", "app/.gitignore", "app/devops/README.md",
 		"app/vendor/lib/lib.go", "app/.venv/pyvenv.cfg", "app/config.yaml",
-		"app/web/main.go", "app/web/.gitignore", "app/web/app.log"} {
+		"app/web/main.go", "app/web/.gitignore", "app/web/app.log",
+	} {
 		if !slices.Contains(got.Files, f) {
 			t.Errorf("Files lacks %s: %q", f, got.Files)
 		}

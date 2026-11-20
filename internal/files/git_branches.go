@@ -45,6 +45,7 @@ func GitBranches(ctx context.Context, root string) (GitBranchList, error) {
 	})
 	return result, err
 }
+
 func parseGitBranches(out []byte) (GitBranchList, error) {
 	result := GitBranchList{Branches: []GitBranch{}}
 	var all []GitBranch

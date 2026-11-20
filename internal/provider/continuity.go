@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -92,6 +93,27 @@ func (m ContinuityMark) ValidateFile(ctx context.Context, f *os.File) (bool, err
 		return false, err
 	}
 	return head == m.head && tail == m.tail, nil
+}
+
+// PrefixDigest hashes the windows a ContinuityMark checks (the head and the
+// committed tail of the first offset bytes) as text, for scan checkpoints that
+// outlive the process. File identity is not part of it: a replaced file passes
+// only if both windows match.
+func PrefixDigest(ctx context.Context, path string, offset int64) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	head, err := continuityHash(ctx, f, 0, min(offset, continuityWindow))
+	if err != nil {
+		return "", err
+	}
+	tail, err := continuityHash(ctx, f, max(0, offset-continuityWindow), min(offset, continuityWindow))
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(head[:]) + hex.EncodeToString(tail[:]), nil
 }
 
 func continuityHash(ctx context.Context, f *os.File, offset, size int64) ([sha256.Size]byte, error) {

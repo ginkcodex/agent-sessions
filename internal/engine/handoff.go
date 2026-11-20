@@ -90,7 +90,7 @@ func resolveBudget(b int) int {
 
 func validateTarget(target model.AgentID) error {
 	switch target {
-	case model.AgentClaude, model.AgentCodex, model.AgentOpenCode:
+	case model.AgentClaude, model.AgentCodex, model.AgentOpenCode, model.AgentAntigravity:
 		return nil
 	default:
 		return fmt.Errorf("%w: %s", ErrUnknownProvider, target)

@@ -125,7 +125,7 @@ func TestGitHistoryListValidation(t *testing.T) {
 func TestGitHistoryListScopedMergeAndRoot(t *testing.T) {
 	root, git := blameRepo(t)
 	scope := filepath.Join(root, "sub")
-	if err := os.Mkdir(scope, 0755); err != nil {
+	if err := os.Mkdir(scope, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	statusWrite(t, root, "sub/file", "base")
