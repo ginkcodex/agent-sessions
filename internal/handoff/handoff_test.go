@@ -268,12 +268,13 @@ func TestHandoffDelivery(t *testing.T) {
 		t.Errorf("claude pointer command = %s", got)
 	}
 
-	// Antigravity runs the prompt interactively and gets the same read access.
+	// Antigravity runs the prompt interactively without --add-dir (which would
+	// make agy switch its workspace to the handoff directory).
 	if got, want := posix(model.AgentAntigravity, "Do task", "", "/my/path"), "cd /my/path && agy -i 'Do task'"; got != want {
 		t.Errorf("antigravity launch command = %s", got)
 	}
 	if got, want := posix(model.AgentAntigravity, "Short prompt", promptFile, "/tmp/dir"),
-		"cd /tmp/dir && agy -i 'Read /data/handoffs/sess-123-handoff.md completely to restore the context of an earlier session, then follow its instructions and wait for my next request.' --add-dir "+launch.ShellEscape(filepath.Dir(promptFile)); got != want {
+		"cd /tmp/dir && agy -i 'Read /data/handoffs/sess-123-handoff.md completely to restore the context of an earlier session, then follow its instructions and wait for my next request.'"; got != want {
 		t.Errorf("antigravity pointer command = %s", got)
 	}
 

@@ -1,7 +1,7 @@
 # Antigravity CLI — tasks
 
 - **Plan:** [antigravity-cli.md](../../plan/antigravity-cli.md)
-- **Progress:** 22/23 done
+- **Progress:** 23/24 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -28,3 +28,4 @@
 | [AGY-21](AGY-21.md) | ✅ Done | `/skills` answered in the app from `agy -p /skills --output-format json` | 2 h | AGY-13 |
 | [AGY-22](AGY-22.md) | ✅ Done | Terminal OSC 8 links (agy's URLs) open through the app, not xterm's `window.open` | 1 h | AGY-05 |
 | [AGY-23](AGY-23.md) | ✅ Done | Settings, chat adapters and new-session menu say "Antigravity CLI"; settings notes IDE sessions (`~/.gemini/antigravity`) are not listed | 1 h | AGY-07 |
+| [AGY-24](AGY-24.md) | ✅ Done | Drop `--add-dir` from Antigravity handoff launch command so `agy` keeps the project workspace | 1 h | AGY-10 |
