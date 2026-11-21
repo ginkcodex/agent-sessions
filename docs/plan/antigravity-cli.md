@@ -304,7 +304,9 @@ New package `internal/provider/antigravity` implementing `provider.Provider`,
    v1 avoids mutating `agy`'s SQLite/protobuf store until its deletion/import
    semantics are separately spiked. Handoff *into* Antigravity is the
    exception: it writes nothing to the agy store, so it is supported and
-   starts `agy -i <prompt>`; see [AGY-10](../tasks/antigravity-cli/AGY-10.md).
+   starts `agy -i <prompt>` (without `--add-dir`, which would hijack `agy`'s
+   primary workspace); see [AGY-10](../tasks/antigravity-cli/AGY-10.md) and
+   [AGY-24](../tasks/antigravity-cli/AGY-24.md).
    Delete is the other exception, after desktop QA. The
    [AGY-14](../tasks/antigravity-cli/AGY-14.md) spike
    ([antigravity-cli-delete.md](antigravity-cli-delete.md)) decided to move

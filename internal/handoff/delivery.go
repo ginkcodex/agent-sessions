@@ -206,13 +206,20 @@ func BuildLaunchCommand(target model.AgentID, prompt string, promptFilePath stri
 // LaunchCommand returns the argv and directory that start the target agent
 // with the prompt (or the pointer to the prompt file).
 //
-// Claude Code and Antigravity CLI do not read outside their working
-// directories without asking, and the handoff files live in the app's data
-// directory, not the project. --add-dir grants that directory for the
-// session. Claude's takes several directories, so it goes after the prompt.
+// Claude Code does not read outside its working directory without asking, and
+// the handoff files live in the app's data directory, not the project.
+// --add-dir grants that directory for the session; Claude's takes several
+// directories, so it goes after the prompt.
+//
+// Antigravity CLI is not given --add-dir: agy sorts its workspace list and
+// uses the first entry as both Command Working Directory and
+// workspace_uris[0], so a handoff directory (e.g. ~/.local/share/...) hijacks
+// the project workspace. Without --add-dir, agy keeps the project as its sole
+// workspace and prompts once in interactive mode before reading the handoff
+// file.
 func LaunchCommand(target model.AgentID, prompt string, promptFilePath string, cwd string) provider.Command {
 	argv := LaunchArgv(target, LaunchPrompt(prompt, promptFilePath))
-	if (target == model.AgentClaude || target == model.AgentAntigravity) && promptFilePath != "" {
+	if target == model.AgentClaude && promptFilePath != "" {
 		argv = append(argv, "--add-dir", filepath.Dir(promptFilePath))
 	}
 	return provider.Command{Argv: argv, Dir: cwd}
