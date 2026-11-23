@@ -79,6 +79,11 @@ export interface Chat {
    * end they wait, paused, until Send now or a new message.
    */
   queue: ChatQueuedPrompt[];
+  /**
+   * The agent's async tasks still running (Claude: a background command, or
+   * a turn it started with no prompt open): it works outside a turn.
+   */
+  tasks?: string[];
   /** A message sent while the agent works is queued; false from an older host. */
   canQueue?: boolean;
   /** Send now can put a queued message into the running turn. */
@@ -190,7 +195,7 @@ export class ChatsStore {
   reset(sameHost = false): void {
     // A chat still starting is refused when its start answers.
     const ended = (c: Chat): Chat =>
-      c.phase === 'exited' ? c : { ...c, phase: 'exited', exit: { chatId: c.chatId, seq: 0, reason: 'disconnected' }, permissions: [], questions: [], queue: [], tail: endTurn(c.tail), inspection: endInspection(c.inspection, 'exited') };
+      c.phase === 'exited' ? c : { ...c, phase: 'exited', exit: { chatId: c.chatId, seq: 0, reason: 'disconnected' }, permissions: [], questions: [], queue: [], tasks: undefined, tail: endTurn(c.tail), inspection: endInspection(c.inspection, 'exited') };
     this.chats = sameHost ? this.chats.filter((c) => c.phase !== 'starting').map((c) => ({ ...ended(c), epoch: epoch() })) : [];
     this.internal.clear();
     this.early.clear();
@@ -528,7 +533,7 @@ export class ChatsStore {
       state.capture = undefined;
       state.asked.clear();
       state.queued.clear();
-      this.update(key, (c) => ({ ...c, phase: 'exited', exit, permissions: [], questions: [], queue: [], tail: endTurn(c.tail), inspection: endInspection(c.inspection, 'exited') }));
+      this.update(key, (c) => ({ ...c, phase: 'exited', exit, permissions: [], questions: [], queue: [], tasks: undefined, tail: endTurn(c.tail), inspection: endInspection(c.inspection, 'exited') }));
       return;
     }
     switch (e.kind) {
@@ -540,6 +545,16 @@ export class ChatsStore {
         return;
       case 'session_update': {
         const u = e.update;
+        if (u?.sessionUpdate === 'async_task_spawned' || u?.sessionUpdate === 'async_task_state_update') {
+          const id = u.asyncTaskId;
+          if (typeof id !== 'string' || !id) return;
+          const running = u.sessionUpdate === 'async_task_spawned' || u.state === 'running';
+          this.update(key, (c) => {
+            const tasks = (c.tasks ?? []).filter((t) => t !== id);
+            return { ...c, tasks: running ? [...tasks, id] : tasks };
+          });
+          return;
+        }
         if (state.capture === 'open' && u && CAPTURED.has(u.sessionUpdate)) {
           const text = u.sessionUpdate === 'agent_message_chunk' ? blockText(u.content) : '';
           if (text) this.update(key, (c) => (c.inspection?.state === 'running' ? { ...c, inspection: { ...c.inspection, text: c.inspection.text + text } } : c));

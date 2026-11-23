@@ -1,7 +1,7 @@
 # ACP chat mode — tasks
 
 - **Plan:** [acp-chat.md](../../plan/acp-chat.md)
-- **Progress:** 18/19 done
+- **Progress:** 19/20 done
 
 | Task | Status | Scope | Est | Depends on |
 |---|---|---|---|---|
@@ -24,3 +24,4 @@
 | [ACP-17](ACP-17.md) | ✅ Done | No spellcheck, autofill or autocorrect in the composer | 0.5 h | ACP-16 |
 | [ACP-18](ACP-18.md) | ✅ Done | Session header for a new chat before its agent saves the session | 1 h | ACP-09 |
 | [ACP-19](ACP-19.md) | ✅ Done | The turn's end follows the resolved permission and question updates | 0.5 h | ACP-06 |
+| [ACP-20](ACP-20.md) | ✅ Done | The working spinner follows the agent's async tasks after its turn ends | 1.5 h | ACP-09 |

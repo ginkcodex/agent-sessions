@@ -97,10 +97,18 @@ type Implementation struct {
 
 // ClientCapabilities leaves out fs and terminal on purpose: without them the
 // agent must not call the client's file or terminal methods. Elicitation is
-// set only when the client shows forms.
+// set only when the client shows forms. Meta carries extensions such as
+// AsyncTasksMeta.
 type ClientCapabilities struct {
 	Elicitation *ElicitationCapabilities `json:"elicitation,omitempty"`
+	Meta        map[string]any           `json:"_meta,omitempty"`
 }
+
+// AsyncTasksMeta asks Claude's adapter for its AIR async_task_* updates: the
+// only sign that the agent works with no prompt open, as when a background
+// command ends and Claude Code starts a turn of its own, or while the command
+// itself runs. Other agents ignore it.
+var AsyncTasksMeta = map[string]any{"jetbrains": map[string]any{"air": map[string]any{"version": 1, "capabilities": []string{"asyncTasks"}}}}
 
 type InitializeRequest struct {
 	ProtocolVersion    int                `json:"protocolVersion"`

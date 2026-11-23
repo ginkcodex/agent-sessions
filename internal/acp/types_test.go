@@ -17,6 +17,17 @@ func decodeUpdate(t *testing.T, params string) SessionNotification {
 	return n
 }
 
+// The shape claude-agent-acp's clientSupportsAirCapability reads.
+func TestClientCapabilitiesAskForAsyncTasks(t *testing.T) {
+	b, err := json.Marshal(ClientCapabilities{Meta: AsyncTasksMeta})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(b), `{"_meta":{"jetbrains":{"air":{"capabilities":["asyncTasks"],"version":1}}}}`; got != want {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+}
+
 func TestNewSessionRequestSendsEmptyMCPServers(t *testing.T) {
 	b, err := json.Marshal(NewSessionRequest{Cwd: "/p"})
 	if err != nil {

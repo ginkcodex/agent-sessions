@@ -318,6 +318,9 @@ only once the adapter runs, so the action cannot be hidden ahead of that.
    and a later task adds them. Amended by
    [chat-attachments](chat-attachments.md): a message may carry images and
    text files, sent only to agents that advertise the matching capability.
+   Amended by [ACP-20](../tasks/acp-chat/ACP-20.md): `_meta` asks for
+   Claude's AIR `asyncTasks` updates. They only report work, so the chat can
+   show the agent working after a turn ends.
 4. **Permissions fail closed.** Nothing is approved automatically. Closing the
    chat, cancelling, disconnecting, the agent exiting and quitting the app all
    answer every pending request `cancelled`.

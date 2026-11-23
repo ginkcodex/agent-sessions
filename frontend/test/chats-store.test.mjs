@@ -357,6 +357,29 @@ test('a chat that ends drops its queue', async () => {
   });
 });
 
+test("the agent's async tasks keep it working after its turn ended, until they stop or the chat ends", async () => {
+  await withChats(async ({ store, mock }) => {
+    const chat = await store.start({ agent: 'claude-code', dir: DIR });
+    const agent = mock.chat.chats.get(chat.chatId);
+    const task = (update) => mock.chat.update(agent, { kind: 'session_update', update });
+    const tasks = () => store.byChatId(chat.chatId).tasks ?? [];
+    task({ sessionUpdate: 'async_task_spawned', asyncTaskId: 'shell-1', name: 'sleep 30', taskType: 'local_bash' });
+    task({ sessionUpdate: 'async_task_spawned', asyncTaskId: 'turn-1', name: 'Claude is working', taskType: 'turn' });
+    assert.equal(store.byChatId(chat.chatId).phase, 'idle');
+    assert.deepEqual(tasks(), ['shell-1', 'turn-1']);
+    task({ sessionUpdate: 'async_task_state_update', asyncTaskId: 'shell-1', state: 'completed' });
+    task({ sessionUpdate: 'async_task_state_update', asyncTaskId: 'turn-1', state: 'running' });
+    assert.deepEqual(tasks(), ['turn-1'], 'a repeated running state adds no second copy');
+    assert.equal(store.byChatId(chat.chatId).tail.items.length, 0, 'tasks stay out of the tail');
+    task({ sessionUpdate: 'async_task_state_update', asyncTaskId: 'turn-1', state: 'paused' });
+    assert.deepEqual(tasks(), []);
+    task({ sessionUpdate: 'async_task_spawned', asyncTaskId: 'shell-2', name: 'tail -f log', taskType: 'local_bash' });
+    await store.close(chat.chatId);
+    await until('exit', () => store.byChatId(chat.chatId).phase === 'exited');
+    assert.deepEqual(tasks(), []);
+  });
+});
+
 test('options change through setOption and config_options events', async () => {
   await withChats(async ({ store }) => {
     const chat = await store.start({ agent: 'claude-code', dir: DIR });
