@@ -48,7 +48,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Transcript directory links | [transcript-directory-links](../plan/transcript-directory-links.md) | [transcript-directory-links/](transcript-directory-links/README.md) | 1/1 ✅ |
 | Terminal auto activation | [terminal-auto-activation](../plan/terminal-auto-activation.md) | [terminal-auto-activation/](terminal-auto-activation/README.md) | 1/1 ✅ |
 | ACP adapter install | [acp-adapter-install](../plan/acp-adapter-install.md) | [acp-adapter-install/](acp-adapter-install/README.md) | 4/5 ✅ · 1 ⬜ |
-| ACP chat mode | [acp-chat](../plan/acp-chat.md) | [acp-chat/](acp-chat/README.md) | 18/19 ✅ · 1 🟡 |
+| ACP chat mode | [acp-chat](../plan/acp-chat.md) | [acp-chat/](acp-chat/README.md) | 19/20 ✅ · 1 🟡 |
 | Chat attachments | [chat-attachments](../plan/chat-attachments.md) | [chat-attachments/](chat-attachments/README.md) | 5/6 ✅ · 1 ⬜ |
 | Chat end guard | [chat-end-guard](../plan/chat-end-guard.md) | [chat-end-guard/](chat-end-guard/README.md) | 4/5 ✅ · 1 ⬜ |
 | End chat menu | [end-chat-menu](../plan/end-chat-menu.md) | [end-chat-menu/](end-chat-menu/README.md) | 4/5 ✅ · 1 ⬜ |
@@ -117,4 +117,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Review fixes (2026-11-14 review) | [review-fixes](../plan/review-fixes.md) | [review-fixes/](review-fixes/README.md) | 27/35 ✅ · 8 ⬜ |
 | Code completion | [code-completion](../plan/code-completion.md) | [code-completion/](code-completion/README.md) | 24/27 ✅ · 2 🟡 · 1 ⬜ |
 | File link line highlight | [file-link-line-highlight](../plan/file-link-line-highlight.md) | [file-link-line-highlight/](file-link-line-highlight/README.md) | 1/1 ✅ |
-| Antigravity CLI | [antigravity-cli](../plan/antigravity-cli.md) | [antigravity-cli/](antigravity-cli/README.md) | 23/24 ✅ · 1 🟡 |
+| Antigravity CLI | [antigravity-cli](../plan/antigravity-cli.md) | [antigravity-cli/](antigravity-cli/README.md) | 24/25 ✅ · 1 🟡 |

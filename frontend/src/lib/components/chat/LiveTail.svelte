@@ -93,7 +93,7 @@
     {#each chat.questions as question (question.id)}
       <QuestionCard {chat} {question} {agentName} />
     {/each}
-    {#if chat.phase === 'working'}
+    {#if chat.phase === 'working' || (chat.phase === 'idle' && chat.tasks?.length)}
       <div class="chat-status" role="status">
         <Icon name="loader-circle" size={14} class="spin" />
         <span>{waiting ? `${agentName} waits for your answer.` : `${agentName} is working…`}</span>

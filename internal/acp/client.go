@@ -173,7 +173,7 @@ func Start(ctx context.Context, command Command, opts ClientOptions) (*Client, e
 		info.Name = "agent-sessions"
 	}
 	var resp InitializeResponse
-	init := InitializeRequest{ProtocolVersion: ProtocolVersion, ClientInfo: &info}
+	init := InitializeRequest{ProtocolVersion: ProtocolVersion, ClientInfo: &info, ClientCapabilities: ClientCapabilities{Meta: AsyncTasksMeta}}
 	if opts.OnElicitation != nil {
 		init.ClientCapabilities.Elicitation = &ElicitationCapabilities{Form: &struct{}{}}
 	}
