@@ -18,6 +18,9 @@
   --bg-primary: #ffffff;
   --bg-secondary: #f1f3f6;
   --bg-tertiary: #e2e7ef;
+  /* Behind the main pane cards; LIMITS.paneGaps in preferences counts the gaps. */
+  --bg-gutter: #dde2e9;
+  --pane-gap: 6px;
   --border-color: rgba(15, 23, 42, 0.1);
   --text-primary: #0b1220;
   --text-secondary: #334155;
@@ -97,6 +100,7 @@
     --bg-primary: #242423;
     --bg-secondary: #2c2c2b;
     --bg-tertiary: #383837;
+    --bg-gutter: #1a1a19;
     --border-color: rgba(255, 255, 255, 0.08);
     --text-primary: #f2f2f2;
     --text-secondary: #cccccc;

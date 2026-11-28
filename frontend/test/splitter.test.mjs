@@ -82,3 +82,33 @@ test('manual resizing allows wide navigation columns and retains minimums', () =
   store.setSessionListWidth(1);
   assert.deepEqual(store.widths, { sidebar: 200, sessionList: 260 });
 });
+
+test('navigation shrinks so the transcript keeps its minimum beside the pane gaps', () => {
+  const store = new PreferencesStore();
+  globalThis.window = { innerWidth: 1200 };
+  try {
+    store.setSessionListWidth(900);
+    // 1200 - 380 transcript - 24 gaps leaves 796 for both navigation columns.
+    assert.equal(store.widths.sidebar + store.widths.sessionList, 796);
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test('app pane splitters sit in the gaps; nested splitters keep the hairline', () => {
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  const tags = app.match(/<Splitter\b[\s\S]*?\/>/g);
+  assert.equal(tags.length, 3);
+  for (const tag of tags) assert.match(tag, /\bgap\b/);
+  assert.match(source, /class:gap\b/);
+  assert.match(app, /var\(--pane-gap\) \$\{preferences\.widths\.sessionList\}px var\(--pane-gap\)/);
+  for (const nested of ['go-to-file/HistoryLayout.svelte', 'go-to-file/ProblemsPanel.svelte']) {
+    const text = readFileSync(new URL(`../src/lib/components/common/${nested}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(text, /<Splitter[^>]*\bgap\b/);
+  }
+});
+
+test('splitters show no hover tooltip', () => {
+  const markup = source.slice(source.indexOf('</script>'));
+  assert.doesNotMatch(markup.slice(0, markup.indexOf('<style>')), /\btitle=/);
+});
