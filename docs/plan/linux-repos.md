@@ -209,9 +209,9 @@ source (`/etc/apt/sources.list`, or a `.list` or `.sources` file in
 `/etc/apt/sources.list.d/`) or a `/etc/yum.repos.d/*.repo` section that
 names our domain. Sources that are commented out (as `do-release-upgrade`
 leaves third-party ones), `Enabled: no` or `enabled=0` do not count. If it
-is, the toast shows `sudo apt update && sudo apt upgrade` (or
-`sudo dnf upgrade`) with **Copy command**. On Arch (`/etc/arch-release`) it
-says to update with the AUR helper (`paru -Syu agent-sessions-bin`).
+is, the toast shows `sudo apt update && sudo apt install --only-upgrade agent-sessions` (or
+`sudo dnf upgrade --refresh agent-sessions`) with **Copy command**. On Arch (`/etc/arch-release`) it
+says to update with the AUR helper (`paru -S agent-sessions-bin`).
 Otherwise it links to the website's install guide
 (`https://agent-sessions.ginklab.cv/download`) and the release page.
 

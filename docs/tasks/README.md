@@ -110,7 +110,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Workspace filter release | [workspace-filter-release](../plan/workspace-filter-release.md) | [workspace-filter-release/](workspace-filter-release/README.md) | 2/3 ✅ · 1 ⬜ |
 | Chat login environment | [chat-login-env](../plan/chat-login-env.md) | [chat-login-env/](chat-login-env/README.md) | 3/4 ✅ · 1 ⬜ |
 | Code block run | [code-block-run](../plan/code-block-run.md) | [code-block-run/](code-block-run/README.md) | 3/4 ✅ · 1 ⬜ |
-| Linux repositories | [linux-repos](../plan/linux-repos.md) | [linux-repos/](linux-repos/README.md) | 16/21 ✅ · 4 🟡 · 1 ⬜ |
+| Linux repositories | [linux-repos](../plan/linux-repos.md) | [linux-repos/](linux-repos/README.md) | 17/22 ✅ · 4 🟡 · 1 ⬜ |
 | Auto-update (macOS, Windows) | [auto-update](../plan/auto-update.md) | [auto-update/](auto-update/README.md) | 14/17 ✅ · 3 ⬜ |
 | Chat message queue | [chat-message-queue](../plan/chat-message-queue.md) | [chat-message-queue/](chat-message-queue/README.md) | 7/8 ✅ · 1 ⬜ |
 | Tool file links | [tool-file-links](../plan/tool-file-links.md) | [tool-file-links/](tool-file-links/README.md) | 1/2 ✅ · 1 ⬜ |
@@ -118,4 +118,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Code completion | [code-completion](../plan/code-completion.md) | [code-completion/](code-completion/README.md) | 24/27 ✅ · 2 🟡 · 1 ⬜ |
 | File link line highlight | [file-link-line-highlight](../plan/file-link-line-highlight.md) | [file-link-line-highlight/](file-link-line-highlight/README.md) | 1/1 ✅ |
 | Antigravity CLI | [antigravity-cli](../plan/antigravity-cli.md) | [antigravity-cli/](antigravity-cli/README.md) | 24/25 ✅ · 1 🟡 |
-| Pane gaps | [pane-gaps](../plan/pane-gaps.md) | [pane-gaps/](pane-gaps/README.md) | 3/4 ✅ · 1 ⬜ |
+| Pane gaps | [pane-gaps](../plan/pane-gaps.md) | [pane-gaps/](pane-gaps/README.md) | 4/5 ✅ · 1 ⬜ |

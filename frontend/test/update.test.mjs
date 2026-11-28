@@ -246,9 +246,9 @@ test('manual and unsupported keep the release page toast', () => {
 });
 
 const linuxCommands = [
-  ['apt-repo', 'sudo apt update && sudo apt upgrade', /with apt:/],
-  ['dnf-repo', 'sudo dnf upgrade', /with dnf:/],
-  ['aur', 'paru -Syu agent-sessions-bin', /AUR helper/],
+  ['apt-repo', 'sudo apt update && sudo apt install --only-upgrade agent-sessions', /with apt:/],
+  ['dnf-repo', 'sudo dnf upgrade --refresh agent-sessions', /with dnf:/],
+  ['aur', 'paru -S agent-sessions-bin', /AUR helper/],
 ];
 
 test('Linux repository and AUR installs: the toast shows the command and copies it', () => {
@@ -289,7 +289,7 @@ test('Linux: the install method in the update state alone is enough, and shows o
   assert.match(log.shown[0].body, /^Agent Sessions 1\.3\.0 is out\. Update it with dnf:$/);
   // A check that found it while idle (a download that failed elsewhere) too.
   announce({ state: 'idle', install: 'apt-repo' }, newer);
-  assert.equal(log.shown[1].code, 'sudo apt update && sudo apt upgrade');
+  assert.equal(log.shown[1].code, 'sudo apt update && sudo apt install --only-upgrade agent-sessions');
 });
 
 test('macOS and Windows toasts are unchanged: no install method, no Linux toast', () => {

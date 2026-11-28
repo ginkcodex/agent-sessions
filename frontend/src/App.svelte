@@ -933,7 +933,7 @@
 
   .pane,
   .workspace > :global(.terminal-panel) {
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--pane-border);
     border-radius: var(--radius-md);
     overflow: hidden;
   }
