@@ -289,7 +289,7 @@ const PALETTES = {
  * the app's colors, so the terminal matches the panes around it.
  */
 export function terminalTheme(resolved: 'light' | 'dark', cssVar: (name: string) => string): TerminalTheme {
-  const background = cssVar('--bg-primary') || (resolved === 'dark' ? '#242423' : '#ffffff');
+  const background = cssVar('--bg-primary') || (resolved === 'dark' ? '#2a2a29' : '#ffffff');
   const foreground = cssVar('--text-primary') || (resolved === 'dark' ? '#f2f2f2' : '#0b1220');
   return {
     ...PALETTES[resolved],
