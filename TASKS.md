@@ -144,4 +144,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Code completion | [code-completion](docs/plan/code-completion.md) | [code-completion/](docs/tasks/code-completion/README.md) | 24/27 ✅ · 2 🟡 · 1 ⬜ |
 | File link line highlight | [file-link-line-highlight](docs/plan/file-link-line-highlight.md) | [file-link-line-highlight/](docs/tasks/file-link-line-highlight/README.md) | 1/1 ✅ |
 | Antigravity CLI | [antigravity-cli](docs/plan/antigravity-cli.md) | [antigravity-cli/](docs/tasks/antigravity-cli/README.md) | 24/25 ✅ · 1 🟡 |
-| Pane gaps | [pane-gaps](docs/plan/pane-gaps.md) | [pane-gaps/](docs/tasks/pane-gaps/README.md) | 3/4 ✅ · 1 ⬜ |
+| Pane gaps | [pane-gaps](docs/plan/pane-gaps.md) | [pane-gaps/](docs/tasks/pane-gaps/README.md) | 4/5 ✅ · 1 ⬜ |

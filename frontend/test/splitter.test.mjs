@@ -112,3 +112,15 @@ test('splitters show no hover tooltip', () => {
   const markup = source.slice(source.indexOf('</script>'));
   assert.doesNotMatch(markup.slice(0, markup.indexOf('<style>')), /\btitle=/);
 });
+
+test('pane cards keep an outline against the gutter in both themes', () => {
+  const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+  const block = selector => css.slice(css.indexOf(selector)).split('}')[0];
+  const token = (selector, name) => block(selector).match(new RegExp(`${name}:\\s*([^;]+);`))[1].trim();
+  const level = hex => parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16);
+  // Light: an opaque border darker than the gutter. Dark: the white hairline, lighter than both.
+  assert.ok(level(token(':root {', '--pane-border')) < level(token(':root {', '--bg-gutter')) - 30);
+  assert.equal(token('[data-theme="dark"]', '--pane-border'), 'var(--border-color)');
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  assert.match(app, /\.workspace > :global\(\.terminal-panel\) \{\s*border: 1px solid var\(--pane-border\);/);
+});

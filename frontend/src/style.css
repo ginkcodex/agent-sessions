@@ -21,6 +21,8 @@
   /* Behind the main pane cards; LIMITS.paneGaps in preferences counts the gaps. */
   --bg-gutter: #dde2e9;
   --pane-gap: 6px;
+  /* Darker than the gutter, so the cards keep an outline against it. */
+  --pane-border: #c9d0da;
   --border-color: rgba(15, 23, 42, 0.1);
   --text-primary: #0b1220;
   --text-secondary: #334155;
@@ -101,6 +103,7 @@
     --bg-secondary: #323231;
     --bg-tertiary: #3e3e3d;
     --bg-gutter: #20201f;
+    --pane-border: var(--border-color);
     --border-color: rgba(255, 255, 255, 0.08);
     --text-primary: #f2f2f2;
     --text-secondary: #cccccc;

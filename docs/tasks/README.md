@@ -118,4 +118,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Code completion | [code-completion](../plan/code-completion.md) | [code-completion/](code-completion/README.md) | 24/27 ✅ · 2 🟡 · 1 ⬜ |
 | File link line highlight | [file-link-line-highlight](../plan/file-link-line-highlight.md) | [file-link-line-highlight/](file-link-line-highlight/README.md) | 1/1 ✅ |
 | Antigravity CLI | [antigravity-cli](../plan/antigravity-cli.md) | [antigravity-cli/](antigravity-cli/README.md) | 24/25 ✅ · 1 🟡 |
-| Pane gaps | [pane-gaps](../plan/pane-gaps.md) | [pane-gaps/](pane-gaps/README.md) | 3/4 ✅ · 1 ⬜ |
+| Pane gaps | [pane-gaps](../plan/pane-gaps.md) | [pane-gaps/](pane-gaps/README.md) | 4/5 ✅ · 1 ⬜ |
