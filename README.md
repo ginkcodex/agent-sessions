@@ -114,7 +114,7 @@ echo "deb [signed-by=/usr/share/keyrings/agent-sessions.gpg] https://agent-sessi
 sudo apt update && sudo apt install agent-sessions
 ```
 
-Update with `sudo apt update && sudo apt upgrade`. apt checks the repository
+Update with `sudo apt update && sudo apt install --only-upgrade agent-sessions`. apt checks the repository
 against the key you downloaded with the first command. If `apt update` ever
 reports that this key has expired or is missing, run that command again to
 fetch the current key.
@@ -128,7 +128,7 @@ sudo dnf install agent-sessions
 ```
 
 dnf asks to import the repository's signing keys; answer yes. It asks again
-if a release is signed with a new key. Update with `sudo dnf upgrade`.
+if a release is signed with a new key. Update with `sudo dnf upgrade --refresh agent-sessions`.
 
 **Removing the repository**
 

@@ -31,9 +31,11 @@ export const INSTALL_GUIDE_URL = 'https://agent-sessions.ginklab.cv/download';
 
 /** What brings the new version, for the installs whose package manager does. */
 export const UPGRADE_COMMANDS: Record<Exclude<InstallMethod, 'manual'>, string> = {
-  'apt-repo': 'sudo apt update && sudo apt upgrade',
-  'dnf-repo': 'sudo dnf upgrade',
-  aur: 'paru -Syu agent-sessions-bin',
+  'apt-repo': 'sudo apt update && sudo apt install --only-upgrade agent-sessions',
+  // --refresh: dnf otherwise trusts its cached index for up to 48 h and misses a new release.
+  'dnf-repo': 'sudo dnf upgrade --refresh agent-sessions',
+  // paru -S, not -Syu: only this app; -Sy alone would be an unsupported partial upgrade.
+  aur: 'paru -S agent-sessions-bin',
 };
 
 /**
