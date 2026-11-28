@@ -36,6 +36,8 @@ export const LIMITS = {
   sidebar: { min: 200, default: 280 },
   sessionList: { min: 260, default: 380 },
   transcriptMin: 380,
+  // The window edges and the two splitters between the panes: 4 × --pane-gap.
+  paneGaps: 24,
 };
 
 export class PreferencesStore {
@@ -304,7 +306,7 @@ export class PreferencesStore {
   private ensureTranscriptVisible(): void {
     if (typeof window === 'undefined') return;
     const windowWidth = window.innerWidth;
-    const available = windowWidth - LIMITS.transcriptMin;
+    const available = windowWidth - LIMITS.transcriptMin - LIMITS.paneGaps;
 
     if (available > 0 && this.widths.sidebar + this.widths.sessionList > available) {
       const ratio = this.widths.sidebar / (this.widths.sidebar + this.widths.sessionList);

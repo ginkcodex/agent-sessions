@@ -478,7 +478,7 @@
     class:panel-maximized={panelMaximized}
     class:navigation-collapsed={preferences.navigationCollapsed}
     style:grid-template-columns={panelLeft
-      ? `${preferences.widths.sidebar}px 0 ${preferences.widths.sessionList}px 0 minmax(0, 1fr)`
+      ? `${preferences.widths.sidebar}px var(--pane-gap) ${preferences.widths.sessionList}px var(--pane-gap) minmax(0, 1fr)`
       : undefined}
   >
   <div class="shell">
@@ -728,6 +728,7 @@
   <Splitter
     direction="horizontal"
     ariaLabel="Resize sidebar"
+    gap
     onResize={handleSidebarResize}
     onEqualize={() => preferences.equalizeSidebarAndSessionList()}
   />
@@ -747,9 +748,12 @@
   <Splitter
     direction="horizontal"
     ariaLabel="Resize session list"
+    gap
     onResize={handleSessionListResize}
     onEqualize={(edge) => {
-      preferences.equalizeNavigationAndTranscript(edge.closest('.workspace')!.clientWidth);
+      // The panes' own widths: the gaps between them belong to neither side.
+      const panes = edge.parentElement!.querySelectorAll<HTMLElement>(':scope > .pane');
+      preferences.equalizeNavigationAndTranscript([...panes].reduce((sum, pane) => sum + pane.offsetWidth, 0));
     }}
   />
 
@@ -788,7 +792,7 @@
   {#if launcher.info.panel}
     {#if terminals.open && !panelMaximized}
       <div class="panel-splitter">
-        <Splitter direction="vertical" ariaLabel="Resize terminal panel" onResize={handlePanelResize}
+        <Splitter direction="vertical" gap ariaLabel="Resize terminal panel" onResize={handlePanelResize}
           onEqualize={(edge) => terminals.setHeight(edge.closest('.workspace')!.clientHeight / 2, window.innerHeight)} />
       </div>
     {/if}
@@ -819,6 +823,9 @@
     flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
+    /* The panes are cards on a gutter, split by gap splitters. */
+    padding: var(--pane-gap);
+    background-color: var(--bg-gutter);
   }
 
   .panel-maximized .shell {
@@ -846,9 +853,9 @@
     align-items: center;
     gap: 4px;
     width: 40px;
+    margin-right: var(--pane-gap);
     padding-top: 10px;
     background-color: var(--bg-secondary);
-    border-right: 1px solid var(--border-color);
   }
 
   .rail-bottom {
@@ -872,7 +879,6 @@
       'sidebar split-sidebar list split-list main'
       'panel-split panel-split panel-split split-list main'
       'panel panel panel split-list main';
-    background-color: var(--bg-primary);
     color: var(--text-primary);
   }
 
@@ -922,15 +928,20 @@
     min-height: 300px;
     width: 100%;
     overflow: hidden;
-    background-color: var(--bg-primary);
     color: var(--text-primary);
+  }
+
+  .pane,
+  .workspace > :global(.terminal-panel) {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
   }
 
   .pane {
     display: flex;
     flex-direction: column;
     height: 100%;
-    overflow: hidden;
     background-color: var(--bg-primary);
   }
 

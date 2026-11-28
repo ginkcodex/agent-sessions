@@ -16,11 +16,11 @@ function luminance(hex) {
 
 test('dark surfaces retain native-tone layers with readable text', () => {
   const dark = tokens('[data-theme="dark"]');
-  assert.equal(dark['--bg-primary'], '#242423');
+  assert.equal(dark['--bg-primary'], '#2a2a29');
   assert.ok(luminance(dark['--bg-primary']) < luminance(dark['--bg-secondary']));
   assert.ok(luminance(dark['--bg-secondary']) < luminance(dark['--bg-tertiary']));
-  assert.equal(dark['--bg-secondary'], '#2c2c2b');
-  assert.equal(dark['--bg-tertiary'], '#383837');
+  assert.equal(dark['--bg-secondary'], '#323231');
+  assert.equal(dark['--bg-tertiary'], '#3e3e3d');
   assert.equal(dark['--text-muted'], '#b0b0ad');
   for (const surface of ['--bg-primary', '--bg-secondary', '--bg-tertiary']) {
     for (const text of ['--text-primary', '--text-secondary', '--text-muted']) {

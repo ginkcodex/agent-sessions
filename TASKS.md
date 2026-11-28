@@ -112,7 +112,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Startup responsiveness | [performance-startup](docs/plan/performance-startup.md) | [performance-startup/](docs/tasks/performance-startup/README.md) | 10/10 ✅ |
 | Transcript page cap | [transcript-page-cap](docs/plan/transcript-page-cap.md) | [transcript-page-cap/](docs/tasks/transcript-page-cap/README.md) | 5/6 ✅ · 1 ⬜ |
 | Consent-based managed tools | [tool-installation](docs/plan/tool-installation.md) | [tool-installation/](docs/tasks/tool-installation/README.md) | 5/6 ✅ · 1 ⬜ |
-| Native-tone dark surfaces | [dark-tone](docs/plan/dark-tone.md) | [dark-tone/](docs/tasks/dark-tone/README.md) | 5/5 ✅ |
+| Native-tone dark surfaces | [dark-tone](docs/plan/dark-tone.md) | [dark-tone/](docs/tasks/dark-tone/README.md) | 6/6 ✅ |
 | Centered dialog close buttons | [dialog-close](docs/plan/dialog-close.md) | [dialog-close/](docs/tasks/dialog-close/README.md) | 2/2 ✅ |
 | Blame in nested repositories | [nested-repo-blame](docs/plan/nested-repo-blame.md) | [nested-repo-blame/](docs/tasks/nested-repo-blame/README.md) | 4/4 ✅ |
 | Git ignore rules in nested repositories | [nested-repo-gitignore](docs/plan/nested-repo-gitignore.md) | [nested-repo-gitignore/](docs/tasks/nested-repo-gitignore/README.md) | 4/5 ✅ · 1 ⬜ |
@@ -144,3 +144,4 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 | Code completion | [code-completion](docs/plan/code-completion.md) | [code-completion/](docs/tasks/code-completion/README.md) | 24/27 ✅ · 2 🟡 · 1 ⬜ |
 | File link line highlight | [file-link-line-highlight](docs/plan/file-link-line-highlight.md) | [file-link-line-highlight/](docs/tasks/file-link-line-highlight/README.md) | 1/1 ✅ |
 | Antigravity CLI | [antigravity-cli](docs/plan/antigravity-cli.md) | [antigravity-cli/](docs/tasks/antigravity-cli/README.md) | 24/25 ✅ · 1 🟡 |
+| Pane gaps | [pane-gaps](docs/plan/pane-gaps.md) | [pane-gaps/](docs/tasks/pane-gaps/README.md) | 3/4 ✅ · 1 ⬜ |

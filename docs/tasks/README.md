@@ -86,7 +86,7 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Startup responsiveness | [performance-startup](../plan/performance-startup.md) | [performance-startup/](performance-startup/README.md) | 10/10 ✅ |
 | Transcript page cap | [transcript-page-cap](../plan/transcript-page-cap.md) | [transcript-page-cap/](transcript-page-cap/README.md) | 5/6 ✅ · 1 ⬜ |
 | Consent-based managed tools | [tool-installation](../plan/tool-installation.md) | [tool-installation/](tool-installation/README.md) | 5/6 ✅ · 1 ⬜ |
-| Native-tone dark surfaces | [dark-tone](../plan/dark-tone.md) | [dark-tone/](dark-tone/README.md) | 5/5 ✅ |
+| Native-tone dark surfaces | [dark-tone](../plan/dark-tone.md) | [dark-tone/](dark-tone/README.md) | 6/6 ✅ |
 | Centered dialog close buttons | [dialog-close](../plan/dialog-close.md) | [dialog-close/](dialog-close/README.md) | 2/2 ✅ |
 | Blame in nested repositories | [nested-repo-blame](../plan/nested-repo-blame.md) | [nested-repo-blame/](nested-repo-blame/README.md) | 4/4 ✅ |
 | Git ignore rules in nested repositories | [nested-repo-gitignore](../plan/nested-repo-gitignore.md) | [nested-repo-gitignore/](nested-repo-gitignore/README.md) | 4/5 ✅ · 1 ⬜ |
@@ -118,3 +118,4 @@ Tasks are at most 4 h each. Status: ✅ Done · 🟡 Partial · ⛔ Blocked ·
 | Code completion | [code-completion](../plan/code-completion.md) | [code-completion/](code-completion/README.md) | 24/27 ✅ · 2 🟡 · 1 ⬜ |
 | File link line highlight | [file-link-line-highlight](../plan/file-link-line-highlight.md) | [file-link-line-highlight/](file-link-line-highlight/README.md) | 1/1 ✅ |
 | Antigravity CLI | [antigravity-cli](../plan/antigravity-cli.md) | [antigravity-cli/](antigravity-cli/README.md) | 24/25 ✅ · 1 🟡 |
+| Pane gaps | [pane-gaps](../plan/pane-gaps.md) | [pane-gaps/](pane-gaps/README.md) | 3/4 ✅ · 1 ⬜ |
