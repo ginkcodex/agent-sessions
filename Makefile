@@ -127,7 +127,7 @@ check-gui-deps:
 		exit 1; \
 	}
 	@[ "$$($(GO) env GOOS)" != linux ] || pkg-config --exists gtk4 webkitgtk-6.0 || { \
-		printf '%s\n' 'Missing GTK 4/WebKitGTK 6.0 development headers. Install libgtk-4-dev libwebkitgtk-6.0-dev.' >&2; \
+		printf '%s\n' 'Missing GTK 4/WebKitGTK 6.0 development headers. Install libgtk-4-dev libwebkitgtk-6.0-dev (Debian/Ubuntu) or gtk4-devel webkitgtk6.0-devel (Fedora).' >&2; \
 		exit 1; \
 	}
 
